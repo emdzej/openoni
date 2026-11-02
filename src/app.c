@@ -1,9 +1,11 @@
-/* The application (app.h). Step 1 of docs/re/port-plan.md: the start of ONiMain 0x4d3280 as far as the
-   port has come (the exe check), then a test screen that runs its own loop the way the original's loops
+/* The application (app.h). The start of ONiMain 0x4d3280 as far as the port has come (docs/re/port-plan.md):
+   the exe check, the instance manager (TMrInitialize, from ONiInitializeAll) and level 0 (ONrLevel_LoadZero
+   loads the shared data with TMrLevel_Load), then a test screen that runs its own loop the way the original's loops
    do: draw, plat_wait_frame, until Esc. The bars are the level files' sizes, read through the file layer. */
 #include "app.h"
 #include "exe.h"
 #include "platform.h"
+#include "tm.h"
 #include "vfs.h"
 #include <GLES3/gl3.h>
 #include <stdio.h>
@@ -58,7 +60,18 @@ int app_main(void)
         return 1;
     }
     plat_log("OpenOni: Oni.exe v1.0 found");
+    if (!tm_initialize(err, sizeof err) || !tm_level_load(0, err, sizeof err)) {
+        snprintf(m, sizeof m, "OpenOni: %s", err);
+        plat_log(m);
+        return 1;
+    }
+    TmFile *zero = tm_file_at(tm_file_slots() - 1);
+    TmLoadStats st = tm_load_stats();
+    snprintf(m, sizeof m, "OpenOni: level 0 loaded: %u instances, %u links", (unsigned)tm_file_instance_count(zero),
+             (unsigned)st.links);
+    plat_log(m);
     test_screen();
+    tm_terminate();
     plat_log("OpenOni: quit");
     return 0;
 }

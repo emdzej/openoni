@@ -7,6 +7,8 @@ Early. What works today:
   Bungie's own names, matched from the Intel Mac build 1.2.1. Together they cover 45% of the code.
 - **The skeleton** runs on gasm: it checks `Oni.exe` and draws a test screen, one bar per level file.
   Nothing of the game yet, but the loop, the file layer, input and audio are in place.
+- **The level files load** the way the original loads them: all 15 levels, 155,232 instances and their
+  358,404 links between each other ([the format](../formats/dat)). Nothing is decoded or drawn yet.
 
 Not started yet: the engine itself. The order of work, from the file layer and the level data through the
 renderer, front end, characters, scripts, combat and AI to sound and movies, is in the repository's port

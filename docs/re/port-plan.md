@@ -123,13 +123,26 @@ screenshot (md5 `a4c1e5b8`); the Node runner gives the same hash line. The video
 `811c9dc5`, since `gasm:gl` hashes uploads and the test screen only clears. Esc at frame 30 quits with
 exit code 0. `exe_test` finds the start-up strings at their addresses.
 
-## 2. Instance files
+## 2. Instance files (done)
 
-Port the original's loader for `.dat/.raw`: header, template table, instance descriptors, name
-directory, cross-instance links, raw/sep offsets (resolved through accessors, since the native test
-build is 64-bit). Write `tools/onidat.py` as the reference dumper.
+`src/tm.c` ports the instance manager ([format](../formats/dat.md)):
 
-**Check:** `dat_test` loads every instance of every level. The C and Python summary hashes match.
+- The template table and the layouts, read from the exe at run time.
+- The start-up check of the level files (header, template checksums).
+- `TMrLevel_Load`: the whole `.dat` is read, and the links are resolved in place, by name across the
+  loaded files, first loaded first. Link fields hold 32-bit handles, read with `tm_link()`, so the
+  64-bit native build behaves the same.
+- `TMrLevel_Unload`.
+- `tm_raw_read` for `.raw`.
+
+`tools/onidat.py` is the reference reader. The gasm build loads level 0 at start-up, as `ONiMain` does.
+
+**Check (passes):** `dat_test` walks every instance of the 15 levels by its layout: 155,232 instances and
+358,404 links, all to the right tag. Its summary lines equal `tools/onidat.py`'s (`all: hash=66db30fb`).
+It loads every level after level 0, and the link counts (into level 0, unresolved) equal the tool's
+`--load`. Every instance is found again by its handle and by name.
+
+`openoni.wasm`, `openoni-run.wasm` and the Node runner all load level 0: 9,347 instances, 5,539 links.
 
 ## 3. Format decoders and viewers
 

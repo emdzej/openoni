@@ -40,7 +40,10 @@ export default defineConfig({
       },
       {
         text: "Formats",
-        items: [{ text: "Installer VISE archive", link: "/formats/vise" }],
+        items: [
+          { text: "Installer VISE archive", link: "/formats/vise" },
+          { text: "Instance files (.dat, .raw)", link: "/formats/dat" },
+        ],
       },
     ],
     socialLinks: [{ icon: "github", link: "https://github.com/emdzej/openoni" }],

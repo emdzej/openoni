@@ -18,10 +18,11 @@ executable. **Fidelity is the product.** Reproduce the original's behaviour, inc
 If something looks wrong, check the disassembly; if the original does it, keep it and add a comment. Only
 fix deviations *of the port* from the original.
 
-**State:** steps 0 and 1 of [docs/re/port-plan.md](docs/re/port-plan.md) (the order of work, each step
+**State:** steps 0 to 2 of [docs/re/port-plan.md](docs/re/port-plan.md) (the order of work, each step
 with its check) are done. Step 0: the installer archive (`src/vise.c`, `openoni-extract`, `tools/vise.py`,
 [docs/formats/vise.md](docs/formats/vise.md); the standalone Go version is `../visextract`). Step 1: the
-gasm skeleton (`platform.h`, `platform_gasm.c`, `app.c`, `exe.c`). Next: step 2, the instance files.
+gasm skeleton (`platform.h`, `platform_gasm.c`, `app.c`, `exe.c`). Step 2: the instance files (`src/tm.c`,
+`tools/onidat.py`, [docs/formats/dat.md](docs/formats/dat.md)). Next: step 3, the format decoders.
 
 ## Hard rules
 
@@ -82,6 +83,10 @@ OPENONI_CD=~/Downloads/"Oni (USA).iso" OPENONI_VISE_SUMMARY=9b4bdbfa ctest --tes
 
 `tools/vise.py --summary <cd>` and `openoni-extract --summary <cd>` must print the same line
 (`files=95 bytes=641025194 hash=9b4bdbfa`), from the ISO and from a folder with its files.
+
+`tools/onidat.py game --load` and `build/dat_test` must print the same summary and load lines (`all:
+hash=66db30fb`; `OPENONI_DAT_SUMMARY=66db30fb` makes the test check it). Instance data is read through
+`tm.h`: link fields hold handles (`tm_link()`), never pointers, so the 64-bit native build works.
 
 The gasm module (`tools/fetch-gasm-sdk.sh` puts wasi-sdk, the gasm C SDK and Binaryen in `.deps/`):
 
