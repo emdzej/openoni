@@ -1,0 +1,21 @@
+# Original data and anything derived from it: never commit (AGENTS.md, hard rule 1)
+/game/
+/cd/
+/re/
+/out/
+*.iso
+*.ISO
+*.bin
+*.cue
+*.002
+oni.exe
+Oni.exe
+# Builds and fetched tools
+/build*/
+/.deps/
+__pycache__/
+docs/node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+.DS_Store
+oni-mac

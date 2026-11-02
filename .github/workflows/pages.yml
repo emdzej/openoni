@@ -1,0 +1,60 @@
+name: Pages
+
+# Builds and deploys the VitePress site to GitHub Pages at https://openoni.emdzej.pl/ (the custom-domain
+# CNAME ships in docs/public/CNAME). The browser player joins once there is an openoni.wasm.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # lastUpdated timestamps
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: docs/pnpm-lock.yaml
+      - name: install
+        working-directory: docs
+        run: pnpm install --frozen-lockfile
+      - name: build VitePress site
+        working-directory: docs
+        run: |
+          pnpm build
+          test -f .vitepress/dist/CNAME
+      - uses: actions/configure-pages@v6
+      - name: upload artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs/.vitepress/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

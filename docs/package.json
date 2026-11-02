@@ -1,0 +1,19 @@
+{
+  "name": "@emdzej/openoni-docs",
+  "version": "0.0.0",
+  "private": true,
+  "description": "VitePress site for OpenOni (https://openoni.emdzej.pl).",
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.4",
+    "vue": "^3.5.13"
+  }
+}

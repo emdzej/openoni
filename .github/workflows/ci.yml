@@ -1,0 +1,45 @@
+name: CI
+
+# The native build (tools and tests) on macOS and Linux, and the site. The tests that need the game skip
+# without it (no game data is ever in CI). The gasm module joins once there is one (port plan, step 1).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j
+      - name: test
+        run: ctest --test-dir build --output-on-failure
+      - name: openoni-extract runs
+        run: ./build/openoni-extract 2>&1 | grep -q usage
+
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: docs/pnpm-lock.yaml
+      - working-directory: docs
+        run: pnpm install --frozen-lockfile && pnpm build
