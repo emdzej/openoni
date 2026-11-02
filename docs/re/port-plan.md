@@ -153,6 +153,19 @@ animation, ONCC character assembly, fonts, SUBT/text, SNDD sounds (ADPCM). Add e
 **Check:** every texture/model/sound decodes and the C hashes equal Python. A level and Konoko exported
 to OBJ look right.
 
+**Progress:**
+
+| Part | State |
+|---|---|
+| Textures (TXMP), all five texel types of the CD, with mipmaps | done: `src/im.c`, `src/txmp.c`, `tools/onitex.py`. `txmp_test` equals the tool on all 8,918 textures (`69e02682`). [Format](../formats/txmp.md) |
+| Geometry (M3GM) and its arrays | done: `src/m3gm.c`, `tools/onigeom.py`. `m3gm_test` equals the tool on all 37,862 geometries (`8d974ee1`). [Format](../formats/m3gm.md) |
+| AKEV environment | to do |
+| TRAM animation | to do |
+| ONCC character assembly | to do |
+| Fonts | to do |
+| SUBT and text | to do |
+| SNDD sounds | to do |
+
 ## 4. Renderer (OpenGL 1.x on GLES 3)
 
 Port Motoko/M3 draw contexts onto the GL emulation: environment (sorted opaque/alpha quads,

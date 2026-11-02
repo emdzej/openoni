@@ -43,6 +43,8 @@ export default defineConfig({
         items: [
           { text: "Installer VISE archive", link: "/formats/vise" },
           { text: "Instance files (.dat, .raw)", link: "/formats/dat" },
+          { text: "Textures (TXMP)", link: "/formats/txmp" },
+          { text: "Geometry (M3GM)", link: "/formats/m3gm" },
         ],
       },
     ],

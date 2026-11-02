@@ -4,12 +4,13 @@
 #   tools/ghidra/apply-names.sh [names.tsv]
 # First run on a fresh project (oni.exe = a copy of game/Oni.exe): import with Ghidra's analyzeHeadless,
 # not ghidra-cli's import (see AGENTS.md). FillGaps.java creates the functions the auto-analysis misses
-# (vtable methods, callbacks); it is idempotent.
+# (vtable methods, callbacks), CreateFunctions.java the ones in entries.tsv; both are idempotent.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 NAMES=$(cd "$(dirname "${1:-tools/ghidra/names.tsv}")" && pwd)/$(basename "${1:-tools/ghidra/names.tsv}")
 P=(--project oni --program oni.exe)
 ghidra script run tools/ghidra/FillGaps.java "${P[@]}"
+ghidra script run tools/ghidra/CreateFunctions.java "${P[@]}" -- "$PWD/tools/ghidra/entries.tsv"
 ghidra script run tools/ghidra/ApplyNames.java "${P[@]}" -- "$NAMES"
 mkdir -p re
 ghidra script run tools/ghidra/DumpAllNamed.java "${P[@]}" -- "$PWD/re/all.c"

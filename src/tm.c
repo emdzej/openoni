@@ -19,7 +19,7 @@ enum {
     MAX_TEMPLATES = 256,
 };
 
-/* Level file header (checked by 0x420ff0). */
+/* Level file header (checked by TMiGame_InstanceFile_LoadHeader 0x420ff0). */
 enum {
     DAT_VERSION = 0x56523331,       /* "VR31" (big-endian files have it swapped: not shipped) */
     DAT_HEADER = 0x40, DAT_DESC = 0x14, DAT_TEMPLATE = 0x10, DAT_NAME = 0x08,
@@ -28,7 +28,7 @@ enum {
     FIRST_LEVEL_SLOT = 2,           /* slots 0 and 1: the dynamic instance files (TMrGame_Initialize) */
 };
 
-/* Layout opcodes, walked by TMiGame_InstanceFileRef_LoadLevel 0x421c50. */
+/* Layout opcodes, walked by TMiGame_Instance_PrepareForMemory 0x421c50. */
 enum {
     OP_8 = 1, OP_4, OP_2, OP_1,
     OP_ARRAY,           /* count (u8), the element's layout, OP_ARRAY_END */
@@ -119,7 +119,7 @@ static bool load_templates(char *err, size_t cap)
     return true;
 }
 
-/* 0x420330: a linear search, as the original. */
+/* TMrTemplate_GetFromTag 0x420330: a linear search, as the original. */
 const TmTemplate *tm_template(uint32_t tag)
 {
     for (int i = 0; i < n_templates; i++)
@@ -171,7 +171,7 @@ static bool ends_with_ci(const char *s, const char *suffix)
     return true;
 }
 
-/* 0x420ff0: the header's version and record sizes. */
+/* TMiGame_InstanceFile_LoadHeader 0x420ff0: the header's version and record sizes. */
 static bool check_header(const uint8_t *h, size_t size, char *err, size_t cap)
 {
     if (size < DAT_HEADER) return fail(err, cap, "too short");
@@ -306,8 +306,8 @@ bad:
     return NULL;
 }
 
-/* 0x423160: binary search of one file's name directory (byte order, as strcmp). The data of the
-   instance, NULL if the file doesn't have it or has only a placeholder. */
+/* TMiGame_InstanceFile_GetDataPtr 0x423160: binary search of one file's name directory (byte order, as
+   strcmp). The instance, NULL if the file doesn't have it or has only a placeholder. */
 static TmInstance *file_find(TmFile *f, const char *full)
 {
     uint32_t lo = 0, hi = f->n_names;
@@ -370,7 +370,7 @@ static bool skip_layout(uint32_t *pc, char *err, size_t cap)
     }
 }
 
-/* TMiGame_InstanceFileRef_LoadLevel 0x421c50: one layout (an instance's, or an array element's) from
+/* TMiGame_Instance_PrepareForMemory 0x421c50: one layout (an instance's, or an array element's) from
    *pc up to and past its end opcode. */
 static bool walk_layout(Walk *w, uint32_t *pc)
 {
@@ -456,8 +456,8 @@ static uint32_t handle(int slot, const TmFile *f, const TmInstance *in)
     return (uint32_t)slot << 24 | (uint32_t)(in - f->inst);
 }
 
-/* Case OP_LINK of 0x421c50: a named target is looked up by name in every loaded file, first loaded
-   first (so a level's copy of a level 0 instance gives way to level 0's); an unnamed one is the
+/* Case OP_LINK of TMiGame_Instance_PrepareForMemory 0x421c50: a named target is looked up by name in
+   every loaded file, first loaded first (so a level's copy of a level 0 instance gives way to level 0's); an unnamed one is the
    instance itself. */
 static bool resolve_link(Walk *w, uint8_t *field, uint32_t want)
 {
@@ -580,7 +580,8 @@ void *tm_handle_data(uint32_t h)
     return in ? in->data : NULL;
 }
 
-/* FUN_00420720 opens the .raw next to the .dat. */
+/* TMrInstance_GetRawOffset 0x423e10: the original loads the .raw whole next to the .dat
+   (TMiGame_InstanceFile_RawFileRef 0x420720) and returns its base; here it is read where asked. */
 int64_t tm_raw_read(const void *data, uint32_t off, void *dst, size_t len)
 {
     const uint8_t *p = data;

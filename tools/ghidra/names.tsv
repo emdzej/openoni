@@ -34,6 +34,7 @@
 0040ea60	iInterpShade_NoAlpha	-	med	name from the Intel Mac build (neighbours:1.00)
 0040eb20	MSrEnv_Clip_Quad	MS	med	name from the Intel Mac build (neighbours:1.00)
 0040ff30	MSrGeomContext_Method_Env_DrawGQList	MS	med	name from the Intel Mac build (neighbours:1.00)
+00410930	MSrGeomContext_Method_Geometry_Draw	MS	med	read: the method at +0x3c of the MS geometry table (0x6c85c0), walks the strips
 004115f0	MSrGeomContext_Method_Geometry_PolyDraw	MS	med	name from the Intel Mac build (neighbours:1.00)
 004118b0	MSrGeomContext_Method_Sprite_Draw	MS	med	name from the Intel Mac build (strings:1)
 00412d00	MSrGeomContext_Method_PointTestVisibleScale	MS	med	name from the Intel Mac build (neighbours:1.00)
@@ -86,8 +87,10 @@
 0041e5f0	M3rGeom_State_Initialize	M3	med	name from the Intel Mac build (neighbours:1.00)
 0041e720	M3rGeom_State_Set	M3	med	name from the Intel Mac build (neighbours:0.81)
 0041e740	M3rGeom_State_Get	M3	med	name from the Intel Mac build (neighbours:1.00)
+0041e9d0	M3iTextureMap_PrepareRaw	M3	low	read: turns a TXMP raw offset into a pointer, swaps big-endian pixels (name made up)
 0041eb00	M3rTextureMap_New	M3	med	name from the Intel Mac build (neighbours:1.00)
 0041ee90	M3rTextureMap_Fill_Shade	M3	med	name from the Intel Mac build (neighbours:1.00)
+0041eef0	M3rTextureRef_GetSize	M3	low	read: width and height of a TXMP or TXMB (name a guess)
 0041ef50	M3rIntersect_GeomGeom	M3	med	name from the Intel Mac build (neighbours:1.00)
 0041f5f0	M3rDraw_BitmapUV	M3	med	name from the Intel Mac build (neighbours:1.00)
 0041f800	M3rDrawEngine_FindGrayscalePixelType	M3	med	name from the Intel Mac build (strings:1)
@@ -97,23 +100,30 @@
 00420090	TMrRegisterTemplates	TM	med	name from the Intel Mac build (neighbours:1.00)
 004200f0	TMrTemplate_Register	TM	med	name from the Intel Mac build (strings:1)
 00420280	TMrTemplate_InstallByteSwap	TM	med	name from the Intel Mac build (strings:1)
+00420330	TMrTemplate_GetFromTag	TM	low	read: linear search of the template table (Mac name a guess)
 00420590	TMrUtility_LevelInfo_Get	TM	med	name from the Intel Mac build (strings:2)
+00420720	TMiGame_InstanceFile_RawFileRef	TM	low	read: the .raw next to a .dat (name a guess)
 00420810	TMrConstruction_Initialize	TM	med	name from the Intel Mac build (neighbours:1.00)
 004209e0	TMrGame_Initialize	TM	med	name from the Intel Mac build (neighbours:0.80)
+00420ff0	TMiGame_InstanceFile_LoadHeader	TM	med	read: checks the header version and record sizes (Mac name by role)
 00421240	TMiGame_InstanceFile_Dynamic_New	TM	med	name from the Intel Mac build (strings:1)
 00421520	TMiGame_InstanceFile_Callback	TM	med	name from the Intel Mac build (strings:1)
 004216b0	TMiGame_InstanceFile_PrivateInfo_Delete_ForRealThisTime	TM	med	name from the Intel Mac build (neighbours:1.00)
 004217d0	TMrLevel_Load	TM	med	name from the Intel Mac build (strings:2)
-00421c50	TMiGame_InstanceFileRef_LoadLevel	TM	med	name from the Intel Mac build (neighbours:1.00)
+00421c50	TMiGame_Instance_PrepareForMemory	TM	high	read: walks an instance by its layout and resolves its links (the Mac match InstanceFileRef_LoadLevel was wrong: 369 vs 1199 bytes)
 004222a0	TMiGame_InstanceFile_PrivateInfo_New	TM	med	name from the Intel Mac build (strings:1)
 00422590	TMiGame_InstanceFile_New_FromFileRef	TM	med	name from the Intel Mac build (strings:1)
+00422a20	TMiGame_Instance_ByteSwap	TM	high	read: swaps an instance of a big-endian file by its layout
+00423160	TMiGame_InstanceFile_GetDataPtr	TM	high	read: binary search of one file's name directory
 00423260	TMrLevel_Unload	TM	med	name from the Intel Mac build (neighbours:1.00)
 004232e0	TMrInstance_GetDataPtr	TM	med	name from the Intel Mac build (neighbours:0.97)
 00423680	TMrInstance_GetDataPtr_ByNumber	TM	med	name from the Intel Mac build (neighbours:0.91)
 004236f0	TMrInstance_GetTagCount	TM	med	name from the Intel Mac build (neighbours:1.00)
 00423720	TMrInstance_Dynamic_New	TM	med	name from the Intel Mac build (neighbours:0.80)
 00423b30	TMiGame_Instance_Callback	TM	med	name from the Intel Mac build (neighbours:1.00)
+00423d10	TMrInstance_GetTemplateTag	TM	high	read: the tag of an instance from its data pointer
 00423d90	TMrInstance_GetInstanceName	TM	med	name from the Intel Mac build (neighbours:0.88)
+00423e10	TMrInstance_GetRawOffset	TM	high	read: the in-memory .raw of the instance's file
 00423e70	TMrTemplate_PrivateData_New	TM	med	name from the Intel Mac build (strings:1)
 004242c0	TMrTemplate_PrivateData_GetDataPtr	TM	med	name from the Intel Mac build (neighbours:1.00)
 004243d0	UUrBitVector_FindFirstSetRange	UU	med	name from the Intel Mac build (neighbours:1.00)
@@ -275,9 +285,21 @@
 00444010	AKrEnvironment_GetVisVector	AK	med	name from the Intel Mac build (neighbours:1.00)
 00444030	AKiEnvironment_ComputeVis	AK	med	name from the Intel Mac build (strings:1)
 00445660	FFrWrite_PSD	FF	med	name from the Intel Mac build (strings:1)
+00447860	IMrImage_NumPixels	IM	med	read: pixel count with the mip chain (Mac name by role)
 004478d0	IMrImage_ComputeSize	IM	med	name from the Intel Mac build (neighbours:1.00)
 00447a30	IMrPixel_FromShade	IM	med	name from the Intel Mac build (neighbours:0.80)
 00447f20	IMrInitialize	IM	med	name from the Intel Mac build (strings:1)
+00449650	IMiConvert_DXT1_to_NByte	IM	high	read: DXT1 to 16-bit or byte types, block by block
+004499d0	DecodeDXT1Block_To_RGB565	IM	med	by its place in 0x449650
+00449d40	DecodeDXT1Block_To_RGBA5551	IM	med	by its place in 0x449650
+0044a0d0	DecodeDXT1Block_To_ARGB1555	IM	med	by its place in 0x449650 (types 1 and 2)
+0044a470	DecodeDXT1Block_To_RGBBytes	IM	med	by its place in 0x449650
+0044a8a0	DecodeDXT1Block_To_RGBABytes	IM	high	read: one DXT1 block to RGBA bytes
+0044ac20	IMrImage_ConvertPixelType	IM	high	read: converts level by level through the table at 0x535a90
+0044afa0	IMiConvert_RGB555_to_RGBABytes	IM	high	read (name made up)
+0044b020	IMiConvert_ARGB4444_to_RGBABytes	IM	high	read (name made up after the Mac IMiConvert_*)
+0044b0b0	IMiConvert_ARGB1555_to_RGBABytes	IM	high	read (name made up)
+0044b250	IMiConvert_RGB888_to_RGBBytes	IM	high	read (name made up)
 0044eac0	P3rDecalInitialize	P3	med	name from the Intel Mac build (strings:1)
 0044f070	P3rCreateDecal	P3	med	name from the Intel Mac build (strings:3)
 004503c0	P3iDecal_ClipToPolygon	P3	med	name from the Intel Mac build (neighbours:1.00)
@@ -1055,3 +1077,4 @@
 0051d000	WPrPowerup_DefaultAmount	WP	med	name from the Intel Mac build (neighbours:1.00)
 0051d080	WPrOutOfAmmoSound	WP	med	name from the Intel Mac build (neighbours:1.00)
 0051d180	WPrInventory_Weapon_Purge_Magic	WP	med	name from the Intel Mac build (strings:1)
+0051d1c0	TMrTemplate_SetupLayouts	TM	low	read: stores each template's layout pointer, then the table base (compiler-generated; name made up)

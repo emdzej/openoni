@@ -29,7 +29,7 @@ TEMPLATE_TABLE_PTR = 0x620138
 TEMPLATE_STRIDE = 0x30
 LEVELS = [0, 1, 2, 3, 4, 6, 8, 9, 10, 11, 12, 13, 14, 18, 19]
 
-# Layout opcodes (TMiGame_InstanceFileRef_LoadLevel 0x421c50 walks them).
+# Layout opcodes (TMiGame_Instance_PrepareForMemory 0x421c50 walks them).
 OP_8, OP_4, OP_2, OP_1, OP_ARRAY, OP_ARRAY_END, OP_VARARRAY, OP_VARARRAY_END, OP_LINK, OP_RAW = range(1, 11)
 
 
@@ -232,7 +232,7 @@ def summary(exe, tmpl, path):
 
 
 def find(dat, name):
-    """0x423160: the instance with data of that name in one file (binary search of its name
+    """TMiGame_InstanceFile_GetDataPtr 0x423160: the instance with data of that name in one file (binary search of its name
     directory), or None."""
     lo, hi = 0, dat.n_names
     key = name.encode("latin-1")

@@ -1,0 +1,28 @@
+# entry points reached only through tables (CreateFunctions.java)
+# pixel converters: the IMrImage_ConvertPixelType table at 0x535a90 (from type, to type, function)
+00448270	pixel converter 0 -> 0
+00448b00	pixel converter 3 -> 1
+00448be0	pixel converter 3 -> 10
+004481b0	pixel converter 0 -> 1
+0044ada0	pixel converter 0 -> 7
+0044b020	pixel converter 0 -> 11
+004482b0	pixel converter 1 -> 0
+00448400	pixel converter 1 -> 2
+0044ae50	pixel converter 1 -> 8
+0044af30	pixel converter 1 -> 10
+0044afa0	pixel converter 1 -> 11
+0044b0b0	pixel converter 2 -> 11
+00448450	pixel converter 7 -> 0
+004485d0	pixel converter 7 -> 1
+00448720	pixel converter 7 -> 2
+0044b2b0	pixel converter 7 -> 8
+00448880	pixel converter 8 -> 0
+004489c0	pixel converter 8 -> 1
+00448c30	pixel converter 8 -> 2
+00449650	pixel converter 9 -> 1
+00448d70	pixel converter 2 -> 9
+00448100	pixel converter 2 -> 3
+0044b1b0	pixel converter 2 -> 12
+0044b160	pixel converter 1 -> 12
+0044b200	pixel converter 0 -> 13
+0044b250	pixel converter 8 -> 10

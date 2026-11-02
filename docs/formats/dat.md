@@ -14,7 +14,7 @@ big-endian files (version swapped), which the CD doesn't have.
 
 ## Header (0x40 bytes)
 
-Checked by 0x420ff0.
+Checked by `TMiGame_InstanceFile_LoadHeader` 0x420ff0.
 
 | Offset | Size | What |
 |---|---|---|
@@ -59,7 +59,7 @@ The 8-byte instance header holds two values:
 ## Name directory (8 bytes each)
 
 Each entry holds an instance index and a name offset. The entries are sorted by name in byte order, so
-lookups are binary searches (0x423160, `TMrInstance_GetDataPtr` 0x4232e0).
+lookups are binary searches (`TMiGame_InstanceFile_GetDataPtr` 0x423160, `TMrInstance_GetDataPtr` 0x4232e0).
 
 ## Template entry (0x10 bytes)
 
@@ -100,7 +100,7 @@ operands at run time to find them.
 **Template flags.** Bit 2 means no links anywhere: the loader doesn't walk the template's instances. Bit
 4 means no links in the variable array: the walk stops at it. The layouts agree with both flags.
 
-**The layout code.** A layout is a byte code walked by 0x421c50:
+**The layout code.** A layout is a byte code walked by `TMiGame_Instance_PrepareForMemory` 0x421c50:
 
 | Opcode | Operands | What |
 |---|---|---|
