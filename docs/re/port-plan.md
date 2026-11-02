@@ -106,15 +106,22 @@ original's *behaviour*. Every gasm runner still has to produce identical hashes.
 `files=95 bytes=641025194 hash=9b4bdbfa`, from the ISO and from a folder of its files; `vise_test`
 extracts all 95 files; the visextract and openoni-extract outputs are identical (`diff -r`).
 
-## 1. Skeleton, file layer, exe loader
+## 1. Skeleton, file layer, exe loader (done)
 
 CMake with two builds (native tests, `-DOPENONI_PLATFORM=gasm`), `platform.h`, `app.c`,
 `platform_gasm.c` (title "Oni", 60 Hz, raw keyboard, locked pointer, pads, storage, audio push),
 `tools/fetch-gasm-sdk.sh` / `fetch-gasm-runner.sh` (pin 0.16.0), `vfs.c` (host folder via
 `--asset-dir`, case-insensitive, `/` or `\\`), `exe.c` (maps `Oni.exe`, checks size + CRC).
 
-**Check:** a test screen runs headless from `--asset-dir game` with a stable hash. The Node runner gives
-the same hash.
+`app_main` keeps the original's loops on `gasm_main` + `gasm_wait_frame` (two modules: `openoni.wasm`
+with Asyncify, `openoni-run.wasm` with stack switching). The test screen draws one bar per level file,
+sized by the file. `ci.yml` builds both modules and checks that they refuse to start without the game.
+
+**Check (passes):** the test screen runs headless from `--asset-dir game`. `openoni.wasm`,
+`openoni-run.wasm` and `openoni.wasm --no-stack-switching` give the same hash line and the same
+screenshot (md5 `a4c1e5b8`); the Node runner gives the same hash line. The video hash is the empty
+`811c9dc5`, since `gasm:gl` hashes uploads and the test screen only clears. Esc at frame 30 quits with
+exit code 0. `exe_test` finds the start-up strings at their addresses.
 
 ## 2. Instance files
 
@@ -186,8 +193,6 @@ Optional widescreen and high-res stay non-default params.
 
 ## Risks
 
-- **VISE extraction** (step 0) blocks the user-facing path. It doesn't block development: install once
-  under Wine into `./game` and start steps 1-3 in parallel.
 - **Mac-to-Windows name transfer** is GCC vs MSVC code. Expect good matches on functions with strings or
   unique calls and weaker ones on small leaf functions. Unmatched functions get names by hand.
 - **Size:** Oni is a much bigger program than Return Fire, comparable to or bigger than CMR2.

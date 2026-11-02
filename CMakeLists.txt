@@ -7,12 +7,30 @@ project(OpenOni VERSION 0.1.0 LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 set(ONI_WARN -Wall -Wextra -Wno-unused-parameter)
 
-# The portable core: everything except host backends (no platform headers).
+# The portable core: everything except host backends (no platform headers). app.c is the game's entry
+# (gasm only for now: it draws through GL).
 file(GLOB CORE_SRC CONFIGURE_DEPENDS src/*.c)
 set(HOST_SRC src/vfs_host.c)
-foreach(f ${HOST_SRC})
+foreach(f ${HOST_SRC} src/platform_gasm.c src/app.c)
   list(REMOVE_ITEM CORE_SRC "${CMAKE_SOURCE_DIR}/${f}")
 endforeach()
+
+# Platform: native (tools and headless tests) or gasm (openoni.wasm, a gasm guest):
+#   tools/fetch-gasm-sdk.sh
+#   cmake -S . -B build-gasm -DOPENONI_PLATFORM=gasm -DCMAKE_BUILD_TYPE=Release \
+#     -DCMAKE_TOOLCHAIN_FILE=.deps/gasm-c-sdk/cmake/gasm-toolchain.cmake -DWASI_SDK_PREFIX="$PWD/.deps/wasi-sdk" \
+#     -DGASM_WASM_OPT="$PWD/.deps/binaryen/bin/wasm-opt"
+# The game keeps the original's own loops (gasm_add_game LOOP): two modules come out, openoni.wasm
+# (Asyncify, every runner) and openoni-run.wasm (for runners that switch stacks).
+set(OPENONI_PLATFORM native CACHE STRING "Platform: native or gasm")
+if(OPENONI_PLATFORM STREQUAL "gasm")
+  include(Gasm)
+  gasm_add_game(openoni LOOP ${CORE_SRC} src/app.c src/platform_gasm.c ${GASM_GL_SOURCE})
+  target_include_directories(openoni PRIVATE src)
+  target_compile_options(openoni PRIVATE ${ONI_WARN} -O2)
+  target_link_options(openoni PRIVATE -Wl,-z,stack-size=1048576 -Wl,--strip-debug)
+  return()
+endif()
 
 add_library(oni_core STATIC ${CORE_SRC})
 target_include_directories(oni_core PUBLIC src)

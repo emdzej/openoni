@@ -1,7 +1,7 @@
 name: CI
 
-# The native build (tools and tests) on macOS and Linux, and the site. The tests that need the game skip
-# without it (no game data is ever in CI). The gasm module joins once there is one (port plan, step 1).
+# The native build (tools and tests) on macOS and Linux, the gasm module, and the site. The tests that
+# need the game skip without it (no game data is ever in CI).
 
 on:
   push:
@@ -28,6 +28,35 @@ jobs:
         run: ctest --test-dir build --output-on-failure
       - name: openoni-extract runs
         run: ./build/openoni-extract 2>&1 | grep -q usage
+
+  gasm:
+    # macOS: the headless run there is the one checked locally (ANGLE on Metal).
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      # SDK, wasi-sdk and Binaryen versions: tools/fetch-gasm-sdk.sh.
+      - name: fetch wasi-sdk, the gasm C SDK and Binaryen
+        run: tools/fetch-gasm-sdk.sh
+      - name: build openoni.wasm and openoni-run.wasm
+        run: |
+          cmake -S . -B build-gasm -DOPENONI_PLATFORM=gasm -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=.deps/gasm-c-sdk/cmake/gasm-toolchain.cmake -DWASI_SDK_PREFIX="$PWD/.deps/wasi-sdk" \
+            -DGASM_WASM_OPT="$PWD/.deps/binaryen/bin/wasm-opt"
+          cmake --build build-gasm -j
+          ls -l build-gasm/*.wasm
+      - name: both load and refuse to start without the game
+        run: |
+          RUN="$(tools/fetch-gasm-runner.sh macos-universal)/gasm-run"
+          for m in openoni openoni-run; do
+            if "$RUN" build-gasm/$m.wasm --headless 5 > out.txt 2>&1; then cat out.txt; exit 1; fi
+            cat out.txt
+            grep -q "OpenOni: game data not found" out.txt
+          done
+      - uses: actions/upload-artifact@v7
+        with:
+          name: openoni-wasm
+          path: build-gasm/*.wasm
+          retention-days: 14
 
   site:
     runs-on: ubuntu-latest

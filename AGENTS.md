@@ -18,9 +18,10 @@ executable. **Fidelity is the product.** Reproduce the original's behaviour, inc
 If something looks wrong, check the disassembly; if the original does it, keep it and add a comment. Only
 fix deviations *of the port* from the original.
 
-**State:** step 0 of [docs/re/port-plan.md](docs/re/port-plan.md) (the order of work, each step with its
-check). Done: the installer archive (`src/vise.c`, `openoni-extract`, `tools/vise.py`,
-[docs/formats/vise.md](docs/formats/vise.md); the standalone Go version is `../visextract`).
+**State:** steps 0 and 1 of [docs/re/port-plan.md](docs/re/port-plan.md) (the order of work, each step
+with its check) are done. Step 0: the installer archive (`src/vise.c`, `openoni-extract`, `tools/vise.py`,
+[docs/formats/vise.md](docs/formats/vise.md); the standalone Go version is `../visextract`). Step 1: the
+gasm skeleton (`platform.h`, `platform_gasm.c`, `app.c`, `exe.c`). Next: step 2, the instance files.
 
 ## Hard rules
 
@@ -81,6 +82,28 @@ OPENONI_CD=~/Downloads/"Oni (USA).iso" OPENONI_VISE_SUMMARY=9b4bdbfa ctest --tes
 
 `tools/vise.py --summary <cd>` and `openoni-extract --summary <cd>` must print the same line
 (`files=95 bytes=641025194 hash=9b4bdbfa`), from the ISO and from a folder with its files.
+
+The gasm module (`tools/fetch-gasm-sdk.sh` puts wasi-sdk, the gasm C SDK and Binaryen in `.deps/`):
+
+```sh
+tools/fetch-gasm-sdk.sh
+cmake -S . -B build-gasm -DOPENONI_PLATFORM=gasm -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_TOOLCHAIN_FILE=.deps/gasm-c-sdk/cmake/gasm-toolchain.cmake -DWASI_SDK_PREFIX="$PWD/.deps/wasi-sdk" \
+  -DGASM_WASM_OPT="$PWD/.deps/binaryen/bin/wasm-opt"
+cmake --build build-gasm
+RUN="$(tools/fetch-gasm-runner.sh macos-universal)/gasm-run"
+$RUN build-gasm/openoni.wasm --asset-dir game --headless 60 --screenshot out/s.png
+```
+
+It builds two modules: `openoni.wasm` (Asyncify, for runners without stack switching) and
+`openoni-run.wasm` (stack switching). The game keeps the original's blocking loops: `gasm_main` runs
+`app_main` once and every loop ends its frame in `plat_wait_frame()` (`gasm_wait_frame`). Don't unwind
+loops into per-frame states.
+
+Checking a change: both modules, and `openoni.wasm --no-stack-switching`, must give the same hash line
+and the same screenshot. The `gasm:gl` video hash covers uploads only (buffers, textures, uniforms), not
+clears or draws, so until the renderer uploads something it is the empty hash `811c9dc5`; compare
+screenshots (`md5`) instead. `node ../gasm/runners/web/headless.mjs` must print the same hash line.
 
 ## Unattended runs
 
