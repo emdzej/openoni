@@ -5,6 +5,8 @@ the level's own scripts driving the lessons: movement, combat, the shooting rang
 two training drones. Then the cutscene after the training plays, its actors moved by the game's own
 recorded films, and the warehouse mission begins.
 
+It can be tried in the browser on the <a href="/play/" target="_self">play page</a>, with your own copy of the game.
+
 ## What works
 
 - **The game files** come out of the CD's installer without running it ([how](./game-data)).

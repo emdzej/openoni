@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Play | OpenOni</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Run Oni (2001) in your browser with OpenOni, using the data from your own copy of the game.">
+<meta name="theme-color" content="#000010">
+<link rel="icon" href="/emblem.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="play.css">
+<script type="importmap">
+{ "imports": {
+  "@emdzej/csfs-core": "./vendor/csfs/core/index.js",
+  "@emdzej/csfs-fsa": "./vendor/csfs/fsa/index.js",
+  "@emdzej/csfs-opfs": "./vendor/csfs/opfs/index.js"
+} }
+</script>
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="/"><img src="/emblem.svg" alt="" width="26" height="26"> OpenOni</a>
+  <nav>
+    <a href="/guide/">guide</a>
+    <a href="/guide/status">status</a>
+    <a href="/play/" aria-current="page">play</a>
+    <a href="https://github.com/emdzej/openoni">github</a>
+  </nav>
+</header>
+
+<main>
+  <section id="setup">
+    <h1>Oni in your browser</h1>
+    <p class="lead">OpenOni runs here as <code>openoni.wasm</code> on the
+      <a href="https://gasm.emdzej.pl">gasm</a> runtime: the same module as on the desktop, a port of the
+      original game's code, reading the levels, characters, sounds and scripts from <strong>your own copy
+      of Oni</strong>. Nothing from the game is on this site, and nothing you pick leaves your computer.</p>
+    <p class="lead small">This is a work in progress. Level 1 plays from the start of the training to the
+      start of the warehouse mission; the enemies' guns, the menus and saving are not there yet. See
+      <a href="/guide/status">Status</a>.</p>
+
+    <div class="cols">
+      <div class="card">
+        <h2>What you need</h2>
+        <ul>
+          <li><strong>Oni</strong> for Windows (Bungie West, 2001; the program <code>Oni.exe</code>
+            v1.0): an installed copy, or the folder <code>openoni-extract</code> makes from the CD. See
+            <a href="/guide/game-data">Game data</a>.</li>
+          <li>A browser with WebAssembly, Web Workers, WebGL 2 and OffscreenCanvas: a recent Chrome, Edge,
+            Firefox, or Safari 17 and later.</li>
+          <li>About 650 MB of browser storage to import the data (once; later visits start at once), or
+            none to play without importing.</li>
+          <li>A keyboard and a mouse.</li>
+        </ul>
+      </div>
+      <div class="card" id="choose">
+        <h2 id="choose-title">Choose your game</h2>
+        <div id="imported" hidden>
+          <p><strong>Imported:</strong> <span id="imported-desc"></span></p>
+          <div class="row">
+            <button id="play-opfs" class="primary">Play</button>
+            <button id="remove">Remove imported data</button>
+          </div>
+          <p class="small" id="storage"></p>
+          <p class="small" id="persist-row" hidden>The browser may clear site data when disk space runs low.
+            <button id="persist" class="link">Keep it</button></p>
+          <p class="small">Or choose the game again below to replace it.</p>
+        </div>
+        <div class="row">
+          <button id="pick-folder" class="primary">Choose the game's folder</button>
+        </div>
+        <p class="small">The folder with <code>Oni.exe</code> and <code>GameDataFolder</code>, or the folder
+          above it.</p>
+        <input id="folder-input" type="file" webkitdirectory multiple hidden>
+
+        <div id="check" hidden>
+          <ul id="check-list" class="checks"></ul>
+          <div class="row" id="check-actions">
+            <button id="import" class="primary">Import and play</button>
+            <button id="play-direct">Play without importing</button>
+          </div>
+          <p class="small">Importing copies the files the game reads into this site's private browser storage
+            (OPFS). Playing without importing reads them from what you picked, which you'll need to pick
+            again next time.</p>
+        </div>
+
+        <div id="progress" hidden>
+          <progress id="progress-bar" max="1" value="0"></progress>
+          <p class="small" id="progress-text"></p>
+        </div>
+
+        <div class="row">
+          <label class="field">level <select id="level">
+            <option value="1">1: the training and the warehouse</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="6">6</option>
+            <option value="8">8</option>
+            <option value="9">9</option>
+            <option value="10">10</option>
+            <option value="11">11</option>
+            <option value="12">12</option>
+            <option value="13">13</option>
+            <option value="14">14</option>
+            <option value="18">18</option>
+            <option value="19">19</option>
+          </select></label>
+        </div>
+        <p class="small">The other levels load and run their scripts, but are not playable through yet.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="game" hidden>
+    <div id="stage" class="stage">
+      <canvas id="screen" width="1280" height="720" aria-label="Oni" tabindex="0"></canvas>
+    </div>
+    <div class="toolbar">
+      <button id="fullscreen">Fullscreen</button>
+      <button id="sound">Sound: on</button>
+      <button id="stop">Stop</button>
+      <span id="status" class="small"></span>
+    </div>
+  </section>
+
+  <p id="message" class="message" role="status" hidden></p>
+
+  <section id="controls" class="card">
+    <h2>Controls</h2>
+    <p>The original's default keys. Click the game to lock the mouse: it turns Konoko and aims.
+      <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> move, <kbd>Caps Lock</kbd> walks,
+      <kbd>Space</kbd> jumps, <kbd>Shift</kbd> crouches, <kbd>F</kbd> or the left button punches,
+      <kbd>C</kbd> or the right button kicks, <kbd>Ctrl</kbd> is the action key (consoles, doors),
+      <kbd>Q</kbd> picks up, <kbd>E</kbd> drops, <kbd>R</kbd> reloads; with a gun, the left button fires.
+      The arrow keys turn and aim too.</p>
+    <p class="small"><kbd>Esc</kbd> ends the game (there is no menu yet). In fullscreen the browser takes
+      <kbd>Esc</kbd> to leave fullscreen first.</p>
+  </section>
+</main>
+
+<footer class="foot"><p class="powered">Powered by <a href="https://gasm.emdzej.pl"><img src="https://gasm.emdzej.pl/badge/built-for-gasm-dark.svg" alt="Built for gasm" width="120" height="44"></a></p>
+  OpenOni is released under the GPL-3.0. Oni is a trademark of its owners. This project is not affiliated
+  with them and distributes none of their data.</footer>
+
+<script type="module" src="play.js"></script>
+</body>
+</html>

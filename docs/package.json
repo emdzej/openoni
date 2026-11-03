@@ -13,6 +13,10 @@
     "node": ">=22"
   },
   "devDependencies": {
+    "@emdzej/csfs-core": "0.3.0",
+    "@emdzej/csfs-fsa": "0.3.0",
+    "@emdzej/csfs-opfs": "0.3.0",
+    "@emdzej/gasm-host": "0.16.1",
     "vitepress": "^1.6.4",
     "vue": "^3.5.13"
   }

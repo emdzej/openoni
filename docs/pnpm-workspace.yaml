@@ -1,0 +1,2 @@
+minimumReleaseAgeExclude:
+  - '@emdzej/gasm-host@0.16.1'

@@ -163,6 +163,11 @@ and the same screenshot. The `gasm:gl` video hash covers uploads only (buffers, 
 clears or draws, so until the renderer uploads something it is the empty hash `811c9dc5`; compare
 screenshots (`md5`) instead. `node ../gasm/runners/web/headless.mjs` must print the same hash line.
 
+The browser player is `docs/public/play/` (the site's `/play/`): the player's own installed game folder,
+imported into OPFS or read in place, run as `openoni.wasm` in gasm's Worker mode. Locally:
+`docs/scripts/copy-wasm.sh && (cd docs && scripts/vendor-web.sh && pnpm build)`, then
+`node tools/web-play-test.mjs` (headless Chrome: the page's hash lines must equal gasm-run's).
+
 ## Unattended runs
 
 Always `--headless` for gasm-run; never open a window, never use macOS `screencapture`.

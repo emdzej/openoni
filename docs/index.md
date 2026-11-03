@@ -10,6 +10,10 @@ hero:
   tagline: A from-scratch port of Bungie West's Oni (2001), function by function from the original Windows executable. One openoni.wasm for macOS, Linux, Windows and the browser. Bring your own CD.
   actions:
     - theme: brand
+      text: Play in the browser
+      link: /play/
+      target: _self
+    - theme: alt
       text: What it is
       link: /guide/
     - theme: alt

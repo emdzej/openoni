@@ -19,3 +19,5 @@ docs/.vitepress/dist/
 docs/.vitepress/cache/
 .DS_Store
 oni-mac
+docs/public/play/openoni.wasm
+docs/public/play/vendor/

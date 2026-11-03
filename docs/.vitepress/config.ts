@@ -11,6 +11,8 @@ export default defineConfig({
   // The reverse-engineering notes (docs/re/) stay in the repository and are not published.
   srcExclude: ["README.md", "AGENTS.md", "re/**"],
   sitemap: { hostname: "https://openoni.emdzej.pl" },
+  // The browser player is a static page in public/play/, not a Markdown page.
+  ignoreDeadLinks: [/^\/play\//],
 
   head: [
     ["link", { rel: "preconnect", href: "https://fonts.googleapis.com" }],
@@ -40,6 +42,8 @@ export default defineConfig({
     nav: [
       { text: "Guide", link: "/guide/" },
       { text: "Formats", link: "/formats/vise" },
+      // A static app in docs/public/play/: target _self makes it a full page load, not a VitePress route.
+      { text: "Play", link: "/play/", target: "_self" },
     ],
     sidebar: [
       {
