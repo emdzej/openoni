@@ -358,7 +358,9 @@ static void start_scripts(void)
    D degrees (the facing: 0 is +z); "vD" aims D degrees up; "p"/"k" a punch/kick tap; "j" a jump tap; "q"/"g"/"e"/"R" a swap (pick up),
    fire, drop or reload tap; "c" holds crouch for the next step; "H<keys>,N" holds keys for N frames (f forward,
    b back, l/r step left/right, c crouch, j jump, p punch, k kick, w walk, a action, q swap, g fire).
-   "R" as a mode runs from up to 1.3 rad off. ---- */
+   "R" as a mode runs from up to 1.3 rad off. "T<name>,N[,L]" aims at the character for N frames (where it
+   will be in L frames) and taps fire every 20 frames; the shots leave at about 1.13 times the aim's angle
+   from the facing (measured), which the aim allows for. ---- */
 
 typedef struct {
     char buf[4096];
@@ -440,6 +442,29 @@ static void route_input(const Character *c, CharacterInput *in)
                 case 'g': in->fire = true; break;
                 }
             }
+            return;
+        }
+        if (*s == 'T') {
+            char name[64];
+            int n = 0;
+            float lead = 0.0f;
+            static float last[2];
+            const char *comma = strchr(s, ',');
+            size_t len = comma ? (size_t)(comma - s - 1) : 0;
+            if (len >= sizeof name) len = sizeof name - 1;
+            memcpy(name, s + 1, len), name[len] = 0;
+            if (comma) sscanf(comma + 1, "%d,%f", &n, &lead);
+            const Chr *t = chars_find(name);
+            if (!t) { route_next(); continue; }
+            if (!route.phase) route.until = now + (uint32_t)n, route.phase = 1, last[0] = t->c.pos[0], last[1] = t->c.pos[2];
+            if (now >= route.until) { route_next(); continue; }
+            float dx = t->c.pos[0] + (t->c.pos[0] - last[0]) * lead - c->pos[0];
+            float dz = t->c.pos[2] + (t->c.pos[2] - last[1]) * lead - c->pos[2];
+            last[0] = t->c.pos[0], last[1] = t->c.pos[2];
+            float want = c->facing + wrap_pi(atan2f(dx, dz) - c->facing) / 1.13f;
+            float err = wrap_pi(want - c->desired_facing);
+            in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
+            in->fire = (now - route.until + (uint32_t)n) % 20 == 0;
             return;
         }
         if (*s == 'c') {

@@ -296,7 +296,7 @@ typedef struct {
     Func *fn;
     const char *locals[64];
     SlType ltype[64];
-    int nlocals;
+    int nlocals, high;      /* high: the most locals live at once, the frame's size */
     bool failed;
 } Parser;
 
@@ -482,6 +482,7 @@ static void statement(Parser *P)
         const Token *n = next(P);
         if (P->nlocals >= 64) { fail(P, "too many locals"); return; }
         int slot = P->nlocals++;
+        if (P->nlocals > P->high) P->high = P->nlocals;   /* a local of an inner block counts too */
         P->locals[slot] = n->text, P->ltype[slot] = ty;
         if (accept(P, T_ASSIGN)) expr(P);
         else emit(P, OP_PUSH, add_const(convert(v_int(0), ty)), 0);
@@ -595,16 +596,13 @@ static void define(Parser *P)
         }
         f->code = n_code;
         f->defined = true;
-        int high = P->nlocals;
+        P->high = P->nlocals;
         expect(P, T_LBRACE, "expecting '{'");
-        while (!P->failed && peek(P)->type != T_RBRACE && peek(P)->type != T_EOF) {
-            statement(P);
-            if (P->nlocals > high) high = P->nlocals;
-        }
+        while (!P->failed && peek(P)->type != T_RBRACE && peek(P)->type != T_EOF) statement(P);
         expect(P, T_RBRACE, "expecting '}'");
         emit(P, OP_PUSH, add_const((SlValue){ SL_VOID, 0, 0, NULL }), 0);
         emit(P, OP_RET, 0, 0);
-        f->nlocals = high > 64 ? 64 : high;
+        f->nlocals = P->high > 64 ? 64 : P->high;
     }
 }
 
