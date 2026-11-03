@@ -5,12 +5,24 @@ export default defineConfig({
   description:
     "A faithful reimplementation of Oni (Bungie West, 2001) in C11 for the gasm runtime, using the data from your own copy of the game.",
   cleanUrls: true,
+  // Dark first, as the game's menu; the light theme stays a toggle away.
+  appearance: "dark",
   lastUpdated: true,
   // The reverse-engineering notes (docs/re/) stay in the repository and are not published.
   srcExclude: ["README.md", "AGENTS.md", "re/**"],
   sitemap: { hostname: "https://openoni.emdzej.pl" },
 
   head: [
+    ["link", { rel: "preconnect", href: "https://fonts.googleapis.com" }],
+    ["link", { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: "" }],
+    [
+      "link",
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600&display=swap",
+      },
+    ],
+    ["meta", { name: "theme-color", content: "#000010" }],
     ["meta", { property: "og:title", content: "OpenOni: Oni, reimplemented" }],
     [
       "meta",

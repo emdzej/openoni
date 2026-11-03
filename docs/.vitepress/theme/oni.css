@@ -1,19 +1,196 @@
-/* OpenOni theme. Placeholder: a neutral dark-leaning palette until the colours can be sampled from the
-   game's own menu textures (step 3 decodes them), as the sibling sites do. */
+/* OpenOni theme: the game's menu, modernised. Colours sampled from Oni's own menu textures (the startup
+   screen, the splash and the dialog buttons of level0): a near-black navy field, electric-blue circuit
+   traces, chrome-lavender lettering rimmed in blue, a warm orange halo, and the blue slanted panels of the
+   menu buttons with their green highlight. No image of the game is used: the traces are drawn here. */
 
 :root {
-  --vp-font-family-base: "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --vp-c-brand-1: #b4542a;
-  --vp-c-brand-2: #c9673a;
-  --vp-c-brand-3: #d9794a;
-  --vp-c-brand-soft: rgba(180, 84, 42, 0.12);
+  --oni-night: #000010;
+  --oni-deep: #050a1c;
+  --oni-panel: #114488;
+  --oni-panel-2: #004499;
+  --oni-blue: #4080c0;
+  --oni-light: #6699ee;
+  --oni-chrome: #5060a0;
+  --oni-lavender: #b9c0f0;
+  --oni-orange: #e08010;
+  --oni-amber: #c07010;
+  --oni-teal: #44aaaa;
+  --oni-green: #338844;
+
+  --vp-font-family-base: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --oni-font-display: "Chakra Petch", "Eurostile", "Bank Gothic", "Helvetica Neue", sans-serif;
+
+  --vp-c-brand-1: #1f5fb0;
+  --vp-c-brand-2: #2a6fc4;
+  --vp-c-brand-3: #114488;
+  --vp-c-brand-soft: rgba(64, 128, 192, 0.14);
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(180deg, #ffffff 0%, #b9c0f0 45%, #5060a0 100%);
+  --vp-home-hero-image-background-image: radial-gradient(circle, rgba(224, 128, 16, 0.45), rgba(64, 128, 192, 0.25) 55%, transparent 70%);
+  --vp-home-hero-image-filter: blur(56px);
 }
 
 .dark {
-  --vp-c-brand-1: #e0895c;
-  --vp-c-brand-2: #d17a4d;
-  --vp-c-brand-3: #c26b3e;
+  --vp-c-bg: var(--oni-night);
+  --vp-c-bg-alt: #02061a;
+  --vp-c-bg-elv: #07102a;
+  --vp-c-bg-soft: #0a1430;
+  --vp-c-text-1: #e6e9ff;
+  --vp-c-text-2: #a9b2dc;
+  --vp-c-text-3: #6d77a8;
+  --vp-c-divider: rgba(102, 153, 238, 0.16);
+  --vp-c-gutter: #000008;
+  --vp-c-border: rgba(102, 153, 238, 0.28);
+  --vp-c-brand-1: var(--oni-light);
+  --vp-c-brand-2: #5a8be0;
+  --vp-c-brand-3: var(--oni-panel-2);
+  --vp-c-brand-soft: rgba(102, 153, 238, 0.16);
+  --vp-c-tip-1: var(--oni-teal);
+  --vp-c-warning-1: var(--oni-orange);
+  --vp-code-block-bg: #040a1e;
+  --vp-c-default-soft: rgba(80, 96, 160, 0.18);
 }
+
+/* ---- the field: circuit traces and a halo, as behind the menu ---- */
+
+.dark body {
+  background-color: var(--oni-night);
+  background-image:
+    radial-gradient(ellipse 60% 40% at 78% 0%, rgba(64, 128, 192, 0.18), transparent 70%),
+    radial-gradient(ellipse 40% 30% at 10% 100%, rgba(224, 128, 16, 0.07), transparent 70%),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240' fill='none' stroke='%234080c0' stroke-opacity='0.11' stroke-width='1'><path d='M0 40h60l20 20h60l20-20h80M0 120h30l20-20h50M240 160h-40l-20 20h-60l-20 20H0M60 240v-40l20-20M160 0v30l20 20h30l30 30'/><circle cx='80' cy='60' r='2.5'/><circle cx='100' cy='100' r='2.5'/><circle cx='120' cy='180' r='2.5'/><circle cx='210' cy='50' r='2.5'/></svg>");
+  background-attachment: fixed;
+}
+
+.dark .VPNav,
+.dark .VPNavBar:not(.home.top),
+.dark .VPNavBar:not(.home.top) .content-body,
+.dark .VPLocalNav {
+  background-color: rgba(0, 0, 16, 0.82) !important;
+  backdrop-filter: blur(10px);
+}
+.dark .VPNavBar.has-sidebar .content-body { background-color: rgba(0, 0, 16, 0.82); }
+.dark .VPSidebar { background-color: rgba(2, 6, 26, 0.9); }
+.dark .VPNavBar .divider-line { background: linear-gradient(90deg, transparent, var(--oni-blue), transparent); }
+
+/* ---- the lettering ---- */
+
+h1, h2, h3, .VPNavBarTitle .title, .VPHero .name, .VPHero .text, .VPFeature .title,
+.VPSidebarItem.level-0 > .item .text {
+  font-family: var(--oni-font-display);
+  letter-spacing: 0.02em;
+}
+
+.VPNavBarTitle .title {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+}
+
+.vp-doc h1 { text-transform: uppercase; letter-spacing: 0.06em; }
+.vp-doc h2 {
+  border-top: none;
+  padding-top: 8px;
+  position: relative;
+}
+.vp-doc h2::before {
+  content: "";
+  position: absolute;
+  top: -12px;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, var(--oni-blue), rgba(64, 128, 192, 0.2) 40%, transparent);
+}
+.vp-doc h2::after {
+  content: "";
+  position: absolute;
+  top: -14px;
+  left: 0;
+  width: 48px;
+  height: 5px;
+  background: var(--oni-orange);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 5px) 100%, 0 100%);
+}
+
+/* the chrome wordmark with its blue rim and orange halo */
+.VPHero .name .clip {
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  -webkit-text-stroke: 1px rgba(102, 153, 238, 0.9);
+  filter: drop-shadow(0 0 2px rgba(64, 128, 192, 0.9)) drop-shadow(0 0 22px rgba(224, 128, 16, 0.55));
+}
+.dark .VPHero .text { color: var(--oni-lavender); }
+.VPHero .tagline { max-width: 640px; }
+
+/* ---- the menu buttons: slanted blue panels, the green highlight on hover ---- */
+
+.VPButton {
+  border-radius: 0 !important;
+  font-family: var(--oni-font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+  transition: background 0.2s, box-shadow 0.2s, color 0.2s;
+}
+.VPButton.brand {
+  border: none !important;
+  color: #fff !important;
+  background: linear-gradient(180deg, var(--oni-panel-2), var(--oni-panel)) !important;
+  box-shadow: inset 0 1px 0 rgba(102, 153, 238, 0.8), inset 0 -3px 0 rgba(0, 0, 16, 0.4);
+}
+.VPButton.brand:hover {
+  background: linear-gradient(180deg, #1a5aa8, var(--oni-panel-2)) !important;
+  box-shadow: inset 0 1px 0 #8fb4ff, inset 0 -3px 0 var(--oni-green);
+}
+.VPButton.alt {
+  background:
+    linear-gradient(135deg, transparent 7.8px, rgba(102, 153, 238, 0.6) 7.8px 9.2px, transparent 9.2px),
+    linear-gradient(-45deg, transparent 7.8px, rgba(102, 153, 238, 0.6) 7.8px 9.2px, transparent 9.2px),
+    rgba(17, 68, 136, 0.16) !important;
+  border: 1px solid rgba(102, 153, 238, 0.45) !important;
+}
+.VPButton.alt:hover {
+  border-color: var(--oni-teal) !important;
+  color: #fff !important;
+  box-shadow: inset 0 -3px 0 var(--oni-green);
+}
+
+/* ---- the panels: the features and the custom blocks as menu dialogs ---- */
+
+.VPFeature {
+  border-radius: 0 !important;
+  border: 1px solid rgba(102, 153, 238, 0.22) !important;
+  background:
+    linear-gradient(135deg, transparent 10.8px, rgba(102, 153, 238, 0.5) 10.8px 12.2px, transparent 12.2px),
+    linear-gradient(-45deg, transparent 10.8px, rgba(102, 153, 238, 0.5) 10.8px 12.2px, transparent 12.2px),
+    linear-gradient(160deg, rgba(17, 68, 136, 0.22), rgba(0, 0, 16, 0.6)) !important;
+  clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
+  transition: border-color 0.25s, transform 0.25s;
+}
+.VPHero .image-src { max-width: 300px; max-height: 300px; }
+.VPFeature:hover { border-color: rgba(224, 128, 16, 0.6) !important; transform: translateY(-2px); }
+.VPFeature .title { color: var(--vp-c-text-1); text-transform: uppercase; letter-spacing: 0.08em; }
+
+.vp-doc .custom-block,
+.vp-doc div[class*="language-"],
+.vp-doc table {
+  border-radius: 0;
+}
+.dark .vp-doc div[class*="language-"] { border-left: 2px solid rgba(64, 128, 192, 0.5); }
+.dark .vp-doc table { border: 1px solid var(--vp-c-divider); }
+.dark .vp-doc tr:nth-child(2n) { background-color: rgba(17, 68, 136, 0.1); }
+.dark .vp-doc th { background-color: rgba(17, 68, 136, 0.28); font-family: var(--oni-font-display); letter-spacing: 0.04em; }
+.dark .vp-doc :not(pre) > code { background-color: rgba(80, 96, 160, 0.2); color: #c9d4ff; }
+.vp-doc a { text-underline-offset: 3px; }
+.dark .vp-doc a:hover { color: var(--oni-orange); }
+
+/* the active sidebar entry: the orange marker of the menu's selection */
+.dark .VPSidebarItem.is-active > .item .indicator { background-color: var(--oni-orange); }
+.dark .VPSidebarItem.is-active > .item .link > .text { color: #fff; }
+
+::selection { background: rgba(224, 128, 16, 0.35); }
 
 .gasm-badge-dark { display: none; }
 .dark .gasm-badge-light { display: none; }

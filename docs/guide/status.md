@@ -1,15 +1,40 @@
 # Status
 
-Early. What works today:
+Under way, not yet playable from start to finish. On level 1 (the training), Konoko can be played
+through the movement and combat lessons and up to the shooting range, with the level's own scripts
+driving the lessons.
+
+## What works
 
 - **The game files** come out of the CD's installer without running it ([how](./game-data)).
-- **The reverse engineering** has started: the executable is in Ghidra, and 1,055 of its functions carry
-  Bungie's own names, matched from the Intel Mac build 1.2.1. Together they cover 45% of the code.
-- **The skeleton** runs on gasm: it checks `Oni.exe` and draws a test screen, one bar per level file.
-  Nothing of the game yet, but the loop, the file layer, input and audio are in place.
-- **The level files load** the way the original loads them: all 15 levels, 155,232 instances and their
-  358,404 links between each other ([the format](../formats/dat)). Nothing is decoded or drawn yet.
+- **The level data**: all 15 levels load the way the original loads them, and every kind of asset the
+  game draws or plays decodes, each checked against a reference reader:
+  - textures
+  - geometry and the environment
+  - animations and characters
+  - level objects and object animations
+  - fonts and text
+  - sounds
+- **The renderer** draws the environment, the characters and the level's objects through a port of the
+  original's fixed-function pipeline on gasm's GL.
+- **Konoko**, with her movement, jumps, melee moves, throws and being hit, ported from the character
+  engine. She can also pick up, carry and fire weapons.
+- **The other characters**: they spawn from the level's objects and scripts, follow their patrol paths,
+  and see, hear and react to the player. Their combat is still a stand-in.
+- **The scripts**: the BSL engine runs the level's own scripts, with their trigger volumes, doors,
+  consoles, animated objects and the first of the game's script commands.
+- **The particle system**, the engine under every shot, spark and shard of glass. It covers the particle
+  classes, emitters, events and actions, plus collisions with the walls and characters, and damage.
+  Projectiles fly and stop on what they hit.
+- **Sound** from the game's own sound groups.
 
-Not started yet: the engine itself. The order of work, from the file layer and the level data through the
-renderer, front end, characters, scripts, combat and AI to sound and movies, is in the repository's port
-plan. Each step ends with something that can be checked against the original.
+## Not yet
+
+- Particles aren't drawn yet. Bullet holes, impact effects, homing and the particles' sounds aren't
+  ported yet either.
+- The aiming poses, reloading, power-ups, the AI's guns, laser triggers and alarms.
+- The front end (the menus), saving and loading, and the Bink movies.
+- The other 13 levels as a playthrough.
+
+The order of work is in the repository's port plan. Each step ends with something that can be checked
+against the original.

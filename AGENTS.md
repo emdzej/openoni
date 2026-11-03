@@ -64,6 +64,11 @@ Steps 4 (renderer), 6 (character) and 7 (scripts) have begun:
 near them, and the `door_*` commands ([docs/re/door.md](docs/re/door.md)). `src/console.c`, `src/event.c` and
 `src/action.c`: consoles, event lists and the action key (Ctrl) ([docs/re/console.md](docs/re/console.md)).
 
+- `src/particle.c`: the particle system (P3, the BINA `3RAP` classes): events, actions, emitters, wall and
+  character collisions, damage. The weapons' shooters and projectiles (`src/weapon.c`) and breaking glass
+  (`src/env.c`) run on it. Not drawn yet; decals, attractors, impact effects and particle sounds are
+  stand-ins.
+
 Stand-ins (camera, fight mode, the AI's mover) are marked in the code. They go as their originals are
 ported.
 

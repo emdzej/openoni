@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" fill="none">
+  <defs>
+    <linearGradient id="chrome" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="0.45" stop-color="#b9c0f0"/><stop offset="1" stop-color="#5060a0"/>
+    </linearGradient>
+    <filter id="halo" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="7" result="b"/>
+      <feFlood flood-color="#e08010" flood-opacity="0.65"/><feComposite in2="b" operator="in" result="g"/>
+      <feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g stroke="#4080c0" stroke-opacity="0.55" stroke-width="1.5">
+    <path d="M20 160h40l14-14h18M300 160h-40l-14 14h-18M160 20v34l12 12M160 300v-34l-12-12"/>
+    <circle cx="92" cy="146" r="3"/><circle cx="228" cy="174" r="3"/><circle cx="172" cy="66" r="3"/><circle cx="148" cy="254" r="3"/>
+  </g>
+  <g filter="url(#halo)">
+    <path d="M160 64a96 96 0 1 1-83 48" stroke="#6699ee" stroke-width="22" stroke-linecap="square"/>
+    <path d="M160 64a96 96 0 1 1-83 48" stroke="url(#chrome)" stroke-width="14" stroke-linecap="square"/>
+    <path d="M196 122l-56 76h44" stroke="url(#chrome)" stroke-width="12" stroke-linejoin="bevel"/>
+  </g>
+  <path d="M104 268h112" stroke="#e08010" stroke-width="4"/>
+</svg>
