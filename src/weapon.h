@@ -51,6 +51,14 @@ typedef struct Weapon {
 } Weapon;
 
 void weapons_reset(void);
+/* WPrTryReload 0x51c560: the reload overlay starts if the weapon isn't full, c has a clip (or cell) for
+   it and nothing stops it (an attack, a hit, an overlay, the weapon's pause or delay): one is used up,
+   and the overlay's action frame fills the weapon (WPrReloadDone 0x5181e0). *full: already full;
+   *none: nothing to reload with. True if it started. */
+bool weapon_try_reload(Character *c, Weapon *w, bool *full, bool *none);
+/* chr_has_empty_weapon's test (AI2iScript_HasEmptyWeapon 0x4b8cb0): a weapon out of ammo, nothing to
+   reload it with, and no reload under way. */
+bool weapon_has_empty(Character *c);
 /* WPiInit 0x518c00: a new weapon of the class at pos (raised 2), full of ammo; NULL if none can be had. */
 Weapon *weapon_new(const void *onwc, const float pos[3], float facing);
 /* WPrDelete 0x518f90. */

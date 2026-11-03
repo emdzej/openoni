@@ -13,6 +13,7 @@
 #include "vfs_host.h"
 #include "weapon.h"
 #include "particle.h"
+#include "powerup.h"
 #include "chr_anim.h"
 
 #include <math.h>
@@ -202,6 +203,44 @@ int main(void)
            p->c.weapon ? p->c.weapon->ammo : 0, recoil, shooters, most);
     if (!p->c.weapon || !(p->c.varient & 0x800) || p->c.weapon->ammo + 1 != full || !recoil || shooters <= 0 || most <= shooters)
         failed++;
+    /* the reload: emptied, the weapon is "empty" to the scripts until a clip comes; a powerup of
+       ammo at her feet goes into the inventory with the pickup key; the reload key then plays the
+       class's reload overlay (0xa4..0xab), which fills the weapon at its action frame */
+    int empty_before = 0, empty_after = 0, reloaded = 0;
+    uint16_t clips = 0;
+    if (p->c.weapon) {
+        p->c.weapon->ammo = 0;
+        chr_force_stand(&p->c);     /* from the throws' end state */
+        for (int k = 0; k < 30; k++) {
+            CharacterInput in = { 0 };
+            chars_update(&in, NULL);
+        }
+        powerups_reset();
+        powerup_register_commands();
+        empty_before = weapon_has_empty(&p->c);
+        float at[3] = { p->c.pos[0], p->c.pos[1], p->c.pos[2] };
+        powerup_new(POWERUP_AMMO, powerup_default_amount(POWERUP_AMMO), at, 0.0f);
+        for (int k = 0; k < 120; k++) {
+            CharacterInput in = { 0 };
+            in.swap = k == 0;
+            chars_update(&in, NULL);
+            weapons_update(NULL);
+            sl_update();
+        }
+        clips = p->c.ammo;
+        empty_after = weapon_has_empty(&p->c);
+        for (int k = 0; k < 200 && !reloaded; k++) {
+            CharacterInput in = { 0 };
+            in.reload = k == 0;
+            chars_update(&in, NULL);
+            weapons_update(NULL);
+            sl_update();
+            if (p->c.weapon->ammo == full) reloaded = k;
+        }
+    }
+    printf("level1: reload: empty %d, clips %u (powerups %d), empty %d, refilled after %d ticks, clips %u\n", empty_before, clips,
+           powerup_count(), empty_after, reloaded, p->c.ammo);
+    if (!empty_before || clips != 1 || powerup_count() || empty_after || !reloaded || p->c.ammo) failed++;
     snprintf(script, sizeof script, "func void del(void) {\n  chr_delete shinatama\n  chr_delete \"0\"\n}\n");
     if (!sl_load_text("chars_del", script, err, sizeof err) || !sl_call("del", 0, NULL)) failed++;
     sl_update();

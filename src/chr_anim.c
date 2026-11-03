@@ -648,21 +648,9 @@ static void screen_apply_lerp(const uint8_t *a, const uint8_t *b, float t, float
     }
 }
 
-/* The animation types with no aiming screen, whatever their flag (the hits, knockdowns and getting up,
-   the throws' targets and the stuns: ONrCharacter_BuildQuaternions' switch). */
-static bool never_aims(uint16_t type)
-{
-    switch (type) {
-    case 0x17: case 0x4c: case 0x4d: case 0x4e: case 0x4f: case 0x50: case 0x51: case 0x52: case 0x53:
-    case 0x54: case 0x55: case 0x56: case 0x57: case 0x58: case 0x59: case 0x5a: case 0x5b: case 0x5c:
-    case 0x60: case 0x61: case 0x62: case 0x63: case 0x64: case 0x65: case 0x72: case 0x73: case 0x74:
-    case 0x75: case 0x76: case 0x77: case 0x7e: case 0x7f: case 0x80: case 0x81: case 0x82: case 0x83:
-    case 0x84: case 0x8d: case 0xc6: case 0xd4: case 0xd5: case 0xd6: case 0xd7:
-        return true;
-    default:
-        return false;
-    }
-}
+/* No aiming screen in the throw target's animation (0x17) nor the victims' (0x4e36f0's list), whatever
+   their flag (ONrCharacter_BuildQuaternions' switch). */
+static bool never_aims(uint16_t type) { return type == 0x17 || chr_is_victim_type(type); }
 
 /* The aim type a screen falls back to when the class has none for this one. */
 static uint16_t screen_fallback(uint16_t type)

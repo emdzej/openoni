@@ -109,10 +109,16 @@ typedef struct Character {
     /* weapons (weapon.h) */
     struct Weapon *weapon;          /* C+0x194: the one in the hand */
     struct Weapon *pickup;          /* C+0x1d8: the one a pickup animation goes for */
+    struct Powerup *pickup_powerup; /* C+0x1d8 too: the powerup a pickup animation goes for */
+    /* the inventory (C+0x1a2..0x1ba, WPrInventory) */
+    uint16_t ammo, hypos, cells;    /* C+0x1a2, 0x1a4, 0x1a6: ballistic clips, hypos, energy cells (6 at most) */
+    uint16_t shield, invisibility;  /* C+0x1b8, 0x1ba: what is left of them */
+    bool lsi;                       /* C+0x1b4: carries the LSI */
     float aim_kick;                 /* C+0x1d0: the recoil's speed (class +0x80 a shot) */
     float recoil;                   /* C+0x1d4: the recoil, raising the aim (ONrCharacter_BuildQuaternions) */
     bool fire_down, fire2_down, fire_again, fire_empty, stop_fire, stop_fire2;  /* A+0x21e0, 0x21e1, 0x21df, 0x21e2, 0x21e3, 0x21e4 */
-    bool reload_wanted;             /* C+0x08 bit 0 */
+    bool reload_wanted;             /* C+0x08 bit 0: fire went down with an empty weapon and nothing to reload */
+    bool reload_key;                /* the reload key went down this tick (A+0x217c bit 3, read by DoCharacterFrame) */
     float aim_lr, aim_ud;           /* A+0x21bc, 0x21c0 */
     float aim_lr_add, aim_ud_add;   /* A+0x21cc, 0x21d0: added to the aim (set by the AI's aiming: 0 here) */
     const void *aim_screen;         /* A+0x1ee4: the aiming screen (TRSC data) in use */

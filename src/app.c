@@ -25,6 +25,7 @@
 #include "objc.h"
 #include "material.h"
 #include "particle.h"
+#include "powerup.h"
 #include "object.h"
 #include "platform.h"
 #include "tm.h"
@@ -172,6 +173,13 @@ static void draw_objects(void)
         const Weapon *w = weapon_get(i);
         if (w) geom_draw(weapon_geometry(w), w->m, NULL);
     }
+    /* the powerups (0x51c2b0: their geometry turned by their facing; the glow sprite with the sprites) */
+    for (int i = 0; i < powerup_count(); i++) {
+        const Powerup *p = powerup_get(i);
+        float m[12];
+        powerup_matrix(p, m);
+        if (p->geometry) geom_draw(p->geometry, m, NULL);
+    }
     /* the doors' panels, while a door is open or moving */
     for (int i = 0; i < door_count(); i++)
         for (int k = 0; k < 2; k++) {
@@ -312,6 +320,7 @@ static void start_scripts(void)
     object_register_commands();
     door_register_commands();
     weapons_register_commands();
+    powerup_register_commands();
     console_register_commands();
     env_register_commands();
     ui_register_commands();
@@ -345,8 +354,8 @@ static void start_scripts(void)
    Steps, separated by ';': "@N" waits for frame N; "wN" waits N frames; "x,z" runs to the point (within
    3, or "x,z,r,R" within R), "x,z,s[,R]" sprints there (forward tapped twice), "x,z,k[,R]" walks; "x,z,J[,R]" runs 20
    frames, then jumps (held 30) on the way ("x,z,j[,R]" jumps at once); "a" taps the action key; "hD" turns to
-   D degrees (the facing: 0 is +z); "vD" aims D degrees up; "p"/"k" a punch/kick tap; "j" a jump tap; "q"/"g"/"e" a swap (pick up),
-   fire or drop tap; "c" holds crouch for the next step; "H<keys>,N" holds keys for N frames (f forward,
+   D degrees (the facing: 0 is +z); "vD" aims D degrees up; "p"/"k" a punch/kick tap; "j" a jump tap; "q"/"g"/"e"/"R" a swap (pick up),
+   fire, drop or reload tap; "c" holds crouch for the next step; "H<keys>,N" holds keys for N frames (f forward,
    b back, l/r step left/right, c crouch, j jump, p punch, k kick, w walk, a action, q swap, g fire).
    "R" as a mode runs from up to 1.3 rad off. ---- */
 
@@ -393,13 +402,14 @@ static void route_input(const Character *c, CharacterInput *in)
             route_next();
             continue;
         }
-        if (*s == 'a' || *s == 'p' || *s == 'j' || *s == 'q' || *s == 'g' || *s == 'e' || (*s == 'k' && (s[1] == ';' || !s[1]))) {
+        if (*s == 'a' || *s == 'p' || *s == 'j' || *s == 'q' || *s == 'g' || *s == 'e' || *s == 'R' || (*s == 'k' && (s[1] == ';' || !s[1]))) {
             /* a tap: down one frame, up the next */
             if (route.phase == 0) {
                 if (*s == 'a') in->action = true;
                 else if (*s == 'q') in->swap = true;
                 else if (*s == 'g') in->fire = true;
                 else if (*s == 'e') in->drop = true;
+                else if (*s == 'R') in->reload = true;
                 else if (*s == 'p') in->punch = true;
                 else if (*s == 'j') in->jump = true;
                 else in->kick = true;
@@ -546,6 +556,7 @@ static int play(int level)
     p3_load();      /* the PAR3 classes of the loaded files (the binary data's loader), set up at the start */
     p3_set_environment(env);
     weapons_reset();
+    powerups_reset();
     console_load();
     action_install();
     env_set((void *)env);
@@ -615,10 +626,10 @@ static int play(int level)
         if (player && plat_param("trace", dbg, sizeof dbg) && plat_frames() % (uint32_t)(atoi(dbg) > 1 ? atoi(dbg) : 30) == 0) {
             const Character *konoko = &player->c;
             const TmInstance *ti = konoko->anim ? tm_handle_instance(tm_handle_of(konoko->anim)) : NULL;
-            snprintf(m, sizeof m, "OpenOni: frame %u: %.1f %.1f %.1f facing %.2f (%.2f) type %u state %u varient %04x %s%s%u ammo %d particles %d glass %d",
+            snprintf(m, sizeof m, "OpenOni: frame %u: %.1f %.1f %.1f facing %.2f (%.2f) type %u state %u varient %04x %s%s%u ammo %d particles %d glass %d clips %u pu %d",
                      (unsigned)plat_frames(), konoko->pos[0], konoko->pos[1], konoko->pos[2], konoko->facing, konoko->desired_facing, konoko->type,
                      konoko->state, konoko->varient, ti && ti->name ? ti->name : "", " overlay ",
-                     konoko->overlay[0].anim ? tr_type(konoko->overlay[0].anim) : 0u, konoko->weapon ? konoko->weapon->ammo : -1, p3_live_count(), env_glass_broken());
+                     konoko->overlay[0].anim ? tr_type(konoko->overlay[0].anim) : 0u, konoko->weapon ? konoko->weapon->ammo : -1, p3_live_count(), env_glass_broken(), konoko->ammo, powerup_count());
             plat_log(m);
             for (int i = 0; i < door_count(); i++) {
                 float d[3];

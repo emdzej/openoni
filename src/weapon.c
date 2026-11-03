@@ -8,6 +8,7 @@
 #include "m3gm.h"
 #include "objc.h"
 #include "particle.h"
+#include "powerup.h"
 #include "sl.h"
 #include "tm.h"
 #include "trac.h"
@@ -205,6 +206,117 @@ static void stop_firing(Weapon *w, bool force)
         w->flags &= (uint16_t)~WEAPON_FIRING;
         every_shooter(w, EV_STOP);
     }
+}
+
+/* WPrReloadDone 0x5181e0: the reload's end: the delay events stop, full of ammo, the background
+   events start. */
+static void reload_done(Weapon *w)
+{
+    if (w->flags & WEAPON_DELAYED) {
+        every_shooter(w, EV_DELAY_STOP);
+        w->flags &= (uint16_t)~WEAPON_DELAYED;
+    }
+    w->ammo = rd16(w->cls + ONWC_SHOTS);
+    if (w->owner && (w->flags & WEAPON_OWNED) && !(w->flags & WEAPON_BACKGROUND)) {
+        w->flags |= WEAPON_BACKGROUND;
+        every_shooter(w, EV_BG_START);
+    }
+}
+
+/* 0x51a990 (WPrHasAmmo): an owner with unlimited ammo (C+0x04 0x40) keeps it full; true if any. */
+static bool has_ammo(Weapon *w)
+{
+    if (w->owner && (w->owner->flags & 0x40)) {
+        w->ammo = rd16(w->cls + ONWC_SHOTS);
+        if ((w->flags & WEAPON_OWNED) && !(w->flags & WEAPON_BACKGROUND)) {
+            w->flags |= WEAPON_BACKGROUND;
+            every_shooter(w, EV_BG_START);
+        }
+    }
+    return w->ammo != 0;
+}
+
+/* 0x51cce0: what reloads the class: -1 nothing (+0xcc 0x800), 1 an energy cell (0x4), else 0 a clip. */
+static int ammo_type(const Weapon *w)
+{
+    uint32_t f = options(w);
+    return (f & 0x800) ? -1 : (int)(f >> 2 & 1);
+}
+
+/* 0x51c730: what c has of it. */
+static uint16_t inventory(const Character *c, int type)
+{
+    return type == 0 ? c->ammo : type == 1 ? c->cells : type == 2 ? c->hypos : 0;
+}
+
+/* ONrCharacter_HasAmmoForReload 0x4edc90 */
+static bool has_ammo_for_reload(const Character *c)
+{
+    return (c->flags & 0x40) || inventory(c, ammo_type(c->weapon)) != 0;
+}
+
+/* 0x4edcc0: the weapon's overlay is a reload (types 0xa4 to 0xab). */
+static bool reloading(const Character *c)
+{
+    const void *t = c->overlay[CHR_OVERLAY_WEAPON].anim;
+    uint16_t k = t ? tr_type(t) : 0;
+    return k >= 0xa4 && k <= 0xab;
+}
+
+/* 0x4edc00: an empty weapon with nothing to reload it (no reload under way). */
+static bool empty_unreloadable(Character *c)
+{
+    if (!c->weapon || has_ammo(c->weapon) || reloading(c)) return false;
+    return inventory(c, ammo_type(c->weapon)) == 0;
+}
+
+bool weapon_try_reload(Character *c, Weapon *w, bool *full, bool *none)
+{
+    if (full) *full = false;
+    if (none) *none = false;
+    if (!w || !c->weapon) return false;
+    if (w->owner && (w->owner->flags & 0x40)) {
+        w->ammo = rd16(w->cls + ONWC_SHOTS);
+        if ((w->flags & WEAPON_OWNED) && !(w->flags & WEAPON_BACKGROUND)) {
+            w->flags |= WEAPON_BACKGROUND;
+            every_shooter(w, EV_BG_START);     /* 0x51a130 with trigger -1 */
+        }
+    }
+    if (w->ammo == rd16(w->cls + ONWC_SHOTS)) {
+        if (full) *full = true;
+        return false;
+    }
+    if (!has_ammo_for_reload(c)) {
+        if (none) *none = true;
+        return false;
+    }
+    if (tr_is_attack(c->anim) || chr_is_victim_type(c->type) || c->overlay[CHR_OVERLAY_WEAPON].anim || w->pause || w->delay)
+        return false;
+    /* the class's reload animation (+0xbc) as an overlay (TRrCollection_Lookup with 7) */
+    const void *t = chr_lookup_varient(c, rd16(w->cls + 0xbc), 7, c->varient);
+    if (!t) return false;   /* "failed to find reload animation" */
+    /* 0x51c770: a clip or cell used up */
+    int k = ammo_type(w);
+    if (k == 0 && c->ammo) c->ammo--;
+    else if (k == 1 && c->cells) c->cells--;
+    c->last_action = c->time;  /* 0x4edbb0: C+0x1e0 */
+    chr_overlay_set(c, CHR_OVERLAY_WEAPON, t, 0);
+    return true;
+}
+
+bool weapon_has_empty(Character *c)
+{
+    /* AI2iScript_HasEmptyWeapon 0x4b8cb0 */
+    if (!c->weapon || has_ammo(c->weapon) || has_ammo_for_reload(c)) return false;
+    return !reloading(c);
+}
+
+/* DoCharacterFrame's weapon overlay at its action frame (slot 1, TRAM +0x174): a reload (0xa4..0xab)
+   ends; the holster and draw (0xa0..0xa2) with the stowed slots. */
+static void overlay_action(Character *c, const void *anim)
+{
+    uint16_t k = tr_type(anim);
+    if (k >= 0xa4 && k <= 0xab && c->weapon) reload_done(c->weapon);
 }
 
 /* 0x518180: full of ammo; owned, the background events start. */
@@ -512,17 +624,34 @@ static void pickup_weapon(Character *c, Weapon *w)
 static bool start_pickup(Character *c, const ChrInput *in)
 {
     if (!(in->down & CHR_KEY_SWAP) || c->overlay[CHR_OVERLAY_WEAPON].anim) return false;
+    /* 0x4fa4b0: the powerup and the weapon in reach (3 below to 18 above, 8 across) */
+    bool full = false;
+    Powerup *pu = powerup_find(c, c->pos[1] - 3.0f, c->pos[1] + 18.0f, NULL, 64.0f, &full);
     Weapon *w = find_pickup(c->pos, NULL, c->pos[1] - 3.0f, c->pos[1] + 18.0f, 64.0f);
-    if (!w) return false;
-    if (tr_test_flag(c->anim, 20)) {
-        pickup_weapon(c, w);
-        return false;
+    bool started = false;
+    if (pu || w) {
+        if (tr_test_flag(c->anim, 20)) {
+            /* an animation that picks up as it goes: at once */
+            if (w) pickup_weapon(c, w);
+            else if (powerup_give(c, pu->type, pu->amount, false)) powerup_delete(pu);     /* 0x4eda10 */
+        } else {
+            uint16_t type;
+            if (pu) {
+                /* Pickup_Object (0x9d), or its middle height (0xe3) for one 9 above the feet */
+                type = pu->pos[1] <= c->pos[1] + 9.0f ? 0x9d : 0xe3;
+                c->pickup_powerup = pu, c->pickup = NULL;
+            } else {
+                bool mid = c->pos[1] + 9.0f < pickup_y(w);
+                type = (options(w) & ONWC_RIFLE) ? 0x9f : 0x9e;
+                if (mid) type = (uint16_t)(type + 0x46);
+                c->pickup = w, c->pickup_powerup = NULL;
+            }
+            started = chr_do_animation(c, CHR_ANIM_WHEN_CAN, type) != NULL;
+        }
     }
-    bool mid = c->pos[1] + 9.0f < pickup_y(w);
-    uint16_t type = (options(w) & ONWC_RIFLE) ? 0x9f : 0x9e;
-    if (mid) type = (uint16_t)(type + 0x46);
-    c->pickup = w;
-    return chr_do_animation(c, CHR_ANIM_WHEN_CAN, type) != NULL;
+    /* "can't carry more" (ONrGameState_EventSound_Play, the player's): with the event sounds */
+    (void)full;
+    return started;
 }
 
 /* The weapon's keys of HandleHeartbeatInput: without a weapon no reload; the reload key asks for one
@@ -536,6 +665,9 @@ static void fire_input(Character *c, const ChrInput *in)
         c->reload_wanted = false;
         return;
     }
+    /* fire gone down with an empty weapon and nothing to reload: C+0x08 bit 0, no firing */
+    if (in->down & CHR_KEY_FIRE) c->reload_wanted = empty_unreloadable(c);
+    if (in->down & CHR_KEY_RELOAD) c->reload_key = true;
     if (c->reload_wanted || c->overlay[CHR_OVERLAY_WEAPON].anim) {
         c->stop_fire = c->stop_fire2 = true;
         return;
@@ -580,7 +712,16 @@ static void trigger(Character *c, int mode)
     c->last_action = c->time;
     bool empty = false;
     depress_trigger(c->weapon, false, mode == 2, &empty);
-    if (empty) stop_firing(c->weapon, false);
+    if (empty) {
+        stop_firing(c->weapon, false);
+        /* a press (not a held trigger) tries a reload, the AI's always; with nothing to reload with,
+           the empty click (WPrOutOfAmmoSound 0x51d080, with the weapon sounds) and the AI's note
+           (C+0x1f0 0x40: with the AI's weapons) */
+        if ((mode != 1 && mode != 3) || c->ai) {
+            bool none = false;
+            weapon_try_reload(c, c->weapon, NULL, &none);
+        }
+    }
 }
 
 static void frame(Character *c, int step)
@@ -590,13 +731,29 @@ static void frame(Character *c, int step)
            is a pickup; at the action frame (TRAM +0x174, at most the last frame) the weapon still there
            (6 below, 24 above, 16 across) is picked up */
         uint16_t t = c->type, q = c->queued;
-        if (c->pickup && t != 0x9d && t != 0x9e && t != 0x9f && q != 0x9d && q != 0x9e && q != 0x9f) c->pickup = NULL;
+        if ((c->pickup || c->pickup_powerup) && t != 0x9d && t != 0x9e && t != 0x9f && q != 0x9d && q != 0x9e && q != 0x9f)
+            c->pickup = NULL, c->pickup_powerup = NULL;
         int act = (int16_t)rd16((const uint8_t *)c->anim + 0x174), last = (int)rd16((const uint8_t *)c->anim + 0x164) - 1;
         if (act > last) act = last;
-        if ((int)c->frame == act && (t == 0x9e || t == 0x9f || t == 0xe4 || t == 0xe5)) {
-            Weapon *w = find_pickup(c->pos, c->pickup, c->pos[1] - 6.0f, c->pos[1] + 24.0f, 256.0f);
-            if (w) pickup_weapon(c, w);
-            c->pickup = NULL;
+        if ((int)c->frame == act) {
+            if (t == 0x9d || t == 0xe3) {
+                /* the powerup still there (6 below, 24 above, 16 across) goes into the inventory; with the
+                   target forgotten (as for 0xe3, which the test above doesn't keep), any in reach */
+                Powerup *p = powerup_find(c, c->pos[1] - 6.0f, c->pos[1] + 24.0f, c->pickup_powerup, 256.0f, NULL);
+                if (p && powerup_give(c, p->type, p->amount, false)) powerup_delete(p);
+                c->pickup = NULL, c->pickup_powerup = NULL;
+            } else if (t == 0x9e || t == 0x9f || t == 0xe4 || t == 0xe5) {
+                Weapon *w = find_pickup(c->pos, c->pickup, c->pos[1] - 6.0f, c->pos[1] + 24.0f, 256.0f);
+                if (w) pickup_weapon(c, w);
+                c->pickup = NULL, c->pickup_powerup = NULL;
+            }
+        }
+        if (c->reload_key) {
+            /* the reload key gone down (A+0x217c bit 3): a try, the player's click when it can't
+               (full, or nothing to reload with: ONrGameState_EventSound_Play, with the event sounds) */
+            c->reload_key = false;
+            bool is_full = false, none = false;
+            if (c->weapon) weapon_try_reload(c, c->weapon, &is_full, &none);
         }
         return;
     }
@@ -722,6 +879,7 @@ void weapons_install(void)
     character_pickup_hook = start_pickup;
     character_weapon_input_hook = weapon_input;
     character_frame_hook = frame;
+    chr_overlay_hook = overlay_action;
 }
 
 /* ---- the commands ---- */
@@ -763,11 +921,25 @@ static bool cmd_inv_reset(SlThread *t, int c, const SlValue *v, SlValue *r, void
     (void)t, (void)r, (void)u;
     Chr *ch = c >= 1 ? char_arg(&v[0]) : NULL;
     if (!ch) return true;
+    /* the inventory (C+0x1a2..0x1ba; +0x1ae, the hypo's healing left, isn't kept) */
+    ch->c.ammo = ch->c.hypos = ch->c.cells = 0;
+    ch->c.lsi = false;
+    ch->c.shield = ch->c.invisibility = 0;
     if (ch->c.weapon) {
         Weapon *w = ch->c.weapon;
         weapon_delete(w);
         chr_set_weapon(&ch->c, NULL);
     }
+    return true;
+}
+
+/* chr_has_empty_weapon char (AI2iScript_HasEmptyWeapon 0x4b8cb0): a bool. */
+static bool cmd_has_empty(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)u;
+    Chr *ch = c >= 1 ? char_arg(&v[0]) : NULL;
+    r->type = SL_BOOL;
+    r->i = ch && weapon_has_empty(&ch->c);     /* none: "chr_has_empty_weapon: no such character" */
     return true;
 }
 
@@ -788,5 +960,6 @@ void weapons_register_commands(void)
     sl_register("weapon_spawn", cmd_spawn, NULL);
     sl_register("chr_inv_reset", cmd_inv_reset, NULL);
     sl_register("chr_giveweapon", cmd_give, NULL);
+    sl_register("chr_has_empty_weapon", cmd_has_empty, NULL);
     sl_register_bool("wp_disable_fade", &no_fade);
 }
