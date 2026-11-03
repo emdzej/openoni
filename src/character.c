@@ -13,12 +13,14 @@
 #include "tm.h"
 #include "trac.h"
 #include "tram.h"
+#include "weapon.h"
 
 #include <math.h>
 #include <string.h>
 
 static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }
 static uint32_t rd32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
+static float rdf(const uint8_t *p) { uint32_t v = rd32(p); float f; memcpy(&f, &v, 4); return f; }
 
 static float oncc_float(const Character *c, unsigned off)
 {
@@ -228,21 +230,53 @@ bool chr_holds_facing(const Character *c)
 /* The turn rate per tick: 0.1 for AI not under film (0x4e9670), else 0.0785, or half that walking. */
 static float turn_rate(const ChrInput *in) { return (in->held & WALK) ? 0.039269909f : 0.078539819f; }
 
-/* HandleTurnInput 0x4f7b90, without the weapon's sway and recoil (C+0x1d0, +0x1d4) and its slower
-   aim. */
+/* HandleTurnInput 0x4f7b90: the mouse turns (or, with the look key, aims sideways) and aims up and down;
+   a weapon's aim speed (class +0x7c, by half) scales it, and its recoil (C+0x1d0, 0x1d4) settles. */
 static void handle_turn_input(Character *c, const ChrInput *in)
 {
-    float turn = 0.0f;
-    if (!(in->held & CHR_KEY_LOOK)) turn = in->turn_x * -0.015625f;
-    else c->aim_lr -= in->turn_x * 0.015625f;
-    c->aim_ud = in->turn_y * 0.015625f + c->aim_ud;
+    const uint8_t *wc = c->weapon ? c->weapon->cls : NULL;     /* WPrGetClass 0x5185f0 */
+    float tx = in->turn_x, ty = in->turn_y, turn = 0.0f;
+    if (wc) {
+        float k = rdf(wc + 0x7c) * 0.5f;
+        tx = k * tx, ty = k * ty;
+    }
+    if (!(in->held & CHR_KEY_LOOK)) turn = tx * -0.015625f;
+    else c->aim_lr -= tx * 0.015625f;
+    c->aim_ud = ty * 0.015625f + c->aim_ud;
+    if (!wc) {
+        c->aim_kick = 0.0f;
+        c->recoil = 0.0f;
+    } else {
+        /* the recoil's parameters (0x51cd20, class +0x80: per shot, the most, the speed's divisor, the
+           return idle and the return while the shot's delay runs; the "wp_hypo" override is off) */
+        const uint8_t *r = wc + 0x80;
+        if (c->aim_kick == 0.0f) {
+            if (c->recoil != 0.0f) {
+                const Weapon *w = c->weapon;    /* 0x51cea0: the delay's part left, 0 none */
+                float left = w->delay ? (float)w->delay / (float)w->delay2 : 0.0f;
+                c->recoil -= rdf(r + (left == 0.0f ? 0xc : 0x10));
+            }
+        } else {
+            c->recoil += c->aim_kick;
+            c->aim_kick /= rdf(r + 8);
+            if (c->aim_kick < 0.001f) c->aim_kick = 0.0f;
+        }
+        if (!c->ai && (rd32(wc + 0xcc) & 0x10)) {
+            /* the player's recoil goes into the aim itself */
+            c->aim_ud += c->recoil;
+            c->recoil = 0.0f;
+        } else {
+            float m = rdf(r + 4), v = c->recoil;
+            c->recoil = v < 0.0f ? 0.0f : v > m ? m : v;
+        }
+    }
     const float lim = 1.5707964f;
     c->aim_lr = c->aim_lr < -lim ? -lim : c->aim_lr > lim ? lim : c->aim_lr;
     c->aim_ud = c->aim_ud < -lim ? -lim : c->aim_ud > lim ? lim : c->aim_ud;
     if (tr_test_flag(c->anim, TRAM_FLAG_NO_TURN)) return;
-    float r = turn_rate(in);
-    if (in->held & CHR_KEY_TURN_LEFT) turn += r;
-    else if (in->held & CHR_KEY_TURN_RIGHT) turn -= r;
+    float rate = turn_rate(in);
+    if (in->held & CHR_KEY_TURN_LEFT) turn += rate;
+    else if (in->held & CHR_KEY_TURN_RIGHT) turn -= rate;
     turn_desired(c, turn);
 }
 
@@ -836,15 +870,20 @@ bool character_init(Character *c, const void *oncc, const float pos[3], float fa
 
 void character_update(Character *c, const CharacterInput *ci, const void *env)
 {
-    character_update_keys(c, chr_input_bits(ci), ci->turn, env);
+    character_update_aim(c, chr_input_bits(ci), ci->turn, ci->pitch, env);
 }
 
 void character_update_keys(Character *c, uint64_t held, float turn, const void *env)
 {
+    character_update_aim(c, held, turn, 0.0f, env);
+}
+
+void character_update_aim(Character *c, uint64_t held, float turn, float pitch, const void *env)
+{
     c->time++;
     ChrInput in;
-    in.turn_x = turn * -64.0f;      /* so HandleTurnInput's mouse turn is turn */
-    in.turn_y = 0.0f;
+    in.turn_x = turn * -64.0f;      /* so HandleTurnInput's mouse turn is turn (before a weapon's aim speed) */
+    in.turn_y = pitch * 64.0f;
     in.held = held;
     in.not_held = ~in.held;
     in.down = in.held & ~c->held;

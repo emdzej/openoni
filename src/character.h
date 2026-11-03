@@ -25,6 +25,7 @@ typedef struct {
     int strafe;         /* -1 step left, 1 step right */
     bool walk;
     float turn;
+    float pitch;        /* added to the aim's pitch (radians, + up): the mouse's other part */
     bool punch, kick;   /* held this tick: a press is held for at least one tick */
     bool jump, crouch;
     bool action;        /* held (Ctrl: the exe's "bind leftcontrol to action") */
@@ -108,10 +109,15 @@ typedef struct Character {
     /* weapons (weapon.h) */
     struct Weapon *weapon;          /* C+0x194: the one in the hand */
     struct Weapon *pickup;          /* C+0x1d8: the one a pickup animation goes for */
-    float aim_kick;                 /* C+0x1d0: the recoil's (class +0x80 a shot) */
+    float aim_kick;                 /* C+0x1d0: the recoil's speed (class +0x80 a shot) */
+    float recoil;                   /* C+0x1d4: the recoil, raising the aim (ONrCharacter_BuildQuaternions) */
     bool fire_down, fire2_down, fire_again, fire_empty, stop_fire, stop_fire2;  /* A+0x21e0, 0x21e1, 0x21df, 0x21e2, 0x21e3, 0x21e4 */
     bool reload_wanted;             /* C+0x08 bit 0 */
     float aim_lr, aim_ud;           /* A+0x21bc, 0x21c0 */
+    float aim_lr_add, aim_ud_add;   /* A+0x21cc, 0x21d0: added to the aim (set by the AI's aiming: 0 here) */
+    const void *aim_screen;         /* A+0x1ee4: the aiming screen (TRSC data) in use */
+    uint32_t aim_screen_time;       /* A+0x1ee8: when it changed */
+    const void *aim_screen_prev;    /* A+0x1eec: the one it fades from */
     bool turning_left, turning_right;       /* A+0x21e5, 0x21e6: a standing turn under way */
 
     uint64_t held;                  /* the previous tick's held bits (DoFilmUpdate's A+0x2188) */
@@ -170,6 +176,8 @@ extern bool (*character_action_hook)(Character *c, const ChrInput *in);
 /* The same from the action bits held (CHR_KEY_*) and the mouse's turn: what went down and up this tick
    comes from the last tick's bits. */
 void character_update_keys(Character *c, uint64_t held, float turn, const void *env);
+/* The same with the mouse's pitch too. */
+void character_update_aim(Character *c, uint64_t held, float turn, float pitch, const void *env);
 /* The same from a whole input block (the AI's executor makes its own "went down" bits). */
 void character_update_input(Character *c, const ChrInput *in, const void *env);
 /* 0x4e3d00: the character doesn't turn to its desired facing by itself now. */

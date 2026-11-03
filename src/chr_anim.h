@@ -28,6 +28,8 @@ enum {
 enum {
     TRAM_FLAG_ATTACK = 4, TRAM_FLAG_NO_TURN = 8, TRAM_FLAG_NO_VELOCITY_LERP = 14,
     TRAM_FLAG_THROW_SOURCE = 15, TRAM_FLAG_THROW_TARGET = 16,
+    TRAM_FLAG_AIMING = 18,          /* the body aims (the aiming screens apply) */
+    TRAM_FLAG_OVERLAY_NO_AIM = 19,  /* an overlay that, playing, stops the aiming (inferred) */
 };
 
 /* The flags of DoAnimation. */

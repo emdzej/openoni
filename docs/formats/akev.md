@@ -81,6 +81,7 @@ What the exe tests:
 | 0x00000100 | run time | Set by `P3iCheckCollisions` 0x45eaa0 and 0x4e1900; the software draw (0x40ff30) clears it and flips 0x1000 |
 | 0x00002000 | 19,882 | Not drawn (below) |
 | 0x00040000 | 0 | Not drawn (below) |
+| 0x00200000 | run time | Breakable glass. `AKrLevel_Begin` 0x43ffe0 sets it on every quad whose texture's material is breakable: the textures' materials come from the BINA `TMBD` list in level 0 (0x40-byte entries from +0x10, the count at +0xc: the material's name, then the texture's), bound at level load by `ONrTextureMaterials_LevelLoad` 0x517790. The materials (`Mtrl`, parent link at +8) form a tree under `Default`; `MAiMaterials_Traverse` 0x487f50 makes `Glass` and the materials under it breakable, except `Unbreak_Glass` and those under it. On level 1 this marks exactly the shooting range's 18 targets (confirmed: `particle_test`) |
 
 `AKiEnvironment_RayCastOctTree` 0x4433f0 also tests 0x2a0 and 0x520a0. Bits 0x10, 0x200, 0x800, 0x4000,
 0x8000, 0x10000, 0x20000, 0x80000, 0x100000, 0x400000, 0x800000, 0x1000000, 0x2000000, 0x4000000,

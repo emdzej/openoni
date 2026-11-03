@@ -23,6 +23,7 @@
 #include "gl_dev.h"
 #include "im.h"
 #include "objc.h"
+#include "material.h"
 #include "particle.h"
 #include "object.h"
 #include "platform.h"
@@ -344,7 +345,7 @@ static void start_scripts(void)
    Steps, separated by ';': "@N" waits for frame N; "wN" waits N frames; "x,z" runs to the point (within
    3, or "x,z,r,R" within R), "x,z,s[,R]" sprints there (forward tapped twice), "x,z,k[,R]" walks; "x,z,J[,R]" runs 20
    frames, then jumps (held 30) on the way ("x,z,j[,R]" jumps at once); "a" taps the action key; "hD" turns to
-   D degrees (the facing: 0 is +z); "p"/"k" a punch/kick tap; "j" a jump tap; "q"/"g"/"e" a swap (pick up),
+   D degrees (the facing: 0 is +z); "vD" aims D degrees up; "p"/"k" a punch/kick tap; "j" a jump tap; "q"/"g"/"e" a swap (pick up),
    fire or drop tap; "c" holds crouch for the next step; "H<keys>,N" holds keys for N frames (f forward,
    b back, l/r step left/right, c crouch, j jump, p punch, k kick, w walk, a action, q swap, g fire).
    "R" as a mode runs from up to 1.3 rad off. ---- */
@@ -434,6 +435,13 @@ static void route_input(const Character *c, CharacterInput *in)
             route.crouch = true;
             route_next();
             continue;
+        }
+        if (*s == 'v') {
+            /* "vD": aims to D degrees up (the mouse's pitch) */
+            float want = (float)atof(s + 1) * 0.017453293f, err = want - c->aim_ud;
+            if (fabsf(err) < 0.005f) { route_next(); continue; }
+            in->pitch = err > 0.05f ? 0.05f : err < -0.05f ? -0.05f : err;
+            return;
         }
         if (*s == 'h') {
             float want = (float)atof(s + 1) * 0.017453293f, err = wrap_pi(want - c->desired_facing);
@@ -533,6 +541,8 @@ static int play(int level)
     trigger_load();
     object_load();
     door_load((void *)env);
+    material_level_load();                  /* ONrTextureMaterials_LevelLoad */
+    material_mark_breakable((void *)env);   /* AKrLevel_Begin: the glass */
     p3_load();      /* the PAR3 classes of the loaded files (the binary data's loader), set up at the start */
     p3_set_environment(env);
     weapons_reset();
@@ -560,10 +570,12 @@ static int play(int level)
             if (presses[i] == DIK_ESCAPE) return 0;
         plat_keys(keys);
         PlatMouse mouse;
-        CharacterInput in = { keys[DIK_W] - keys[DIK_S], keys[DIK_D] - keys[DIK_A], keys[DIK_CAPITAL] != 0,
-                              (keys[DIK_LEFT] - keys[DIK_RIGHT]) * 0.05f, false, false,
-                              keys[DIK_SPACE] != 0, keys[DIK_LSHIFT] || keys[DIK_RSHIFT],
-                              keys[DIK_LCONTROL] || keys[DIK_RCONTROL] };
+        CharacterInput in = {
+            .forward = keys[DIK_W] - keys[DIK_S], .strafe = keys[DIK_D] - keys[DIK_A], .walk = keys[DIK_CAPITAL] != 0,
+            .turn = (keys[DIK_LEFT] - keys[DIK_RIGHT]) * 0.05f, .pitch = (keys[DIK_UP] - keys[DIK_DOWN]) * 0.02f,
+            .jump = keys[DIK_SPACE] != 0, .crouch = keys[DIK_LSHIFT] || keys[DIK_RSHIFT],
+            .action = keys[DIK_LCONTROL] || keys[DIK_RCONTROL],
+        };
         for (int i = 0; i < n; i++) {
             /* the exe's default bindings (its "bind f to punch" lines): F punch, C kick; mouse 1 and 2 fire */
             if (presses[i] == DIK_F) in.punch = true;
@@ -574,6 +586,7 @@ static int play(int level)
         }
         if (plat_mouse(&mouse) && mouse.captured) {
             in.turn -= mouse.dx * 0.004f;
+            in.pitch -= mouse.dy * 0.004f;
             in.punch |= (mouse.pressed & MOUSE_LEFT) != 0;
             in.fire = (mouse.buttons & MOUSE_LEFT) != 0;     /* "bind mousebutton1 to fire1", held */
             in.kick |= (mouse.pressed & MOUSE_RIGHT) != 0;

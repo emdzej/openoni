@@ -1,8 +1,10 @@
 /* The particle system on level 1 (OPENONI_DATA=<dir>, default ./game; skipped without it): the classes
    load; the pistol's projectile (w1_tap_p01) flies at its velocity and dies on the wall it hits, through
-   its hit-wall actions; a shooter (w1_tap_e01) emits a projectile at its pulse. */
+   its hit-wall actions; a shooter (w1_tap_e01) emits a projectile at its pulse. The textures' materials
+   make the shooting range's 18 targets breakable glass. */
 #include "akev.h"
 #include "exe.h"
+#include "material.h"
 #include "particle.h"
 #include "tm.h"
 #include "vfs.h"
@@ -32,7 +34,22 @@ int main(void)
         return 1;
     }
     int failed = 0;
-    const void *env = environment();
+    void *env = (void *)environment();
+    /* the glass: the textures' materials make the 18 targets of the shooting range breakable, and only them */
+    material_level_load();
+    material_mark_breakable(env);
+    int breakable = 0, targets = 0;
+    for (uint32_t q = 0; q < akev_quad_count(env); q++) {
+        AkevQuad k;
+        if (akev_quad(env, q, &k) && (k.flags & 0x200000)) breakable++;
+    }
+    for (uint32_t i = 0; i < akev_script_count(env); i++) {
+        uint32_t q, id;
+        AkevQuad k;
+        if (akev_script_entry(env, i, &q, &id) && id >= 3001 && id <= 3018 && akev_quad(env, q, &k) && (k.flags & 0x200000)) targets++;
+    }
+    printf("particle_test: %d breakable quads, %d of the 18 targets\n", breakable, targets);
+    if (breakable != 18 || targets != 18) { fprintf(stderr, "particle_test: the glass isn't the targets\n"); failed++; }
     p3_load();
     p3_set_environment(env);
     printf("particle_test: %d classes\n", p3_class_count());

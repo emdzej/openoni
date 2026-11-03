@@ -529,6 +529,166 @@ static void apply_overlay(const void *t, uint16_t frame, float *q, int bones)
     }
 }
 
+/* ---- the aiming screens (TRAS, in the class's TRSC at ONCC +0xc84): an animation whose frames are a
+   grid of poses, yaw by pitch; the aim's place in the grid is lerped from its four nearest and turns the
+   pose on top ---- */
+
+enum {
+    TRAS_ANIM = 0x00, TRAS_YAW_NEG = 0x04, TRAS_YAW_POS = 0x08, TRAS_YAW_NEG_N = 0x0c, TRAS_YAW_POS_N = 0x0e,
+    TRAS_PITCH_NEG = 0x10, TRAS_PITCH_POS = 0x14, TRAS_PITCH_NEG_N = 0x18, TRAS_PITCH_POS_N = 0x1a,
+    TRSC_COUNT = 0x16, TRSC_SCREENS = 0x18,
+};
+
+/* MUrUnsignedSmallFloat_To_Uns_Round 0x4340a0: 2^23 added, the mantissa's bits. */
+static uint32_t round_unsigned(float x)
+{
+    float t = x + 8388608.0f;
+    uint32_t b;
+    memcpy(&b, &t, 4);
+    return b & 0x7fffff;
+}
+
+static const void *screen_anim(const void *s) { return tm_link((const uint8_t *)s + TRAS_ANIM); }   /* 0x4293c0 */
+
+/* 0x429040: the collection's screen for an animation type whose animation's varient is within the
+   wanted one, the highest varient (the first of equals). */
+static const void *find_screen(const uint8_t *trsc, uint16_t type, uint16_t varient)
+{
+    const void *best = NULL;
+    for (unsigned i = 0, n = rd16(trsc + TRSC_COUNT); i < n; i++) {
+        const void *s = tm_link(trsc + TRSC_SCREENS + 4 * i), *t = s ? screen_anim(s) : NULL;
+        if (!t) continue;
+        uint16_t v = tr_varient(t);
+        if ((v & (uint16_t)~varient) || tr_type(t) != type) continue;
+        if (!best) best = s;
+        if (tr_varient(screen_anim(best)) < v) best = s;
+    }
+    return best;
+}
+
+/* One axis's cell and the part of the way to the next (0x429460's halves). The value is negated first
+   (0x529804, -1); modf, then MUrUnsignedSmallFloat_To_Uns_Round 0x4340a0 on the whole part. */
+static int screen_cell(float a, float neg_delta, float pos_delta, int neg_n, int pos_n, float *frac)
+{
+    int i;
+    if (a < 0.0f) {
+        if (neg_n == 0) { *frac = 0.0f; return 0; }
+        double whole, f = modf((double)(a / neg_delta), &whole);
+        *frac = (float)f + 1.0f;
+        i = -1 - (int)(round_unsigned((float)-whole));
+        if (i < -neg_n) i = -neg_n, *frac = 0.0f;
+    } else {
+        if (pos_n == 0) { *frac = 0.0f; return 0; }
+        double whole, f = modf((double)(a / pos_delta), &whole);
+        *frac = (float)f;
+        i = (int)round_unsigned((float)whole);
+        if (i >= pos_n) i = pos_n - 1, *frac = 1.0f;
+    }
+    return i;
+}
+
+/* TRrAimingScreen_Prepare 0x429460: the screen's turn of every bone of its animation's +0x40 at the
+   aim (yaw, pitch), into out. False ("aiming screen is not valid") if the aim falls outside the grid:
+   out is left as it was. */
+static bool screen_prepare(const uint8_t *s, int bones, float yaw, float pitch, float *out)
+{
+    const uint8_t *t = screen_anim(s);
+    if (!t) return false;
+    yaw *= -1.0f, pitch *= -1.0f;
+    int yn = (int16_t)rd16(s + TRAS_YAW_NEG_N), yp = (int16_t)rd16(s + TRAS_YAW_POS_N);
+    int pn = (int16_t)rd16(s + TRAS_PITCH_NEG_N), pp = (int16_t)rd16(s + TRAS_PITCH_POS_N);
+    int w = (int16_t)(yn + yp + 1), h = (int16_t)(pn + pp + 1);
+    if (rd16(t + TRAM_BONES) != bones || w * h > (int)rd16(t + TRAM_FRAMES)) return false;
+    float fy, fp;
+    int col = (int16_t)(screen_cell(yaw, rdf(s + TRAS_YAW_NEG), rdf(s + TRAS_YAW_POS), yn, yp, &fy) + yn);
+    int row = (int16_t)(screen_cell(pitch, rdf(s + TRAS_PITCH_NEG), rdf(s + TRAS_PITCH_POS), pn, pp, &fp) + pn);
+    if (row < 0 || row + 1 >= h || col < 0 || col + 1 >= w) return false;
+    float q00[4 * CHR_BONES], q01[4 * CHR_BONES], q10[4 * CHR_BONES], q11[4 * CHR_BONES];
+    if (!tram_rotations(t, (uint32_t)(row * w + col), q00) || !tram_rotations(t, (uint32_t)(row * w + col + 1), q01) ||
+        !tram_rotations(t, (uint32_t)((row + 1) * w + col), q10) || !tram_rotations(t, (uint32_t)((row + 1) * w + col + 1), q11))
+        return false;
+    uint32_t mask = rd32(t + 0x40);
+    for (int b = 0; b < bones; b++) {
+        if (!(mask & 1u << b)) continue;
+        float a[4], c[4];
+        tram_quat_lerp(q00 + 4 * b, q01 + 4 * b, fy, a);
+        tram_quat_lerp(q10 + 4 * b, q11 + 4 * b, fy, c);
+        tram_quat_lerp(a, c, fp, out + 4 * b);
+    }
+    return true;
+}
+
+static const float no_turn[4] = { 0, 0, 0, 1 };    /* 0x529898 */
+
+/* TRrAimingScreen_Apply 0x4293d0: the screen's turn on top of each of its bones of the pose. The
+   original turns the bones by its buffer even when the aim was outside the grid (then whatever the
+   stack held); the port leaves the pose as it is then. */
+static void screen_apply(const uint8_t *s, float yaw, float pitch, float *q, int bones)
+{
+    float k[4 * CHR_BONES];
+    if (!screen_prepare(s, bones, yaw, pitch, k)) return;
+    uint32_t mask = rd32((const uint8_t *)screen_anim(s) + 0x40);
+    for (int b = 0; b < bones; b++)
+        if (mask & 1u << b) quat_mul(k + 4 * b, q + 4 * b, q + 4 * b);
+}
+
+/* TRrAimingScreen_Apply_Lerp 0x4297e0: from screen a's turn toward b's by t (a bone only one of them
+   turns lerps against no turn), on top of the pose. */
+static void screen_apply_lerp(const uint8_t *a, const uint8_t *b, float t, float yaw, float pitch, float *q, int bones)
+{
+    float ka[4 * CHR_BONES], kb[4 * CHR_BONES];
+    uint32_t ma = a ? rd32((const uint8_t *)screen_anim(a) + 0x40) : 0, mb = b ? rd32((const uint8_t *)screen_anim(b) + 0x40) : 0;
+    if ((a && !screen_prepare(a, bones, yaw, pitch, ka)) || (b && !screen_prepare(b, bones, yaw, pitch, kb))) return;
+    for (int i = 0; i < bones; i++) {
+        uint32_t bit = 1u << i;
+        if (!((ma | mb) & bit)) continue;
+        float k[4];
+        tram_quat_lerp((ma & bit) ? ka + 4 * i : no_turn, (mb & bit) ? kb + 4 * i : no_turn, t, k);
+        quat_mul(k, q + 4 * i, q + 4 * i);
+    }
+}
+
+/* The animation types with no aiming screen, whatever their flag (the hits, knockdowns and getting up,
+   the throws' targets and the stuns: ONrCharacter_BuildQuaternions' switch). */
+static bool never_aims(uint16_t type)
+{
+    switch (type) {
+    case 0x17: case 0x4c: case 0x4d: case 0x4e: case 0x4f: case 0x50: case 0x51: case 0x52: case 0x53:
+    case 0x54: case 0x55: case 0x56: case 0x57: case 0x58: case 0x59: case 0x5a: case 0x5b: case 0x5c:
+    case 0x60: case 0x61: case 0x62: case 0x63: case 0x64: case 0x65: case 0x72: case 0x73: case 0x74:
+    case 0x75: case 0x76: case 0x77: case 0x7e: case 0x7f: case 0x80: case 0x81: case 0x82: case 0x83:
+    case 0x84: case 0x8d: case 0xc6: case 0xd4: case 0xd5: case 0xd6: case 0xd7:
+        return true;
+    default:
+        return false;
+    }
+}
+
+/* The aim type a screen falls back to when the class has none for this one. */
+static uint16_t screen_fallback(uint16_t type)
+{
+    switch (type) {
+    case 1: return 0;
+    case 2: case 3: case 7: case 8: return 6;
+    case 9: case 10: case 11: case 0xd0: return 3;
+    case 0xd: case 0xe: case 0xf: return 2;
+    case 0x3a: case 0x3b: case 0x8e: case 0x8f: return 0x11;
+    case 0x3c: case 0x3e: case 0x3f: return 0x3a;
+    case 0x3d: case 0x40: case 0x41: return 0x3b;
+    case 0xd2: return 9;
+    case 0xd9: return 10;
+    case 0xda: return 11;
+    default: return 1;
+    }
+}
+
+static float wrap_pi_once(float a)
+{
+    if (a > 3.1415927f) return a - 6.2831855f;
+    if (a < -3.1415927f) return a + 6.2831855f;
+    return a;
+}
+
 void chr_build_quaternions(Character *c)
 {
     TramInfo in;
@@ -542,13 +702,52 @@ void chr_build_quaternions(Character *c)
         if (!tram_rotations(c->anim, c->frame, q)) return;
         for (int b = 0; b < CHR_BONES; b++) tram_quat_lerp(q + 4 * b, c->interp_quats + 4 * b, t, c->quats + 4 * b);
     }
-    /* ONrCharacter_BuildQuaternions 0x4e5360: the aimed copy (A+0x2020) takes the overlays playing. Not
-       yet: the aiming screens (TRrAimingScreen_Apply_Lerp). */
+    /* ONrCharacter_BuildQuaternions 0x4e5360: the aimed copy (A+0x2020) takes the overlays playing,
+       then the aiming screen */
     memcpy(c->aimed, c->quats, sizeof c->aimed);
+    bool overlay_stops = false;
     for (int k = 0; k < CHR_OVERLAYS; k++) {
         const ChrOverlay *o = &c->overlay[k];
-        if (o->anim && o->frame < tr_duration(o->anim)) apply_overlay(o->anim, o->frame, c->aimed, CHR_BONES);
+        if (!o->anim) continue;
+        if (o->frame < tr_duration(o->anim)) {
+            apply_overlay(o->anim, o->frame, c->aimed, CHR_BONES);
+            if (overlay_stops || tr_test_flag(o->anim, TRAM_FLAG_OVERLAY_NO_AIM)) overlay_stops = true;
+        }
     }
+    const void *screen = NULL;
+    if (tr_test_flag(c->anim, TRAM_FLAG_AIMING) && !overlay_stops && !never_aims(in.type)) {
+        const uint8_t *trsc = tm_link((const uint8_t *)c->oncc + ONCC_AIMING);
+        uint16_t type = in.aim_type, varient = in.varient;
+        if (trsc && !(c->flags & 1))
+            while (type) {
+                const void *s = find_screen(trsc, type, varient);
+                if (s && (!screen || tr_varient(screen_anim(screen)) < tr_varient(screen_anim(s)))) screen = s;
+                type = screen_fallback(type);
+            }
+    }
+    if (screen != c->aim_screen) {
+        c->aim_screen_prev = c->aim_screen;
+        c->aim_screen = screen;
+        c->aim_screen_time = c->time;
+    }
+    /* the aim against the body: the desired facing past the facing, on the side the run's offset turns,
+       with the sideways aim, less the offset; the pitch with the recoil */
+    float d = c->desired_facing - c->facing_offset;
+    float side = wrap_pi_once(c->desired_facing - d), ahead = wrap_pi_once(d - c->facing);
+    float yaw = c->desired_facing - c->facing;
+    if (side > 0.0f && ahead > 0.0f) { if (yaw < 0.0f) yaw += 6.2831855f; }
+    else if (side < 0.0f && ahead < 0.0f) { if (yaw > 0.0f) yaw -= 6.2831855f; }
+    else yaw = wrap_pi_once(yaw);
+    yaw = yaw + c->aim_lr - c->facing_offset + c->aim_lr_add;
+    float pitch = c->aim_ud + c->recoil;
+    pitch = pitch < -1.5707964f ? -1.5707964f : pitch > 1.5707964f ? 1.5707964f : pitch;
+    pitch += c->aim_ud_add;
+    if (yaw == 0.0f && pitch == 0.0f) return;
+    uint32_t since = c->time - c->aim_screen_time;
+    if (since > 8) c->aim_screen_prev = screen;
+    if (!screen && !c->aim_screen_prev) return;
+    if (screen == c->aim_screen_prev) screen_apply(screen, yaw, pitch, c->aimed, CHR_BONES);
+    else screen_apply_lerp(c->aim_screen_prev, screen, (float)since * 0.125f, yaw, pitch, c->aimed, CHR_BONES);
 }
 
 void chr_overlay_set(Character *c, int slot, const void *anim, uint32_t flags)
