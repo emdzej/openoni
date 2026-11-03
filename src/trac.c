@@ -28,6 +28,7 @@ void trac_random_seed(uint32_t s) { seed = s; }
 /* UUrLocalRandom 0x426e30: the second LCG (the seed at 0x5326d8 starts at 0xfded): the sound's permutations,
    the particles. */
 static uint32_t local_seed = 0xfded;
+void trac_local_seed(uint32_t s) { local_seed = s; }
 uint16_t trac_local_random(void)
 {
     local_seed = local_seed * 0x19660du + 0x3c6ef35fu;

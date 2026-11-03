@@ -78,6 +78,7 @@ typedef struct {
     const float *orient;        /* 3x3 by columns, NULL none */
     const float *velocity;      /* NULL none */
     float scale, yscale, alpha, rotation, x_offset, x_shorten;
+    float chop;                 /* P_CHOPPED: what of the far end the life has cut (1 - life / fade) */
     uint32_t tint;
     const void *texture;        /* the TXMP or M3GM instance (+0x118), NULL none */
     int mode;                   /* the sprite mode (flags1 bits 5 to 7) */

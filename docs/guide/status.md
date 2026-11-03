@@ -26,13 +26,14 @@ driving the lessons.
   consoles, animated objects and the first of the game's script commands.
 - **The particle system**, the engine under every shot, spark and shard of glass. It covers the particle
   classes, emitters, events and actions, plus collisions with the walls and characters, and damage.
-  Projectiles fly and stop on what they hit, and break the glass made of breakable materials.
+  Projectiles fly and stop on what they hit, and break the glass made of breakable materials. The
+  particles are drawn as the original draws them: sprites with their orientations, fades and animated
+  textures, and geometry such as the glass shards and the shell casings.
 - **Sound** from the game's own sound groups.
 
 ## Not yet
 
-- Particles aren't drawn yet. Bullet holes, impact effects, homing and the particles' sounds aren't
-  ported yet either.
+- The particles' contrails, vectors, lens flares and decals (bullet holes), homing, and their sounds.
 - The AI's guns, laser triggers and alarms. The power-ups' physics and glow, and the HUD.
 - The front end (the menus), saving and loading, and the Bink movies.
 - The other 13 levels as a playthrough.

@@ -3,6 +3,7 @@
 
 #include "im.h"
 #include "tm.h"
+#include "trac.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -54,4 +55,31 @@ uint8_t *txmp_rgba(const void *txmp, uint32_t *size)
     }
     if (size) *size = total;
     return dst;
+}
+
+const void *txmp_resolve(const void *txmp, uint32_t time, uint32_t index)
+{
+    const uint8_t *t = txmp;
+    const uint8_t *an = t ? tm_link(t + 0x8c) : NULL;
+    if (!an) return txmp;
+    uint32_t flags = (uint32_t)t[0x80] | (uint32_t)t[0x81] << 8 | (uint32_t)t[0x82] << 16 | (uint32_t)t[0x83] << 24;
+    uint16_t speed = (uint16_t)(an[0xc] | an[0xd] << 8);
+    uint32_t n = (uint32_t)an[0x14] | (uint32_t)an[0x15] << 8 | (uint32_t)an[0x16] << 16 | (uint32_t)an[0x17] << 24;
+    if (!speed) return txmp;    /* the original divides by it */
+    if (flags & 0x4000) time = 0;
+    if (flags & 0x100) time += index;
+    uint32_t f;
+    if (flags & 0x80) {
+        uint32_t k = time / speed;
+        trac_local_seed((k >> 24 | (k >> 8 & 0xff00) | (k << 8 & 0xff0000) | k << 24) ^ 0xfdedfdedu);
+        f = n ? (uint32_t)(trac_local_random() * n >> 16) : 0;
+    } else if (flags & 0x40) {
+        uint32_t m = n * 2 - 2;
+        f = m ? time / speed % m : 0;
+        if (f >= n) f = m - f;
+    } else
+        f = n ? time / speed % n : 0;
+    if (!f) return txmp;
+    const void *fr = tm_link(an + 0x18 + 4 * f);
+    return fr ? fr : txmp;
 }

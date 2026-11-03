@@ -25,6 +25,7 @@
 #include "objc.h"
 #include "material.h"
 #include "particle.h"
+#include "particle_draw.h"
 #include "powerup.h"
 #include "object.h"
 #include "platform.h"
@@ -666,6 +667,7 @@ static int play(int level)
             draw_objects();
             for (int i = 0; i < chars_slots(); i++)
                 if (chars_get(i)) char_draw_character(&chars_get(i)->c);   /* the blended pose */
+            particle_draw(view, p3_tick());     /* P3rDisplay */
             if (player) ui_draw_hud(w, h, player->c.hit_points, player->c.max_hit_points, ticks);
             ui_draw(w, h);
         }

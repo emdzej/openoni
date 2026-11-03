@@ -36,3 +36,9 @@ typedef struct {
 void txmp_info(const void *txmp, TxmpInfo *out);
 /* All levels' pixels as RGBA bytes, largest first, *size bytes; malloc'd, NULL on error. */
 uint8_t *txmp_rgba(const void *txmp, uint32_t *size);
+
+/* M3iResolveTexture 0x41e500: the frame of the texture's animation (TXAN, +0x8c) at time ticks (and the
+   index, for textures that add it: flag 0x100): frame 0 is the texture itself. Flag 0x4000 holds the
+   first frame, 0x40 runs forth and back, 0x80 picks a random frame, reseeding UUrLocalRandom as the
+   original does (so drawing moves the game's second generator). */
+const void *txmp_resolve(const void *txmp, uint32_t time, uint32_t index);

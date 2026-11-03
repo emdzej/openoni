@@ -66,7 +66,8 @@ near them, and the `door_*` commands ([docs/re/door.md](docs/re/door.md)). `src/
 
 - `src/particle.c`: the particle system (P3, the BINA `3RAP` classes): events, actions, emitters, wall and
   character collisions, damage. The weapons' shooters and projectiles (`src/weapon.c`) and breaking glass
-  (`src/env.c`, with the textures' materials: `src/material.c`) run on it. Not drawn yet; decals,
+  (`src/env.c`, with the textures' materials: `src/material.c`) run on it. `src/render/particle_draw.c` draws the sprites and
+  geometry (contrails, vectors, lens flares and decals not yet);
   attractors, impact effects and particle sounds are stand-ins.
 - Aiming (the aiming screens in `src/chr_anim.c`, the recoil in `src/character.c`), reloading
   (`src/weapon.c`) and powerups (`src/powerup.c`): level 1's shooting lesson plays through.

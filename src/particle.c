@@ -2238,7 +2238,9 @@ void p3_each_drawn(P3DrawFn fn, void *user)
 {
     for (uint16_t i = active_head; i != 0xffff; i = classes[i].next) {
         P3Class *c = &classes[i];
-        if (flags2(c) & F2_INVISIBLE) continue;
+        /* P3iDisplayParticleClass 0x460520: not the decals nor the invisible (flags2 0x2800000); those of
+           0x100000 only with a debug switch (0x6a8b40, off) */
+        if (flags2(c) & (F2_INVISIBLE | F2_DECAL | 0x100000)) continue;
         for (P3Particle *p = c->head; p; p = p->next) {
             if (p->flags & (P_HIDDEN | P_DEAD)) continue;
             P3Draw d;
@@ -2249,10 +2251,14 @@ void p3_each_drawn(P3DrawFn fn, void *user)
             d.velocity = fblock(c, p, P3_X_VELOCITY);
             d.scale = 1, d.yscale = 1, d.alpha = 1;
             fvalue(c, p, c->def + D_SCALE, &d.scale);
+            /* the scale grows with the speed (flags1 0x800: |v| + 1 times) */
+            if ((flags1(c) & F1_SCALE_VELOCITY) && d.velocity)
+                d.scale *= sqrtf(dot3(d.velocity, d.velocity)) + 1.0f;
             d.yscale = d.scale;
             if (flags1(c) & F1_YSCALE) fvalue(c, p, c->def + D_YSCALE, &d.yscale);
             fvalue(c, p, c->def + D_ALPHA, &d.alpha);
-            if (p->flags & (P_FADING | P_CHOPPED)) d.alpha = p->fade > 0.0f ? p->life / p->fade : 0.0f;
+            if ((p->flags & P_FADING) && p->fade > 0.0f) d.alpha = p->life / p->fade;
+            if ((p->flags & P_CHOPPED) && p->fade > 0.0f) d.chop = 1.0f - p->life / p->fade;
             fvalue(c, p, c->def + D_ROTATION, &d.rotation);
             fvalue(c, p, c->def + D_XOFFSET, &d.x_offset);
             fvalue(c, p, c->def + D_XSHORTEN, &d.x_shorten);
