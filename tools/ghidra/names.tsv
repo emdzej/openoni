@@ -148,6 +148,8 @@
 00426550	UUrString_Capitalize	UU	med	name from the Intel Mac build (neighbours:1.00)
 004265d0	UUrString_HasPrefix	UU	med	name from the Intel Mac build (neighbours:1.00)
 004265f0	UUrString_Copy	UU	med	name from the Intel Mac build (neighbours:0.77)
+004266d0	UUrString_Compare_NoCase	UU	med	Mac name; folds a..z only
+00426700	UUrString_CompareLen_NoCase	UU	med	Mac name; at most n characters
 004268f0	UUrIsSpace	UU	med	name from the Intel Mac build (neighbours:1.00)
 00426ab0	UUrTimer_Allocate	UU	med	name from the Intel Mac build (neighbours:1.00)
 00426ba0	UUrTimerSystem_WriteToDisk	UU	med	name from the Intel Mac build (strings:1)
@@ -172,6 +174,8 @@
 00428aa0	TRrAnimation_IsAttack	TR	med	name from the Intel Mac build (neighbours:1.00)
 00428b00	TRrAnimation_IsShortcut	TR	med	name from the Intel Mac build (neighbours:0.75)
 00428cb0	TRrAnimation_GetEndInterpolation	TR	med	name from the Intel Mac build (strings:1)
+00428e10	TRrOverlay_Apply	TR	low	an overlay over a pose: TRAM +0x44 replaced, +0x40 added, ramps of 6 frames
+00429160	TRrAnimation_GetDamage	TR	low	the animation's own damage at a frame (TRAM +0x10 .raw, count +0x17b); Mac name by role
 004291c0	TRrAnimation_GetThrowDistance	TR	med	name from the Intel Mac build (neighbours:1.00)
 004292a0	TRrAnimation_GetFirstAttackFrame	TR	med	name from the Intel Mac build (neighbours:1.00)
 004292b0	TRrAnimation_GetLastAttackFrame	TR	med	name from the Intel Mac build (neighbours:0.75)
@@ -186,17 +190,35 @@
 0042c1b0	TRrDumpAnimationCollection	TR	med	name from the Intel Mac build (neighbours:1.00)
 0042c230	DumpLookup	-	med	name from the Intel Mac build (strings:2)
 0042c2b0	StopDumpLookup	-	med	name from the Intel Mac build (strings:2)
+0042c2f0	TRrAnimation_IsInvulnerable	TR	med	name from the Intel Mac build (AttemptThrow's callee); frame within TRAM +0x178, +0x179
 0042c330	TRrRegisterTemplates	TR	med	name from the Intel Mac build (neighbours:1.00)
+0042c740	TSrInitialize	TS	med	name from the Intel Mac build (caller)
+0042cb80	TSiTextureCache_RenderGlyph	TS	med	name from the Intel Mac build; fills the cell, then draws the glyph into it
+0042cc40	TSiGlyph_Draw	TS	high	blends a glyph's bitmap into a texture, per pixel type (docs/formats/font.md)
+0042d5b0	TSrContext_DrawString	TS	med	name from the Intel Mac build
+0042d860	TSiContext_DrawLine	TS	high	draws a line's glyphs; the pointer isn't advanced left of the clip (docs/formats/font.md)
 0042d9e0	TSrContext_DrawFormattedText	TS	med	name from the Intel Mac build (neighbours:1.00)
 0042df00	TSrContext_DrawText	TS	med	name from the Intel Mac build (neighbours:0.86)
 0042e050	TSrContext_DrawText_DC	TS	med	name from the Intel Mac build (neighbours:0.80)
+0042e210	TSrContext_FormatString	TS	med	name from the Intel Mac build; wraps at the TSFL's breaking characters
 0042e8c0	TSrContext_GetFont	TS	med	name from the Intel Mac build (neighbours:0.80)
 0042e920	TSrContext_GetStringRect	TS	med	name from the Intel Mac build (neighbours:0.83)
 0042ea30	TSrContext_New	TS	med	name from the Intel Mac build (neighbours:1.00)
+0042ebd0	TSiContext_GetBestFont	TS	high	size, then plain style, then smaller sizes, then larger up to 18
+0042ee30	TSrContext_SetFormat	TS	med	name from the Intel Mac build (callee)
 0042ee50	TSrContext_SetShade	TS	med	name from the Intel Mac build (neighbours:1.00)
 0042ee60	TSrFontFamily_Get	TS	med	name from the Intel Mac build (neighbours:1.00)
+0042ee80	TSrFontFamily_GetFont	TS	high	the family's font of a size and style, exact
+0042eec0	TSrFont_GetAscendingHeight	TS	high	TSFT +0x0c
+0042eed0	TSrFont_GetCharacterSize	TS	high	the glyph's width and height (TSGA +4, +6)
 0042ef30	TSrFont_GetLeadingHeight	TS	med	name from the Intel Mac build (neighbours:1.00)
 0042ef40	TSrFont_GetLineHeight	TS	med	name from the Intel Mac build (neighbours:1.00)
+0042ef60	TSrFont_GetDescendingHeight	TS	high	TSFT +0x0e
+0042ef70	TSrString_DeleteChar	TS	med	by the Mac build's order; deletes a character at an index
+0042f030	TSrString_GetCharacterAtIndex	TS	med	by the Mac build's order
+0042f090	TSrString_GetLength	TS	high	characters, two-byte ones counted once
+0042f0d0	TSrString_InsertChar	TS	med	by the Mac build's order
+0042f230	TSiCharacter_IsDoubleByte	TS	high	bit 15 set and the high byte not 0xff
 0042f250	TSrRegisterTemplates	TS	med	name from the Intel Mac build (neighbours:1.00)
 0042f510	COrInitialize	CO	med	name from the Intel Mac build (strings:3)
 0042fb70	COrConfigure	CO	med	name from the Intel Mac build (strings:1)
@@ -214,8 +236,11 @@
 00432590	GRiGroup_ParseElement	GR	med	name from the Intel Mac build (strings:2)
 00432a60	GRrGroup_Context_NewFromFileRef	GR	med	name from the Intel Mac build (strings:1)
 00432bb0	GRrGroup_Context_Delete	GR	med	name from the Intel Mac build (neighbours:1.00)
+00432d70	MUrPoint_SegmentParameter	MU	low	the nearest point's parameter along a segment
+00432e40	MUrPoint_NearestOnSegment	MU	low	the nearest point of a segment (clamped)
 00432f10	MUrPoint_PointBehindPlane	MU	med	name from the Intel Mac build (neighbours:1.00)
 00432f70	MUrPoint_RotateAboutAxis	MU	med	name from the Intel Mac build (neighbours:1.00)
+00433010	MUrPoint_RotateYAxis	MU	low	Mac name by role: x' = cos x + sin z, z' = -sin x + cos z
 00433140	MUrAngleBetweenVectors	MU	med	name from the Intel Mac build (neighbours:1.00)
 00433220	MUrPoint_Distance_Squared	MU	med	name from the Intel Mac build (neighbours:1.00)
 00433250	MUrPoint_Distance_SquaredXZ	MU	med	name from the Intel Mac build (neighbours:1.00)
@@ -229,6 +254,11 @@
 00433ae0	MUrMatrix_MultiplyNormal	MU	med	name from the Intel Mac build (neighbours:1.00)
 00433b70	MUrVector_CrossProduct	MU	med	name from the Intel Mac build (neighbours:1.00)
 00433bb0	MUrVector_DotProduct	MU	med	name from the Intel Mac build (neighbours:0.89)
+00433ca0	MUrVector_PlaneFromPoints	MU	high	read: n = (a - b) x (c - a), normalised; d = -n.a
+00433d60	MUrVector_SetLength	MU	low	a vector scaled to a length
+00433da0	MUrVector_PushBack	MU	med	the part of a vector into a plane (v.n < 0)
+00434030	MUrFloat_Round	MU	low	fistp: a float to the nearest integer
+004340a0	MUrUnsignedSmallFloat_To_Uns_Round	MU	med	Mac match (neighbours:0.70)
 004340f0	MUrVector_Normalize_ZeroTest	MU	med	name from the Intel Mac build (neighbours:1.00)
 00434150	MUrMatrix3x3_FormOrthonormalBasis	MU	med	name from the Intel Mac build (neighbours:1.00)
 00434190	MUrMatrix_GetCol	MU	med	name from the Intel Mac build (neighbours:0.86)
@@ -238,14 +268,17 @@
 00434b00	MUrMatrixStack_RotateZ	MU	med	name from the Intel Mac build (neighbours:1.00)
 00434c00	MUrMatrixStack_Quaternion	MU	med	name from the Intel Mac build (neighbours:1.00)
 00434c60	MUrMatrix3x3_Identity	MU	med	name from the Intel Mac build (neighbours:0.75)
+00434d70	MUrMatrix_RotateY	MU	low	turns a matrix about y from the left
 00434e70	MUrMatrix3x3_RotateY	MU	med	name from the Intel Mac build (neighbours:1.00)
 00435590	MUrMatrix_Lerp	MU	med	name from the Intel Mac build (neighbours:0.75)
 00437470	AUrSharedElemArray_AddElem	AU	med	name from the Intel Mac build (strings:1)
 004376d0	AUrSharedStringArray_AddString	AU	med	name from the Intel Mac build (neighbours:1.00)
 00437780	AUrHashTable_New	AU	med	name from the Intel Mac build (neighbours:1.00)
 004378c0	AUrMessageBox	AU	med	name from the Intel Mac build (neighbours:1.00)
+00437b60	AKrGQ_LowestPair	AK	low	a quad's lowest corner and the lowest of the others
 004380e0	AUrDeviateXZ	AU	med	name from the Intel Mac build (neighbours:1.00)
 00438a30	OBrDoor_Array_LevelBegin	OB	med	name from the Intel Mac build (strings:1)
+00438b90	OBrAnim_SetRange	OB	med	read: the object plays an animation from a frame to a stop frame (name made up)
 00438d20	OBrShow	OB	med	name from the Intel Mac build (neighbours:1.00)
 00438fb0	OBiDraw	OB	med	name from the Intel Mac build (neighbours:0.86)
 00439160	OBiIsVisible	OB	med	name from the Intel Mac build (neighbours:1.00)
@@ -257,15 +290,21 @@
 0043a2d0	PHrCollision_Volume_SphereTree	PH	med	name from the Intel Mac build (neighbours:1.00)
 0043a560	PHrCollision_SphereTree_SphereTree	PH	med	name from the Intel Mac build (neighbours:1.00)
 0043a620	PHrPhysics_Update_Animation	PH	med	name from the Intel Mac build (neighbours:1.00)
+0043a710	PHiPhysics_FindCollisions	PH	low	the collisions sorted by distance, slid along until the first that takes a part off the move
+0043aac0	PHiPhysics_Respond	PH	low	the search again after the slide; a significant hit stops the move
 0043ac80	PHrPhysicsContext_New	PH	med	name from the Intel Mac build (neighbours:1.00)
 0043ad60	PHrPhysicsContext_Delete	PH	med	name from the Intel Mac build (neighbours:1.00)
+0043af50	OBiPhysics_Update	OB	high	the physics contexts' tick: gravity, acceleration, the collisions slid along, the move, the callbacks
 0043b3e0	PHiSphereTree_Draw	PH	med	name from the Intel Mac build (neighbours:1.00)
 0043b410	PHrPhysics_MaintainMatrix	PH	med	name from the Intel Mac build (neighbours:0.83)
 0043b680	PHrPhysics_Initialize	PH	med	name from the Intel Mac build (strings:6)
 0043b6e0	PHrStatus	PH	med	name from the Intel Mac build (strings:5)
 0043b870	PHrPhysics_Callback_FindEnvCollisions	PH	med	name from the Intel Mac build (neighbours:1.00)
 0043ba70	PHrPhysics_Single_PhyCollision	PH	med	name from the Intel Mac build (neighbours:1.00)
+0043bfa0	PHrCollision_Quad_SphereTreeVector	PH	med	a sphere tree moving by a vector against a quad, down to its leaves
+0043c050	PHrGridToWorldSpace	PH	med	name from the Intel Mac build (callee): a cell's middle
 0043c0c0	PHrWorldToGridSpace	PH	med	name from the Intel Mac build (neighbours:1.00)
+0043c210	PHiPointInGrid	PH	low	a point's cell inside the grid
 0043c290	PHrWorldToGridSpaceDangerous	PH	med	name from the Intel Mac build (neighbours:1.00)
 0043c300	PHrWaypointFromGunk	PH	med	name from the Intel Mac build (neighbours:1.00)
 0043c600	PHrGrid_Decompress	PH	med	name from the Intel Mac build (neighbours:1.00)
@@ -275,9 +314,13 @@
 0043ffe0	AKrLevel_Begin	AK	med	name from the Intel Mac build (neighbours:1.00)
 00440170	AKrInitialize	AK	med	name from the Intel Mac build (neighbours:1.00)
 00440340	AKrEnvironment_TemplateHandler	AK	med	name from the Intel Mac build (neighbours:0.80)
+00440600	AKrNodeFromPoint	AK	med	the BNV holding a point: the octree leaf's BNVs, their BSPs, stairs first; docs/re/pathfinding.md
 00440f30	AKrCollision_LevelBegin	AK	med	name from the Intel Mac build (neighbours:1.00)
 004410a0	AKrLineOfSight	AK	med	name from the Intel Mac build (neighbours:1.00)
 00441190	AKrCollision_InitializeSpatialCache	AK	med	name from the Intel Mac build (neighbours:1.00)
+004411a0	AKiOctTree_FindLeaf	AK	low	the octree leaf holding a point
+004412d0	AKrCollision_Point	AK	low	the environment ray cast through the octree (first hit or all)
+00441c80	AKrCollision_Point_First	AK	med	AKrCollision_Point 0x4412d0 with its leaf cache 0x5ccea8 reset (the start and end leaves found afresh)
 004425e0	AKrGQ_SphereVector	AK	med	name from the Intel Mac build (neighbours:1.00)
 00442f50	AKrRayCastCoefficients_Initialize	AK	med	name from the Intel Mac build (strings:1)
 004430f0	AKrEnvironment_StartFrame	AK	med	name from the Intel Mac build (neighbours:0.83)
@@ -444,6 +487,7 @@
 0047f090	SSrShowDebugInfo	SS	med	name from the Intel Mac build (strings:1)
 0047f460	SSrSubtitle_Find	SS	med	name from the Intel Mac build (neighbours:1.00)
 0047f550	SSrMessage_Find	SS	med	name from the Intel Mac build (strings:1)
+0047f790	SSrSoundData_GetDuration	SS	med	read: an SNDD's ticks, stored at +0x36 or computed from the sample count (Mac name by role)
 0047f8d0	SSrPermutation_Play	SS	med	name from the Intel Mac build (neighbours:0.75)
 0047fd90	SSrGroup_New	SS	med	name from the Intel Mac build (neighbours:1.00)
 0047ff50	SSrGroup_Play	SS	med	name from the Intel Mac build (neighbours:1.00)
@@ -455,11 +499,15 @@
 00480c20	SSiPAUpdate_InSoundStart	SS	med	name from the Intel Mac build (strings:1)
 00481760	SSiPAUpdate_OutSoundStart	SS	med	name from the Intel Mac build (strings:1)
 00481be0	SSrGroup_GetByName	SS	med	name from the Intel Mac build (neighbours:1.00)
+00481c70	SSrAmbient_GetSubtitle	SS	med	Mac name; SUBTsubtitles lookup as SSrSubtitle_Find, cached at +0xf8
 004824a0	SSrAmbient_Update	SS	med	name from the Intel Mac build (neighbours:1.00)
 004828d0	SSrGetSoundDirectory	SS	med	name from the Intel Mac build (strings:2)
 004830c0	SS2rInitializeBasic	SS2	med	name from the Intel Mac build (strings:1)
 00483310	SS2rInitializeFull	SS2	med	name from the Intel Mac build (strings:3)
+004834e0	SSiSoundData_ProcHandler	SS	med	read: the SNDD template's callback: on load adds the .raw base to +0x3c (Mac name by role)
 00483e00	SS2rVolume_Set	SS2	med	name from the Intel Mac build (neighbours:1.00)
+004841d0	SSrIMA_CalculateNumSamples	SS	low	read: an IMA4 SNDD's packets (+0x10) times 64 (name made up after the MS ADPCM one)
+004841f0	SSrMSADPCM_CalculateNumSamples	SS	med	read: an MS ADPCM SNDD's sample count through acmStreamSize (Mac name by role)
 004842a0	SSiSoundChannels_Initialize	SS	med	name from the Intel Mac build (neighbours:1.00)
 00485530	SSiPlayingAmbient_Update	SS	med	name from the Intel Mac build (neighbours:1.00)
 00485810	SSiPlatform_SoundChannel_Terminate	SS	med	name from the Intel Mac build (neighbours:1.00)
@@ -476,11 +524,15 @@
 00489d40	AI2rUpdateAI	AI2	med	name from the Intel Mac build (strings:1)
 0048a3a0	AI2iEnumCallback_SpawnPlayer	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0048a450	AI2rSpawnCharacter	AI2	med	name from the Intel Mac build (neighbours:1.00)
+0048a480	AI2iSpawnCharacter_Callback	AI2	low	the CHAR enumeration of AI2rSpawnCharacter: name match, spawned flag 0x20 unless 0x10 or force
 0048a6b0	AI2rInitializeCharacter	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0048ad50	AI2rEnterState	AI2	med	name from the Intel Mac build (strings:1)
 0048ae80	AI2rExitState	AI2	med	name from the Intel Mac build (strings:1)
+0048af80	AI2rReturnToJob	AI2	low	leaves the state for the job, or idle below the job alert C+0xf9c (name made up)
 0048b160	AI2rPassive	AI2	med	name from the Intel Mac build (neighbours:1.00)
+0048b1d0	AI2rCharacter_IsHostile	AI2	low	whether a takes b for an enemy (teams, then past hits)
 0048b2c0	AI2rTeam_FriendOrFoe	AI2	med	name from the Intel Mac build (neighbours:1.00)
+0048b480	AI2rNotifyDamage	AI2	low	TakeDamage for AI characters: the damage owner to AI2rKnowledge_HurtBy
 0048b670	AI2rTryToPathfindThrough	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0048b6d0	AI2rStopMeleeTechnique	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0048b700	AI2rNotifyAttackLanded	AI2	med	name from the Intel Mac build (neighbours:1.00)
@@ -506,7 +558,9 @@
 0048f290	AI2rCombat_Enter	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0048f3e0	AI2rCombat_Update	AI2	med	name from the Intel Mac build (strings:1)
 004901f0	AI2rCombat_GetRange	AI2	med	name from the Intel Mac build (neighbours:1.00)
+00490510	AI2rCombat_NotifyKnowledge	AI2	low	the combat state's knowledge handler
 004908e0	AI2rCombat_SetNewTarget	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004909a0	AI2iCombat_LostTarget	AI2	low	the combat state loses its target: the waits start (name made up)
 00491540	AI2iBehavior_Barabbas	AI2	med	name from the Intel Mac build (neighbours:1.00)
 00492d50	AI2iBehavior_MutantMuro	AI2	med	name from the Intel Mac build (neighbours:1.00)
 00492f90	AI2iBehavior_MutantMuroMelee	AI2	med	name from the Intel Mac build (neighbours:1.00)
@@ -517,6 +571,7 @@
 00495190	AI2iReport_Pathfinding_AStarFailed	AI2	med	name from the Intel Mac build (strings:1)
 00497620	AI2iReport_Melee_Failed_Attack	AI2	med	name from the Intel Mac build (strings:1)
 00498490	AI2rExecutor_Initialize	AI2	med	name from the Intel Mac build (neighbours:1.00)
+00498550	AI2rExecutor_Update	AI2	med	Mac match by caller: the wanted move, mode and facing made into the input block
 00498ae0	AI2rExecutor_TurnOverride	AI2	med	name from the Intel Mac build (neighbours:1.00)
 00498b00	AI2rExecutor_Move	AI2	med	name from the Intel Mac build (neighbours:1.00)
 00498b60	AI2rExecutor_MoveOverride	AI2	med	name from the Intel Mac build (neighbours:1.00)
@@ -536,12 +591,18 @@
 00499b50	AI2rGuard_UpdateScan	AI2	med	name from the Intel Mac build (neighbours:1.00)
 00499d00	AI2rGuard_RecalcScanDir	AI2	med	name from the Intel Mac build (neighbours:1.00)
 00499d80	AI2rIdle_Enter	AI2	med	name from the Intel Mac build (neighbours:1.00)
-00499e80	AI2iKnowledge_UpdateProjectileAlertness	AI2	med	name from the Intel Mac build (strings:1)
+00499e80	AI2rKnowledge_Update	AI2	med	the knowledge update: pending posts, projectiles (the Mac match's UpdateProjectileAlertness is inlined), degrading, sight; docs/re/ai.md
 0049a7f0	AI2rKnowledge_HurtBy	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0049a8a0	AI2rKnowledge_Sound	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0049ac00	AI2rKnowledge_CreateMagicAwareness	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0049ad70	AI2rKnowledge_IsCombatSound	AI2	med	name from the Intel Mac build (neighbours:0.75)
+0049adf0	AI2iKnowledge_CheckVisible	AI2	med	the sight check: ONCC vision cones, sight lines from the head (Mac size match)
+0049b300	AI2iKnowledge_AddPending	AI2	med	queues a post (64 at 0x63a2a0)
+0049b3f0	AI2iKnowledge_PostContact	AI2	med	applies a post to the owner's contact list
+0049b8c0	AI2rKnowledge_FindEntry	AI2	low	the contact of a character in a list
+0049b8e0	AI2iKnowledge_RemoveEntry	AI2	med	back to the pool, the state told
 0049b990	AI2rKnowledge_Delete	AI2	med	name from the Intel Mac build (neighbours:1.00)
+0049ba10	AI2rKnowledge_CompareFunc	AI2	med	the order of two contacts
 0049c160	AI2rKnowledge_NewDodgeFiringSpread	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0049c210	AI2rKnowledge_SetupDodgeFiringSpread	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0049c480	AI2rKnowledgeState_Forget	AI2	med	name from the Intel Mac build (neighbours:1.00)
@@ -574,11 +635,13 @@
 004a21c0	AI2iMelee_AngleToTarget	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a2270	AI2iMelee_SetupAttackerState	AI2	med	name from the Intel Mac build (neighbours:0.83)
 004a2580	AI2iMelee_WeightTechnique	AI2	med	name from the Intel Mac build (strings:6)
+004a4300	AI2iMelee_GetTransitionLength	AI2	med	Mac match (caller): the states' path through the profile's transitions
 004a4440	AI2iMelee_WeightLocalMovement	AI2	med	name from the Intel Mac build (strings:2)
 004a4590	AI2iMelee_CheckStateTransition	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a4650	AI2rMelee_PrepareForUse	AI2	med	name from the Intel Mac build (strings:1)
 004a50b0	AI2rMelee_MoveIsValid	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a52d0	AI2iMelee_FindThrow	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004a5500	AI2iMelee_Attack_Update	AI2	low	the attack category's update (function 6 of 0x52a9e8, named after Position_Update and Maneuver_Update): presses the move's keys through the attack override
 004a5de0	AI2iMelee_Position_GetParams	AI2	med	name from the Intel Mac build (strings:3)
 004a5ef0	AI2iMelee_Position_GetCurrentAnimState	AI2	med	name from the Intel Mac build (strings:1)
 004a6040	AI2iMelee_Position_Update	AI2	med	name from the Intel Mac build (strings:1)
@@ -597,6 +660,7 @@
 004a8250	AI2rMovement_MovementModifier	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a8550	AI2rMovement_Update	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a8670	AI2rMovement_Report	AI2	med	name from the Intel Mac build (strings:6)
+004a8d00	AI2rMovement_DefaultMode	AI2	low	the movement mode for the alert level (tables 0x52af18, 0x52af2c)
 004a8d60	AI2rMovementState_Initialize	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a9170	AI2iMovementState_FindClearPoint	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a9300	AI2rMovementState_NewMovementMode	AI2	med	name from the Intel Mac build (neighbours:1.00)
@@ -618,12 +682,14 @@
 004acf70	AI2rNeutral_Stop	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004adb00	AI2iNeutral_ConversationAnimation	AI2	med	name from the Intel Mac build (strings:1)
 004adbe0	AI2rPanic_Enter	AI2	med	name from the Intel Mac build (neighbours:0.88)
+004adeb0	AI2rNonCombatant_NotifyKnowledge	AI2	low	the non-combatants' knowledge handler (C+0x1f0 bit 4)
 004ae070	AI2rCharacter_IsDangerousContact	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004ae1e0	AI2rCharacter_Panic	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004ae480	AI2rPath_GoToPoint	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004ae660	AI2rPath_Halt	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004aea30	AI2iPath_NextNode	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004aea60	AI2rPath_FindGhostWaypoint	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004aeb10	AI2iPath_MakePath	AI2	med	the global path: kept for the same nodes, point (20) and 90 ticks; else PHrFindPath
 004aef90	AI2rPath_SimplePath	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004af120	AI2rPath_Report	AI2	med	name from the Intel Mac build (strings:6)
 004af970	AI2rPatrol_Enter	AI2	med	name from the Intel Mac build (neighbours:1.00)
@@ -638,6 +704,7 @@
 004b0f50	AI2rPursuit_Exit	AI2	med	name from the Intel Mac build (neighbours:0.83)
 004b1260	AI2iPursuit_ChangeMode	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004b1620	AI2iPursuit_DesirePursuit	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004b1750	AI2rPursuit_NotifyKnowledge	AI2	med	the pursuit state's knowledge handler (Mac name exists)
 004b18e0	AI2rPursuit_Report	AI2	med	name from the Intel Mac build (strings:4)
 004b1aa0	AI2rInstallConsoleVariables	AI2	med	name from the Intel Mac build (strings:1)
 004b3fa0	AI2iScript_Skill_Select	AI2	med	name from the Intel Mac build (strings:4)
@@ -736,6 +803,7 @@
 004bb240	ONrCreateTargetingVector	ON	med	name from the Intel Mac build (neighbours:1.00)
 004bb370	AI2iTargeting_UpdateTargeting	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004bb790	AIrScript_LevelBegin_Triggers	AI	med	name from the Intel Mac build (strings:1)
+004bb880	AI2rFindCharacter_ByScriptID	AI2	low	the living list by C+0x40, then (with the flag) every used slot
 004bc320	AIiObjectsFromScript	AI	med	name from the Intel Mac build (strings:2)
 004bc540	AIiScript_ObjShade	AI	med	name from the Intel Mac build (neighbours:1.00)
 004bc780	AIiScript_EnvSetAnim_Internal	AI	med	name from the Intel Mac build (strings:2)
@@ -751,12 +819,23 @@
 004bd710	ASrInitialize	AS	med	name from the Intel Mac build (neighbours:1.00)
 004bd8c0	ASrPath_Generate	AS	med	name from the Intel Mac build (strings:1)
 004be240	ASrPath_SetParams	AS	med	name from the Intel Mac build (neighbours:1.00)
+004be830	ASiTryEndPoint	AS	med	a passable cell the tree gets to from the end: the adjusted end
+004be8a0	ASiHeap_BubbleDown	AS	med	down to the lower child while higher
+004be960	ASiAstarHeap_CompareFunc	AS	med	1 when a's estimate is the lower, 0 equal, -1 higher
+004be9b0	ASiAstarHeap_NotifyLocation	AS	med	a node's place in the heap
 004be9d0	OWrLevelList_Initialize	OW	med	name from the Intel Mac build (neighbours:0.75)
 004bebd0	OWrOniWindow_Startup	OW	med	name from the Intel Mac build (neighbours:1.00)
 004bee60	OBJrCharacter_Initialize	OBJ	med	name from the Intel Mac build (strings:2)
 004bf0f0	OBJiCharacter_GetUniqueOSD	OBJ	med	name from the Intel Mac build (neighbours:0.75)
+004bf290	OBJiCharacter_Read	OBJ	low	the Character type read method (name made up)
+004bfce0	OBJrCombat_Initialize	OBJ	low	registers the Combat (CMBT) object type (name made up)
+004c01c0	OBJiCombat_Read	OBJ	low	the Combat type read method (name made up)
 004c0880	OBJrConsole_OnActivate	OBJ	med	name from the Intel Mac build (strings:3)
 004c0950	OBJrConsole_GetByID	OBJ	med	name from the Intel Mac build (neighbours:1.00)
+004c09a0	OBJrConsole_Activate_ID	OBJ	high	read: console_activate: flag 0x04 on the consoles of the id (0xffff all) (name made up)
+004c09f0	OBJrConsole_Deactivate_ID	OBJ	high	read: console_deactivate: flag 0x04 off (name made up)
+004c0a40	OBJrConsole_Reset_ID	OBJ	high	read: console_reset: not used, active as the OSD's 0x08 says (name made up)
+004c0c80	OBJiConsole_Draw	OBJ	high	read: the class's screen geometry under T(position) R with the state's texture (name made up)
 004c1130	OBJiConsole_SetOSD	OBJ	med	name from the Intel Mac build (strings:2)
 004c1710	OBJiConsole_Read	OBJ	med	name from the Intel Mac build (neighbours:1.00)
 004c1c20	OBJiConsole_LevelBegin	OBJ	med	name from the Intel Mac build (strings:1)
@@ -765,20 +844,32 @@
 004c1dd0	OBJiDoor_LockDoors_Enum	OBJ	med	name from the Intel Mac build (strings:1)
 004c1e30	OBJrDoor_Unlock_ID	OBJ	med	name from the Intel Mac build (strings:1)
 004c1e80	OBJiDoor_UnlockDoors_Enum	OBJ	med	name from the Intel Mac build (strings:1)
+004c1ee0	OBJrDoor_Open_ID	OBJ	med	read: door_open's work: the first door of the id opens (name made up)
+004c1f20	OBJrDoor_Close_ID	OBJ	med	read: door_close's work (name made up)
 004c1f90	OBJiDoor_MakeConnectionLink_Enum	OBJ	med	name from the Intel Mac build (strings:1)
+004c2370	OBJiDoor_PointOnSide	OBJ	high	read: 1 if a point is behind the door's plane (its rotated x and y axes through its position) (name made up)
+004c2520	OBJrDoor_TryOpenByAction	OBJ	high	read: the action key opens the door if the character may pass (name made up)
 004c2590	OBJrDoor_Close	OBJ	med	name from the Intel Mac build (neighbours:1.00)
+004c26c0	OBJrDoor_Open	OBJ	high	read: the panels made (or reversed), animating to the open frame, the gunk hidden, the sounds
+004c2940	OBJiDoor_HideShowGunk	OBJ	high	read: sets or clears 0x2800 on the door's gunk quads (name made up)
+004c29d0	OBJrDoor_Jam	OBJ	high	read: door_jam/door_unjam: flag 0x800 of the first door of the id (name made up)
 004c2a20	OBJrDoor_CharacterProximity	OBJ	med	name from the Intel Mac build (neighbours:1.00)
 004c2a50	OBJrDoor_TryDoorAction	OBJ	med	name from the Intel Mac build (neighbours:0.75)
+004c2aa0	OBJiDoor_TryDoorAction_Enum	OBJ	high	read: the door the character faces within its activation distance, manual ones it may pass first (name made up)
 004c2e60	OBJiDoor_GetGeometryWidth	OBJ	med	name from the Intel Mac build (neighbours:1.00)
 004c31a0	OBJrDoor_Initialize	OBJ	med	name from the Intel Mac build (strings:2)
 004c3560	OBJiDoor_OSDGetName	OBJ	med	name from the Intel Mac build (strings:2)
 004c35e0	OBJiDoor_IntersectsLine	OBJ	med	name from the Intel Mac build (neighbours:0.80)
 004c3990	OBJiDoor_New	OBJ	med	name from the Intel Mac build (neighbours:1.00)
 004c3b30	OBJiDoor_SetOSD	OBJ	med	name from the Intel Mac build (neighbours:1.00)
+004c44f0	OBJrDoor_Update	OBJ	high	read: the stuck logic, the animation's end, the countdown, opening for a near character that may pass, closing (name made up)
+004c48a0	OBJrDoor_LevelBegin	OBJ	high	read: the door frame, the panels' elements, the gunk and its shade, the start state (name made up)
 004c4ce0	OBJrDoor_UpdateSoundPointers	OBJ	med	name from the Intel Mac build (neighbours:0.75)
 004c4d40	OBJrFlag_DrawInitialize	OBJ	med	name from the Intel Mac build (strings:1)
 004c4e90	OBJrFlag_Initialize	OBJ	med	name from the Intel Mac build (strings:2)
 004c51c0	OBJiFlag_OSDGetName	OBJ	med	name from the Intel Mac build (strings:2)
+004c55b0	OBJiFlag_Read	OBJ	low	colour, prefix, id (u16 +6), note
+004c56c0	OBJiFlag_Search	OBJ	low	search by id (type 1) against the OSD's u16 at +6
 004c5760	OBJrFurniture_Initialize	OBJ	med	name from the Intel Mac build (strings:1)
 004c5ae0	OBJiFurniture_SetDefaults	OBJ	med	name from the Intel Mac build (neighbours:0.86)
 004c5be0	OBJiFurniture_New	OBJ	med	name from the Intel Mac build (neighbours:1.00)
@@ -790,6 +881,7 @@
 004c6c10	OBJiMelee_Read	OBJ	med	name from the Intel Mac build (neighbours:1.00)
 004c8cf0	OBJrPatrolPath_DrawInitialize	OBJ	med	name from the Intel Mac build (strings:2)
 004c8e60	OBJrPatrolPath_Initialize	OBJ	med	name from the Intel Mac build (strings:3)
+004c9440	OBJiPatrolPath_Read	OBJ	low	the Patrol Path type's read method: name, count, id, then the waypoints, their size by the type
 004ca0d0	OBJrSound_DrawInitialize	OBJ	med	name from the Intel Mac build (neighbours:0.80)
 004ca3a0	OBJrSound_GetAmbient	OBJ	med	name from the Intel Mac build (neighbours:1.00)
 004ca410	OBJrSound_Initialize	OBJ	med	name from the Intel Mac build (strings:3)
@@ -841,6 +933,8 @@
 004d6580	CArAnimate_Update	CA	med	name from the Intel Mac build (neighbours:1.00)
 004d6b10	CAiTrackJello	CA	med	name from the Intel Mac build (neighbours:1.00)
 004d7110	CArFollow_Get_GoalPosition	CA	med	name from the Intel Mac build (neighbours:1.00)
+004d7b80	ONrOverlay_Set	ON	med	name from the Intel Mac build (re/mac-matches.tsv)
+004d7bb0	ONrCharacter_UseNewWeapon	ON	med	name from the Intel Mac build (re/mac-matches.tsv)
 004d7bf0	ONrCharacter_UseWeapon_NameAmmo	ON	med	name from the Intel Mac build (neighbours:1.00)
 004d7c30	ONrCharacter_SetCharacterClass	ON	med	name from the Intel Mac build (strings:4)
 004d87b0	ONrCharacter_LevelBegin	ON	med	name from the Intel Mac build (strings:1)
@@ -857,7 +951,11 @@
 004da450	iSetAnyCharacterHealth	-	med	name from the Intel Mac build (strings:5)
 004daa10	ONrCharacter_FindFloorWithRay	ON	med	name from the Intel Mac build (neighbours:1.00)
 004dac50	ONrGameState_NewCharacter	ON	med	name from the Intel Mac build (strings:3)
+004dc160	ONiCharacter_BuildSphereTree	ON	low	the root, 4 leaves and 2 middle spheres from the feet (or the body's bottom) to the top
+004dc2b0	ONrCharacter_EnablePhysics	ON	med	the active character's physics context and callback table 0x5ec918
 004dc480	ONrGameState_DeleteCharacter	ON	med	name from the Intel Mac build (neighbours:1.00)
+004dc7e0	ONiCharacter_BeginJump	ON	low	keeps the velocity estimate at A+0x104, A+0xf4 = 1, A+0x110 = 1
+004dc810	ONrCharacter_InAir	ON	med	Mac match (callee)
 004dccf0	ONrGameState_UpdateCharacters	ON	med	name from the Intel Mac build (neighbours:1.00)
 004ddba0	ONrGameState_DoCharacterFrame	ON	med	name from the Intel Mac build (neighbours:0.89)
 004e0cf0	ONrGameState_UpdateTrigger	ON	med	name from the Intel Mac build (strings:1)
@@ -865,35 +963,69 @@
 004e1420	WPrDrawSprite	WP	med	name from the Intel Mac build (neighbours:0.75)
 004e1d70	ONiCharacter_Display_Body	ON	med	name from the Intel Mac build (strings:2)
 004e2ea0	ONrCharacter_NextAnimation	ON	med	name from the Intel Mac build (strings:1)
+004e3110	ONrCharacter_SetFacing	ON	low	facing and desired facing both
+004e3460	ONrCharacter_GetHeadPosition	ON	low	A+0x247c, else the location 15 up
+004e34f0	ONrCharacter_GetPelvisPosition	ON	med	A+0x229c, else the location with y + C+0x18c
+004e3590	ONrCharacter_GetFeetPosition	ON	low	the pelvis x, z; y the body bottom C+0x190 + 1
 004e36b0	ONrAnimType_ThrowIsFromFront	ON	med	name from the Intel Mac build (neighbours:1.00)
+004e38b0	ONiCharacter_InBlockState	ON	low	from standing/crouching/0x2f in a standing, turning, crouching or block type, or backing
 004e3f30	ONrCharacter_IsPickingUp	ON	med	name from the Intel Mac build (neighbours:1.00)
 004e4400	ONrCharacter_DoAnimation	ON	med	name from the Intel Mac build (neighbours:0.80)
+004e4c00	ONrCharacter_SetWeapon	ON	low	the weapon in the hand: C+0x194, the hand's variant bits, the owner (Mac name by role)
 004e4e10	ONrCharacter_Knockdown	ON	med	name from the Intel Mac build (strings:1)
 004e5320	ONrAnimType_UpgradeToKnockdown	ON	med	name from the Intel Mac build (neighbours:1.00)
 004e5360	ONrCharacter_BuildQuaternions	ON	med	name from the Intel Mac build (strings:1)
+004e5ff0	ONiCharacter_BuildBodyBox	ON	low	the parts' spheres into the body box: the bottom C+0x190, the top C+0x1658
 004e6200	ONrCharacter_GetMaterialType	ON	med	name from the Intel Mac build (strings:1)
+004e62b0	ONrCharacter_CouldBlock	ON	med	Mac name: block state, no stun, a block animation, the attacker within 20 degrees
 004e65f0	ONrCharacter_TakeDamage	ON	med	name from the Intel Mac build (strings:1)
+004e7130	ONiGameState_CollideCharacters	ON	low	the contacts: pairs under 25 units to iCollideTwoLikelyCharacters, then knockdowns and blocks
+004e73e0	iCollideTwoLikelyCharacters	ON	med	Mac name: part spheres, attacks, priority, HandleAttackMask both ways
+004e7740	HandleAttackMask	ON	med	Mac name: one landed attack
+004e8c50	HandleGenericMask	ON	med	Mac name: the push apart
+004e8e70	ONiCharacter_LandedAttacks	ON	low	the attacks at the frame whose parts touch, and their highest priority
+004e9040	ONiCharacter_Trigger	ON	low	the trigger of DoCharacterFrame (fire, again, alternate, held)
+004e9210	ONrCharacter_Teleport	ON	med	the character's position and the physics' with it
 004e96a0	ONiCharacter_AttachParticle	ON	med	name from the Intel Mac build (neighbours:1.00)
+004e97a0	ONrCharacter_NewAnimationHook	ON	med	name from the Intel Mac build (caller; strings 'throwtarget was NULL')
+004ea2b0	ONiCharacter_FindNearestOpponent	ON	med	name from the Intel Mac build (AttemptThrow's callee); the enemy nearest the aim within an angle and distance
+004ea550	RemapAnimationHook	ON	med	name from the Intel Mac build (caller); throw moves into throws (player: AttemptThrow; AI: AI2rExecutor_TryingToThrow)
 004ea950	AttemptSpecificThrow	-	med	name from the Intel Mac build (strings:1)
 004eaa10	AttemptThrow	-	med	name from the Intel Mac build (neighbours:0.80)
+004eafc0	ONrCharacter_GetVelocityEstimate	ON	med	Mac match (caller): the mean root motion of up to four frames
 004eb1a0	ONrCharacter_UpdateAnimationForVarient	ON	med	name from the Intel Mac build (neighbours:1.00)
+004eb340	ONrCharacter_SetAnimation_External	ON	med	what chr_animate calls (from state, tram, interpolation); the Mac match of 0x4e41e0 by callee looks wrong
 004eb550	ONrCharacter_Die_1_Animating_Hook	ON	med	name from the Intel Mac build (strings:2)
+004eb970	ONiCharacter_RunDeathAnimation	ON	med	Mac name: knockdown 0x4f unless lying in a reaction
+004ebb60	ONrCharacter_Die_4_Gone_Hook	ON	med	Mac name
+004ebd70	ONrCharacter_Callback_FindEnvCollisions	ON	med	the character's environment search: the root sphere swept, confirmed by the tree; walls counted
 004ec040	FindGroundCollision	-	med	name from the Intel Mac build (strings:6)
+004eca00	ONiCharacter_GroundCallback	ON	low	the physics' ground callback: FindGroundCollision, ticks without ground (A+0xe0), fall at 12
+004ecb20	ONiCharacter_Callback_PostCollision	ON	low	a hit's move down cleared
 004ece10	ONrAnimState_IsCrouch	ON	med	name from the Intel Mac build (neighbours:1.00)
 004ed420	DoFilmUpdate	-	med	name from the Intel Mac build (strings:5)
 004ed770	ONrCharacter_PickupWeapon	ON	med	name from the Intel Mac build (neighbours:1.00)
 004eda40	ONrCharacter_HandlePickupInput	ON	med	name from the Intel Mac build (neighbours:1.00)
 004edc90	ONrCharacter_HasAmmoForReload	ON	med	name from the Intel Mac build (neighbours:1.00)
 004ee020	ONrCharacterClass_MovementSpeed	ON	med	name from the Intel Mac build (neighbours:1.00)
+004ee1b0	ONrCharacter_ConsoleAction_Begin	ON	high	read: C+0x1680 the marker, C+0x1684 0 (name made up)
 004ee220	ONrCharacter_ConsoleAction_Update	ON	med	name from the Intel Mac build (strings:2)
-004ef450	ONrCharacter_GetPartLocation	ON	med	name from the Intel Mac build (neighbours:1.00)
+004eea60	ONrSetupAnimIntersectionContext	ON	med	Mac match (neighbours:0.60): the two characters' halves, the matrix, the target's parts
+004eee20	ONiCharacter_GetIntersectState	ON	low	a character's half of the intersection context (0x94 bytes)
+004eefc0	ONrRestoreIntersectionContext	ON	low	undoes AI2iMelee_SetupAttackerState's changes to the context
+004ef450	ONrGameSettings_HealthColour	ON	med	the health fraction's colour from game_settings (the Mac match ONrCharacter_GetPartLocation is wrong)
 004ef530	ONrCharacter_Invis_Update	ON	med	name from the Intel Mac build (neighbours:1.00)
 004ef710	ONrCharacter_Shield_Update	ON	med	name from the Intel Mac build (neighbours:1.00)
 004efad0	ONrCharacter_AutoAim	ON	med	name from the Intel Mac build (neighbours:1.00)
 004f0150	ONrCharacter_IsGunThroughWall	ON	med	name from the Intel Mac build (neighbours:1.00)
+004f0370	ONrStringToAnimType	ON	med	Mac name; sorts the type table at 0x54d7c0 once, searches it without case
+004f0450	ONrAnimState_FromString	ON	low	an animation state by its name in the table at 0x54df10 (name made up)
 004f0e80	ONrCharacter_PlayAnimationImpact	ON	med	name from the Intel Mac build (strings:1)
+004f1180	ONrGetActiveCharacter	ON	med	Mac match (neighbours:0.65)
 004f14c0	ONrCharacter_ForceStand	ON	med	name from the Intel Mac build (strings:1)
 004f15d0	ONrActiveCharacter_IsPlayingThisAnimationName	ON	med	name from the Intel Mac build (neighbours:1.00)
+004f2070	ONrGameState_DeferScript	ON	med	read: queues a script with the character's name and a cause ("defer script") (name made up)
+004f2120	ONrGameState_RunDeferredScripts	ON	low	runs the deferred-script queue now (name made up)
 004f21e0	ONrCharacter_Poison	ON	med	name from the Intel Mac build (neighbours:1.00)
 004f2250	ONrCharacter_Pain	ON	med	name from the Intel Mac build (neighbours:1.00)
 004f23f0	ONrCharacter_PlayHurtSound	ON	med	name from the Intel Mac build (neighbours:0.75)
@@ -906,6 +1038,7 @@
 004f3970	ONrEventList_Destroy	ON	med	name from the Intel Mac build (neighbours:1.00)
 004f3990	ONrEventList_Copy	ON	med	name from the Intel Mac build (neighbours:1.00)
 004f39e0	ONrEventList_Read	ON	med	name from the Intel Mac build (neighbours:1.00)
+004f3cc0	ONrEventList_Execute	ON	high	read: each event through its type's handler (the table at 0x552098) (name made up)
 004f3d40	ONrEvent_Handle_ExecuteScript	ON	med	name from the Intel Mac build (strings:1)
 004f3e00	ONrFilm_Initialize	ON	med	name from the Intel Mac build (strings:3)
 004f3eb0	ONiSetFocus	ON	med	name from the Intel Mac build (neighbours:1.00)
@@ -927,9 +1060,11 @@
 004f5840	ONrGameState_TryActionMarker	ON	med	name from the Intel Mac build (strings:6)
 004f5c30	ONrCheater	ON	med	name from the Intel Mac build (neighbours:1.00)
 004f6110	ONrGameState_HandleCheats	ON	med	name from the Intel Mac build (strings:1)
+004f80d0	HandleStartTauntOrAction	ON	med	the console action under way, the action key's console or door, else the taunt (name the port's)
 004f83f0	HandleStartSidestep	-	med	name from the Intel Mac build (neighbours:0.83)
 004f8ef0	HandleStartRunning	-	med	name from the Intel Mac build (strings:1)
 004f9a70	HandleFallThrough	-	med	name from the Intel Mac build (strings:1)
+004fa2f0	HandleStartJumping	-	high	Mac name (its layout match ONrInput_Update_Keys is wrong): the jump table, then 0x4fa1c0
 004fafb0	iComputeDeltaTicks	-	med	name from the Intel Mac build (strings:2)
 004fb2e0	ONrBlanketScreen	ON	med	name from the Intel Mac build (neighbours:0.80)
 004fb480	ONiGameState_Display_Reflectable	ON	med	name from the Intel Mac build (strings:1)
@@ -960,6 +1095,8 @@
 004ff9d0	ONiIESwap_LookupIndices	ON	med	name from the Intel Mac build (strings:2)
 004ffe00	ONrImpactEffects_CreateBlank	ON	med	name from the Intel Mac build (neighbours:1.00)
 004fff50	ONrInGameUI_Display	ON	med	name from the Intel Mac build (neighbours:1.00)
+00500640	ONiInGameUI_DrawArc	ON	low	an arc as two triangles a segment
+005007d0	ONiInGameUI_ArcPoints	ON	low	an arc's outer and inner points and their ring texture coordinates between two angles
 00500970	ONiInGameUI_DisplayHealth	ON	med	name from the Intel Mac build (neighbours:0.75)
 00501330	ONiInGameUI_DisplayLSIIcon	ON	med	name from the Intel Mac build (neighbours:1.00)
 00501440	ONiInGameUI_DisplayHelp	ON	med	name from the Intel Mac build (neighbours:1.00)
@@ -973,6 +1110,7 @@
 00503d80	ONiInGameUI_TargetSet	ON	med	name from the Intel Mac build (strings:1)
 00503eb0	ONiInGameUI_LevelLoad	ON	med	name from the Intel Mac build (strings:3)
 00504270	ONrInGameUI_SetArcPoints	ON	med	name from the Intel Mac build (neighbours:1.00)
+005045a0	ONiInGameUI_NewArc	ON	low	allocates an arc (radii, segments + 1 points, centre, texture) and fills it
 00504780	ONrInGameUI_Update	ON	med	name from the Intel Mac build (strings:1)
 00504c30	ONrInGameUI_TextConsole_Display	ON	med	name from the Intel Mac build (neighbours:0.75)
 00504cf0	ONrInGameUI_EnableHelpDisplay	ON	med	name from the Intel Mac build (neighbours:1.00)
@@ -990,9 +1128,14 @@
 00506c00	ONrLevel_Neutral_ID_To_Neutral	ON	med	name from the Intel Mac build (neighbours:1.00)
 00506c80	ONrLevel_Flag_ID_To_Flag	ON	med	name from the Intel Mac build (neighbours:0.80)
 00506ee0	ONrLevel_ActionMarker_New	ON	med	name from the Intel Mac build (neighbours:1.00)
+00506f20	ONrLevel_ActionMarker_FindNearest	ON	high	read: the marker nearest a point (distance squared) (name made up)
+00506fc0	ONrLevel_FindObjectGunk	ON	high	read: the ONOA entry of an object id (name made up)
 00507000	ONrLevel_GetNextLevel	ON	med	name from the Intel Mac build (neighbours:1.00)
+00507080	ONrLevel_ObjectGunk_MeanShade	ON	high	read: the mean of the gunk's corner shades brighter than 0x3f (name made up)
+005071e0	ONrLevel_ObjectGunk_SetShade	ON	high	read: every corner of the gunk to one shade (name made up)
 00507240	ONrMechanics_GetNextID	ON	med	name from the Intel Mac build (neighbours:1.00)
 00507450	ONrMechanics_Register	ON	med	name from the Intel Mac build (neighbours:1.00)
+00507880	OBJrObjects_UpdateAll	OBJ	low	the objects' update in the heartbeat, after the characters (name made up)
 00507a20	ONrMotoko_Initialize	ON	med	name from the Intel Mac build (strings:6)
 00507d90	ONiMotoko_DrawEngine_List	ON	med	name from the Intel Mac build (neighbours:1.00)
 00507e70	ONiMotoko_Engine_Set	ON	med	name from the Intel Mac build (strings:1)
@@ -1014,9 +1157,12 @@
 0050ac40	ONiParticle3_WriteUsedParticles	ON	med	name from the Intel Mac build (strings:1)
 0050adf0	ONiParticle3_WriteUsedParticles_EnumCallback	ON	med	name from the Intel Mac build (strings:5)
 0050af70	PHrBuildGraph	PH	med	name from the Intel Mac build (strings:2)
+0050bdb0	PHrFindPath	PH	low	the rooms' A* over the graph's nodes and links (the distance matrix, the doors, flag 1 avoided)
+0050c390	PHiPropagateCost	PH	low	a reopened node's saving passed on to the nodes reached through it
 0050c4c0	PHrAddCharacterToGrid	PH	med	name from the Intel Mac build (strings:1)
 0050c780	PHrAddObjectToGrid	PH	med	name from the Intel Mac build (strings:1)
 0050c870	PHrAddDoorToGrid	PH	med	name from the Intel Mac build (strings:1)
+0050c9c0	PHrNodeFromBNV	PH	low	the BNV's graph node (BNV +0x18)
 0050c9e0	PHrRenderGrid	PH	med	name from the Intel Mac build (neighbours:1.00)
 0050d9f0	PHrIgnoreObstruction	PH	med	name from the Intel Mac build (neighbours:1.00)
 0050dc60	PHrLocalPathWeight	PH	med	name from the Intel Mac build (neighbours:1.00)
@@ -1028,6 +1174,8 @@
 0050f060	ONrWeKilledGriffen	ON	med	name from the Intel Mac build (strings:2)
 0050f0d0	ONrPersist_GetGraphicsQuality	ON	med	name from the Intel Mac build (neighbours:0.80)
 0050f120	ONrPersist_GetOverallVolume	ON	med	name from the Intel Mac build (neighbours:1.00)
+0050f240	ONrPersist_GetDifficulty	ON	med	name from the Intel Mac build (by its callers): 0x5ed388 clamped to 0..2
+0050f260	ONrPersist_SetDifficulty	ON	med	name from the Intel Mac build (by its callers): clamped to 0..2, then saved
 0050f320	ONrPersist_GetContinue	ON	med	name from the Intel Mac build (neighbours:1.00)
 0050f360	ONrPersist_SetContinue	ON	med	name from the Intel Mac build (strings:1)
 0050f4a0	ONrPersist_SetPlace	ON	med	name from the Intel Mac build (neighbours:1.00)
@@ -1058,19 +1206,37 @@
 00516a60	ONrSpeech_Update	ON	med	name from the Intel Mac build (strings:1)
 00517790	ONrTextureMaterials_LevelLoad	ON	med	name from the Intel Mac build (neighbours:1.00)
 005177e0	ONrTextureMaterials_PreProcess	ON	med	name from the Intel Mac build (neighbours:1.00)
+00518180	WPrFillAmmo	WP	low	ammo to the class's shots; the background events
+005181e0	WPrReloadDone	WP	low	the reload overlay's action: full ammo, the reload wait
 005182c0	WPiNewParticles	WP	med	name from the Intel Mac build (strings:1)
+00518650	WPrGetPickupPosition	WP	med	name from the Intel Mac build (re/mac-matches.tsv)
 005189c0	WPiGenerateFallImpact	WP	med	name from the Intel Mac build (neighbours:1.00)
+00518c00	WPiInit	WP	med	name from the Intel Mac build (re/mac-matches.tsv); a new weapon of a class at a place (weapon_spawn's)
 00518e10	WPiWeapon_CreatePhysics	WP	med	name from the Intel Mac build (neighbours:1.00)
+00518f90	WPrDelete	WP	low	the shooters stopped, the particles and physics gone
+005192b0	WPiUpdate	WP	med	name from the Intel Mac build (re/mac-matches.tsv)
 00519680	WPiCreateParticles	WP	med	name from the Intel Mac build (neighbours:1.00)
 00519710	WPrDisplay	WP	med	name from the Intel Mac build (neighbours:1.00)
+00519a90	WPrSetAmmo	WP	med	name from the Intel Mac build (re/mac-matches.tsv)
+00519c50	WPiPulseShooter	WP	med	name from the Intel Mac build (re/mac-matches.tsv); a shot: ammo, delays, the recoil overlay
 00519f70	WPiDoEvent	WP	med	name from the Intel Mac build (strings:1)
 0051a1b0	WPrDepressTrigger	WP	med	name from the Intel Mac build (neighbours:1.00)
+0051a220	WPiFireShooter	WP	med	name from the Intel Mac build (re/mac-matches.tsv)
+0051a380	WPrMustWaitToFire	WP	med	name from the Intel Mac build (re/mac-matches.tsv)
 0051a3a0	WPrIsFiring	WP	med	name from the Intel Mac build (neighbours:1.00)
+0051a3b0	ONiCharacter_StopFiring	ON	med	name from the Intel Mac build (re/mac-matches.tsv)
+0051a4d0	WPrSetOwner	WP	low	the owner takes the weapon: no physics, owned
+0051a550	WPrRelease	WP	low	the weapon let go into the world (physics, thrown)
 0051a8a0	WPrGetMarker	WP	med	name from the Intel Mac build (neighbours:1.00)
+0051a990	WPrHasAmmo	WP	med	name from the Intel Mac build (re/mac-matches.tsv)
 0051aa00	WPrInitialize	WP	med	name from the Intel Mac build (strings:6)
+0051b180	WPrFindPickup	WP	low	the unowned weapon whose handle is within heights and a squared distance
 0051b290	WPrLocateNearbyWeapons	WP	med	name from the Intel Mac build (neighbours:1.00)
+0051b590	ONrCharacter_DropWeapon	ON	med	name from the Intel Mac build (re/mac-matches.tsv)
 0051b690	WPrNotThroughWall	WP	med	name from the Intel Mac build (neighbours:1.00)
 0051bad0	WPrInventory_Update	WP	med	name from the Intel Mac build (neighbours:1.00)
+0051bc70	WPrSlot_FindLastStowed	WP	med	name from the Intel Mac build (re/mac-matches.tsv)
+0051bd00	WPrSlot_Swap	WP	med	name from the Intel Mac build (re/mac-matches.tsv)
 0051c560	WPrTryReload	WP	med	name from the Intel Mac build (strings:1)
 0051cc10	WPrPowerup_SetType	WP	med	name from the Intel Mac build (strings:1)
 0051ce00	WPrOwner_MakeMeleeDamageFromCharacter	WP	med	name from the Intel Mac build (neighbours:1.00)

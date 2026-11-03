@@ -3,15 +3,47 @@
    loads the shared data with TMrLevel_Load), then a test screen that runs its own loop the way the original's loops
    do: draw, plat_wait_frame, until Esc. The bars are the level files' sizes, read through the file layer. */
 #include "app.h"
+#include "akev.h"
+#include "body.h"
+#include "camera.h"
+#include "cinematic.h"
+#include "character.h"
+#include "chars.h"
+#include "knowledge.h"
+#include "char_draw.h"
+#include "action.h"
+#include "console.h"
+#include "door.h"
+#include "chr_anim.h"
+#include "weapon.h"
+#include "env.h"
+#include "env_draw.h"
 #include "exe.h"
+#include "geom_draw.h"
+#include "gl_dev.h"
+#include "im.h"
+#include "objc.h"
+#include "particle.h"
+#include "object.h"
 #include "platform.h"
 #include "tm.h"
+#include "trac.h"
+#include "trigger.h"
+#include "ui.h"
+#include "ui_draw.h"
+#include "sl.h"
+#include "sound.h"
 #include "vfs.h"
 #include <GLES3/gl3.h>
+#include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
-enum { DIK_ESCAPE = 0x01 };
+enum {
+    DIK_ESCAPE = 0x01, DIK_W = 0x11, DIK_S = 0x1f, DIK_A = 0x1e, DIK_D = 0x20, DIK_Q = 0x10, DIK_E = 0x12,
+    DIK_F = 0x21, DIK_C = 0x2e, DIK_R = 0x13, DIK_CAPITAL = 0x3a, DIK_LSHIFT = 0x2a, DIK_RSHIFT = 0x36, DIK_LCONTROL = 0x1d, DIK_RCONTROL = 0x9d, DIK_SPACE = 0x39, DIK_UP = 0xc8, DIK_DOWN = 0xd0, DIK_LEFT = 0xcb, DIK_RIGHT = 0xcd,
+};
 
 /* The levels the CD installs, in the order of the level numbers. */
 static const int LEVELS[] = {0, 1, 2, 3, 4, 6, 8, 9, 10, 11, 12, 13, 14, 18, 19};
@@ -51,6 +83,572 @@ static void test_screen(void)
     }
 }
 
+/* ---- the level viewer (--param viewer=level&level=N[&cam=x,y,z,yaw,pitch]): the environment, flown
+   through with WASD, Q/E, the arrows or the mouse (held left button). Not part of the original: the check of
+   the renderer (docs/re/port-plan.md, step 4). ---- */
+
+static void perspective(float m[16], float fovy, float aspect, float zn, float zf)
+{
+    float f = 1.0f / tanf(fovy / 2);
+    memset(m, 0, 16 * sizeof *m);
+    m[0] = f / aspect;
+    m[5] = f;
+    m[10] = (zf + zn) / (zn - zf);
+    m[11] = -1;
+    m[14] = 2 * zf * zn / (zn - zf);
+}
+
+/* The view from eye looking along yaw (about +y, 0 looking down -z) and pitch (up positive). */
+static void view_matrix(float m[16], const float eye[3], float yaw, float pitch)
+{
+    float f[3] = { sinf(yaw) * cosf(pitch), sinf(pitch), -cosf(yaw) * cosf(pitch) };
+    float r[3] = { cosf(yaw), 0, sinf(yaw) };
+    float u[3] = { r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0] };
+    float t[3] = { -(r[0] * eye[0] + r[1] * eye[1] + r[2] * eye[2]), -(u[0] * eye[0] + u[1] * eye[1] + u[2] * eye[2]),
+                   f[0] * eye[0] + f[1] * eye[1] + f[2] * eye[2] };
+    float v[16] = { r[0], u[0], -f[0], 0, r[1], u[1], -f[1], 0, r[2], u[2], -f[2], 0, t[0], t[1], t[2], 1 };
+    memcpy(m, v, sizeof v);
+}
+
+static const void *level_environment(int level)
+{
+    TmFile *f = tm_file_at(tm_file_slots() - 1);
+    for (uint32_t i = 0; f && i < tm_file_instance_count(f); i++) {
+        const TmInstance *in = tm_file_instance(f, i);
+        if (in->tmpl->tag == AKEV_TAG && in->data) return in->data;
+    }
+    (void)level;
+    return NULL;
+}
+
+/* The level's characters (CHAR objects), each with its class and an idle animation. */
+typedef struct {
+    const void *oncc, *idle;
+    float pos[3], facing;
+    bool player;
+    char name[32];
+    uint32_t team;
+} ViewChar;
+enum { MAX_VIEW_CHARS = 256 };
+static ViewChar view_chars[MAX_VIEW_CHARS];
+static int n_view_chars;
+
+static bool add_char(const ObjcObject *o, void *user)
+{
+    (void)user;
+    if (o->tag != TM_TAG("CHAR") || n_view_chars == MAX_VIEW_CHARS) return true;
+    const void *oncc = tm_instance_get(TM_TAG("ONCC"), objc_char_class(o));
+    if (!oncc) return true;
+    ViewChar *c = &view_chars[n_view_chars++];
+    c->oncc = oncc;
+    c->idle = char_find_animation(oncc, 6);
+    memcpy(c->pos, o->pos, sizeof c->pos);
+    c->facing = o->rot[1] * 0.017453293f;
+    c->player = objc_char_flags(o) & OBJC_CHAR_PLAYER;
+    snprintf(c->name, sizeof c->name, "%s", objc_char_name(o));
+    c->team = objc_char_team(o);
+    return true;
+}
+
+/* The level's objects, each geometry of its array under its matrix (OBiDraw 0x438fb0, without its
+   visibility test yet). */
+static void draw_objects(void)
+{
+    for (int i = 0; i < object_count(); i++) {
+        if (!object_shown(i)) continue;
+        float m[12];
+        object_matrix(i, m);
+        for (uint32_t k = 0; k < object_geometry_count(i); k++) geom_draw(object_geometry(i, k), m, NULL);
+    }
+    /* the consoles' screens (0x4c0c80) */
+    for (int i = 0; i < console_count(); i++) {
+        float m[12];
+        const void *txmp = NULL, *g = console_screen(i, &txmp, m);
+        if (g) geom_draw(g, m, txmp);
+    }
+    /* the weapons (WPrDisplay 0x519710) */
+    for (int i = 0; i < weapon_slots(); i++) {
+        const Weapon *w = weapon_get(i);
+        if (w) geom_draw(weapon_geometry(w), w->m, NULL);
+    }
+    /* the doors' panels, while a door is open or moving */
+    for (int i = 0; i < door_count(); i++)
+        for (int k = 0; k < 2; k++) {
+            float m[12];
+            const uint8_t *ga = door_panel(i, k, m);
+            uint32_t n = ga ? (uint32_t)ga[0x14] | (uint32_t)ga[0x15] << 8 | (uint32_t)ga[0x16] << 16 | (uint32_t)ga[0x17] << 24 : 0;
+            for (uint32_t g = 0; g < n; g++) geom_draw(tm_link(ga + 0x18 + 4 * g), m, NULL);
+        }
+}
+
+static int level_viewer(int level)
+{
+    char err[256], m[300];
+    if (!tm_level_load(level, err, sizeof err)) {
+        snprintf(m, sizeof m, "OpenOni: level %d: %s", level, err);
+        plat_log(m);
+        return 1;
+    }
+    const void *env = level_environment(level);
+    if (!env || !gl_dev_init() || !env_draw_load(env)) {
+        plat_log("OpenOni: the level's environment doesn't load");
+        return 1;
+    }
+    object_load();
+    /* the viewer shows every object a script could create */
+    snprintf(m, sizeof m, "OpenOni: level %d: %u quads, %d objects", level, (unsigned)akev_quad_count(env), object_create(0, UINT32_MAX));
+    plat_log(m);
+    float box[6], eye[3], yaw = 0, pitch = 0;
+    akev_bounds(env, box);
+    float span = fmaxf(box[3] - box[0], box[5] - box[2]);
+    eye[0] = (box[0] + box[3]) / 2 + span * 0.6f;
+    eye[1] = box[4] + span * 0.3f;
+    eye[2] = (box[2] + box[5]) / 2 + span * 0.6f;
+    yaw = -0.785398f;
+    pitch = -0.45f;
+    n_view_chars = 0;
+    objc_each("Character", add_char, NULL);
+    snprintf(m, sizeof m, "OpenOni: %d characters", n_view_chars);
+    plat_log(m);
+    for (int i = 0; i < n_view_chars; i++)
+        if (view_chars[i].player) {   /* start behind the player, looking the way the player faces */
+            const ViewChar *c = &view_chars[i];
+            yaw = -c->facing;
+            pitch = -0.25f;
+            eye[0] = c->pos[0] - sinf(yaw) * 45;
+            eye[1] = c->pos[1] + 25;
+            eye[2] = c->pos[2] + cosf(yaw) * 45;
+        }
+    char cam[128];
+    if (plat_param("cam", cam, sizeof cam)) sscanf(cam, "%f,%f,%f,%f,%f", &eye[0], &eye[1], &eye[2], &yaw, &pitch);
+    for (;;) {
+        uint8_t keys[KEY_COUNT] = { 0 }, presses[64];
+        int n = plat_key_presses(presses, (int)sizeof presses);
+        for (int i = 0; i < n; i++)
+            if (presses[i] == DIK_ESCAPE) return 0;
+        plat_keys(keys);
+        PlatMouse mouse;
+        if (plat_mouse(&mouse) && (mouse.buttons & MOUSE_LEFT)) yaw += mouse.dx * 0.005f, pitch -= mouse.dy * 0.005f;
+        float turn = 1.5f / 60, speed = (keys[DIK_LSHIFT] ? 1200.0f : 300.0f) / 60;
+        yaw += (keys[DIK_RIGHT] - keys[DIK_LEFT]) * turn;
+        pitch += (keys[DIK_UP] - keys[DIK_DOWN]) * turn;
+        pitch = fmaxf(-1.5f, fminf(1.5f, pitch));
+        float fw = (float)(keys[DIK_W] - keys[DIK_S]), st = (float)(keys[DIK_D] - keys[DIK_A]), up = (float)(keys[DIK_E] - keys[DIK_Q]);
+        eye[0] += (sinf(yaw) * cosf(pitch) * fw + cosf(yaw) * st) * speed;
+        eye[1] += (sinf(pitch) * fw + up) * speed;
+        eye[2] += (-cosf(yaw) * cosf(pitch) * fw + sinf(yaw) * st) * speed;
+        if (plat_frame_shown()) {
+            int w, h;
+            plat_display_size(&w, &h);
+            float proj[16], view[16];
+            perspective(proj, 0.785398f, h ? (float)w / (float)h : 1.0f, 2.0f, 20000.0f);
+            view_matrix(view, eye, yaw, pitch);
+            gl_dev_begin(w, h, 0.0f, 0.0f, 0.0f);
+            gl_dev_matrices(proj, view);
+            env_draw();
+            draw_objects();
+            for (int i = 0; i < n_view_chars; i++)
+                char_draw(view_chars[i].oncc, view_chars[i].pos, view_chars[i].facing, view_chars[i].idle, plat_frames());
+        }
+        plat_wait_frame();
+    }
+}
+
+/* iAnimationCollection_DiskToMemory 0x428250 runs for each collection as its file loads. */
+static void prepare_collections(TmFile *f)
+{
+    for (uint32_t i = 0; f && i < tm_file_instance_count(f); i++) {
+        const TmInstance *in = tm_file_instance(f, i);
+        if (in->tmpl->tag == TRAC_TAG && in->data) trac_prepare(in->data);
+    }
+}
+
+/* ---- the level's scripts ---- */
+
+static void sl_say(const char *msg)
+{
+    char m[300];
+    snprintf(m, sizeof m, "[%u] %s", (unsigned)plat_frames(), msg);
+    plat_log(m);
+}
+
+/* dprint: the scripts' debug print (to the console in the original's developer build). */
+static bool cmd_dprint(SlThread *t, int argc, const SlValue *argv, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    char m[256] = "BSL: ";
+    for (int i = 0; i < argc; i++) {
+        size_t n = strlen(m);
+        if (argv[i].type == SL_STRING) snprintf(m + n, sizeof m - n, "%s ", argv[i].s);
+        else if (argv[i].type == SL_FLOAT) snprintf(m + n, sizeof m - n, "%g ", argv[i].f);
+        else snprintf(m + n, sizeof m - n, "%d ", argv[i].i);
+    }
+    plat_log(m);
+    return true;
+}
+
+static int32_t save_point;          /* the save point the level is started from (0: the level's start) */
+static float fog_rgb[3], fog_start = 0.99f, fog_end = 1.0f, far_clip = 10000.0f;
+
+static bool cmd_farclip(SlThread *t, int argc, const SlValue *argv, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (argc >= 1) far_clip = argv[0].type == SL_FLOAT ? argv[0].f : (float)argv[0].i;
+    return true;
+}
+
+/* ONrLevel_Load 0x5059d0 runs the level's scripts: the folder named by the level's ONLV, after the global
+   ones, starting at main. */
+static void start_scripts(void)
+{
+    sl_reset();
+    sl_set_log(sl_say);
+    char tr[8];
+    sl_set_trace(plat_param("sltrace", tr, sizeof tr));
+    sl_register("dprint", cmd_dprint, NULL);
+    sl_register("gs_farclipplane_set", cmd_farclip, NULL);
+    trigger_register_commands();
+    object_register_commands();
+    door_register_commands();
+    weapons_register_commands();
+    console_register_commands();
+    env_register_commands();
+    ui_register_commands();
+    camera_register_commands();
+    sound_register_commands();
+    cinematic_register_commands();
+    chars_register_commands();
+    sl_register_int("save_point", &save_point);
+    sl_register_float("gl_fog_red", &fog_rgb[0]);
+    sl_register_float("gl_fog_green", &fog_rgb[1]);
+    sl_register_float("gl_fog_blue", &fog_rgb[2]);
+    sl_register_float("gl_fog_start", &fog_start);
+    sl_register_float("gl_fog_end", &fog_end);
+    TmFile *f = tm_file_at(tm_file_slots() - 1);
+    const char *name = NULL;
+    for (uint32_t i = 0; f && i < tm_file_instance_count(f); i++) {
+        const TmInstance *in = tm_file_instance(f, i);
+        if (in->tmpl->tag == TM_TAG("ONLV") && in->data) name = (const char *)in->data;   /* the name, 64 bytes */
+    }
+    char err[300], dir[128];
+    if (!sl_load_folder("GameDataFolder/IGMD/global", err, sizeof err)) plat_log(err);
+    snprintf(dir, sizeof dir, "GameDataFolder/IGMD/%.63s", name ? name : "");
+    if (name && !sl_load_folder(dir, err, sizeof err)) plat_log(err);
+    if (!sl_call("main", 0, NULL)) plat_log("OpenOni: the level has no main script");
+    /* a debug aid: --param call=<function> runs one of the level's functions at the start */
+    char fn[64];
+    if (plat_param("call", fn, sizeof fn) && !sl_call(fn, 0, NULL)) plat_log("OpenOni: no such function");
+}
+
+/* ---- a debug aid: --param route=<steps> drives the player, for unattended runs through a level.
+   Steps, separated by ';': "@N" waits for frame N; "wN" waits N frames; "x,z" runs to the point (within
+   3, or "x,z,r,R" within R), "x,z,s[,R]" sprints there (forward tapped twice), "x,z,k[,R]" walks; "x,z,J[,R]" runs 20
+   frames, then jumps (held 30) on the way ("x,z,j[,R]" jumps at once); "a" taps the action key; "hD" turns to
+   D degrees (the facing: 0 is +z); "p"/"k" a punch/kick tap; "j" a jump tap; "q"/"g"/"e" a swap (pick up),
+   fire or drop tap; "c" holds crouch for the next step; "H<keys>,N" holds keys for N frames (f forward,
+   b back, l/r step left/right, c crouch, j jump, p punch, k kick, w walk, a action, q swap, g fire).
+   "R" as a mode runs from up to 1.3 rad off. ---- */
+
+typedef struct {
+    char buf[4096];
+    char *step;             /* the current step, NULL when done */
+    uint32_t until;         /* for waits: the frame */
+    int phase;              /* within a step */
+    bool crouch;
+} Route;
+static Route route;
+
+static void route_next(void)
+{
+    char *s = route.step;
+    if (!s) return;
+    char *e = strchr(s, ';');
+    route.step = e ? e + 1 : NULL;
+    route.phase = 0;
+    route.until = 0;
+}
+
+static float wrap_pi(float a)
+{
+    while (a > 3.14159265f) a -= 6.2831853f;
+    while (a < -3.14159265f) a += 6.2831853f;
+    return a;
+}
+
+/* The input the route asks for this frame (in is all zero on entry). */
+static void route_input(const Character *c, CharacterInput *in)
+{
+    for (int guard = 0; route.step && guard < 8; guard++) {
+        char *s = route.step;
+        uint32_t now = plat_frames();
+        if (*s == '@') {
+            if (now < (uint32_t)atoi(s + 1)) return;
+            route_next();
+            continue;
+        }
+        if (*s == 'w') {
+            if (!route.phase) route.until = now + (uint32_t)atoi(s + 1), route.phase = 1;
+            if (now < route.until) return;
+            route_next();
+            continue;
+        }
+        if (*s == 'a' || *s == 'p' || *s == 'j' || *s == 'q' || *s == 'g' || *s == 'e' || (*s == 'k' && (s[1] == ';' || !s[1]))) {
+            /* a tap: down one frame, up the next */
+            if (route.phase == 0) {
+                if (*s == 'a') in->action = true;
+                else if (*s == 'q') in->swap = true;
+                else if (*s == 'g') in->fire = true;
+                else if (*s == 'e') in->drop = true;
+                else if (*s == 'p') in->punch = true;
+                else if (*s == 'j') in->jump = true;
+                else in->kick = true;
+                route.phase = 1;
+                return;
+            }
+            route_next();
+            return;
+        }
+        if (*s == 'H') {
+            const char *comma = strchr(s, ',');
+            if (!route.phase) route.until = now + (uint32_t)(comma ? atoi(comma + 1) : 1), route.phase = 1;
+            if (now >= route.until) { route_next(); continue; }
+            for (const char *k = s + 1; *k && *k != ',' && *k != ';'; k++) {
+                switch (*k) {
+                case 'f': in->forward = 1; break;
+                case 'b': in->forward = -1; break;
+                case 'l': in->strafe = -1; break;
+                case 'r': in->strafe = 1; break;
+                case 'c': in->crouch = true; break;
+                case 'j': in->jump = true; break;
+                case 'p': in->punch = true; break;
+                case 'k': in->kick = true; break;
+                case 'w': in->walk = true; break;
+                case 'a': in->action = true; break;
+                case 'q': in->swap = true; break;
+                case 'g': in->fire = true; break;
+                }
+            }
+            return;
+        }
+        if (*s == 'c') {
+            route.crouch = true;
+            route_next();
+            continue;
+        }
+        if (*s == 'h') {
+            float want = (float)atof(s + 1) * 0.017453293f, err = wrap_pi(want - c->desired_facing);
+            if (fabsf(err) < 0.02f) { route_next(); continue; }
+            in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
+            return;
+        }
+        float x, z, radius = 3.0f;
+        char mode = 0;
+        if (sscanf(s, "%f,%f,%c,%f", &x, &z, &mode, &radius) < 2) { route_next(); continue; }
+        float dx = x - c->pos[0], dz = z - c->pos[2];
+        if (dx * dx + dz * dz < radius * radius) { route.crouch = false; route_next(); continue; }
+        /* steered by the desired facing (what the turn input moves; the facing follows it) */
+        float err = wrap_pi(atan2f(dx, dz) - c->desired_facing);
+        in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
+        in->crouch = route.crouch;
+        /* forward only while the body itself faces the point (it moves the way it faces); "R" runs as
+           "r" but starts off up to 1.3 away: standing in fight mode the body turns on the spot only past
+           70 degrees (HandleStandingTurn), and turns as it goes */
+        float off = fabsf(wrap_pi(atan2f(dx, dz) - c->facing));
+        if (off > (mode == 'R' ? 1.3f : 0.6f)) return;
+        if (mode == 's' && route.phase < 3) {
+            /* the double tap: down, up, down (within 15 ticks), then held */
+            in->forward = route.phase != 1;
+            route.phase++;
+            return;
+        }
+        in->forward = 1;
+        in->walk = mode == 'k';
+        if (mode == 'J' || mode == 'j') {
+            /* a running jump: 20 frames of run ("j": none), then jump held for 30 */
+            route.phase++;
+            int run = mode == 'J' ? 20 : 0;
+            in->jump = route.phase > run && route.phase <= run + 30;
+        }
+        return;
+    }
+}
+
+/* What the camera follows (the character fields CArFollow_Get_GoalPosition 0x4d7110 reads; aim angles
+   come with the character engine's aiming). */
+static void fill_target(CameraTarget *t, const Character *c)
+{
+    t->active = true;
+    memcpy(t->pos, c->pos, sizeof t->pos);
+    t->bottom = c->pos[1];
+    t->facing = c->facing;
+    t->aim[0] = sinf(c->facing);
+    t->aim[1] = 0;
+    t->aim[2] = cosf(c->facing);
+}
+
+/* ---- play (--param play=1 [--param level=N] [--param at=x,y,z,deg]): Konoko at the level's start, run with WASD (Caps Lock
+   walks, Space jumps, Shift crouches, F punches, C kicks, Ctrl acts), turned with the mouse or Left/Right, the camera behind her. The first playable: the
+   character engine is in progress (character.h). ---- */
+/* P3rUpdate with the characters the particles may hit (the physics contexts that collide). */
+static void particles_update(uint32_t tick, bool gameplay)
+{
+    Character *list[CHARS_MAX];
+    int n = 0;
+    for (int i = 0; i < chars_slots(); i++) {
+        Chr *c = chars_get(i);
+        if (c && chars_in_use(c)) list[n++] = &c->c;
+    }
+    p3_update(tick, gameplay, list, n);
+}
+
+static int play(int level)
+{
+    char err[256], m[300];
+    trac_set_level((uint16_t)level);
+    if (!tm_level_load(level, err, sizeof err)) {
+        snprintf(m, sizeof m, "OpenOni: level %d: %s", level, err);
+        plat_log(m);
+        return 1;
+    }
+    prepare_collections(tm_file_at(tm_file_slots() - 1));
+    sound_level_load(level);
+    const void *env = level_environment(level);
+    if (!env || !gl_dev_init() || !env_draw_load(env)) {
+        plat_log("OpenOni: the level's environment doesn't load");
+        return 1;
+    }
+    chars_load();
+    Chr *player = chars_player();
+    if (!player) {
+        plat_log("OpenOni: no player character");
+        return 1;
+    }
+    /* --param at=x,y,z[,degrees]: another start, for testing */
+    char at[96];
+    if (plat_param("at", at, sizeof at)) {
+        float deg = player->c.facing / 0.017453293f;
+        if (sscanf(at, "%f,%f,%f,%f", &player->c.pos[0], &player->c.pos[1], &player->c.pos[2], &deg) >= 3)
+            player->c.facing = deg * 0.017453293f;
+    }
+    trigger_load();
+    object_load();
+    door_load((void *)env);
+    p3_load();      /* the PAR3 classes of the loaded files (the binary data's loader), set up at the start */
+    p3_set_environment(env);
+    weapons_reset();
+    console_load();
+    action_install();
+    env_set((void *)env);
+    /* the camera behind the player (CArInitialize's state, reset to follow) */
+    CameraTarget ct = { .active = true };
+    camera_init();
+    camera_set_environment((void *)env);
+    fill_target(&ct, &player->c);
+    camera_set_target(&ct);
+    camera_reset();
+    uint32_t ticks = 0;     /* the game time (ONrGameState's +0x144), ticks since the level began */
+    ui_reset();
+    cinematic_reset();
+    start_scripts();
+    memset(&route, 0, sizeof route);
+    if (plat_param("route", route.buf, sizeof route.buf)) route.step = route.buf;
+    plat_log("OpenOni: playing");
+    for (;;) {
+        uint8_t keys[KEY_COUNT] = { 0 }, presses[64];
+        int n = plat_key_presses(presses, (int)sizeof presses);
+        for (int i = 0; i < n; i++)
+            if (presses[i] == DIK_ESCAPE) return 0;
+        plat_keys(keys);
+        PlatMouse mouse;
+        CharacterInput in = { keys[DIK_W] - keys[DIK_S], keys[DIK_D] - keys[DIK_A], keys[DIK_CAPITAL] != 0,
+                              (keys[DIK_LEFT] - keys[DIK_RIGHT]) * 0.05f, false, false,
+                              keys[DIK_SPACE] != 0, keys[DIK_LSHIFT] || keys[DIK_RSHIFT],
+                              keys[DIK_LCONTROL] || keys[DIK_RCONTROL] };
+        for (int i = 0; i < n; i++) {
+            /* the exe's default bindings (its "bind f to punch" lines): F punch, C kick; mouse 1 and 2 fire */
+            if (presses[i] == DIK_F) in.punch = true;
+            if (presses[i] == DIK_C) in.kick = true;
+            if (presses[i] == DIK_Q) in.swap = true;
+            if (presses[i] == DIK_E) in.drop = true;
+            if (presses[i] == DIK_R) in.reload = true;
+        }
+        if (plat_mouse(&mouse) && mouse.captured) {
+            in.turn -= mouse.dx * 0.004f;
+            in.punch |= (mouse.pressed & MOUSE_LEFT) != 0;
+            in.fire = (mouse.buttons & MOUSE_LEFT) != 0;     /* "bind mousebutton1 to fire1", held */
+            in.kick |= (mouse.pressed & MOUSE_RIGHT) != 0;
+        }
+        if (plat_mouse(&mouse) && (mouse.pressed & MOUSE_LEFT) && !mouse.captured) plat_mouse_capture(true);
+        /* "input 0" from a script (cutscenes): the player's keys do nothing (0x4bcc50's flag) */
+        if (route.step && player) route_input(&player->c, &in);
+        if (!ui_input_enabled()) memset(&in, 0, sizeof in);
+        sl_update();
+        /* ONrGameState_UpdateCharacters 0x4dccf0: the volumes first, then the characters */
+        trigger_update(chars_trigger_actors(), chars_slots());
+        object_update(++ticks);
+        door_physics(ticks);
+        ui_update();
+        cinematic_update();
+        chars_update(&in, env);
+        weapons_update(env);    /* WPrUpdate, after the characters */
+        door_update();      /* the objects' update 0x507880, after the characters */
+        particles_update(ticks + 1, true);     /* P3rUpdate(time + 1) after the physics */
+        /* a script may delete the player: the camera keeps the last place */
+        if ((player = chars_player())) fill_target(&ct, &player->c);
+        camera_set_target(&ct);
+        camera_update(1, 0, NULL, ticks);   /* the tick's part (iComputeDeltaTicks 0x4fafb0) */
+        sound_update();
+        char dbg[32];
+        if (player && plat_param("trace", dbg, sizeof dbg) && plat_frames() % (uint32_t)(atoi(dbg) > 1 ? atoi(dbg) : 30) == 0) {
+            const Character *konoko = &player->c;
+            const TmInstance *ti = konoko->anim ? tm_handle_instance(tm_handle_of(konoko->anim)) : NULL;
+            snprintf(m, sizeof m, "OpenOni: frame %u: %.1f %.1f %.1f facing %.2f (%.2f) type %u state %u varient %04x %s%s%u ammo %d particles %d glass %d",
+                     (unsigned)plat_frames(), konoko->pos[0], konoko->pos[1], konoko->pos[2], konoko->facing, konoko->desired_facing, konoko->type,
+                     konoko->state, konoko->varient, ti && ti->name ? ti->name : "", " overlay ",
+                     konoko->overlay[0].anim ? tr_type(konoko->overlay[0].anim) : 0u, konoko->weapon ? konoko->weapon->ammo : -1, p3_live_count(), env_glass_broken());
+            plat_log(m);
+            for (int i = 0; i < door_count(); i++) {
+                float d[3];
+                door_position(i, d);
+                if (fabsf(d[0] - konoko->pos[0]) + fabsf(d[2] - konoko->pos[2]) > 40.0f) continue;
+                snprintf(m, sizeof m, "OpenOni:   door %u: %.1f %.1f %.1f flags %04x state %d frame %d", door_id(i), d[0], d[1], d[2],
+                         door_flags(i), door_state(i), door_frame(i));
+                plat_log(m);
+            }
+            for (int i = 0; i < chars_slots(); i++) {
+                const Chr *c = chars_get(i);
+                if (!c || c->player) continue;
+                const KnowEntry *e = c->ai.know;
+                snprintf(m, sizeof m, "OpenOni:   %s: %.1f %.1f %.1f facing %.2f state %d alert %d hp %u know %d/%d", c->name,
+                         c->c.pos[0], c->c.pos[1], c->c.pos[2], c->c.facing, c->ai.state, c->ai.alert, c->c.hit_points,
+                         e ? e->strength : 0, e ? e->type : -1);
+                plat_log(m);
+            }
+        }
+        if (plat_frame_shown()) {
+            int w, h;
+            plat_display_size(&w, &h);
+            float proj[16], view[16];
+            camera_update(0, 0, NULL, ticks);   /* the frame's part */
+            particles_update(ticks, false);    /* the decorative particles (iComputeDeltaTicks 0x4fafb0) */
+            perspective(proj, 0.785398f, h ? (float)w / (float)h : 1.0f, 2.0f, far_clip);
+            if (!camera_view_matrix(view)) {
+                float eye[3] = { ct.pos[0], ct.pos[1] + 20, ct.pos[2] };
+                view_matrix(view, eye, 3.14159265f - ct.facing, -0.3f);
+            }
+            gl_dev_begin(w, h, 0.0f, 0.0f, 0.0f);
+            gl_dev_matrices(proj, view);
+            env_draw();
+            draw_objects();
+            for (int i = 0; i < chars_slots(); i++)
+                if (chars_get(i)) char_draw_character(&chars_get(i)->c);   /* the blended pose */
+            if (player) ui_draw_hud(w, h, player->c.hit_points, player->c.max_hit_points, ticks);
+            ui_draw(w, h);
+        }
+        plat_wait_frame();
+    }
+}
+
 int app_main(void)
 {
     char err[256], m[300];
@@ -60,7 +658,7 @@ int app_main(void)
         return 1;
     }
     plat_log("OpenOni: Oni.exe v1.0 found");
-    if (!tm_initialize(err, sizeof err) || !tm_level_load(0, err, sizeof err)) {
+    if (!im_initialize(err, sizeof err) || !tm_initialize(err, sizeof err) || !tm_level_load(0, err, sizeof err)) {
         snprintf(m, sizeof m, "OpenOni: %s", err);
         plat_log(m);
         return 1;
@@ -70,7 +668,25 @@ int app_main(void)
     snprintf(m, sizeof m, "OpenOni: level 0 loaded: %u instances, %u links", (unsigned)tm_file_instance_count(zero),
              (unsigned)st.links);
     plat_log(m);
+    prepare_collections(zero);
+    sound_initialize();
+    sound_level_load(0);
+    char viewer[32], lv[16];
+    if (plat_param("play", viewer, sizeof viewer)) {
+        int r = play(plat_param("level", lv, sizeof lv) ? atoi(lv) : 1);
+        trac_forget();
+        sound_terminate();
+        tm_terminate();
+        return r;
+    }
+    if (plat_param("viewer", viewer, sizeof viewer) && !strcmp(viewer, "level")) {
+        int r = level_viewer(plat_param("level", lv, sizeof lv) ? atoi(lv) : 1);
+        sound_terminate();
+        tm_terminate();
+        return r;
+    }
     test_screen();
+    sound_terminate();
     tm_terminate();
     plat_log("OpenOni: quit");
     return 0;
@@ -78,4 +694,4 @@ int app_main(void)
 
 void app_exit(void) {}
 
-void app_audio(float *stereo, unsigned frames) { memset(stereo, 0, (size_t)frames * 2 * sizeof *stereo); }
+void app_audio(float *stereo, unsigned frames) { sound_mix(stereo, frames); }

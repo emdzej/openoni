@@ -1,0 +1,792 @@
+/* Weapons: see weapon.h. */
+#include "weapon.h"
+
+#include "akev_collide.h"
+#include "chars.h"
+#include "chr_anim.h"
+#include "chr_hit.h"
+#include "m3gm.h"
+#include "objc.h"
+#include "particle.h"
+#include "sl.h"
+#include "tm.h"
+#include "trac.h"
+
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }
+static uint32_t rd32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
+static float rdf(const uint8_t *p) { float f; uint32_t v = rd32(p); memcpy(&f, &v, 4); return f; }
+
+/* The class (ONWC, offsets from the instance data; docs/formats/onwc.md). */
+enum {
+    ONWC_GEOMETRY = 0x58,       /* M3GM */
+    ONWC_RECOIL = 0x80,         /* the aim's kick a shot */
+    ONWC_RECOIL_ANIM = 0xba,    /* the recoil overlay's animation type */
+    ONWC_RELOAD_WAIT = 0xbe,
+    ONWC_SHOTS = 0xc0,          /* full ammo */
+    ONWC_SHOOTERS = 0xc2,
+    ONWC_MODES = 0xc4,          /* firing modes: 0 can't fire */
+    ONWC_PAUSE = 0xc6,
+    ONWC_RELEASE_DELAY = 0xc8,
+    ONWC_FLAGS = 0xcc,
+    ONWC_SHOOTER = 0x1d0,       /* 0x50 each */
+    ONWC_PICKUP = 0x704,        /* the handle's offset (x, y, z) */
+};
+enum {
+    ONWC_RIFLE = 0x08, ONWC_SUSTAINED = 0x20, ONWC_ALT_FIRE = 0x400, ONWC_AUTO_RELEASE = 0x2000,
+    ONWC_HAS_RELEASE_DELAY = 0x4000,
+};
+/* A shooter: +0x30 the particle class's name, +0x44 the ammo a shot takes (0 none: it only follows the
+   others), +0x46 the delay between shots, +0x48 the "roughjustice" one, +0x4a the ticks a shot fires
+   at least, +0x4c its trigger (0, 1, -1 both), +0x4e its delay before it starts. */
+enum { SH_NAME = 0x30, SH_AMMO = 0x44, SH_DELAY = 0x46, SH_ACTIVE = 0x4a, SH_TRIGGER = 0x4c, SH_START = 0x4e, SH_SIZE = 0x50 };
+
+/* The particle events (P3's, the names at 0x5583a0 "update", "pulse", ...). */
+enum { EV_PULSE = 1, EV_START = 2, EV_STOP = 3, EV_BG_START = 4, EV_BG_STOP = 5, EV_DELAY_START = 14, EV_DELAY_STOP = 15 };
+
+static Weapon weapons[WEAPONS_MAX];
+static uint32_t now;            /* the game time (GS+0x144): the weapons' updates */
+static bool no_fade;            /* wp_disable_fade (0x627dcc) */
+
+static uint16_t shooters(const Weapon *w) { return rd16(w->cls + ONWC_SHOOTERS); }
+static const uint8_t *shooter(const Weapon *w, unsigned k) { return w->cls + ONWC_SHOOTER + SH_SIZE * k; }
+static uint32_t options(const Weapon *w) { return rd32(w->cls + ONWC_FLAGS); }
+
+void weapons_reset(void)
+{
+    memset(weapons, 0, sizeof weapons);
+    now = 0;
+}
+
+int weapon_slots(void) { return WEAPONS_MAX; }
+Weapon *weapon_get(int i) { return i >= 0 && i < WEAPONS_MAX && (weapons[i].flags & WEAPON_IN_USE) ? &weapons[i] : NULL; }
+const void *weapon_geometry(const Weapon *w) { return tm_link(w->cls + ONWC_GEOMETRY); }
+
+/* ---- the shooters ---- */
+
+static void pulse(Weapon *w, const uint8_t *sh);
+
+/* WPiDoEvent 0x519f70: an event to a shooter's particle. A start marks it active, a stop needs it
+   active. The particle gone (its handle no longer its), the slot is cleared; else its velocity (the
+   owner's weapon hand's motion a tick, x60) and its damage's owner (0x1000000 | the owner's id) are set,
+   the event goes to it (P3rSendEvent 0x45b2c0), and a start of a shooter that takes ammo pulses it. */
+static void do_event(Weapon *w, int event, unsigned k)
+{
+    uint16_t bit = (uint16_t)(1u << k);
+    if (event == EV_START) w->active |= bit;
+    else if (event == EV_STOP) {
+        if (!(w->active & bit)) return;
+        w->active &= (uint16_t)~bit;
+    }
+    P3Class *pc;
+    P3Particle *p = p3_from_handle(w->shooter_handle[k], &pc);
+    if (!p) {
+        w->shooter_handle[k] = 0;
+        return;
+    }
+    float *vel = p3_block(pc, p, P3_X_VELOCITY);
+    if (vel) {
+        /* C+0x1c4, the weapon part's move this tick: the port's stand-in is the character's */
+        Character *c = w->owner;
+        for (int i = 0; i < 3; i++) vel[i] = c ? (c->pos[i] - c->prev_pos[i]) * 60.0f : 0.0f;
+    }
+    uint8_t *own = p3_block(pc, p, P3_X_OWNER);
+    if (own) {
+        uint32_t o = w->owner ? (0x1000000u | w->owner->id) : 0;
+        memcpy(own, &o, 4);
+    }
+    p3_send_event(pc, p, event, (float)now * (1.0f / 60.0f));
+    if (event == EV_START && rd16(shooter(w, k) + SH_AMMO)) pulse(w, shooter(w, k));
+}
+
+static void every_shooter(Weapon *w, int event)
+{
+    for (unsigned k = 0; k < shooters(w); k++) do_event(w, event, k);
+}
+
+static bool on_trigger(const uint8_t *s, int16_t trigger)
+{
+    int16_t t = (int16_t)rd16(s + SH_TRIGGER);
+    return trigger == -1 || t == -1 || t == trigger;
+}
+
+/* WPiPulseShooter 0x519c50: a shot. The shooters of its trigger pulse; the ammo goes down (unless the
+   owner's C+0x04 flag 0x40); empty, the background events stop, else the delay events start once; the
+   delays; the owner's recoil overlay (the class's type, from state 1) and the aim's kick. */
+static void pulse(Weapon *w, const uint8_t *sh)
+{
+    Character *c = w->owner;
+    if (!c) return;
+    int16_t trigger = (int16_t)rd16(sh + SH_TRIGGER);
+    for (unsigned k = 0; k < shooters(w); k++)
+        if (on_trigger(shooter(w, k), trigger)) do_event(w, EV_PULSE, k);
+    if (!(c->flags & 0x40)) w->ammo = (uint16_t)(w->ammo - rd16(sh + SH_AMMO));
+    if (w->ammo == 0) {
+        if (w->flags & WEAPON_BACKGROUND) {
+            w->flags &= (uint16_t)~WEAPON_BACKGROUND;
+            every_shooter(w, EV_BG_STOP);
+        }
+    } else if (!(w->flags & WEAPON_DELAYED)) {
+        every_shooter(w, EV_DELAY_START);
+        w->flags |= WEAPON_DELAYED;
+    }
+    /* the "roughjustice" delay (+0x48) only with the switch at 0x620133 for the player: off */
+    w->delay = w->delay2 = rd16(sh + SH_DELAY);
+    const void *t = chr_lookup_varient(c, rd16(w->cls + ONWC_RECOIL_ANIM), 1, c->varient);
+    if (t) chr_overlay_set(c, CHR_OVERLAY_RECOIL, t, 0);
+    /* the AI's kick is less by its shooting skill (ONCC +0x154): with the AI's weapons */
+    c->aim_kick += rdf(w->cls + ONWC_RECOIL);
+    /* the shot's noise (AI2rKnowledge_Sound, class +0x128) every 30 ticks: with the AI's hearing */
+    if (!w->sound_wait) w->sound_wait = 30;
+}
+
+/* WPiFireShooter 0x51a220: the first shooter of the trigger that takes ammo; with enough ammo the
+   weapon fires (once: the shooters of the trigger wait their start delays, or start), a sustained one
+   pulses again while it fires. *empty: not enough ammo. */
+static bool fire_shooter(Weapon *w, int16_t trigger, bool keep, bool *empty)
+{
+    unsigned n = shooters(w), k = 0;
+    for (; k < n; k++)
+        if (rd16(shooter(w, k) + SH_AMMO) && (int16_t)rd16(shooter(w, k) + SH_TRIGGER) == trigger) break;
+    if (k >= n) return false;
+    const uint8_t *sh = shooter(w, k);
+    if (rd16(sh + SH_AMMO) > w->ammo) {
+        if (empty) *empty = true;
+        return false;
+    }
+    if (!(w->flags & WEAPON_FIRING)) {
+        w->flags |= WEAPON_FIRING;
+        if (!keep && rd16(sh + SH_ACTIVE) > w->fire_min) w->fire_min = rd16(sh + SH_ACTIVE);
+        /* the AI's dodge of the firing spread (AI2rKnowledge_NewDodgeFiringSpread): with the AI's weapons */
+        for (unsigned j = 0; j < n; j++) {
+            const uint8_t *s = shooter(w, j);
+            int16_t t = (int16_t)rd16(s + SH_TRIGGER);
+            if (trigger == -1 || t == -1 || t == trigger) {
+                w->shooter_delay[j] = rd16(s + SH_START);
+                if (!w->shooter_delay[j]) do_event(w, EV_START, j);
+            }
+        }
+    } else if (options(w) & ONWC_SUSTAINED)
+        pulse(w, sh);
+    if (!keep) w->flags &= (uint16_t)~WEAPON_STOP_WANTED;
+    w->pause = rd16(w->cls + ONWC_PAUSE);
+    return true;
+}
+
+/* WPrDepressTrigger 0x51a1b0: not while a delay or the reload's wait runs, nor for a class without
+   firing modes; the alternate trigger only for a class with it. */
+static bool depress_trigger(Weapon *w, bool keep, bool alt, bool *empty)
+{
+    if (empty) *empty = false;
+    if (w->delay || w->reload_wait || !rd16(w->cls + ONWC_MODES)) return false;
+    if (!alt) return fire_shooter(w, 0, keep, empty);
+    if (options(w) & ONWC_ALT_FIRE) return fire_shooter(w, 1, keep, empty);
+    return false;
+}
+
+/* ONiCharacter_StopFiring 0x51a3b0: unless forced, a shot's least time or the release delay still
+   running only asks for the stop; else the shooters stop. */
+static void stop_firing(Weapon *w, bool force)
+{
+    if (!force) {
+        if (w->fire_min) { w->flags |= WEAPON_STOP_WANTED; return; }
+        if ((options(w) & ONWC_HAS_RELEASE_DELAY) && rd16(w->cls + ONWC_RELEASE_DELAY) < w->delay) {
+            w->flags |= WEAPON_STOP_WANTED;
+            return;
+        }
+    }
+    w->flags &= (uint16_t)~WEAPON_STOP_WANTED;
+    w->fire_min = 0;
+    if (w->flags & WEAPON_FIRING) {
+        w->flags &= (uint16_t)~WEAPON_FIRING;
+        every_shooter(w, EV_STOP);
+    }
+}
+
+/* 0x518180: full of ammo; owned, the background events start. */
+static void fill_ammo(Weapon *w)
+{
+    w->ammo = rd16(w->cls + ONWC_SHOTS);
+    if (w->owner && (w->flags & WEAPON_OWNED) && !(w->flags & WEAPON_BACKGROUND)) {
+        w->flags |= WEAPON_BACKGROUND;
+        every_shooter(w, EV_BG_START);
+    }
+}
+
+/* WPiCreateParticles 0x519680 (WPiNewParticles 0x5182c0): each shooter's particle, once (flag 0x1000):
+   at the shooter's place on the weapon, its orientation the shooter's, hanging from the weapon's
+   matrix, still, unowned, its create event; then each shooter's start event (the delayed ones wait,
+   their delays set, when the background events are on). */
+static void create_particles(Weapon *w)
+{
+    if (w->flags & WEAPON_PARTICLES) return;
+    float t = (float)now * (1.0f / 60.0f);
+    for (unsigned k = 0; k < shooters(w) && k < WEAPON_SHOOTERS; k++) {
+        const uint8_t *sh = shooter(w, k);
+        char name[17];
+        memcpy(name, sh + SH_NAME, 16);
+        name[16] = 0;
+        w->shooter_handle[k] = 0;
+        P3Class *pc = p3_class(name);
+        P3Particle *p = pc ? p3_create(pc, now) : NULL;
+        if (!p) continue;
+        float *pos = p3_position(pc, p);
+        if (!pos) continue;
+        for (int i = 0; i < 3; i++) pos[i] = rdf(sh + 0x24 + 4 * i);
+        float *o = p3_block(pc, p, P3_X_ORIENTATION);
+        if (o) for (int i = 0; i < 9; i++) o[i] = rdf(sh + 4 * i);
+        float *v = p3_block(pc, p, P3_X_VELOCITY);
+        if (v) v[0] = v[1] = v[2] = 0.0f;
+        float *off = p3_block(pc, p, P3_X_OFFSET);
+        if (off) off[0] = off[1] = off[2] = 0.0f;
+        uint8_t *at = p3_block(pc, p, P3_X_ATTACH);
+        if (at) {
+            uint32_t id = p3_attach_id(w->m);
+            memcpy(at, &id, 4);
+            p3_set_flags(p, p3_flags(p) | 0x2000);
+        }   /* else "particle class %s attached to weapon has no matrix" */
+        uint8_t *b;
+        if ((b = p3_block(pc, p, P3_X_OWNER))) memset(b, 0, 4);
+        if ((b = p3_block(pc, p, P3_X_TEX_INDEX))) { uint32_t r = trac_local_random(); memcpy(b, &r, 4); }
+        if ((b = p3_block(pc, p, P3_X_TEX_TIME))) memcpy(b, &now, 4);
+        if ((b = p3_block(pc, p, P3_X_PREV_POS))) memset(b, 0, 4);
+        if ((b = p3_block(pc, p, P3_X_LENSFLARE))) memset(b, 0, 4);
+        if ((b = p3_block(pc, p, P3_X_CACHE))) memset(b, 0, 20);
+        p3_set_life(p, 0.0f);
+        p3_send_event(pc, p, P3_EV_CREATE, t);
+        w->shooter_handle[k] = p3_handle(p);
+    }
+    w->flags |= WEAPON_PARTICLES;
+    /* the background's state to every shooter: start (4) with the background events on, else stop (5);
+       the original's test for a start (2), to wait the shooter's delay, never holds */
+    int ev = (w->flags & WEAPON_BACKGROUND) ? EV_BG_START : EV_BG_STOP;
+    for (unsigned k = 0; k < shooters(w) && k < WEAPON_SHOOTERS; k++) do_event(w, ev, k);
+}
+
+/* 0x5196a0: the particles go (a weapon without an owner). */
+static void delete_particles(Weapon *w)
+{
+    if (!(w->flags & WEAPON_PARTICLES)) return;
+    for (unsigned k = 0; k < WEAPON_SHOOTERS; k++) {
+        P3Class *pc;
+        P3Particle *p = p3_from_handle(w->shooter_handle[k], &pc);
+        if (p) p3_kill(pc, p);
+        w->shooter_handle[k] = 0;
+    }
+    w->flags &= (uint16_t)~WEAPON_PARTICLES;
+}
+
+/* ---- in the world ---- */
+
+/* The port's stand-in for the weapon's physics (WPiWeapon_CreatePhysics 0x518e10: a sphere of a quarter
+   of the geometry's largest coordinate, gravity, the walls): the sphere rests on the floor below. */
+static void rest(Weapon *w, const void *env)
+{
+    uint32_t n = 0;
+    const uint8_t *p = m3gm_points(weapon_geometry(w), &n);
+    float big = -1e9f;      /* 0x52963c */
+    for (uint32_t i = 0; p && i < 3 * n; i++) {
+        float a = fabsf(rdf(p + 4 * i));
+        if (a > big) big = a;
+    }
+    float r = big * 0.25f;  /* 0x5296c4 */
+    static AkevHit hit[AKEV_HITS_MAX];
+    const float down[3] = { 0.0f, -100.0f, 0.0f };
+    if (env && akev_collide_point(env, w->m + 9, down, 0x48800, 1, hit)) w->m[10] = hit[0].point[1] + r;
+    w->resting = true;
+}
+
+static void identity(float m[12])
+{
+    static const float id[12] = { 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0 };   /* 0x529d10 */
+    memcpy(m, id, sizeof id);
+}
+
+static const void *update_env;
+
+Weapon *weapon_new(const void *onwc, const float pos[3], float facing)
+{
+    Weapon *w = NULL;
+    for (int i = 0; i < WEAPONS_MAX && !w; i++)
+        if (!(weapons[i].flags & WEAPON_IN_USE)) w = &weapons[i];
+    if (!w) {
+        /* every slot used: the oldest not flagged 4 (the original first looks for one with neither 1
+           nor 4, which a used slot can't be) */
+        uint32_t best = 0xffffffffu;
+        for (int i = 0; i < WEAPONS_MAX; i++)
+            if (!(weapons[i].flags & 4) && weapons[i].time < best) w = &weapons[i], best = weapons[i].time;
+        if (!w) return NULL;
+    }
+    memset(w, 0, sizeof *w);
+    w->cls = onwc;
+    w->flags = WEAPON_IN_USE;
+    fill_ammo(w);
+    w->time = now;
+    identity(w->m);
+    w->m[9] = pos[0];
+    w->m[10] = pos[1] + 2.0f;   /* 0x529818 */
+    w->m[11] = pos[2];
+    w->facing = facing;
+    rest(w, update_env);
+    w->flags |= 0x80;
+    return w;
+}
+
+void weapon_delete(Weapon *w)
+{
+    if (!(w->flags & WEAPON_IN_USE)) return;
+    w->flags &= (uint16_t)~WEAPON_STOP_WANTED;
+    w->fire_min = 0;
+    if (w->flags & WEAPON_FIRING) {
+        w->flags &= (uint16_t)~WEAPON_FIRING;
+        every_shooter(w, EV_STOP);
+    }
+    if (w->flags & WEAPON_DELAYED) {
+        every_shooter(w, EV_DELAY_STOP);
+        w->flags &= (uint16_t)~WEAPON_DELAYED;
+    }
+    if (w->flags & WEAPON_BACKGROUND) {
+        w->flags &= (uint16_t)~WEAPON_BACKGROUND;
+        every_shooter(w, EV_BG_STOP);
+    }
+    if (w->owner && w->owner->weapon == w) w->owner->weapon = NULL;
+    w->flags &= (uint16_t)~WEAPON_IN_USE;
+}
+
+/* 0x51a4d0: the owner takes it: no physics, no fading, owned; with ammo the background events start. */
+static void set_owner(Weapon *w, Character *c)
+{
+    w->owner = c;
+    w->reload_wait = 0;
+    w->flags &= 0xfff1;
+    w->resting = false;
+    w->fade_delay = w->fade = 0;
+    uint16_t old = w->flags;
+    w->flags = (uint16_t)((old & 0x77ff) | WEAPON_OWNED);
+    if (w->ammo && !(old & WEAPON_BACKGROUND)) {
+        w->flags |= WEAPON_BACKGROUND;
+        every_shooter(w, EV_BG_START);
+    }
+}
+
+/* 0x51a550: let go, into the world (the original throws it with the hand's velocity, turned to the
+   hand's facing; the port rests it). */
+static void release(Weapon *w)
+{
+    w->flags &= (uint16_t)~WEAPON_OWNED;
+    w->owner = NULL;
+    w->fire_min = 0;
+    w->reload_wait = 0;
+    rest(w, update_env);
+}
+
+/* WPiUpdate 0x5192b0. */
+void weapons_update(const void *env)
+{
+    update_env = env;
+    now++;
+    for (int i = 0; i < WEAPONS_MAX; i++) {
+        Weapon *w = &weapons[i];
+        if (!(w->flags & WEAPON_IN_USE)) continue;
+        if (w->flags & WEAPON_DROPPED_STOP) {
+            stop_firing(w, false);
+            w->flags &= (uint16_t)~WEAPON_DROPPED_STOP;
+        }
+        if (w->flags & WEAPON_DROPPED) {
+            if (w->flags & WEAPON_DELAYED) {
+                every_shooter(w, EV_DELAY_STOP);   /* 0x51a130 with trigger -1 */
+                w->flags &= (uint16_t)~WEAPON_DELAYED;
+            }
+            if (w->flags & WEAPON_BACKGROUND) {
+                w->flags &= (uint16_t)~WEAPON_BACKGROUND;
+                every_shooter(w, EV_BG_STOP);
+            }
+            w->flags &= (uint16_t)~WEAPON_DROPPED;
+        }
+        if (!w->owner) {
+            delete_particles(w);
+            /* fading: once still (its physics), +0x46 counts down to the 600 ticks of +0x44 */
+            if (!no_fade) {
+                if (w->fade_delay && !--w->fade_delay) w->fade = 600;
+                if (w->fade && !--w->fade) { weapon_delete(w); continue; }
+            }
+            continue;
+        }
+        if (w->owner->weapon == w) {
+            if (!chr_weapon_matrix(w->owner, w->m)) {
+                memcpy(w->m + 9, w->owner->pos, 3 * sizeof(float));
+                w->m[10] += w->owner->pelvis_height;
+            }
+        }
+        create_particles(w);
+        if (w->fire_min && --w->fire_min && (options(w) & ONWC_SUSTAINED)) depress_trigger(w, false, false, NULL);
+        if (w->flags & WEAPON_STOP_WANTED) stop_firing(w, false);
+        if (w->reload_wait) w->reload_wait--;
+        if (w->sound_wait) w->sound_wait--;
+        if (w->delay && !--w->delay) {
+            if ((w->flags & WEAPON_FIRING) && (options(w) & ONWC_AUTO_RELEASE)) stop_firing(w, false);
+            /* the ammo drain of a continuous weapon (class 0x100000, w4_psm): with that weapon */
+            if (w->flags & WEAPON_DELAYED) {
+                every_shooter(w, EV_DELAY_STOP);
+                w->flags &= (uint16_t)~WEAPON_DELAYED;
+            }
+        }
+        if (w->pause) w->pause--;
+        if (w->flags & WEAPON_FIRING)
+            for (unsigned k = 0; k < shooters(w) && k < WEAPON_SHOOTERS; k++)
+                if (w->shooter_delay[k] && !--w->shooter_delay[k]) do_event(w, EV_START, k);
+    }
+}
+
+/* ---- the character's side ---- */
+
+static float pickup_y(const Weapon *w) { return w->m[10] + rdf(w->cls + ONWC_PICKUP + 4); }
+
+/* 0x51b180: the unowned weapon (or only that one) whose handle is between the heights and nearest
+   (across) within the squared distance. */
+static Weapon *find_pickup(const float pos[3], const Weapon *only, float ymin, float ymax, float within2)
+{
+    Weapon *best = NULL;
+    for (int i = 0; i < WEAPONS_MAX; i++) {
+        Weapon *w = &weapons[i];
+        if (!(w->flags & WEAPON_IN_USE) || w->owner || (w->flags & 4)) continue;
+        if (only && only != w) continue;
+        float y = pickup_y(w);
+        if (y < ymin || y > ymax) continue;
+        float dx = pos[0] - (w->m[9] + rdf(w->cls + ONWC_PICKUP));
+        float dz = pos[2] - (w->m[11] + rdf(w->cls + ONWC_PICKUP + 8));
+        float d2 = dz * dz + dx * dx;
+        if (d2 < within2) best = w, within2 = d2;
+    }
+    return best;
+}
+
+void chr_set_weapon(Character *c, Weapon *w)
+{
+    if (!w) {
+        if (c->weapon) {
+            Weapon *old = c->weapon;
+            old->flags = (uint16_t)((old->flags & 0xf7ff) | 0xc000);
+            c->weapon = NULL;
+        }
+        c->varient &= 0x87ff;
+        c->fire_down = c->fire2_down = c->fire_again = c->fire_empty = false;
+        return;
+    }
+    if (c->flags & 1) return;
+    c->weapon = w;
+    c->varient &= 0x87ff;
+    /* the variant of the hand (C+0x04 flag 0x2000: none): rifle in the left hand 0x4000, a rifle 0x2000,
+       the left hand 0x1000, else 0x800 */
+    if (!(c->flags & 0x2000)) {
+        bool rifle = (options(w) & ONWC_RIFLE) != 0, left = ((const uint8_t *)c->oncc)[0xc8c] != 0;
+        c->varient |= rifle && left ? 0x4000 : rifle ? 0x2000 : left ? 0x1000 : 0x800;
+    }
+    set_owner(w, c);
+    /* the player's HUD (ONrInGameUI_NewWeapon): with the HUD's weapon display */
+}
+
+/* ONrCharacter_PickupWeapon 0x4ed770, a weapon picked up: the one in the hand drops first. */
+static void pickup_weapon(Character *c, Weapon *w)
+{
+    if (c->weapon) {
+        Weapon *old = c->weapon;
+        old->flags = (uint16_t)((old->flags & 0xf7ff) | 0xc000);
+        c->weapon = NULL;
+        release(old);
+        c->varient &= 0x87ff;
+    }
+    chr_set_weapon(c, w);
+}
+
+/* HandleStartPickup (in HandleHeartbeatInput 0x4f6ad0), the swap key gone down and no weapon overlay:
+   the weapon at hand (0x4fa4b0: its handle within 3 below and 18 above the feet, 8 across), unless one
+   is stowed. An animation that allows it (TRAM flag 20) picks it up at once; else the pickup animation:
+   Pickup_Pistol (0x9e) or Pickup_Rifle (0x9f), the _Mid ones (0xe4, 0xe5) for a handle over 9 above the
+   feet. Without one: holstering or drawing (overlay slot 1, not yet). Powerups (0x51b3e0, 0x9d, 0xe3):
+   not yet. */
+static bool start_pickup(Character *c, const ChrInput *in)
+{
+    if (!(in->down & CHR_KEY_SWAP) || c->overlay[CHR_OVERLAY_WEAPON].anim) return false;
+    Weapon *w = find_pickup(c->pos, NULL, c->pos[1] - 3.0f, c->pos[1] + 18.0f, 64.0f);
+    if (!w) return false;
+    if (tr_test_flag(c->anim, 20)) {
+        pickup_weapon(c, w);
+        return false;
+    }
+    bool mid = c->pos[1] + 9.0f < pickup_y(w);
+    uint16_t type = (options(w) & ONWC_RIFLE) ? 0x9f : 0x9e;
+    if (mid) type = (uint16_t)(type + 0x46);
+    c->pickup = w;
+    return chr_do_animation(c, CHR_ANIM_WHEN_CAN, type) != NULL;
+}
+
+/* The weapon's keys of HandleHeartbeatInput: without a weapon no reload; the reload key asks for one
+   (0x4edc00: not yet, no clips); with no reload asked and no weapon overlay, fire gone down (0x4e8f80),
+   else held (0x4e8fa0: sustained fire again, else the empty click), else released (0x4e9000); the
+   alternate fire only when the first is neither down nor held. HandlePickupInput 0x4eda40: drop (not
+   yet), hypo (not yet). */
+static void fire_input(Character *c, const ChrInput *in)
+{
+    if (!c->weapon) {
+        c->reload_wanted = false;
+        return;
+    }
+    if (c->reload_wanted || c->overlay[CHR_OVERLAY_WEAPON].anim) {
+        c->stop_fire = c->stop_fire2 = true;
+        return;
+    }
+    if (in->down & CHR_KEY_FIRE) c->fire_down = true;
+    else if (in->held & CHR_KEY_FIRE) {
+        if (options(c->weapon) & ONWC_SUSTAINED) c->fire_again = true;
+        else c->fire_empty = true;
+    } else {
+        if (in->up & CHR_KEY_FIRE) c->stop_fire = true;
+        if (in->down & CHR_KEY_ALT_FIRE) {
+            if (options(c->weapon) & ONWC_ALT_FIRE) c->fire2_down = true;
+        } else if (in->up & CHR_KEY_ALT_FIRE)
+            c->stop_fire2 = true;
+    }
+}
+
+/* ONrCharacter_HandlePickupInput 0x4eda40: with no weapon overlay, the drop key lets the weapon go
+   (0x51b590 then ONrCharacter_SetWeapon's clearing); else the hypo key uses a hypo (not yet). */
+static void weapon_input(Character *c, const ChrInput *in)
+{
+    fire_input(c, in);
+    if (c->overlay[CHR_OVERLAY_WEAPON].anim) return;
+    if ((in->down & CHR_KEY_DROP) && c->weapon) {
+        Weapon *w = c->weapon;
+        w->flags = (uint16_t)((w->flags & 0xf7ff) | 0xc000);
+        c->weapon = NULL;
+        release(w);
+        c->varient &= 0x87ff;
+        c->fire_down = c->fire2_down = c->fire_again = c->fire_empty = false;
+    }
+}
+
+/* 0x4e9040, a trigger of DoCharacterFrame (mode 0 fire, 1 again, 2 alternate, 3 held): the flags
+   cleared; a dead character doesn't; the trigger; out of ammo the firing stops (then the reload and the
+   empty sound: not yet). Not ported: the gun through a wall (ONrCharacter_IsGunThroughWall). */
+static void trigger(Character *c, int mode)
+{
+    if (mode == 2) c->fire2_down = false;
+    else c->fire_down = c->fire_again = c->fire_empty = false;
+    if (!c->weapon || (c->flags & 1)) return;
+    c->last_action = c->time;
+    bool empty = false;
+    depress_trigger(c->weapon, false, mode == 2, &empty);
+    if (empty) stop_firing(c->weapon, false);
+}
+
+static void frame(Character *c, int step)
+{
+    if (step == CHR_FRAME_PICKUP) {
+        /* DoCharacterFrame: a pickup target is forgotten once neither the animation nor the queued one
+           is a pickup; at the action frame (TRAM +0x174, at most the last frame) the weapon still there
+           (6 below, 24 above, 16 across) is picked up */
+        uint16_t t = c->type, q = c->queued;
+        if (c->pickup && t != 0x9d && t != 0x9e && t != 0x9f && q != 0x9d && q != 0x9e && q != 0x9f) c->pickup = NULL;
+        int act = (int16_t)rd16((const uint8_t *)c->anim + 0x174), last = (int)rd16((const uint8_t *)c->anim + 0x164) - 1;
+        if (act > last) act = last;
+        if ((int)c->frame == act && (t == 0x9e || t == 0x9f || t == 0xe4 || t == 0xe5)) {
+            Weapon *w = find_pickup(c->pos, c->pickup, c->pos[1] - 6.0f, c->pos[1] + 24.0f, 256.0f);
+            if (w) pickup_weapon(c, w);
+            c->pickup = NULL;
+        }
+        return;
+    }
+    if (c->fire_down) trigger(c, 0);
+    else if (c->fire_again) trigger(c, 1);
+    else if (c->fire2_down) trigger(c, 2);
+    else if (c->fire_empty) trigger(c, 3);
+    if (c->stop_fire || c->stop_fire2) {
+        c->stop_fire = c->stop_fire2 = false;
+        if (c->weapon) stop_firing(c->weapon, false);
+    }
+}
+
+/* ---- a particle's damage (0x5178c0, then 0x5179f0) ---- */
+
+static Character *owner_character(uint32_t owner)
+{
+    uint32_t k = owner & 0xff000000u;
+    if (k != 0x1000000u && k != 0x2000000u) return NULL;
+    for (int i = 0; i < chars_slots(); i++) {
+        Chr *c = chars_get(i);
+        if (c && chars_in_use(c) && c->c.id == (owner & 0xffffff)) return &c->c;
+    }
+    return NULL;
+}
+
+/* 0x4e9530: the character turned to the direction; -1 (and turned the other way) when it was more than
+   a right angle (0x529cd0) off, else 1. */
+static int face_along(Character *c, const float d[3])
+{
+    float a = atan2f(d[0], d[2]);
+    if (a < 0.0f) a += 6.2831855f;
+    float rel = a - c->facing;
+    if (rel < -3.1415927f) rel += 6.2831855f;
+    else if (rel > 3.1415927f) rel -= 6.2831855f;
+    int r = 1;
+    if (fabsf(rel) > 1.5707964f) {
+        a += 3.1415927f;
+        if (a >= 6.2831855f) a -= 6.2831855f;
+        r = -1;
+    }
+    c->facing = a;
+    return r;
+}
+
+/* 0x5178c0: the hit's damage to the character: none to its own owner when the class says so; the
+   direction the particle's move (else from the hit to the pelvis, else the character's back). Then
+   0x5179f0: a particle hurts once (A+0x18c); the class's resistance to the damage's type (ONCC+0xc60)
+   lessens the stun and the knockback; ONrCharacter_TakeDamage; the type's reaction: 1 a light stun (0xd4),
+   2 a heavy one (0xc6, 0xd5 from behind), 3 a knockdown when the knockback is strong, 4 a knockdown
+   (0x4f, 0x58), 5 the blow-up (0xd6, 0xd7). Not ported: the super shield (C+0x1b8) and the Daodan's
+   (C+4 0x40000000), the hit flash (0x4eb0b0), the hit overlay of type 0 (0x4f1210), the HUD's direction,
+   and type 6 (the pickup's). True when the particle already hurt the character. */
+static bool particle_damage(Character *c, const float point[3], const float move[3], int type, float damage,
+                            float stun, float knockback, uint32_t owner, uint32_t handle, bool self_immune)
+{
+    if (owner == 0) owner = 0x4000000u;
+    else if (self_immune && ((owner & 0xff000000u) == 0x1000000u || (owner & 0xff000000u) == 0x2000000u) &&
+             (owner & 0xffffff) == c->id)
+        return false;
+    float dir[3] = { move[0], move[1], move[2] };
+    float l = dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2];
+    if (l < 1e-6f) {
+        float pel[3];
+        if (chr_part_point(c, 0, pel)) dir[0] = pel[0] - point[0], dir[1] = pel[1] - point[1], dir[2] = pel[2] - point[2];
+        l = dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2];
+        if (l < 1e-6f) dir[0] = -sinf(c->facing), dir[1] = 0.0f, dir[2] = -cosf(c->facing), l = 1.0f;
+    }
+    l = 1.0f / sqrtf(l);
+    dir[0] *= l, dir[1] *= l, dir[2] *= l;
+    uint32_t dmg = (uint32_t)lrintf(damage), st = (uint32_t)lrintf(stun);
+    if (handle) {
+        if (c->last_particle == handle) return true;
+        c->last_particle = handle;
+    }
+    if (c->flags & 0x80000000u) return false;
+    if (type >= 0 && type < 7) {
+        float r = rdf((const uint8_t *)c->oncc + 0xc60 + 4 * type);
+        if (r > 0.0f) {
+            r = 1.0f - r;
+            if (r < 0.0f) r = 0.0f;
+            st = (uint32_t)lrintf((float)st * r);
+            knockback *= r;
+        }
+    }
+    chr_take_damage(c, dmg, knockback, dir, 0, owner_character(owner));
+    if (c->flags & 1) return false;
+    switch (type) {
+    case 1:
+        if (st) {
+            chr_knockdown(c, 0xd4);
+            if (c->countdown_1c98 < st) c->countdown_1c98 = (uint16_t)st;
+        }
+        break;
+    case 2:
+        if (st) {
+            if (c->knockdown_type != 0xc6 && (c->knockdown_type < 0xd4 || c->knockdown_type > 0xd5))
+                chr_knockdown(c, face_along(c, dir) == 1 ? 0xd5 : 0xc6);
+            c->countdown_1c9a = 30;
+            if (c->countdown_1c98 < st) c->countdown_1c98 = (uint16_t)st;
+        }
+        break;
+    case 3: {
+        float k = c->knockback[0] * c->knockback[0] + c->knockback[1] * c->knockback[1] + c->knockback[2] * c->knockback[2];
+        (void)k;    /* the thresholds (0x52b8c8, 0x52b8cc) and the air's knockdown: with the knockdowns' port */
+        break;
+    }
+    case 4:
+        chr_knockdown(c, face_along(c, dir) == 1 ? 0x58 : 0x4f);
+        break;
+    case 5:
+        chr_knockdown(c, face_along(c, dir) == 1 ? 0xd7 : 0xd6);
+        break;
+    default:
+        break;
+    }
+    return false;
+}
+
+void weapons_install(void)
+{
+    p3_damage_hook = particle_damage;
+    character_pickup_hook = start_pickup;
+    character_weapon_input_hook = weapon_input;
+    character_frame_hook = frame;
+}
+
+/* ---- the commands ---- */
+
+static int32_t num(const SlValue *v) { return v->type == SL_FLOAT ? (int32_t)v->f : v->i; }
+
+/* weapon_spawn class flag (AI2iScript_WeaponSpawn 0x4b8550) */
+static bool cmd_spawn(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 2 || v[0].type != SL_STRING) return true;
+    const void *cls = tm_instance_get(TM_TAG("ONWC"), v[0].s);
+    ObjcObject flag;
+    if (!cls || !objc_flag_find((uint16_t)num(&v[1]), &flag)) return true;   /* "unknown weapon", "could not find flag" */
+    weapon_new(cls, flag.pos, 0.0f);
+    return true;
+}
+
+/* chr_inv_reset char (AI2iScript_Reset_Inventory 0x4ba280): the ammo, cells, hypos and keys gone, the
+   weapon in the hand deleted (0x4d7bb0 then ONrCharacter_SetWeapon). */
+static Chr *char_arg(const SlValue *v)
+{
+    if (v->type == SL_STRING) {
+        char *end;
+        long id = strtol(v->s, &end, 10);
+        if (*v->s && !*end) v = &(SlValue){ .type = SL_INT, .i = (int32_t)id };
+        else return chars_find(v->s);
+    }
+    int32_t id = num(v);
+    for (int i = 0; i < chars_slots(); i++) {
+        Chr *ch = chars_get(i);
+        if (ch && ch->script_id == id) return ch;
+    }
+    return NULL;
+}
+
+static bool cmd_inv_reset(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    Chr *ch = c >= 1 ? char_arg(&v[0]) : NULL;
+    if (!ch) return true;
+    if (ch->c.weapon) {
+        Weapon *w = ch->c.weapon;
+        weapon_delete(w);
+        chr_set_weapon(&ch->c, NULL);
+    }
+    return true;
+}
+
+/* chr_giveweapon char class (AI2iScript_GiveWeapon 0x4b56c0): a new weapon of the class in the hand. */
+static bool cmd_give(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    Chr *ch = c >= 2 ? char_arg(&v[0]) : NULL;
+    const void *cls = c >= 2 && v[1].type == SL_STRING ? tm_instance_get(TM_TAG("ONWC"), v[1].s) : NULL;
+    if (!ch || !cls) return true;
+    Weapon *w = weapon_new(cls, ch->c.pos, 0.0f);
+    if (w) pickup_weapon(&ch->c, w);
+    return true;
+}
+
+void weapons_register_commands(void)
+{
+    sl_register("weapon_spawn", cmd_spawn, NULL);
+    sl_register("chr_inv_reset", cmd_inv_reset, NULL);
+    sl_register("chr_giveweapon", cmd_give, NULL);
+    sl_register_bool("wp_disable_fade", &no_fade);
+}

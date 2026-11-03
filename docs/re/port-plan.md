@@ -159,17 +159,39 @@ to OBJ look right.
 |---|---|
 | Textures (TXMP), all five texel types of the CD, with mipmaps | done: `src/im.c`, `src/txmp.c`, `tools/onitex.py`. `txmp_test` equals the tool on all 8,918 textures (`69e02682`). [Format](../formats/txmp.md) |
 | Geometry (M3GM) and its arrays | done: `src/m3gm.c`, `tools/onigeom.py`. `m3gm_test` equals the tool on all 37,862 geometries (`8d974ee1`). [Format](../formats/m3gm.md) |
-| AKEV environment | to do |
-| TRAM animation | to do |
-| ONCC character assembly | to do |
-| Fonts | to do |
-| SUBT and text | to do |
-| SNDD sounds | to do |
+| AKEV environment: the gunk quads, their textures and what is drawn | done: `src/akev.c`, `tools/onienv.py` (OBJ and preview exports). `akev_test` equals the tool on all 14 environments, 450,921 quads (`1f7ad149`). [Format](../formats/akev.md) |
+| TRAM animation: the rotation streams, root motion and height | done: `src/tram.c`, `tools/onitram.py`. `tram_test` equals the tool on all 8,604 animations (`a992f7fd`) and decodes all 393,903 frames. [Format](../formats/tram.md) |
+| ONCC character assembly: bodies, bones, posing | done: `src/body.c`, `tools/onibody.py` (posed OBJ and preview). `body_test` builds all 29 classes of level 1 and poses Konoko as the tool does. [Format](../formats/oncc.md) |
+| Level objects (OBJC): characters, trigger volumes | done: `src/objc.c`, `src/trigger.c`. `trigger_test` loads the 787 volumes of the 14 levels. [Format](../formats/objc.md) |
+| Object animations (OBAN) and the starting objects (OBOA) | done: `src/oban.c`, `src/object.c`, `tools/onioban.py`. `oban_test` equals the tool on all 1,067 animations (`1f2bffdc`, 334,386 frames). `object_test` creates the 912 objects scripts can create. [Format](../formats/oban.md) |
+| Fonts (TSFF, TSFT, TSGA) | done: `src/font.c`, `tools/onifont.py` (glyph sheets). `font_test` equals the tool (`85c7502f`, with the text below). [Format](../formats/font.md) |
+| SUBT and text (IGSt, IGSA, IGPG, IGPA, IGHH, StNA) | done: `src/text.c`, `tools/onifont.py --text`. [Format](../formats/text.md) |
+| SNDD sounds (MS ADPCM) | done: `src/sndd.c`, `tools/onisnd.py` (WAV export). `sndd_test` equals the tool on all 7,386 sounds (`97eb43b7`). [Format](../formats/sndd.md) |
 
 ## 4. Renderer (OpenGL 1.x on GLES 3)
 
 Port Motoko/M3 draw contexts onto the GL emulation: environment (sorted opaque/alpha quads,
 lightmaps, environment maps), sky, fog, characters (part hierarchy), 2D path for UI and HUD.
+
+**Progress:** `src/render/gl_dev.c` is the device: one GLES 3 shader for textured, vertex-coloured
+triangles, with alpha test, blending, depth and fog. The renderer is built for gasm only. On top of it:
+
+- `src/render/env_draw.c`: the drawn quads of the environment as one mesh, sorted by texture, with the
+  solid quads first and then the transparent ones.
+- `src/render/char_draw.c`: posed character bodies, through `src/render/geom_draw.c` (one geometry
+  under a matrix), which also draws the level's objects.
+
+`--param viewer=level --param level=N [--param cam=x,y,z,yaw,pitch]` flies through a level, with its
+characters (from the level's `CHAR` objects) standing in their idle animations. The camera starts behind
+the player.
+
+Still to do:
+
+- visibility (the octree)
+- the sky and fog from the level's scripts
+- environment maps and the brightness of the environment, which is darker than the original's look and
+  isn't explained yet (the default gamma, 0.5, makes the exe's ramp the identity)
+- the original's character lighting, in place of the fixed light
 
 **Check:** `--param viewer=level&level=1` (fly-through) and `viewer=char&char=konoko` screenshots and
 hashes. Reference captures come from the original under Wine, kept outside the repo.
@@ -189,6 +211,33 @@ gravity/falls, camera (third person, mouselook), physics objects.
 **Check:** `demo=moves` scripted input (run, jump, combos, throw) with stable hashes, matched by eye
 against Wine captures.
 
+**Progress:** a first playable, `--param play=1 [--param level=N]`. Konoko starts where the level's
+`CHAR` object puts her. W, A, S and D run (Shift walks), the mouse or Left/Right turns her, and the
+camera follows behind.
+
+What is ported:
+
+- `src/trac.c`: the collection load (`iAnimationCollection_DiskToMemory` 0x428250: empty entries
+  dropped, sorted, weights as running sums, the shortcuts' collection) and the lookup
+  (`TRrCollection_Lookup` 0x427f00, with `UUrRandom` 0x426e10).
+- `src/character.c`: the movement types tried for the input, with their start types (0x4f83f0); the
+  stops; the next animation at an animation's end; the root's motion turned by the facing.
+
+Jumping and falling are ported: `HandleStartJumping` 0x4fa2f0, the landing (normal and hard) and
+the long fall of `HandleHeartbeatInput` 0x4f6ad0, holding jump for a higher rise, the in-air branch of
+`HandleFallThrough` 0x4f9a70, and step 9 of `DoCharacterFrame` (takeoff, gravity ONCC+4, the fall's
+limit ONCC+0xc). Space jumps, Shift crouches (the exe's default bindings). `character_test` jumps on
+level 1's floor: about 10.6 up, 37 ticks in the air, then the landing.
+
+The character's physics is ported (`src/physics.c`, [physics.md](physics.md)): the body box (0x4e5ff0)
+and sphere tree (0x4dc160), the move slid along the walls (`OBiPhysics_Update` 0x43af50 with the
+character's environment search 0x4ebd70), and the floor (the ground callback 0x4eca00,
+`FindGroundCollision` 0x4ec040: the step up, the landing and its damage, the fall after 12 ticks without
+ground). `physics_test` stands Konoko on the training room's floor, runs her into a wall and drops her
+40 onto the floor. Stand-ins left: each character's physics runs right after its frame (not after all
+of them), characters don't push each other (0x4ecb40). The ground probe of step 9 is the original's
+`AKrCollision_Point` (`akev_collide_point`, the segment walked through the octree's leaves).
+
 ## 7. BSL scripting and level logic
 
 BSL lexer/interpreter with the original's built-in functions and variables. Triggers, trigger volumes,
@@ -196,15 +245,111 @@ doors, consoles, turrets, cutscene cameras (OBAN), objectives, and saves at chec
 
 **Check:** the training level is playable start to finish (scripted demo, hashed).
 
+Progress:
+
+- `src/sl.c`: the lexer of `SLiToken_Make` 0x47dac0, and a compiler to stack code whose threads can
+  stop anywhere (sleep, blocking commands). `tests/sl_test.c` compiles all 14 folders and runs the
+  warehouse's `main`.
+- `src/trigger.c`: trigger volumes (`ONrGameState_UpdateTrigger` 0x4e0cf0) and the `trigvolume_*`
+  commands. In play mode, entering a volume runs its script. `tests/trigger_test.c` loads the 787
+  volumes of the 14 levels and walks a character through one.
+- `src/chars.c`: the character list. The level's characters are created from its `CHAR` objects
+  (those without flag 0x04) and by `ai2_spawn`. The trigger volumes see all of them. Commands:
+  `chr_delete`, `chr_teleport` (to a `FLAG`), `chr_animate` and `chr_animate_block`
+  (0x4b6e10, 0x4eb340), and `chr_wait_animtype` (the names come from the exe's table at 0x54d7c0).
+  `tests/chars_test.c` covers them on level 1.
+- `src/door.c`: doors ([door.md](door.md)). At the level's start each door finds its panels and its gunk
+  (`OBJrDoor_LevelBegin` 0x4c48a0). `OBJrDoor_Update` 0x4c44f0 opens a door for a character near it
+  that may pass, and closes it when nobody is. Open hides the gunk and plays the panels; once closed they
+  go and the gunk is back. Commands: `door_open`, `door_close`, `door_lock`, `door_unlock`, `door_jam`,
+  `door_unjam`. `tests/door_test.c`: Konoko walks through door 18, and the locked door 11 opens after
+  `door_unlock`. Not yet: the panels' physics, keys.
+- `src/console.c`, `src/event.c`, `src/action.c`: consoles, event lists and the action key
+  ([console.md](console.md)). `tests/console_test.c`: Konoko uses the training's console 10. The script
+  trace (`--param sltrace=1`) logs script calls, messages and dialogue with the frame number.
+- The characters' scripts: the die and defeated scripts of the death hook (0x4eb550) and the hurt and
+  defeated scripts of `ONrCharacter_TakeDamage` 0x4e65f0, run through the deferred queue (0x4f2070,
+  0x4f2120). More commands: `chr_changeteam`, `chr_nocollision`, `ai2_setjobstate`,
+  `chr_wait_animstate`, `chr_lock_active`, `chr_death_lock`, `chr_unkillable`, `chr_invincible`,
+  `ai2_makeignoreplayer`. The combat state ends when its target dies (docs/re/ai.md, "Leaving combat").
+  `tests/chars_test.c` stages the training's combat demo.
+- A route autopilot (`--param route=`, in `app.c`) plays the training headless and the same on every
+  runner: movement, the console, the dash, the track, doors, jumps, crouching, the AI's combat demo,
+  the crouch moves, the slide, the jump-flip, the fight lessons (punch, kick, combos) and the hit
+  flashes, the throw lesson (the manual door 100 with the action key, Throw_Forward_Punch on the dummy)
+  and the block lesson, and the shooting lesson's start: the pistol picked up (Q, Pickup_Pistol_Mid),
+  fired (Autopistol_Recoil) and dropped (E), to about frame 29,600. Next: the particle system (the
+  shots: the glass targets and the droids need them), powerups (ammo) and reloading, the laser
+  triggers (`trig_activate`).
+- Weapons (`src/weapon.c`, docs/formats/onwc.md): weapons in the world (`weapon_spawn`), picking up
+  (the swap key, the pickup animation's action frame), the hand's variant, the weapon on the fist's
+  node, the trigger, the shooters and their pulses (ammo, delays, the recoil overlay), dropping. The
+  overlays (`chr_anim.c`: four slots, blended into the drawn pose). The shooters' particles are
+  stand-ins until the particle system: they take the events and emit nothing.
+- Throws (`src/throw.c`, docs/re/character.md "Throws"): the player's throw moves become throws of the
+  enemy in front (`RemapAnimationHook` 0x4ea550, `AttemptThrow` 0x4eaa10), the victim's part as the
+  throw starts, the victim held and its own damage. The AI's throws are next.
+
 ## 8. Combat systems
 
 Weapons (fire, reload, ammo, dropping), particle system (BINA particle classes, a large subsystem),
 damage and hit reactions, power-ups, inventory, HUD.
 
+Progress: melee hits (`src/chr_hit.c`): the parts' contact, the attacks that land, reactions, damage,
+knockback, death, blocking. `tests/hit_test.c`. The HUD's health ring (`ui_draw_hud`:
+`ONrInGameUI_Display` 0x4fff50's "right" element, `ONiInGameUI_DisplayHealth` 0x500970, the arcs of
+`ONrInGameUI_SetArcPoints` 0x504270, the colours of the `game_settings` ONGS). Weapons and particles
+are next.
+
 ## 9. AI
 
 Combat and melee behaviour profiles, alarm network, pathfinding on the BNV graph, patrols, neutral
 characters. **Check:** every level (1-14) is completable through scripted demos. Spot-check by hand.
+
+The module is large: 556 functions, about 175 KB of code between 0x487000 and 0x4b9000 (262 of them
+named from the Mac build). `AI2rUpdateAI` 0x489d40 runs, for each living AI character (C+0x1e8 = 2):
+the requested scripts (C+0x1f0 bits 8, 0x10, 0x40, 0x80, 0x20), a scripted turn (C+0xfa8), the
+vocalization timer, the state's return to its job (C+0x1f8 = 0: back to the job state at C+0x1f4, or
+idle), the neutral trigger (state 8), the alarm timer, then the state's update: 1 idle, 3 patrol, 5
+combat, 6 (0x4b0fb0), 7 alarm, 8 neutral, 9 panic (0x4adc80). Then, unless the film plays, the
+movement (`AI2rMovement_Update`), which drives the character's input through the executor. States
+are entered through `AI2rEnterState` 0x48ad50 and left through `AI2rExitState`.
+
+The order to port it, each step with a test on level 1:
+
+1. **The executor and movement**: facing, moving to a point (`AI2rExecutor_Move`), the input it
+   gives the character (the block at A+0x2158). Test: an AI walks to a flag. *Executor done* (`src/ai.c`,
+   `tests/ai_test.c`); the movement layer is a stand-in.
+2. **Idle and patrol**: `AI2rIdle_Update`, `AI2rPatrol_Update` with the level's patrol paths
+   (`CJBOPatrol Path`). The scripts' `ai2_dopath`, `ai2_setjobstate`. Test: a warehouse thug walks
+   its path. *Patrol done* (`src/patrol.c`, `tests/patrol_test.c`): the paths, the patrol jobs the
+   characters start with, `ai2_dopath`, the waypoints' moves, waits, loops, modes and scripts, over
+   the stand-in mover; looking, glancing, scanning's turn and the facing locks are not ported, nor
+   idle or `ai2_setjobstate`.
+3. **Knowledge**: sight and hearing (`AI2rKnowledge_*`, 0x49a6e0), the alarm (`AI2rAlarm_*`), the
+   `ai2_makeignoreplayer`, `ai2_passive` and alert commands. Test: a thug notices Konoko. *Sight,
+   hurts and the alert done* (`src/knowledge.c`, `tests/knowledge_test.c`, notes in
+   [ai.md](ai.md)): contacts, their order and forgetting, the sight cones and lines, hurts, the teams,
+   the calm and pursuit handlers raising the alert, startles, the move to pursuit and combat (stand-in
+   states until steps 5 and the pursuit's port), `ai2_passive`. Not yet: sounds, the alarm, the
+   other commands.
+4. **Pathfinding** on the BNV graph (the level's `AKVA` volumes and their connections). *Global
+   path done* (`src/graph.c`, `tests/graph_test.c`, notes in [pathfinding.md](pathfinding.md)): the
+   graph (`PHrBuildGraph`), the blockages from the rooms' grids (`PHiCheckForBlockages`), the room under
+   a point (`AKrNodeFromPoint`), the rooms' A* (0x50bdb0) and `AI2iPath_MakePath`'s reuse; the AI's
+   mover walks it room by room, each room by its local path through the grid (`src/localpath.c`:
+   `ASrPath_Generate`, `ASiList_CalcWaypoints`). Next: the movement state's steering
+   (`AI2iMovementState_Calculate_Movement`); the doors on the links; the grids' run-time obstacles.
+5. **Combat and melee**: `AI2rCombat_Update`, the melee profiles (`CJBOMelee Profile`),
+   `AI2rMelee_Update` 0x4a01f0 and its technique weighting 0x4a2580, blocking
+   (`AI2rBlockFunction`). Test: a thug fights Konoko. *Begun* (`src/melee.c`, `tests/melee_test.c`,
+   notes in [ai.md](ai.md), "Melee"): the profiles, the techniques picked by facing, range and
+   delay, positions, maneuvers, attacks pressed through the executor's override, combos, the fight
+   cookie, blocking by chance and difficulty; the attack prediction the weighting uses
+   (`src/chr_intersect.c`, `tests/intersect_test.c`). Next: the profile in memory as the original builds
+   it (`PrepareForUse`, `MoveIsValid`, the transitions), then the weighting and the update on it. Not
+   yet: evades, throws, `AI2rCombat_Update`'s ranges.
+6. **Neutral characters and panic**.
 
 ## 10. Audio and movies
 

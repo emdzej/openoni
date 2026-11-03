@@ -26,3 +26,42 @@
 0044b160	pixel converter 1 -> 12
 0044b200	pixel converter 0 -> 13
 0044b250	pixel converter 8 -> 10
+# the melee move categories: the table at 0x52a9e8 (0x48 bytes each: a name, ten functions)
+004a53d0	melee Attack function 0
+004a53f0	melee Attack function 1
+004a7a80	melee Attack function 2
+004a5430	melee Attack function 3
+004a5490	melee Attack function 4
+004a54e0	melee Attack function 5
+004a5500	melee Attack function 6
+004a7fd0	melee Attack function 7
+004a7fe0	melee Attack function 8
+004a5d70	melee Attack function 9
+004a5d80	melee Position function 0
+004a5da0	melee Position function 1
+004a5de0	melee Position function 2
+004a5e30	melee Position function 3
+004a7b10	melee Position function 4
+004a5e40	melee Position function 5
+004a6040	melee Position function 6
+004ca6c0	melee Position function 7
+004a6db0	melee Position function 9
+004a6dc0	melee Maneuver function 0
+004a6de0	melee Maneuver function 1
+004a6e20	melee Maneuver function 2
+004a6ec0	melee Maneuver function 3
+004a6f20	melee Maneuver function 5
+004a7060	melee Maneuver function 6
+004a7570	melee Maneuver function 7
+004ca0b0	melee Maneuver function 8
+004a75b0	melee Evade function 0
+004a75d0	melee Evade function 1
+004a7620	melee Evade function 3
+004a7670	melee Evade function 4
+004a7680	melee Evade function 5
+004a76a0	melee Evade function 6
+004a7a20	melee Throw function 0
+004a7a40	melee Throw function 1
+004a7a90	melee Throw function 3
+004a7b20	melee Throw function 5
+004a7b40	melee Throw function 6

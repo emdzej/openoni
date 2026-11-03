@@ -1,0 +1,612 @@
+/* The character's animation engine: see chr_anim.h. */
+#include "chr_anim.h"
+
+#include "body.h"
+#include "tm.h"
+#include "trac.h"
+#include "tram.h"
+
+#include <math.h>
+#include <string.h>
+
+static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }
+static uint32_t rd32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
+static float rdf(const uint8_t *p) { uint32_t v = rd32(p); float f; memcpy(&f, &v, 4); return f; }
+
+static const float TWO_PI = 6.2831854820251465f;   /* 0x529548 */
+
+/* A .raw block of the animation (the field's offset, then at), len bytes inside the file; NULL if none. */
+static const uint8_t *raw_block(const void *tram, unsigned field, size_t at, size_t len)
+{
+    return tr_raw_block(tram, field, at, len);
+}
+
+const uint8_t *tr_raw_block(const void *tram, unsigned field, size_t at, size_t len)
+{
+    size_t size;
+    const uint8_t *raw = tm_raw(tram, &size);
+    uint32_t off = rd32((const uint8_t *)tram + field);
+    if (!raw || !off || off + at + len > size) return NULL;
+    return raw + off + at;
+}
+
+static const uint8_t *collection(const Character *c) { return tm_link((const uint8_t *)c->oncc + ONCC_ANIMATIONS); }
+
+static const void *lookup(const Character *c, uint16_t type, uint16_t state)
+{
+    const uint8_t *col = collection(c);
+    return col ? trac_lookup(col, type, state, c->varient) : NULL;
+}
+
+/* ---- TR queries ---- */
+
+bool tr_test_flag(const void *t, unsigned bit) { return (rd32((const uint8_t *)t + TRAM_FLAGS) >> bit & 1u) != 0; }
+uint16_t tr_type(const void *t) { return rd16((const uint8_t *)t + TRAM_TYPE); }
+uint16_t tr_from(const void *t) { return rd16((const uint8_t *)t + TRAM_FROM_STATE); }
+uint16_t tr_to(const void *t) { return rd16((const uint8_t *)t + TRAM_TO_STATE); }
+uint16_t tr_duration(const void *t) { return rd16((const uint8_t *)t + TRAM_DURATION); }
+uint16_t tr_varient(const void *t) { return rd16((const uint8_t *)t + TRAM_VARIENT); }
+
+/* Whether next is one of the animation's two links (TRAM+0x38): they follow it without a pause. */
+static bool is_link(const void *t, const void *next)
+{
+    for (int i = 0; i < 2; i++)
+        if (tm_link((const uint8_t *)t + TRAM_LINKS + 4 * i) == next) return true;
+    return false;
+}
+
+uint16_t tr_soft_pause(const void *t, const void *next) { return is_link(t, next) ? 0 : rd16((const uint8_t *)t + TRAM_SOFT_PAUSE); }
+uint16_t tr_hard_pause(const void *t, const void *next) { return is_link(t, next) ? 0 : rd16((const uint8_t *)t + TRAM_HARD_PAUSE); }
+
+/* An attack with frames, parts and damage, or a throw. */
+const uint8_t *tr_attack(const void *tram, unsigned i)
+{
+    return i < ((const uint8_t *)tram)[TRAM_ATTACK_COUNT] ? raw_block(tram, TRAM_ATTACK_LIST, 0x20u * i, 0x20) : NULL;
+}
+
+const void *chr_lookup(const Character *c, uint16_t type, uint16_t state) { return lookup(c, type, state); }
+const void *chr_collection(const Character *c) { return collection(c); }
+
+const void *chr_lookup_varient(const Character *c, uint16_t type, uint16_t state, uint16_t varient)
+{
+    const uint8_t *col = collection(c);
+    return col ? trac_lookup(col, type, state, varient) : NULL;
+}
+
+bool tr_is_attack(const void *tram)
+{
+    const uint8_t *t = tram;
+    for (unsigned i = 0; i < t[TRAM_ATTACK_COUNT]; i++) {
+        const uint8_t *a = raw_block(tram, TRAM_ATTACK_LIST, 0x20u * i, 0x20);
+        if (a && rd16(a + 0xe) <= rd16(a + 0x10) && rd32(a) && rd16(a + 0xc)) return true;
+    }
+    return rd32(t + TRAM_THROW) != 0;
+}
+
+/* The shortcut from a state into the animation (TRAM+0x18, 8 bytes each: the state u16, the
+   interpolation length u8, a byte, flags u32), or the one from any state (1); -1 if none, or if the
+   state is the animation's own start state. The search the three queries below share. */
+static int shortcut(const void *tram, uint16_t state)
+{
+    const uint8_t *t = tram;
+    if (state == tr_from(t)) return -1;
+    unsigned n = t[TRAM_SHORTCUT_COUNT];
+    for (unsigned i = 0; i < n; i++) {
+        const uint8_t *s = raw_block(t, TRAM_SHORTCUTS, 8u * i, 8);
+        if (s && rd16(s) == state) return (int)i;
+    }
+    for (unsigned i = 0; i < n; i++) {
+        const uint8_t *s = raw_block(t, TRAM_SHORTCUTS, 8u * i, 8);
+        if (s && rd16(s) == TRAC_ANY_STATE) return (int)i;
+    }
+    return -1;
+}
+
+bool tr_is_shortcut(const void *t, uint16_t state) { return shortcut(t, state) >= 0; }
+
+uint8_t tr_shortcut_length(const void *t, uint16_t state)
+{
+    int i = shortcut(t, state);
+    const uint8_t *s = i >= 0 ? raw_block(t, TRAM_SHORTCUTS, 8u * (unsigned)i, 8) : NULL;
+    return s ? s[2] : 0;
+}
+
+bool tr_shortcut_flag(const void *t, uint16_t state, unsigned bit)
+{
+    int i = shortcut(t, state);
+    const uint8_t *s = i >= 0 ? raw_block(t, TRAM_SHORTCUTS, 8u * (unsigned)i, 8) : NULL;
+    return s && (rd32(s + 4) >> bit & 1u);
+}
+
+bool tr_is_atomic(const void *tram, uint16_t frame)
+{
+    const uint8_t *t = tram;
+    return frame >= rd16(t + TRAM_ATOMIC_START) && frame <= rd16(t + TRAM_ATOMIC_END);
+}
+
+/* From the animation's end into next: the shortcut's length when next starts from another state (8, and
+   a console complaint, when there's none), at least 8 between variants, and at least the animation's own
+   end interpolation (TRAM+0x170) unless next is one of its links. */
+uint16_t tr_end_interpolation(const void *tram, const void *next)
+{
+    const uint8_t *t = tram;
+    uint16_t to = tr_to(t), r = 0;
+    if (to != tr_from(next)) {
+        int i = shortcut(next, to);
+        const uint8_t *s = i >= 0 ? raw_block(next, TRAM_SHORTCUTS, 8u * (unsigned)i, 8) : NULL;
+        r = s ? s[2] : 8;   /* none: the original prints a warning (0x533904) and takes 8 */
+    }
+    if (tr_varient(t) != tr_varient(next) && r <= 8) r = 8;
+    if (!is_link(t, next) && r <= rd16(t + TRAM_END_INTERPOLATION)) r = rd16(t + TRAM_END_INTERPOLATION);
+    return r;
+}
+
+/* The root's height at the frame. The frame is scaled to the animation's rate (fps / 60, rounded to a
+   float as the exe stores it) and clamped to the last frame; a fraction lerps toward the next height. At
+   60 fps the float rounding leaves a fraction of about 2e-7 on most frames: kept. No heights: 6. */
+static double height(const void *tram, uint16_t frame)
+{
+    const uint8_t *t = tram;
+    float last = (float)(rd16(t + TRAM_FRAMES) - 1);
+    float x = (float)((double)(rd16(t + TRAM_FPS) * (uint32_t)frame) * (double)0.016666668f);
+    if (!(last > x)) x = last;
+    if (!rd32(t + TRAM_HEIGHTS)) return 6.0f;
+    const uint8_t *h = raw_block(t, TRAM_HEIGHTS, 4u * frame, 4);
+    if (x == (float)frame) return h ? rdf(h) : 0.0f;
+    /* The original reads heights[frame] and [frame + 1] even when x was clamped below the frame; out
+       of the block the port takes the last height instead. */
+    const uint8_t *h1 = raw_block(t, TRAM_HEIGHTS, 4u * frame + 4, 4);
+    if (!h || !h1) {
+        const uint8_t *l = raw_block(t, TRAM_HEIGHTS, 4u * (uint32_t)last, 4);
+        return l ? rdf(l) : 0.0f;
+    }
+    double f = (double)x - frame;
+    return rdf(h) * (1.0 - f) + rdf(h1) * f;
+}
+
+/* The x87 returns the height unrounded; DoCharacterFrame blends it so before storing a float. */
+float tr_height(const void *tram, uint16_t frame) { return (float)height(tram, frame); }
+
+void tr_position(const void *tram, uint16_t frame, float v[3])
+{
+    float xz[2] = { 0, 0 };
+    tram_velocity(tram, frame, xz);
+    v[0] = xz[0], v[1] = 0, v[2] = xz[1];
+}
+
+/* ---- the character ---- */
+
+bool chr_is_victim_type(uint16_t t)
+{
+    return (t >= 0x4c && t <= 0x5c) || (t >= 0x60 && t <= 0x65) || (t >= 0x72 && t <= 0x77) ||
+           (t >= 0x7e && t <= 0x84) || t == 0x8d || t == 0xc6 || (t >= 0xd4 && t <= 0xd7);
+}
+
+bool chr_in_bad_varient(const Character *c) { return (~(uint32_t)c->varient & tr_varient(c->anim)) != 0; }
+
+uint16_t chr_class_fight_time(const void *oncc) { return rd16((const uint8_t *)oncc + 0xc44); }
+
+/* The idle delay: the class's (ONCC+0xc48) plus a random half of it at most. */
+void chr_recalculate_idle_delay(Character *c)
+{
+    uint32_t d = rd32((const uint8_t *)c->oncc + 0xc48);
+    c->idle_delay = (uint32_t)(((uint64_t)trac_random() * d) >> 17) + d;
+}
+
+void chr_enter_fight_mode(Character *c)
+{
+    /* For an inactive character the original makes it active first (0x4db830); the port's are always. */
+    c->varient |= 0x200;
+    c->fight_timer = chr_class_fight_time(c->oncc);
+}
+
+/* ONrCharacter_GetVelocityEstimate 0x4eafc0: the root's mean motion over the current frame and up to
+   three before it. */
+void chr_velocity_estimate(const Character *c, float v[3])
+{
+    uint16_t f = (uint16_t)c->frame, last = (uint16_t)(tr_duration(c->anim) - 1u);
+    if (last < f) f = last;
+    float s[3] = { 0, 0, 0 };
+    unsigned n = 0;
+    for (unsigned k = 0; k < 4; k++) {
+        float p[3];
+        tr_position(c->anim, f, p);
+        s[0] += p[0], s[1] += p[1], s[2] += p[2];
+        n++;
+        if (!f) break;
+        f--;
+    }
+    float k = 1.0f / (float)n;
+    v[0] = k * s[0], v[1] = k * s[1], v[2] = k * s[2];
+}
+
+/* MUrQuat_Mul 0x433820: a b, quaternions (x, y, z, w). */
+static void quat_mul(const float a[4], const float b[4], float o[4])
+{
+    float r[4];
+    r[2] = a[2] * b[3] + a[0] * b[1] + a[3] * b[2] - b[0] * a[1];
+    r[3] = a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2];
+    r[0] = a[3] * b[0] + b[2] * a[1] + a[0] * b[3] - a[2] * b[1];
+    r[1] = a[2] * b[0] + b[3] * a[1] + a[3] * b[1] - b[2] * a[0];
+    memcpy(o, r, sizeof r);
+}
+
+static float wrap_2pi(float a)
+{
+    if (a < 0.0f) return a + TWO_PI;
+    if (a >= TWO_PI) return a - TWO_PI;
+    return a;
+}
+
+/* RemapAnimationHook 0x4ea550: for the player, the throw types (0x1f, 0x1a, 0x43, 0x42) become a throw
+   of the character in front (AttemptThrow 0x4eaa10); for AI, AI2rExecutor_TryingToThrow's. The other
+   characters are throw.c's: through chr_remap_hook. */
+const void *(*chr_remap_hook)(Character *c, const void *next);
+void (*chr_throw_hook)(Character *c);
+
+static const void *remap_hook(Character *c, const void *next)
+{
+    return chr_remap_hook && next ? chr_remap_hook(c, next) : next;
+}
+
+/* ONiCharacter_OldAnimationHook 0x4ead30, as the animation is left for next. */
+static void old_animation_hook(Character *c, const void *next)
+{
+    (void)next;
+    if ((c->flags & 0x200000) && !c->hold) c->flags &= ~0x200000u;
+    if (c->type == c->combo_type && c->combo_time == 0xffffffffu) c->combo_time = c->time;
+    /* The animation's own turn (TRAM+0x48): the facings take it, and the pose turns back by it at the
+       root (the root of the aimed copy at A+0x2020 too, which the port doesn't keep), so the change
+       doesn't jump. */
+    float r = wrap_2pi(rdf((const uint8_t *)c->anim + TRAM_FINAL_ROTATION));
+    if (r != 0.0f) {
+        float q[4] = { 0, sinf(r * 0.5f), 0, cosf(r * 0.5f) };
+        quat_mul(c->quats, q, c->quats);
+        c->facing = wrap_2pi(r + c->facing);
+        c->desired_facing = wrap_2pi(r + c->desired_facing);
+    }
+    /* The animation's particles stop here (A+0x1ca4, P3rSendEvent 0x45b2c0): with the particles. */
+}
+
+/* ONrCharacter_NewAnimationHook 0x4e97a0, the parts that touch the animation state. Not ported: the
+   sound serial and vocalization (C+0x1dc, 0x428970), the teleport of type 0xdf (A+0x178),
+   dropping the weapon (flag 5), an attack's turn toward its target, dying, and the animation's
+   particles. A throw (TRAM flag 15) starts its target's part through chr_throw_hook (throw.c); any
+   other animation forgets the target. */
+void (*chr_animation_hook)(Character *c);
+
+static void new_animation_hook(Character *c)
+{
+    const void *t = c->anim;
+    bool fight = (tr_varient(t) & 0x200) != 0;
+    if (!tr_test_flag(t, TRAM_FLAG_THROW_SOURCE)) c->throw_target = NULL, c->throw_victim_anim = NULL;
+    c->threw = NULL;                /* A+0x1ed8 = 0xffff: set again by a throw */
+    if (tr_is_attack(t) && !tr_test_flag(t, TRAM_FLAG_THROW_SOURCE)) {
+        c->combo_type = tr_type(t);
+        c->combo_time = 0xffffffffu;
+    }
+    if (c->type == CHR_TYPE_STAND || c->type == CHR_TYPE_IDLE) {
+        if (c->type == CHR_TYPE_IDLE) {
+            /* after an idle the next one waits the delay again, from a random part of +0xc4c on */
+            chr_recalculate_idle_delay(c);
+            c->last_action = c->time - c->idle_delay;
+            uint32_t d = rd32((const uint8_t *)c->oncc + 0xc4c);
+            c->last_action += (uint32_t)(((uint64_t)trac_random() * d) >> 17) + d;
+        }
+    } else
+        c->last_action = c->time;
+    /* dead, and the reactions are over: the body stays as it lies (stage 2, flag 2). The corpse's drift
+       (A+0x2824, from the knockback or the air velocity) comes with the physics. */
+    if ((c->flags & 1) && !chr_is_victim_type(c->type)) c->flags |= 2;
+    memset(c->hit_list, 0, sizeof c->hit_list);    /* A+0x1eb8: a new animation hits anew */
+    /* an animation from the airborne states (0x25..0x2e) takes the character into the air */
+    uint16_t from = tr_from(t);
+    if (from > 0x24 && from < 0x2f) {
+        c->start_falling = true;
+        if (!c->air_ticks) c->fall_height = c->pos[1];
+    }
+    if (tr_test_flag(t, TRAM_FLAG_THROW_SOURCE) && chr_throw_hook) chr_throw_hook(c);
+    if (!c->fight_timer && !fight) c->varient &= (uint16_t)~0x200u;
+    if (c->ai && chr_animation_hook) chr_animation_hook(c);
+}
+
+void chr_set_animation(Character *c, const void *t)
+{
+    uint16_t old = c->state;
+    c->anim = t;
+    c->frame = 0;
+    c->queued = 0;
+    c->from_state = old;
+    c->type = tr_type(t);
+    c->state = tr_to(t);
+}
+
+void chr_set_animation_interpolated(Character *c, uint16_t from_state, const void *t, uint16_t length)
+{
+    memcpy(c->interp_quats, c->quats, sizeof c->quats);
+    c->interpolating = true;
+    chr_velocity_estimate(c, c->interp_velocity);   /* of the animation being left */
+    c->interp_height = c->pelvis_height;
+    /* The rest of an interpolation under way carries over when longer. The original then tests the
+       flag it has just set, so the second clamp always runs (and changes nothing). */
+    int rest = (int)c->interp_length - (int)c->interp_tick;
+    if (rest < (int)length) rest = length;
+    c->interp_length = (uint16_t)rest;
+    c->interp_state = from_state;
+    c->interp_tick = 0;
+    if (c->interpolating && (int)c->interp_length < (int)length) c->interp_length = length;
+    c->from_state = from_state;
+    c->anim = t;
+    c->frame = 0;
+    c->type = tr_type(t);
+    c->queued = 0;
+    c->state = tr_to(t);
+    if (tr_test_flag(t, TRAM_FLAG_NO_VELOCITY_LERP)) c->interp_velocity[0] = c->interp_velocity[1] = c->interp_velocity[2] = 0;
+}
+
+/* 0x4eb340, what scripts use (chr_animate): tram (through the remap hook) after the old animation's hook,
+   interpolated over interp ticks when interp > 0, else at once; either way from_state is what the caller
+   gives (chr_animate passes the character's own from state, A+0x1afe, not its state). */
+void chr_set_animation_external(Character *c, uint16_t from_state, const void *tram, int32_t interp)
+{
+    const void *t = remap_hook(c, tram);
+    old_animation_hook(c, t);
+    if (interp > 0) {
+        chr_set_animation_interpolated(c, from_state, t, (uint16_t)interp);
+    } else {
+        c->frame = 0;
+        c->queued = 0;
+        c->anim = t;
+        c->from_state = from_state;
+        c->type = tr_type(t);
+        c->state = tr_to(t);
+    }
+    new_animation_hook(c);
+}
+
+void chr_next_animation(Character *c)
+{
+    c->flags &= ~0x10u;
+    /* 0xde (a teleport's first half) is always followed by 0xdf */
+    uint16_t type = c->type == 0xde ? 0xdf : c->queued;
+    const void *next;
+    if (c->hold) next = c->anim;
+    else {
+        /* With nothing queued (type 0) the lookup takes any animation from the state. */
+        next = lookup(c, type, c->state);
+        if (!next) next = lookup(c, CHR_TYPE_STAND, CHR_STATE_STANDING);   /* "invalid next animation" */
+    }
+    next = remap_hook(c, next);
+    if (!next) return;      /* the original has no guard: a class without a stand */
+    uint16_t hp = tr_hard_pause(c->anim, next), sp = tr_soft_pause(c->anim, next);
+    if (c->hard_pause > hp) hp = c->hard_pause;
+    c->hard_pause = hp;
+    if (c->soft_pause > sp) sp = c->soft_pause;
+    c->soft_pause = sp;
+    uint16_t interp = tr_end_interpolation(c->anim, next);
+    old_animation_hook(c, next);
+    if (interp) chr_set_animation_interpolated(c, c->state, next, interp);
+    else chr_set_animation(c, next);
+    new_animation_hook(c);
+}
+
+/* What a pause lets through: non-attacks of the types stand (6), crouch (0x11), 0x17, 0x18 and
+   0x28..0x2b; a soft pause not 0x17 either. */
+static bool passes_pause(const void *t, bool soft)
+{
+    if (tr_is_attack(t)) return false;
+    uint16_t ty = tr_type(t);
+    if (ty == 0x17) return !soft;
+    return ty == 6 || ty == 0x11 || ty == 0x18 || (ty >= 0x28 && ty <= 0x2b);
+}
+
+/* The types "when it can" never cuts (the switch at 0x4e46b0). */
+static bool uncuttable_type(uint16_t t)
+{
+    switch (t) {
+    case 0x4f: case 0x50: case 0x51: case 0x53: case 0x58: case 0x59: case 0x5a: case 0x5c: case 0x8d:
+    case 0xd6: case 0xd7:
+        return true;
+    default:
+        return false;
+    }
+}
+
+const void *chr_do_animation(Character *c, unsigned flags, uint16_t type)
+{
+    if (c->flags & 1) return NULL;
+    bool stand_to_stand = type == CHR_TYPE_STAND && c->state == CHR_STATE_STANDING;
+    const void *next = lookup(c, type, c->state);
+    if (!next && c->frame < 8 && (flags & CHR_ANIM_FROM_PREVIOUS)) {
+        next = lookup(c, type, c->from_state);
+        flags = (flags & ~3u) | CHR_ANIM_NOW;
+    }
+    if ((c->flags & 0x1000) && c->anim != next) c->flags &= ~0x1000u;
+    if (!next) return NULL;
+
+    /* the pauses */
+    bool hard = c->block_pause || c->stun_pause || c->hard_pause || tr_hard_pause(c->anim, next) > 0;
+    if (c->soft_pause || tr_soft_pause(c->anim, next) > 0) {
+        if (!passes_pause(next, true)) return NULL;
+    } else if (hard && !passes_pause(next, false))
+        return NULL;
+
+    if (flags & CHR_ANIM_WHEN_CAN) {
+        const void *cur = c->anim;
+        uint16_t cur_to = tr_to(cur);
+        bool short_cut = tr_is_shortcut(next, cur_to);
+        bool same = tr_type(next) == c->type && tr_varient(cur) == tr_varient(next) && tr_to(cur) == tr_to(next);
+        bool atomic = tr_is_atomic(cur, (uint16_t)c->frame);
+        /* 0x4e36f0 on the character's type (6 for one without an active record) */
+        if (same || chr_is_victim_type(c->type) || tr_test_flag(cur, TRAM_FLAG_THROW_TARGET) ||
+            tr_test_flag(cur, TRAM_FLAG_THROW_SOURCE) || uncuttable_type(tr_type(cur)))
+            flags |= CHR_ANIM_QUEUE;
+        else if (!atomic || (short_cut && tr_shortcut_flag(next, cur_to, 0)))
+            flags |= CHR_ANIM_NOW;
+        else
+            flags |= CHR_ANIM_QUEUE;
+    }
+    if (!stand_to_stand && !c->fight_timer) c->varient &= (uint16_t)~0x200u;
+    c->flags &= ~0x10u;
+
+    /* Asking for what plays (or for what a start type leads into) queues it, unless the current one
+       has variant bits the character has lost. */
+    bool queue = (flags & CHR_ANIM_QUEUE) != 0;
+    if (!chr_in_bad_varient(c)) {
+        if (c->type == type) queue = true;
+        switch (c->type) {
+        case CHR_TYPE_RUN_START: queue |= type == CHR_TYPE_RUN; break;
+        case CHR_TYPE_WALK_START: queue |= type == CHR_TYPE_WALK; break;
+        case CHR_TYPE_RUN_BACKWARDS_START: queue |= type == CHR_TYPE_RUN_BACKWARDS; break;
+        case CHR_TYPE_WALK_BACKWARDS_START: queue |= type == CHR_TYPE_WALK_BACKWARDS; break;
+        case CHR_TYPE_SIDESTEP_LEFT_START: queue |= type == CHR_TYPE_SIDESTEP_LEFT; break;
+        case CHR_TYPE_SIDESTEP_RIGHT_START: queue |= type == CHR_TYPE_SIDESTEP_RIGHT; break;
+        default: break;
+        }
+    }
+    if (queue) {
+        c->queued = type;
+        return next;
+    }
+
+    /* the change: the interpolation asked for (at least 8; the original keeps it in a byte), a
+       shortcut's own, at most the new animation's maximum */
+    uint8_t interp = c->next_interpolation < 8 ? 8 : (uint8_t)c->next_interpolation;
+    uint16_t from = c->state;
+    next = remap_hook(c, next);
+    if (c->anim) old_animation_hook(c, next);
+    if (tr_is_shortcut(next, from)) interp = tr_shortcut_length(next, from);
+    uint16_t max = rd16((const uint8_t *)next + TRAM_MAX_INTERPOLATION);    /* 0x428e00 */
+    if (interp > max) interp = (uint8_t)max;
+    if (interp) chr_set_animation_interpolated(c, c->state, next, interp);
+    else chr_set_animation(c, next);
+    new_animation_hook(c);
+    c->next_interpolation = 0;
+    return next;
+}
+
+void chr_update_animation_for_varient(Character *c)
+{
+    if (c->type >= 0x6a && c->type <= 0x71) return;
+    const void *t = lookup(c, c->type, c->from_state);
+    if (t && tr_varient(t) > tr_varient(c->anim)) chr_set_animation_interpolated(c, c->from_state, t, 8);
+}
+
+void chr_force_stand(Character *c)
+{
+    const void *t = lookup(c, CHR_TYPE_STAND, CHR_STATE_STANDING);
+    uint16_t from = c->state;
+    t = remap_hook(c, t);
+    if (!t) return;     /* "failed to find stand animation for %s" */
+    old_animation_hook(c, t);
+    chr_set_animation_interpolated(c, from, t, 12);
+    new_animation_hook(c);
+}
+
+/* 0x428e10: an overlay over the pose q (bones of it): its weight rises over its first 6 frames and
+   falls over its last 6 (0x529800, 1/6). The bones of TRAM +0x44 go toward the overlay's rotation;
+   those of +0x40 take it on top (from no turn toward it, then MUrQuat_Mul 0x433820); the rest stay. */
+static void apply_overlay(const void *t, uint16_t frame, float *q, int bones)
+{
+    const uint8_t *p = t;
+    uint16_t d = rd16(p + TRAM_DURATION);
+    float w = frame < 6 ? (float)frame * (1.0f / 6.0f) : (int)frame < (int)d - 6 ? 1.0f : ((float)d - (float)frame) * (1.0f / 6.0f);
+    float o[4 * CHR_BONES];
+    if (!tram_rotations(t, frame, o)) return;
+    uint32_t replace = rd32(p + 0x44), add = rd32(p + 0x40);
+    static const float none[4] = { 0, 0, 0, 1 };    /* 0x529898 */
+    for (int b = 0; b < bones; b++) {
+        float *r = q + 4 * b;
+        if (replace & 1u << b) {
+            if (w == 1.0f) memcpy(r, o + 4 * b, 16);
+            else tram_quat_lerp(r, o + 4 * b, w, r);
+        } else if (add & 1u << b) {
+            float k[4];
+            if (w == 1.0f) memcpy(k, o + 4 * b, 16);
+            else tram_quat_lerp(none, o + 4 * b, w, k);
+            quat_mul(k, r, r);
+        }
+    }
+}
+
+void chr_build_quaternions(Character *c)
+{
+    TramInfo in;
+    tram_info(c->anim, &in);
+    if (in.bones != CHR_BONES) return;
+    if (!c->interpolating) {
+        tram_rotations(c->anim, c->frame, c->quats);
+    } else {
+        /* TRrQuatArray_Lerp 0x427d60: from the animation's pose toward the start pose, by what is left */
+        float t = (float)(1.0 - (double)c->interp_tick / (double)c->interp_length), q[4 * CHR_BONES];
+        if (!tram_rotations(c->anim, c->frame, q)) return;
+        for (int b = 0; b < CHR_BONES; b++) tram_quat_lerp(q + 4 * b, c->interp_quats + 4 * b, t, c->quats + 4 * b);
+    }
+    /* ONrCharacter_BuildQuaternions 0x4e5360: the aimed copy (A+0x2020) takes the overlays playing. Not
+       yet: the aiming screens (TRrAimingScreen_Apply_Lerp). */
+    memcpy(c->aimed, c->quats, sizeof c->aimed);
+    for (int k = 0; k < CHR_OVERLAYS; k++) {
+        const ChrOverlay *o = &c->overlay[k];
+        if (o->anim && o->frame < tr_duration(o->anim)) apply_overlay(o->anim, o->frame, c->aimed, CHR_BONES);
+    }
+}
+
+void chr_overlay_set(Character *c, int slot, const void *anim, uint32_t flags)
+{
+    c->overlay[slot].anim = anim;
+    c->overlay[slot].frame = 0;
+    c->overlay[slot].flags = flags;
+}
+
+void (*chr_overlay_hook)(Character *c, const void *anim);
+
+void chr_overlays_advance(Character *c)
+{
+    for (int k = 0; k < CHR_OVERLAYS; k++) {
+        ChrOverlay *o = &c->overlay[k];
+        if (!o->anim) continue;
+        /* slot 1 (the weapon's: holster, draw, reload) acts at its action frame (TRAM +0x174) */
+        if (k == CHR_OVERLAY_WEAPON && (int)o->frame == (int16_t)rd16((const uint8_t *)o->anim + 0x174) && chr_overlay_hook)
+            chr_overlay_hook(c, o->anim);
+        if (!o->anim) continue;
+        /* the overlay's sounds (0x428780, OSiVariant_Impulse_Get): with the sound's variants */
+        if (++o->frame == tr_duration(o->anim)) o->anim = NULL, o->frame = 0;
+    }
+}
+
+void chr_frame_countdowns(Character *c)
+{
+    if (c->hold && !--c->hold) chr_do_animation(c, CHR_ANIM_WHEN_CAN, CHR_TYPE_STAND);
+    if (c->hard_pause) c->hard_pause--;
+    if (c->soft_pause) c->soft_pause--;
+    if (c->stun_pause) c->stun_pause--;
+    if (c->block_pause) c->block_pause--;
+    if (c->countdown_1c98) c->countdown_1c98--;
+    if (c->countdown_1c9a) c->countdown_1c9a--;
+    /* A+0x281c (the footstep display) and A+0x124: not kept */
+    c->tick_type = c->type;
+    double h = height(c->anim, (uint16_t)c->frame);
+    if (c->interpolating) {
+        double t = (double)c->interp_tick / (double)c->interp_length;
+        h = t * h + (1.0 - t) * c->interp_height;
+    }
+    c->pelvis_height = (float)h;
+}
+
+void chr_frame_motion(const Character *c, float v[3])
+{
+    tr_position(c->anim, (uint16_t)c->frame, v);
+    if (c->interpolating) {
+        float t = (float)c->interp_tick / (float)c->interp_length, u = 1.0f - t;
+        for (int i = 0; i < 3; i++) v[i] = v[i] * t + u * c->interp_velocity[i];
+    }
+}
+
+void chr_frame_advance(Character *c)
+{
+    c->frame = (uint16_t)(c->frame + 1);
+    if (c->interpolating && ++c->interp_tick == c->interp_length) c->interpolating = false;
+    if (c->fight_timer) c->fight_timer--;
+    if (tr_duration(c->anim) == c->frame) chr_next_animation(c);
+    if ((c->flags & 0x10) && !tr_is_atomic(c->anim, (uint16_t)c->frame)) chr_next_animation(c);
+}

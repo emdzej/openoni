@@ -110,3 +110,7 @@ name, size, type, flags, CRC of the RGBA bytes) and one per level. `txmp_test` m
 `all: hash=69e02682`.
 
 `tools/onitex.py <game> level0 --png out/tex [names]` writes the top level of each texture as a PNG.
+
+The HUD's `right` and `left` (level 0) are RGB555 pictures on black, flags 0x1400 (0x400 not known);
+the port draws them added to the screen (inferred: the draw states the HUD sets aren't decoded yet).
+`rightRing` and `leftRing` are ARGB4444 rings the health and weapon arcs sample.

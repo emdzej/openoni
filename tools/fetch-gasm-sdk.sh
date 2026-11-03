@@ -16,7 +16,7 @@ WASI_SDK_VERSION=${WASI_SDK_VERSION:-34}
 # The one place the gasm version is set (CI, release and Pages builds all call this script; the gasm
 # bundles' runners too, via --version). Keep it in step with @emdzej/gasm-host in docs/package.json once
 # the browser player exists.
-GASM_VERSION=${GASM_VERSION:-0.16.0}
+GASM_VERSION=${GASM_VERSION:-0.16.1}
 # Binaryen: the version and checksums gasm pins (gasm's scripts/fetch-binaryen.sh).
 BINARYEN_VERSION=133
 if [ "${1:-}" = --version ]; then echo "$GASM_VERSION"; exit 0; fi

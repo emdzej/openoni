@@ -1,0 +1,26 @@
+/* The characters' physics: the body box and sphere tree (0x4e5ff0, 0x4dc160), the move slid along the
+   environment's walls (OBiPhysics_Update 0x43af50 with the character's callbacks, 0x4ebd70), and the
+   floor (FindGroundCollision 0x4ec040: standing on it, the landing and its damage). Notes:
+   docs/re/physics.md.
+
+   Stand-ins until their ports: the characters run their physics right after their own frame (the
+   original runs every context after all the characters: the same while characters don't push each
+   other, 0x4ecb40, and other physics objects, 0x43a9a0, aren't ported), and the AI's wall notice. */
+#pragma once
+#include "character.h"
+
+/* The context for a character made active (FUN_004dc2b0): at its position, its tree built. */
+void physics_start(Character *c);
+/* 0x4e9210: the character put at pos, the physics' position and the old one with it. */
+void physics_place(Character *c, const float pos[3]);
+/* 0x4e5ff0 and 0x4dc160, step 19 of DoCharacterFrame: the body box (C+0x190, C+0x1658) from the pose,
+   then the sphere tree. */
+void physics_body(Character *c);
+/* Step 12 of DoCharacterFrame: the position from the physics, the tick's move w (in the world) split
+   into the move and the drop. */
+void physics_take(Character *c, const float w[3]);
+/* UpdateCharacters' step 10 and OBiPhysics_Update for the character's context. */
+void physics_update(Character *c, const void *env);
+/* PHrCollision_Quad_SphereTreeVector 0x43bfa0: a sphere tree (the root, 4 leaves, 2 middles) moving by mv
+   against the quad, down to its leaves. */
+bool physics_tree_hits(const float spheres[7][4], const void *env, uint32_t quad, const float mv[3]);

@@ -1,0 +1,600 @@
+/* The level's characters: see chars.h. */
+#include "chars.h"
+
+#include "chr_anim.h"
+#include "chr_hit.h"
+#include "exe.h"
+#include "knowledge.h"
+#include "melee.h"
+#include "objc.h"
+#include "patrol.h"
+#include "physics.h"
+#include "sl.h"
+#include "tm.h"
+#include "throw.h"
+#include "weapon.h"
+#include "trigger.h"
+
+#include <ctype.h>
+#include <stdlib.h>
+#include <string.h>
+
+/* The CHAR objects, with the flags the game sets on them as it goes (0x20 spawned: the OSD's +0x2c). */
+enum { OBJECTS_MAX = 512 };
+static ObjcObject objects[OBJECTS_MAX];
+static uint32_t object_flags[OBJECTS_MAX];
+static int n_objects;
+
+static Chr slots[CHARS_MAX];
+static bool used[CHARS_MAX];
+static TriggerActor actors[CHARS_MAX];
+
+static bool add_object(const ObjcObject *o, void *user)
+{
+    (void)user;
+    if (o->tag != TM_TAG("CHAR") || n_objects == OBJECTS_MAX) return true;
+    objects[n_objects] = *o;
+    object_flags[n_objects] = objc_char_flags(o);
+    n_objects++;
+    return true;
+}
+
+/* ONrGameState_NewCharacter 0x4dac50 from a CHAR object: the first free slot; its class, place and
+   facing (the rotation's y, degrees), name and team; AI2rInitializeCharacter's script id. */
+static Chr *create(int object)
+{
+    const ObjcObject *o = &objects[object];
+    const void *oncc = tm_instance_get(TM_TAG("ONCC"), objc_char_class(o));
+    if (!oncc) return NULL;
+    int i = 0;
+    while (i < CHARS_MAX && used[i]) i++;
+    if (i == CHARS_MAX) return NULL;
+    Chr *c = &slots[i];
+    memset(c, 0, sizeof *c);
+    if (!character_init(&c->c, oncc, o->pos, o->rot[1] * 0.017453293f)) return NULL;
+    used[i] = true;
+    memset(&actors[i], 0, sizeof actors[i]);
+    strncpy(c->name, objc_char_name(o), sizeof c->name - 1);
+    c->player = (object_flags[object] & OBJC_CHAR_PLAYER) != 0;
+    c->script_id = c->player ? 0 : -1;
+    c->team = objc_char_team(o);
+    c->object = object;
+    c->c.id = (uint16_t)(i + 1);
+    c->c.ai = !c->player;
+    ai_init(&c->ai);
+    c->ai.name = c->name;
+    /* AI2rInitializeCharacter 0x48a6b0: the AI's flags (knowledge on; CHAR flag 0x08 non-aggressive,
+       0x100 never forgets), the alert level, and the job: a patrol starts its path (by the id) at once */
+    if (!c->player) {
+        uint32_t f = object_flags[object];
+        c->ai.flags = AI_FLAG_KNOWLEDGE | (f & 0x08 ? AI_FLAG_NON_AGGRESSIVE : 0) | (f & 0x100 ? AI_FLAG_NO_DEGRADE : 0);
+        c->ai.alert = (int)objc_char_alert(o);
+        c->ai.state = AI_STATE_IDLE;
+        melee_start(&c->ai.melee, melee_find(objc_char_melee(o)), oncc);
+        if (objc_char_job(o) == OBJC_JOB_PATROL) {
+            int path = patrol_find_id(objc_char_job_path(o));
+            if (path >= 0) {
+                patrol_start(&c->ai, path);
+                c->ai.state = AI_STATE_PATROL;
+            }
+        }
+    }
+    c->ai.job = c->ai.state;
+    c->ai.job_patrol = c->ai.patrol;
+    c->ai.job_alert = (int)objc_char_job_alert(o);
+    chr_hit_init(&c->c, objc_char_extra_health(o));
+    return c;
+}
+
+int chars_load(void)
+{
+    chars_unload();
+    patrol_load();      /* the paths first: the patrol jobs start with their characters */
+    melee_initialize();
+    melee_load();
+    objc_each("Character", add_object, NULL);
+    int n = 0;
+    for (int i = 0; i < n_objects; i++)
+        if (!(object_flags[i] & OBJC_CHAR_NOT_INITIAL) && create(i)) n++;
+    return n;
+}
+
+void chars_unload(void)
+{
+    n_objects = 0;
+    memset(used, 0, sizeof used);
+    memset(actors, 0, sizeof actors);
+    knowledge_reset();
+}
+
+int chars_slots(void) { return CHARS_MAX; }
+Chr *chars_get(int i) { return i >= 0 && i < CHARS_MAX && used[i] ? &slots[i] : NULL; }
+
+Chr *chars_player(void)
+{
+    for (int i = 0; i < CHARS_MAX; i++)
+        if (used[i] && slots[i].player) return &slots[i];
+    return NULL;
+}
+
+bool chars_in_use(const Chr *c) { return c && c >= slots && c < slots + CHARS_MAX && used[c - slots]; }
+
+/* FUN_0048a5a0: by name (case matters), through the living characters. */
+Chr *chars_find(const char *name)
+{
+    for (int i = 0; i < CHARS_MAX; i++)
+        if (used[i] && !strcmp(slots[i].name, name)) return &slots[i];
+    return NULL;
+}
+
+/* FUN_004bb880: by script id. */
+static Chr *find_id(int32_t id)
+{
+    for (int i = 0; i < CHARS_MAX; i++)
+        if (used[i] && slots[i].script_id == (int16_t)id) return &slots[i];
+    return NULL;
+}
+
+/* The spawn test of 0x48a480 (the enumeration's callback): the first object of the name; spawned once
+   unless it may respawn (0x10) or the spawn is forced. */
+Chr *chars_spawn(const char *name, bool force)
+{
+    for (int i = 0; i < n_objects; i++) {
+        if (strcmp(objc_char_name(&objects[i]), name)) continue;
+        if (!force && (object_flags[i] & 0x20) && !(object_flags[i] & 0x10)) continue;
+        object_flags[i] |= 0x20;
+        return create(i);
+    }
+    return NULL;
+}
+
+/* ONrGameState_DeleteCharacter 0x4dc480: the slot is free. */
+void chars_delete(Chr *c)
+{
+    if (!c) return;
+    knowledge_forget(c);
+    used[c - slots] = false;
+    actors[c - slots].alive = false;
+}
+
+TriggerActor *chars_trigger_actors(void)
+{
+    for (int i = 0; i < CHARS_MAX; i++) {
+        TriggerActor *a = &actors[i];
+        a->alive = used[i];
+        if (!used[i]) continue;
+        a->player = slots[i].player;
+        a->name = slots[i].name;
+        a->team = slots[i].team;
+        memcpy(a->pos, slots[i].c.pos, sizeof a->pos);
+    }
+    return actors;
+}
+
+/* 0x48b480, for the AI's characters TakeDamage hurts. */
+static void hurt(Character *c, Character *from, uint32_t damage, bool melee)
+{
+    Chr *v = (Chr *)c;
+    if (v->ai.flags & AI_FLAG_PASSIVE) return;
+    v->ai.vocal_delay = 0;
+    knowledge_hurt_by(v, (Chr *)from, damage, melee);
+}
+
+/* AI2rBlockFunction 0x48b870, every AI's block function (AI2rInitializeCharacter 0x48a6b0). */
+static bool block(Character *c)
+{
+    return melee_block(&((Chr *)c)->ai);
+}
+
+/* AI2rMelee_NotifyAnimation 0x49fd10, for the AI's characters in combat. */
+static void new_animation(Character *c)
+{
+    Chr *ch = (Chr *)c;
+    if (ch->ai.state == AI_STATE_COMBAT) melee_notify_animation(&ch->ai.melee, c->type, chr_is_victim_type(c->type));
+}
+
+/* ONrCharacter_Die_1_Animating_Hook 0x4eb550's scripts: the defeated one unless it ran already, then
+   the death one, deferred with the character's name and run at once (0x4f2120). The scripts are the
+   CHAR object's (AI2rInitializeCharacter 0x48a6b0 copies them); a character made otherwise has none. */
+static void died(Character *c)
+{
+    Chr *ch = (Chr *)c;
+    /* C+0x1644: the body stays the class's time (ONCC+0xc8a) */
+    const uint8_t *k = (const uint8_t *)c->oncc + 0xc8a;
+    ch->corpse_time = (uint16_t)(k[0] | k[1] << 8);
+    if (ch->object < 0) return;
+    const ObjcObject *o = &objects[ch->object];
+    const char *defeated = objc_char_script(o, OBJC_SCRIPT_DEFEATED), *death = objc_char_script(o, OBJC_SCRIPT_DIE);
+    if (defeated[0] && !(ch->script_flags & CHR_SCRIPTED_DEFEATED)) {
+        trigger_defer(defeated, ch->name);
+        ch->script_flags |= CHR_SCRIPTED_DEFEATED;
+    }
+    if (death[0]) {
+        ch->script_flags |= CHR_SCRIPTED_DIED;
+        trigger_defer(death, ch->name);
+        trigger_flush();
+    }
+}
+
+/* TakeDamage's hurt and defeated scripts (0x4e65f0), deferred once each with the character's name. */
+static void script(Character *c, int which)
+{
+    Chr *ch = (Chr *)c;
+    if (ch->object < 0) return;
+    const ObjcObject *o = &objects[ch->object];
+    uint32_t bit = which == CHR_SCRIPT_HURT ? CHR_SCRIPTED_HURT : CHR_SCRIPTED_DEFEATED;
+    const char *f = objc_char_script(o, which == CHR_SCRIPT_HURT ? OBJC_SCRIPT_HURT : OBJC_SCRIPT_DEFEATED);
+    if (!f[0] || (ch->script_flags & bit)) return;
+    trigger_defer(f, ch->name);
+    ch->script_flags |= bit;
+}
+
+void chars_update(const CharacterInput *player_in, const void *env)
+{
+    chr_hurt_hook = hurt;
+    chr_die_hook = died;
+    chr_script_hook = script;
+    chr_animation_hook = new_animation;
+    chr_block_hook = block;
+    throw_install();
+    weapons_install();
+    knowledge_update(env);      /* AI2rKnowledge_Update, before the characters */
+    for (int i = 0; i < CHARS_MAX; i++) {
+        if (!used[i]) continue;
+        /* ONrGameState_UpdateCharacters 0x4dccf0: a body's time runs out; an AI's (C+0x1e8 not 0) is
+           deleted (ONrGameState_DeleteCharacter 0x4dc480; only mad_bomber has a time, the other classes 0) */
+        if (slots[i].corpse_time && --slots[i].corpse_time == 0 && !slots[i].player) {
+            chars_delete(&slots[i]);
+            continue;
+        }
+        if (slots[i].player) character_update(&slots[i].c, player_in, env);
+        else ai_update(&slots[i].ai, &slots[i].c, env);
+    }
+    Character *list[CHARS_MAX];
+    int n = 0;
+    for (int i = 0; i < CHARS_MAX; i++)
+        if (used[i]) list[n++] = &slots[i].c;
+    chr_collide_all(list, n);
+    throw_update(list, n);
+}
+
+/* ---- the commands ---- */
+
+static int32_t num(const SlValue *v) { return v->type == SL_FLOAT ? (int32_t)v->f : v->i; }
+
+/* The character argument of the chr_ and ai2_ commands: an int is a script id; a string is a script id
+   if it reads as a number (FUN_00426850), else a name. */
+static Chr *arg_char(const SlValue *v)
+{
+    if (v->type == SL_INT || v->type == SL_FLOAT) return find_id(num(v));
+    if (v->type != SL_STRING) return NULL;
+    char *end;
+    long id = strtol(v->s, &end, 10);
+    if (*v->s && !*end) return find_id((int32_t)id);
+    return chars_find(v->s);
+}
+
+/* ai2_spawn name [force] (AI2iScript_Spawn 0x4b4780) */
+static bool cmd_spawn(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 1 || v[0].type != SL_STRING) return true;
+    bool force = c >= 2 && v[1].type == SL_STRING && !strcmp(v[1].s, "force");
+    chars_spawn(v[0].s, force);
+    return true;
+}
+
+/* ai2_movetoflag char flag [setfacing] (AI2iScript_MoveToFlag 0x4b53e0): an AI character (not the
+   player, who needs ai2_takecontrol) walks to the flag, then faces the flag's way if asked. The walk
+   is the stand-in mover (ai.h) until the movement layer is ported. */
+static bool cmd_movetoflag(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 2) return true;
+    Chr *ch = arg_char(&v[0]);
+    ObjcObject flag;
+    if (!ch || !objc_flag_find((uint16_t)num(&v[1]), &flag)) return true;   /* "flag %d does not exist" */
+    if (ch->player) return true;    /* "cannot move player character without first using ai2_takecontrol" */
+    bool face = c >= 3 && v[2].type == SL_STRING && !strcmp(v[2].s, "setfacing");
+    ai_move_to(&ch->ai, flag.pos, face, flag.rot[1] * 0.017453293f);
+    return true;
+}
+
+/* ai2_dopath char path (AI2iScript_SetState_Patrol 0x4b4c70): an AI character (C+0x1e8 2) starts the
+   patrol path, by its name (AI2rPatrol_FindByName), as its job (C+0x1f8 3). A passive one (C+0x1f0
+   bit 2) refuses: the port has no passive yet. */
+static bool cmd_dopath(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 2 || v[1].type != SL_STRING) return true;
+    Chr *ch = arg_char(&v[0]);
+    if (!ch || ch->player) return true;
+    int path = patrol_find(v[1].s);
+    if (path >= 0) {
+        patrol_start(&ch->ai, path);
+        ch->ai.state = AI_STATE_PATROL;
+    }   /* else "unknown path" */
+    return true;
+}
+
+/* ai2_passive char 0|1 (AI2iScript_Passive 0x4b4be0, AI2rPassive 0x48b160): a passive AI does nothing, sees
+   nothing and is no one's enemy until made active again. */
+static bool cmd_passive(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 2) return true;
+    Chr *ch = arg_char(&v[0]);
+    if (!ch || ch->player) return true;
+    if (num(&v[1])) ch->ai.flags |= AI_FLAG_PASSIVE;
+    else ch->ai.flags &= ~(uint32_t)AI_FLAG_PASSIVE;
+    return true;
+}
+
+/* chr_changeteam char team (AI2iScript_ChangeTeam 0x4b8b10): the team by its name in the exe's list of
+   eight (0x54b38c, case matters), else "unknown team". Only C+0x12 changes. */
+enum { TEAM_NAMES_VA = 0x54b38c, TEAMS = 8 };
+static bool cmd_changeteam(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 2 || v[1].type != SL_STRING) return true;
+    Chr *ch = arg_char(&v[0]);
+    if (!ch) return true;
+    for (uint32_t k = 0; k < TEAMS; k++) {
+        const char *name = exe_str(exe_u32(TEAM_NAMES_VA + 4 * k));
+        if (name && !strcmp(name, v[1].s)) {
+            ch->team = k;
+            return true;
+        }
+    }
+    return true;
+}
+
+/* chr_nocollision char 0|1 (AI2iScript_NoCollision 0x4b6a90): C+0x04 flag 0x20000, then 0x4ed080 sets the
+   physics context's flags 0x44 from it. The port's physics has no character-to-character collision yet,
+   so only the flag is kept. */
+static bool cmd_nocollision(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 2) return true;
+    Chr *ch = arg_char(&v[0]);
+    if (!ch) return true;
+    if (num(&v[1])) ch->c.flags |= 0x20000u;
+    else ch->c.flags &= ~0x20000u;
+    return true;
+}
+
+/* ai2_setjobstate char (AI2iScript_MakeCurrentStateJob 0x4b4b00): an AI character takes its state (C+0x1f8, the
+   state block at C+0xf70) as its job (C+0x1f4, C+0x200), what it goes back to after combat. */
+static bool cmd_setjobstate(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 1) return true;
+    Chr *ch = arg_char(&v[0]);
+    if (!ch || ch->player) return true;     /* "ai2_setjobstate" error */
+    ch->ai.job = ch->ai.state;
+    ch->ai.job_patrol = ch->ai.patrol;
+    ch->ai.job_point = ch->ai.point;
+    return true;
+}
+
+/* chr_lock_active char (AI2iScript_LockActive 0x4b94b0): an AI character made active
+   (ONrCharacter_MakeActive 0x4f11b0) and kept so, C+0x04 flag 0x100000. The port's characters are all
+   active: only the flag is kept. */
+static bool cmd_lock_active(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    Chr *ch = c >= 1 ? arg_char(&v[0]) : NULL;
+    if (ch && !ch->player) ch->c.flags |= 0x100000u;    /* else "chr_lock_active: no such AI" */
+    return true;
+}
+
+/* chr_death_lock char 0|1 (AI2iScript_ChrDeathLock 0x4b9f80): C+0x04 flag 0x400, which only
+   ONrCharacter_Die_4_Gone_Hook 0x4ebb60 reads (a locked body doesn't go: not ported yet). */
+static bool set_flag(int c, const SlValue *v, uint32_t bit);
+static bool cmd_death_lock(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    return set_flag(c, v, 0x400u);
+}
+
+/* chr_unkillable char 0|1 (0x4b9720: C+0x04 flag 0x20, a hit leaves one hit point) and chr_invincible
+   char 0|1 (0x4b9680: 0x2000000, no damage). */
+static bool set_flag(int c, const SlValue *v, uint32_t bit)
+{
+    if (c < 2) return true;
+    Chr *ch = arg_char(&v[0]);
+    if (!ch) return true;
+    if (num(&v[1]) > 0) ch->c.flags |= bit;
+    else ch->c.flags &= ~bit;
+    return true;
+}
+static bool cmd_unkillable(SlThread *t, int c, const SlValue *v, SlValue *r, void *u) { (void)t, (void)r, (void)u; return set_flag(c, v, 0x20u); }
+static bool cmd_invincible(SlThread *t, int c, const SlValue *v, SlValue *r, void *u) { (void)t, (void)r, (void)u; return set_flag(c, v, 0x2000000u); }
+
+/* ai2_makeignoreplayer char 0|1 (AI2iScript_MakeIgnorePlayer 0x4b9190): C+0x1f0 bit 0x2000, the AI
+   doesn't see the player. */
+static bool cmd_make_ignore_player(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 2) return true;
+    Chr *ch = arg_char(&v[0]);
+    if (!ch || ch->player) return true;
+    if (num(&v[1]) > 0) ch->ai.flags |= AI_FLAG_IGNORE_PLAYER;
+    else ch->ai.flags &= ~(uint32_t)AI_FLAG_IGNORE_PLAYER;
+    return true;
+}
+
+/* chr_delete char (AI2iScript_ChrDelete 0x4b7860) */
+static bool cmd_delete(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c >= 1) chars_delete(arg_char(&v[0]));
+    return true;
+}
+
+/* chr_teleport char flag (AI2iScript_Teleport 0x4b69b0): the character to the flag's place (0x4e9210:
+   its position and the ones kept with it; the facing stays). */
+static bool cmd_teleport(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 2) return true;
+    Chr *ch = arg_char(&v[0]);
+    ObjcObject flag;
+    if (!ch || !objc_flag_find((uint16_t)num(&v[1]), &flag)) return true;   /* "flag %d does not exist" */
+    physics_place(&ch->c, flag.pos);
+    return true;
+}
+
+/* chr_animate char anim [frames [interpolation]] (AI2iScript_Animate_Internal 0x4b6e10): the animation
+   (0x4eb340) from the character's from state, interpolated if asked; the character held in it (A+0x1c90)
+   for frames ticks, its length for -1, not at all for 0 or none. The block form waits while the
+   character is held from before; it doesn't wait for the animation it starts. */
+static bool animate(int c, const SlValue *v, bool block)
+{
+    if (c < 2 || v[1].type != SL_STRING) return true;
+    Chr *ch = arg_char(&v[0]);
+    if (!ch) return true;
+    if (block && ch->c.hold > 1) return false;
+    const void *tram = tm_instance_get(TM_TAG("TRAM"), v[1].s);
+    if (!tram) return true;      /* failed to find animation */
+    int32_t frames = c >= 3 ? num(&v[2]) : 0;
+    int32_t interp = c >= 4 ? (uint16_t)num(&v[3]) : -1;
+    chr_set_animation_external(&ch->c, ch->c.from_state, tram, interp);
+    ch->c.flags |= 0x200000;
+    if (frames == -1) ch->c.hold = (uint32_t)tr_duration(tram) + 1;
+    else ch->c.hold = frames > 0 ? (uint32_t)frames + 1 : 0;
+    return true;
+}
+
+static bool cmd_animate(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    return animate(c, v, false);
+}
+
+static bool cmd_animate_block(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    return animate(c, v, true);
+}
+
+/* The animation types' names: the table at 0x54d7c0 in the exe, 8 bytes an entry (the type as a u16
+   in a u32, a pointer to its name), ended by a null name. 0x4f0370 sorts it and searches it without
+   case; the port searches it in place. */
+enum { ANIM_TYPE_NAMES = 0x54d7c0, ANIM_STATE_NAMES = 0x54df10 };
+static bool name_lookup(uint32_t table, const char *name, uint16_t *type)
+{
+    for (uint32_t va = table;; va += 8) {
+        uint32_t p = exe_u32(va + 4);
+        if (!p) return false;
+        const char *s = (const char *)exe_data(p, 1);
+        if (!s) return false;
+        size_t k = 0;
+        while (name[k] && tolower((unsigned char)name[k]) == tolower((unsigned char)s[k])) k++;
+        if (!name[k] && !s[k]) {
+            *type = (uint16_t)exe_u32(va);
+            return true;
+        }
+    }
+}
+
+static bool anim_type(const char *name, uint16_t *type) { return name_lookup(ANIM_TYPE_NAMES, name, type); }
+
+/* The animation states' names (0x4f0450: the table at 0x54df10, the same form). */
+static bool anim_state(const char *name, uint16_t *state) { return name_lookup(ANIM_STATE_NAMES, name, state); }
+
+/* chr_wait_animstate char state... (AI2iScript_WaitForAnimState 0x4b75c0): waits until the character's
+   animation state (A+0x1afc) is one of the states (16 at most, "too many states"). */
+static bool cmd_wait_animstate(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 2) return true;
+    Chr *ch = arg_char(&v[0]);
+    if (!ch) return true;
+    uint16_t states[16];
+    int n = 0;
+    for (int i = 1; i < c && n < 16; i++) {
+        if (v[i].type != SL_STRING) continue;
+        if (anim_state(v[i].s, &states[n])) n++;     /* else "unknown anim state" */
+    }
+    if (!n) return true;
+    for (int i = 0; i < n; i++)
+        if (states[i] == ch->c.state) return true;
+    return false;
+}
+
+/* chr_wait_animtype char type... (AI2iScript_WaitForAnimType 0x4b7400): waits until the character's
+   animation, or one of its four overlays playing (0x4d7ba0), is of one of the types (16 at most). */
+static bool cmd_wait_animtype(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 2) return true;
+    Chr *ch = arg_char(&v[0]);
+    if (!ch) return true;
+    uint16_t types[16];
+    int n = 0;
+    for (int i = 1; i < c && n < 16; i++) {
+        if (v[i].type != SL_STRING) continue;
+        if (anim_type(v[i].s, &types[n])) n++;   /* else "unknown anim type" */
+    }
+    if (!n) return true;
+    uint16_t have[1 + CHR_OVERLAYS];
+    int m = 0;
+    have[m++] = ch->c.type;
+    for (int k = 0; k < CHR_OVERLAYS; k++)
+        if (ch->c.overlay[k].anim) have[m++] = tr_type(ch->c.overlay[k].anim);
+    for (int i = 0; i < n; i++)
+        for (int k = 0; k < m; k++)
+            if (types[i] == have[k]) return true;
+    return false;
+}
+
+/* ONrActiveCharacter_IsPlayingThisAnimationName 0x4f15d0: the animation's instance name
+   (TMrInstance_GetInstanceName 0x423d90, without the tag) is the name, without case. The original also
+   tries the four overlays (A+0x1c58); the port has none. */
+static bool playing_named(const Character *c, const char *name)
+{
+    if (!c->anim) return false;
+    const TmInstance *in = tm_handle_instance(tm_handle_of(c->anim));
+    if (!in || !in->name || strlen(in->name) < 4) return false;
+    const char *s = in->name + 4;
+    size_t k = 0;
+    while (name[k] && tolower((unsigned char)name[k]) == tolower((unsigned char)s[k])) k++;
+    return !name[k] && !s[k];
+}
+
+/* chr_wait_animation char name... (AI2iScript_WaitForAnimation 0x4b7320): waits until the character
+   plays one of the named animations. */
+static bool cmd_wait_animation(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 2) return true;
+    Chr *ch = arg_char(&v[0]);
+    if (!ch) return true;       /* "no such character" */
+    for (int i = 1; i < c; i++)
+        if (v[i].type == SL_STRING && playing_named(&ch->c, v[i].s)) return true;
+    return false;
+}
+
+void chars_register_commands(void)
+{
+    sl_register("chr_wait_animation", cmd_wait_animation, NULL);
+    sl_register("ai2_spawn", cmd_spawn, NULL);
+    sl_register("chr_delete", cmd_delete, NULL);
+    sl_register("ai2_movetoflag", cmd_movetoflag, NULL);
+    sl_register("ai2_dopath", cmd_dopath, NULL);
+    sl_register("ai2_passive", cmd_passive, NULL);
+    sl_register("ai2_setjobstate", cmd_setjobstate, NULL);
+    sl_register("chr_changeteam", cmd_changeteam, NULL);
+    sl_register("chr_nocollision", cmd_nocollision, NULL);
+    sl_register("chr_lock_active", cmd_lock_active, NULL);
+    sl_register("chr_death_lock", cmd_death_lock, NULL);
+    sl_register("chr_unkillable", cmd_unkillable, NULL);
+    sl_register("chr_invincible", cmd_invincible, NULL);
+    sl_register("ai2_makeignoreplayer", cmd_make_ignore_player, NULL);
+    sl_register("chr_teleport", cmd_teleport, NULL);
+    sl_register("chr_animate", cmd_animate, NULL);
+    sl_register("chr_animate_block", cmd_animate_block, NULL);
+    sl_register("chr_wait_animtype", cmd_wait_animtype, NULL);
+    sl_register("chr_wait_animstate", cmd_wait_animstate, NULL);
+}

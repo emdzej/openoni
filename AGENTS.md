@@ -7,7 +7,7 @@ Guidance for coding agents working in this repository. Humans: see [README.md](R
 
 OpenOni is a faithful, from-scratch reimplementation of **Oni** (Bungie West, 2001), the Windows release
 v1.0 (`Oni.exe`, 1,527,808 bytes, CRC-32 `a8223704`), in C11. It targets [gasm](https://github.com/emdzej/gasm)
-**0.16.0** (`openoni.wasm`: native runners on macOS, Linux and Windows, and the browser). A native build
+**0.16.1** (`openoni.wasm`: native runners on macOS, Linux and Windows, and the browser). A native build
 exists for tools and headless tests only. Sibling projects with the same conventions: `../openrf` (Return
 Fire, complete), `../opencmr2` (Colin McRae Rally 2.0, in progress, the closest: a 3D Windows game of 2000
 on `gasm:gl`). Copy their proven pieces (file layer, gasm backend, bundles, play page) rather than
@@ -19,10 +19,53 @@ If something looks wrong, check the disassembly; if the original does it, keep i
 fix deviations *of the port* from the original.
 
 **State:** steps 0 to 2 of [docs/re/port-plan.md](docs/re/port-plan.md) (the order of work, each step
-with its check) are done. Step 0: the installer archive (`src/vise.c`, `openoni-extract`, `tools/vise.py`,
-[docs/formats/vise.md](docs/formats/vise.md); the standalone Go version is `../visextract`). Step 1: the
-gasm skeleton (`platform.h`, `platform_gasm.c`, `app.c`, `exe.c`). Step 2: the instance files (`src/tm.c`,
-`tools/onidat.py`, [docs/formats/dat.md](docs/formats/dat.md)). Next: step 3, the format decoders.
+with its check) are done:
+
+- Step 0, the installer archive: `src/vise.c`, `openoni-extract`, `tools/vise.py`,
+  [docs/formats/vise.md](docs/formats/vise.md). The standalone Go version is `../visextract`.
+- Step 1, the gasm skeleton: `platform.h`, `platform_gasm.c`, `app.c`, `exe.c`.
+- Step 2, the instance files: `src/tm.c`, `tools/onidat.py`, [docs/formats/dat.md](docs/formats/dat.md).
+
+Step 3, the decoders, is done. Each has a reference reader in `tools/` and a test with the same hash:
+
+- textures: `txmp.c`, `im.c`
+- geometry: `m3gm.c`
+- the environment: `akev.c`
+- animations: `tram.c`
+- bodies: `body.c`
+- level objects: `objc.c`; object animations: `oban.c`
+- sounds: `sndd.c`; fonts and text: `font.c`, `text.c`
+
+Steps 4 (renderer), 6 (character) and 7 (scripts) have begun:
+
+- `src/render/` (gasm only): `gl_dev.c`, `env_draw.c`, `char_draw.c`.
+- `src/trac.c`: the animation collections.
+- `src/chars.c`: the level's characters (from `CHAR` objects and `ai2_spawn`), their scripts (die,
+  defeated, hurt) and the `chr_*`/`ai2_*` commands. `src/ai.c` (the AI's executor, a stand-in mover), `src/patrol.c` (patrol paths and jobs),
+  `src/knowledge.c` (sight, hurts, the alert) and `src/melee.c` (the melee profiles and techniques;
+  both in [docs/re/ai.md](docs/re/ai.md)) move the others.
+  `--param call=<function>` runs a level function at the start (e.g. `spawn_top` on level 1).
+- `src/character.c`: a first playable. `--param play=1 --param level=1` runs Konoko through level 1
+  (`--param at=x,y,z,deg` starts her elsewhere); `--param viewer=level` flies through a level.
+  `--param route=<steps>` drives her headless (the steps are described in `app.c`; `--param trace=N`
+  logs the characters and the doors near Konoko every N frames; `--param sltrace=1` the scripts).
+- `src/throw.c`: throws (the player's; the victim's part and its own damage), in
+  [docs/re/character.md](docs/re/character.md) "Throws".
+- `src/weapon.c`: weapons (spawn, pickup, the trigger and shots, drop; the shots' particles are
+  stand-ins), [docs/formats/onwc.md](docs/formats/onwc.md). Route keys `q` swap, `g` fire, `e` drop.
+- `src/sl.c`: the BSL engine, running the level's scripts. `src/trigger.c` (trigger volumes),
+  `src/object.c` (the level's objects, `obj_*` and `env_*anim`) and `src/env.c` (`env_show`) are its
+  first commands. [docs/re/character.md](docs/re/character.md) maps the character records for the
+  engine's port.
+
+`src/physics.c` gives the characters the original's floor and walls ([docs/re/physics.md](docs/re/physics.md)).
+`src/graph.c` (the rooms' graph) and `src/localpath.c` (paths through a room's grid) find the AI's way
+([docs/re/pathfinding.md](docs/re/pathfinding.md)). `src/door.c`: the level's doors open for the characters
+near them, and the `door_*` commands ([docs/re/door.md](docs/re/door.md)). `src/console.c`, `src/event.c` and
+`src/action.c`: consoles, event lists and the action key (Ctrl) ([docs/re/console.md](docs/re/console.md)).
+
+Stand-ins (camera, fight mode, the AI's mover) are marked in the code. They go as their originals are
+ported.
 
 ## Hard rules
 

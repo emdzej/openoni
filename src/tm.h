@@ -86,6 +86,9 @@ static inline void *tm_link(const void *field)
 /* Reads from the .raw of the file an instance comes from (offsets in instance fields are into it).
    Returns the byte count, -1 on error. */
 int64_t tm_raw_read(const void *data, uint32_t off, void *dst, size_t len);
+/* The whole .raw of the file an instance comes from (loaded on first use, as the original keeps it), and
+   its size; NULL if it can't be read. Offsets in instance fields index it. */
+const uint8_t *tm_raw(const void *data, size_t *size);
 
 /* What the loader did, over all loads since tm_initialize. */
 typedef struct {

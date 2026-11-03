@@ -50,6 +50,8 @@ struct TmFile {
     uint32_t n_names;
     bool resolved;
     VfsFile *raw;
+    uint8_t *raw_all;       /* the .raw whole, once tm_raw asked for it */
+    size_t raw_size;
 };
 
 static TmTemplate templates[MAX_TEMPLATES];
@@ -248,6 +250,7 @@ static void file_free(TmFile *f)
 {
     if (!f) return;
     if (f->raw) vfs_close(f->raw);
+    free(f->raw_all);
     free(f->inst);
     free(f->buf);
     free(f);
@@ -595,6 +598,24 @@ int64_t tm_raw_read(const void *data, uint32_t off, void *dst, size_t len)
         if (!f->raw) return -1;
     }
     return vfs_read_at(f->raw, off, dst, len);
+}
+
+/* TMiGame_InstanceFile_RawFileRef 0x420720 + TMrInstance_GetRawOffset 0x423e10: the .raw of the file an
+   instance comes from, loaded whole (as the original loads it), and its size. NULL if it can't be read. */
+const uint8_t *tm_raw(const void *data, size_t *size)
+{
+    const uint8_t *p = data;
+    int slot = (int)rd32(p - 4);
+    TmFile *f = tm_file_at(slot);
+    if (!f || slot < FIRST_LEVEL_SLOT) return NULL;
+    if (!f->raw_all) {
+        char path[96];
+        snprintf(path, sizeof path, "GameDataFolder/%s.raw", f->name);
+        f->raw_all = vfs_read_all(path, &f->raw_size);
+        if (!f->raw_all) return NULL;
+    }
+    if (size) *size = f->raw_size;
+    return f->raw_all;
 }
 
 /* ---- the reference summary (tools/onidat.py) ---- */

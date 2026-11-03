@@ -1,0 +1,115 @@
+/* The AI's melee (OPENONI_DATA=<dir>, default ./game; skipped without it): on level 1, the warehouse's
+   melee profiles read whole; a thug (THUG_Wh) 40 from Konoko on the training room's floor sees her,
+   closes in and fights: it picks techniques, presses their attacks' keys and hurts her; and it blocks
+   by its profile's chance and the difficulty. */
+#include "akev.h"
+#include "chars.h"
+#include "chr_anim.h"
+#include "exe.h"
+#include "melee.h"
+#include "persist.h"
+#include "physics.h"
+#include "tm.h"
+#include "trac.h"
+#include "vfs.h"
+#include "vfs_host.h"
+
+#include <math.h>
+#include <stdio.h>
+#include <string.h>
+
+static void prepare(void)
+{
+    TmFile *f = tm_file_at(tm_file_slots() - 1);
+    for (uint32_t i = 0; f && i < tm_file_instance_count(f); i++) {
+        const TmInstance *in = tm_file_instance(f, i);
+        if (in->tmpl->tag == TRAC_TAG && in->data) trac_prepare(in->data);
+    }
+}
+
+int main(void)
+{
+    if (!vfs_mount_default() || !vfs_exists(EXE_PATH)) { printf("melee_test: no game folder, skipped\n"); return 0; }
+    char err[512];
+    if (!exe_init(err, sizeof err) || !tm_initialize(err, sizeof err) || !tm_level_load(0, err, sizeof err)) {
+        fprintf(stderr, "melee_test: %s\n", err);
+        return 1;
+    }
+    prepare();
+    trac_set_level(1);
+    if (!tm_level_load(1, err, sizeof err)) {
+        fprintf(stderr, "melee_test: %s\n", err);
+        return 1;
+    }
+    prepare();
+    const void *env = NULL;
+    TmFile *f = tm_file_at(tm_file_slots() - 1);
+    for (uint32_t i = 0; f && i < tm_file_instance_count(f); i++) {
+        const TmInstance *in = tm_file_instance(f, i);
+        if (in->tmpl->tag == AKEV_TAG && in->data) env = in->data;
+    }
+    int failed = 0;
+    chars_load();
+    const MeleeProfile *mp = melee_find(0x27);
+    printf("profile 0x27: %s, %u attacks, %u evades, %u maneuvers, %u moves\n", mp ? mp->name : "none", mp ? mp->nattack : 0,
+           mp ? mp->nevade : 0, mp ? mp->nmaneuver : 0, mp ? mp->nmoves : 0);
+    if (!mp || strcmp(mp->name, "THUG_Wh") || mp->nattack != 10 || mp->nmoves != 38) failed |= 1;
+    for (int i = 0; i < chars_slots(); i++) {
+        Chr *c = chars_get(i);
+        if (c && !c->player) chars_delete(c);
+    }
+    Chr *p = chars_player(), *t = chars_spawn("Bay2_Thug_1", false);
+    if (!p || !t || !env) {
+        fprintf(stderr, "melee_test: no player or thug\n");
+        return 1;
+    }
+    const float at[3] = { -1101.0f, -340.0f, -126.3f };
+    physics_place(&p->c, at);
+    physics_place(&t->c, (const float[3]){ at[0], at[1], at[2] - 40.0f });
+    t->c.facing = t->c.desired_facing = 0.0f;
+    t->ai.patrol = -1;
+    t->ai.state = AI_STATE_IDLE;
+    uint32_t hp0 = p->c.hit_points;
+    int attacks = 0, techniques = 0, combat_at = -1;
+    uint16_t last = 0;
+    const void *last_tech = NULL;
+    for (int k = 0; k < 900; k++) {
+        chars_update(&(CharacterInput){ 0 }, env);
+        if (combat_at < 0 && t->ai.state == AI_STATE_COMBAT) combat_at = k;
+        if (t->c.anim && tr_is_attack(t->c.anim) && t->c.type != last) attacks++;
+        last = t->c.anim && tr_is_attack(t->c.anim) ? t->c.type : 0;
+        if (t->ai.melee.tech && t->ai.melee.tech != last_tech) {
+            techniques++;
+            if (techniques <= 8) printf("tick %d: technique %s at %.1f\n", k, t->ai.melee.tech->name, t->ai.melee.dist);
+        }
+        last_tech = t->ai.melee.tech;
+        if (p->c.flags & 1) break;
+    }
+    printf("combat after %d ticks, %d techniques, %d attacks, konoko %u -> %u hit points\n", combat_at, techniques, attacks, hp0,
+           p->c.hit_points);
+    if (combat_at < 0 || techniques < 2 || attacks < 2 || p->c.hit_points >= hp0) failed |= 2;
+    /* the block (AI2rBlockFunction): THUG_Wh blocks 25% alone, times 0.6, 1 or 1.3 by the difficulty */
+    if (t->ai.state == AI_STATE_COMBAT) {
+        const float want[3] = { 15.0f, 25.0f, 32.5f };
+        for (int d = 0; d < 3; d++) {
+            persist_set_difficulty(d);
+            int n = 0;
+            for (int k = 0; k < 20000; k++) n += melee_block(&t->ai);
+            float pc = n / 200.0f;
+            printf("difficulty %d: blocks %.1f%% (%.1f%%)\n", d, pc, want[d]);
+            if (fabsf(pc - want[d]) > 1.5f) failed |= 4;
+        }
+        persist_set_difficulty(1);
+        t->ai.flags |= AI_FLAG_PASSIVE;
+        if (melee_block(&t->ai)) failed |= 4;
+        t->ai.flags &= ~AI_FLAG_PASSIVE;
+    } else {
+        failed |= 4;
+    }
+    chars_unload();
+    tm_terminate();
+    exe_free();
+    vfs_unmount();
+    printf("melee_test: %s\n", failed ? "FAILED" : "ok");
+    return failed;
+}

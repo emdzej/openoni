@@ -198,7 +198,7 @@ def main(argv):
                     continue
                 n = dec.size(ty, w, h, f & FLAG_MIPMAPS)
                 lw, lh, px = dec.decode(ty, w, h, f & FLAG_MIPMAPS, raw[off:off + n])[0]
-                png(f"{outdir}/{name}.png", lw, lh, px)
+                png(f"{outdir}/{name.replace('/', '_')}.png", lw, lh, px)   # some names have a /
             continue
         h_lv = count = 0
         for i, name, f, w, h, ty, off in textures(dat):
