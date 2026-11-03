@@ -1,8 +1,9 @@
 # Status
 
-Under way, not yet playable from start to finish. On level 1 (the training), Konoko can be played
-through the movement and combat lessons and the shooting range's targets, with the level's own scripts
-driving the lessons.
+Under way, not yet playable from start to finish. Level 1's training plays through to its end, with
+the level's own scripts driving the lessons: movement, combat, the shooting range, the rifle and the
+two training drones. Then the cutscene after the training plays, its actors moved by the game's own
+recorded films, and the warehouse mission begins.
 
 ## What works
 
@@ -24,6 +25,8 @@ driving the lessons.
   and see, hear and react to the player. Their combat is still a stand-in.
 - **The scripts**: the BSL engine runs the level's own scripts, with their trigger volumes, doors,
   consoles, animated objects and the first of the game's script commands.
+- **The cutscenes**: the films (a character's input recorded tick by tick and played back), the
+  camera's moves, the letterbox, and the AI held still while they play.
 - **The particle system**, the engine under every shot, spark and shard of glass. It covers the particle
   classes, emitters, events and actions, plus collisions with the walls and characters, and damage.
   Projectiles fly and stop on what they hit, and break the glass made of breakable materials. The

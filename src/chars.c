@@ -1,5 +1,6 @@
 /* The level's characters: see chars.h. */
 #include "chars.h"
+#include "film.h"
 
 #include "chr_anim.h"
 #include "chr_hit.h"
@@ -14,6 +15,8 @@
 #include "throw.h"
 #include "weapon.h"
 #include "trigger.h"
+#include "ui.h"
+#include "camera.h"
 
 #include <ctype.h>
 #include <stdlib.h>
@@ -432,6 +435,100 @@ static bool cmd_delete(SlThread *t, int c, const SlValue *v, SlValue *r, void *u
     return true;
 }
 
+/* playback char film [fromhere | interp [ticks]] (AI2iScript_Playback_Internal 0x4b6b50): the film
+   (film.h) played on the character, from the film's start, from where the character is, or moved to the
+   start over ticks (30). Not ported: the physics context's pending motion cleared first (+0x130..0x13c,
+   0x4ed080), and an AI that was running a path, stopped if the film fails (0x4b0420). */
+static bool cmd_playback(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 2) return true;
+    Chr *ch = arg_char(&v[0]);
+    if (!ch || v[1].type != SL_STRING) return true;     /* "character %s cannot be made active" */
+    const void *film = tm_instance_get(TM_TAG("FILM"), v[1].s);
+    if (!film) return true;                             /* "can not find any film named %s" */
+    int mode = FILM_START_HERE_PLACED;
+    uint32_t ticks = 0;
+    if (c > 2 && v[2].type == SL_STRING) {
+        if (!strcmp(v[2].s, "fromhere")) mode = FILM_START_FROM_HERE;
+        else if (!strcmp(v[2].s, "interp")) mode = FILM_START_INTERP, ticks = c > 3 ? (uint32_t)num(&v[3]) : 30;
+    }
+    film_start(&ch->c, film, mode, ticks);
+    return true;
+}
+
+/* chr_full_health char (0x4b7980): the hit points to the most (ONrCharacter_SetHitPoints 0x4eb220 with
+   C+0x3c). Not ported: a dead character given hit points comes back (0x4eb220's other half). */
+static bool cmd_full_health(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    Chr *ch = c >= 1 ? arg_char(&v[0]) : NULL;
+    if (!ch) return true;
+    if (!(ch->c.flags & 1)) ch->c.hit_points = ch->c.max_hit_points;
+    return true;
+}
+
+/* AI2rAllPassive 0x48b0d0: every AI-run character (+0x1e8 2) made passive (+0x1f0 bit 2: its state left,
+   its path halted) or not; going back, each one's last action (C+0x1e0) is now. */
+static void all_passive(bool on)
+{
+    for (int i = 0; i < chars_slots(); i++) {
+        Chr *ch = chars_get(i);
+        if (!ch || ch->player) continue;
+        if (!on) ch->c.last_action = ch->c.time;
+        if (on) ch->ai.flags |= AI_FLAG_PASSIVE;
+        else ch->ai.flags &= ~(uint32_t)AI_FLAG_PASSIVE;
+    }
+}
+
+/* begin_cutscene [weapon | jello | ai | invis | nosync | keepparticles | animation | nojump]...
+   (0x4bca90, ONrGameState_BeginCutscene 0x4fd070): the letterbox on; the player's sprint stopped
+   (0x4eb130), stood (ForceStand) unless "animation", her jump's motion across stopped with "nojump"; her
+   weapon holstered unless "weapon" (0x4eff60: not ported, the holster); her invisibility gone unless
+   "invis"; the AI passive unless "ai"; the camera's jello off unless "jello"; the input off; the sync on
+   unless "nosync". Not ported: the particles' cleanup (0x458310) unless "keepparticles", the sound's
+   switch (OSrSetEnabled). */
+static bool cmd_begin_cutscene(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    static const char *const names[] = { "jello", "weapon", "invis", "ai", "nosync", "keepparticles", "animation", "nojump" };
+    unsigned flags = 0;
+    for (int i = 0; i < c; i++) {
+        if (v[i].type != SL_STRING) continue;   /* "begin_cutscene: invalid parameter" */
+        for (unsigned k = 0; k < 8; k++) if (!strcmp(v[i].s, names[k])) flags |= 1u << k;
+    }
+    ui_set_letterbox(true);
+    Chr *p = chars_player();
+    if (p) {
+        p->c.varient &= 0xfdff;         /* 0x4eb130: the sprint's variant off */
+        if (!(flags & 0x40)) {
+            chr_force_stand(&p->c);
+            /* A+0x1b14..0x1b1c set to a vector constant (0x5298b8): not mapped */
+        }
+        if ((flags & 0x80) && p->c.air_ticks) p->c.air_velocity[0] = p->c.air_velocity[2] = 0.0f;
+        if (!(flags & 4)) p->c.invisibility = 0;
+    }
+    if (!(flags & 8)) all_passive(true);
+    if (!(flags & 1)) camera_enable_jello(false);
+    ui_set_input(false);
+    ui_set_cutscene(true, !(flags & 0x10));
+    return true;
+}
+
+/* end_cutscene (0x4bcbb0, ONrGameState_EndCutscene 0x4fd1a0): the input back, the jello on, the AI out
+   of passive, the letterbox off, the cutscene over. Not ported: the messages cleared (0x431d50), the
+   skip's fade (G+0x40), the sound's switch, and the holstered weapon drawn again (0x4effa0). */
+static bool cmd_end_cutscene(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)c, (void)v, (void)r, (void)u;
+    ui_set_input(true);
+    camera_enable_jello(true);
+    all_passive(false);
+    ui_set_letterbox(false);
+    ui_set_cutscene(false, false);
+    return true;
+}
+
 /* chr_teleport char flag (AI2iScript_Teleport 0x4b69b0): the character to the flag's place (0x4e9210:
    its position and the ones kept with it; the facing stays). */
 static bool cmd_teleport(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
@@ -593,6 +690,10 @@ void chars_register_commands(void)
     sl_register("chr_invincible", cmd_invincible, NULL);
     sl_register("ai2_makeignoreplayer", cmd_make_ignore_player, NULL);
     sl_register("chr_teleport", cmd_teleport, NULL);
+    sl_register("playback", cmd_playback, NULL);
+    sl_register("chr_full_health", cmd_full_health, NULL);
+    sl_register("begin_cutscene", cmd_begin_cutscene, NULL);
+    sl_register("end_cutscene", cmd_end_cutscene, NULL);
     sl_register("chr_animate", cmd_animate, NULL);
     sl_register("chr_animate_block", cmd_animate_block, NULL);
     sl_register("chr_wait_animtype", cmd_wait_animtype, NULL);

@@ -70,7 +70,9 @@ near them, and the `door_*` commands ([docs/re/door.md](docs/re/door.md)). `src/
   geometry (contrails, vectors, lens flares and decals not yet);
   attractors, impact effects and particle sounds are stand-ins.
 - Aiming (the aiming screens in `src/chr_anim.c`, the recoil in `src/character.c`), reloading
-  (`src/weapon.c`) and powerups (`src/powerup.c`): level 1's shooting lesson plays through.
+  (`src/weapon.c`) and powerups (`src/powerup.c`): level 1's training plays through to its end.
+- `src/film.c`: the films (FILM, the `playback` command), with `begin_cutscene`/`end_cutscene`
+  (`src/chars.c`): the cutscene after the training plays and the warehouse mission starts.
 
 Stand-ins (camera, fight mode, the AI's mover) are marked in the code. They go as their originals are
 ported.

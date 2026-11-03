@@ -127,6 +127,11 @@ typedef struct Character {
     bool turning_left, turning_right;       /* A+0x21e5, 0x21e6: a standing turn under way */
 
     uint64_t held;                  /* the previous tick's held bits (DoFilmUpdate's A+0x2188) */
+    uint32_t film_flags;            /* A+0x21f4: 1 playing, 2 recording, 4 moving to the film's start */
+    uint32_t film_frame;            /* A+0x21f8 */
+    const void *film;               /* A+0x2214, the FILM */
+    uint32_t film_interp;           /* A+0x2204: the ticks of the move to the start left */
+    float film_delta[3];            /* A+0x2208: that move, a tick's part */
     uint32_t time;                  /* stand-in for the game time (GS+0x144): ticks of this character */
     /* jumping and falling (DoCharacterFrame's step 9, docs/re/character.md) */
     uint16_t no_ground_ticks;       /* A+0xe0: at 12 a fall starts */

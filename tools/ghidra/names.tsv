@@ -1244,3 +1244,11 @@
 0051d080	WPrOutOfAmmoSound	WP	med	name from the Intel Mac build (neighbours:1.00)
 0051d180	WPrInventory_Weapon_Purge_Magic	WP	med	name from the Intel Mac build (strings:1)
 0051d1c0	TMrTemplate_SetupLayouts	TM	low	read: stores each template's layout pointer, then the table base (compiler-generated; name made up)
+004fd070	ONrGameState_BeginCutscene	ON	med	read: begin_cutscene's flags (letterbox, input, AI passive, jello); the Mac build's name
+004fd1a0	ONrGameState_EndCutscene	ON	med	read: undoes BeginCutscene; the Mac build's name
+004fd250	ONrGameState_Cutscene_Sync_Mark	ON	low	called by cutscene_sync; the Mac build's name
+0048b0d0	AI2rAllPassive	AI2	med	read: every AI character's passive bit (+0x1f0 bit 2); the Mac build's name
+004eb220	ONrCharacter_SetHitPoints	ON	med	read: C+0x38 set, 0 kills, a dead character revived; the Mac build's name
+004edd20	ONrCharacter_Holster	ON	med	read: the weapon overlay (lookup 7) into slot 1; the Mac build's name
+0051c8f0	WPiCommand_GivePowerup	WP	med	read: give_powerup type [amount [player]]; the Mac build's name
+004bcbb0	AIiScript_EndCutScene	AI	med	end_cutscene; the Mac build's name

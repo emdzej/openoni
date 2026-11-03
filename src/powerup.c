@@ -1,5 +1,6 @@
 /* Powerups: see powerup.h. */
 #include "powerup.h"
+#include "chars.h"
 
 #include "exe.h"
 #include "m3gm.h"
@@ -187,7 +188,34 @@ static bool cmd_spawn(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
     return true;
 }
 
+/* give_powerup type [amount [player]] (0x51c8f0): to every living character of the player number (the
+   player's own by default; -1 every one), 0x51ca30 taking it all. */
+static bool cmd_give(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 1 || v[0].type != SL_STRING) return true;
+    int type = -1;
+    for (int k = 0; k < POWERUP_TYPES; k++) {
+        const char *n = powerup_type_name(k);
+        if (n && !strcmp(n, v[0].s)) { type = k; break; }
+    }
+    if (type < 0) return true;      /* "unknown powerup type" and the list */
+    uint16_t amount = c < 2 ? powerup_default_amount(type) : (uint16_t)num(&v[1]);
+    int32_t who = -1;               /* 0x4fc8b0: the player's index (C+0) */
+    for (int i = 0; i < chars_slots() && c < 3; i++)
+        if (chars_get(i) && chars_get(i)->player) who = i;
+    if (c >= 3) who = num(&v[2]);
+    for (int i = 0; i < chars_slots(); i++) {
+        Chr *ch = chars_get(i);
+        if (!ch || (ch->c.flags & 1)) continue;
+        if (who >= 0 && who != i) continue;
+        powerup_give(&ch->c, type, amount, true);
+    }
+    return true;
+}
+
 void powerup_register_commands(void)
 {
     sl_register("powerup_spawn", cmd_spawn, NULL);
+    sl_register("give_powerup", cmd_give, NULL);
 }

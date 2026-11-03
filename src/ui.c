@@ -13,6 +13,7 @@ static struct { float from[4], to[4]; uint32_t start, end; bool on; } fade;
 /* The letterbox: the last update's time, the bars' height, going on or off, moving. */
 static struct { uint32_t time; float height; bool on, moving; } box;
 static bool input_on = true;
+static bool cutscene, cutscene_sync;
 static struct { UiLine lines[UI_AREA_LINES]; int n; } areas[UI_AREAS];
 
 void ui_reset(void)
@@ -22,6 +23,7 @@ void ui_reset(void)
     memset(&box, 0, sizeof box);
     memset(areas, 0, sizeof areas);
     input_on = true;
+    cutscene = cutscene_sync = false;
 }
 
 uint32_t ui_time(void) { return now; }
@@ -76,6 +78,18 @@ float ui_letterbox(void)
 }
 
 bool ui_input_enabled(void) { return input_on; }
+void ui_set_input(bool on) { input_on = on; }
+
+void ui_set_letterbox(bool on)
+{
+    ui_letterbox();
+    box.on = on;
+    box.time = now;
+    box.moving = true;
+}
+
+bool ui_cutscene(void) { return cutscene; }
+void ui_set_cutscene(bool on, bool sync) { cutscene = on, cutscene_sync = sync; }
 
 int ui_area_count(int area) { return area >= 0 && area < UI_AREAS ? areas[area].n : 0; }
 
@@ -149,10 +163,7 @@ static bool cmd_fade_in(SlThread *t, int c, const SlValue *v, SlValue *r, void *
 static bool cmd_letterbox(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;
-    ui_letterbox();
-    box.on = c >= 1 && num(&v[0]) != 0;
-    box.time = now;
-    box.moving = true;
+    ui_set_letterbox(c >= 1 && num(&v[0]) != 0);
     return true;
 }
 
@@ -161,6 +172,18 @@ static bool cmd_input(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;
     input_on = c >= 1 && num(&v[0]) != 0;
+    return true;
+}
+
+/* cutscene_sync on|off|mark (0x4bcbc0): the cutscene's sync (G+0x48) on or off; mark (G+0x44, the
+   sync's mark) is with the sync's port. Not ported: the sync itself (the frames held back to keep the
+   cutscene on the clock's time, G+0x50), which a headless run doesn't need. */
+static bool cmd_cutscene_sync(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 1 || v[0].type != SL_STRING) return true;
+    if (!strcmp(v[0].s, "on")) cutscene_sync = true;
+    else if (!strcmp(v[0].s, "off")) cutscene_sync = false;
     return true;
 }
 
@@ -205,6 +228,7 @@ void ui_register_commands(void)
     sl_register("fade_in", cmd_fade_in, NULL);
     sl_register("letterbox", cmd_letterbox, NULL);
     sl_register("input", cmd_input, NULL);
+    sl_register("cutscene_sync", cmd_cutscene_sync, NULL);
     sl_register("message", cmd_message, NULL);
     sl_register("message_remove", cmd_message_remove, NULL);
 }

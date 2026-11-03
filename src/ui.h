@@ -26,6 +26,13 @@ bool ui_fade(float rgba[4]);
 /* The letterbox bars' height now, in 640x480 pixels (0 to 75). */
 float ui_letterbox(void);
 bool ui_input_enabled(void);
+/* G+0x1679ad, the player's input (the input command, begin_cutscene and end_cutscene). */
+void ui_set_input(bool on);
+/* G+0x30: the letterbox going on (0x4fce70) or off (0x4fce90). */
+void ui_set_letterbox(bool on);
+/* G+0x3c: a cutscene is on (begin_cutscene to end_cutscene); G+0x48: its sync (cutscene_sync). */
+bool ui_cutscene(void);
+void ui_set_cutscene(bool on, bool sync);
 
 int ui_area_count(int area);
 /* Line i of the area, oldest first; alpha in 0..1 (lines fade out over their last 64 ticks). */

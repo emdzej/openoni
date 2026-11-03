@@ -7,6 +7,7 @@
 #include "akev_collide.h"
 #include "body.h"
 #include "chr_anim.h"
+#include "film.h"
 #include "chr_hit.h"
 #include "exe.h"
 #include "physics.h"
@@ -802,6 +803,7 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
         if (kk < 0.01f) memset(c->knockback, 0, sizeof c->knockback);
     } else
         memset(c->knockback, 0, sizeof c->knockback);
+    film_interp_step(c);
     if (!env) {
         /* no environment (the tests' bare characters): the move taken whole, the height kept */
         memcpy(c->prev_pos, c->pos, sizeof c->pos);     /* step 12: C+0x154 */
@@ -888,6 +890,7 @@ void character_update_aim(Character *c, uint64_t held, float turn, float pitch, 
     in.not_held = ~in.held;
     in.down = in.held & ~c->held;
     in.up = c->held & ~in.held;
+    film_update(c, &in);            /* DoFilmUpdate 0x4ed420, from the player's input (0x4fa6a0) */
     c->held = in.held;
     if (!(c->flags & 2)) heartbeat_input(c, &in);     /* the dying get no input */
     do_frame(c, env, &in);
@@ -897,6 +900,7 @@ void character_update_input(Character *c, const ChrInput *in, const void *env)
 {
     c->time++;
     ChrInput b = *in;
+    film_update(c, &b);             /* DoFilmUpdate 0x4ed420, from the AI's (0x489d40) */
     c->held = b.held;
     if (!(c->flags & 2)) heartbeat_input(c, &b);
     do_frame(c, env, &b);
