@@ -21,6 +21,7 @@
 #include "env.h"
 #include "envparticle.h"
 #include "laser.h"
+#include "persist.h"
 #include "save.h"
 #include "laser_draw.h"
 #include "env_draw.h"
@@ -766,6 +767,19 @@ static void modal_frame(void)
     }
 }
 
+/* OWrGame_Start 0x4beb40's choice: the level (the low byte); the continue cleared (0x4fda80), then with a
+   slot in the high byte that persisted continue made the game's, so the level's scripts start from it. */
+static int game_start(uint32_t v)
+{
+    int level = (int)(v & 0xff);
+    save_clear();
+    if (v & 0xff00) save_use_persisted(level, (int)(v >> 8 & 0xff));
+    char m[64];
+    snprintf(m, sizeof m, "OpenOni: load game: level %d, continue %d", level, (int)(v >> 8 & 0xff));
+    plat_log(m);
+    return level;
+}
+
 /* The pause key gone down this frame (the LI's action 0x81, F1). */
 static bool pause_key(void)
 {
@@ -836,6 +850,7 @@ static int play(int level, int *next)
     uint32_t ticks = 0;     /* the game time (ONrGameState's +0x144), ticks since the level began */
     ui_reset();
     igui_level_load(level);     /* ONiInGameUI_LevelLoad 0x503eb0 */
+    save_level_begin(level);
     weapon_new_hook = igui_new_weapon;
     powerup_new_hook = igui_new_item;
     save_restore_hook = restored;
@@ -865,7 +880,12 @@ static int play(int level, int *next)
             if (presses[i] == DIK_F1 && !ui_cutscene() && player && !(player->c.flags & 1)) igui_pause_screen(pause_key);
         for (int i = 0; i < n; i++)
             if (presses[i] == DIK_ESCAPE) {
-                int choice = outgame_main_menu(true);
+                uint32_t start = 0;
+                int choice = outgame_main_menu(true, &start);
+                if (choice == OUTGAME_LOAD) {
+                    *next = game_start(start);
+                    return 0;
+                }
                 if (choice == OUTGAME_QUIT) {
                     *next = 0;
                     return 0;
@@ -1014,7 +1034,10 @@ static void front_end(void)
     wm_set_draw_callback(blank_display);
     wm_set_frame_hook(modal_frame);
     plat_log("OpenOni: main menu");
-    if (outgame_main_menu(false) == OUTGAME_NEW_GAME) run_game(1);
+    uint32_t start = 0;
+    int choice = outgame_main_menu(false, &start);
+    if (choice == OUTGAME_NEW_GAME) run_game(1);
+    else if (choice == OUTGAME_LOAD) run_game(game_start(start));
 }
 
 int app_main(void)
@@ -1026,6 +1049,7 @@ int app_main(void)
         return 1;
     }
     plat_log("OpenOni: Oni.exe v1.0 found");
+    persist_initialize(plat_load_user_file, plat_save_user_file);
     if (!im_initialize(err, sizeof err) || !tm_initialize(err, sizeof err) || !tm_level_load(0, err, sizeof err)) {
         snprintf(m, sizeof m, "OpenOni: %s", err);
         plat_log(m);

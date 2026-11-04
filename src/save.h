@@ -4,8 +4,8 @@
    continue's: save_game sets it, a won level clears it (0x4fda80), a lost one is loaded again with it, and
    the level's main script picks the part to start from by it and calls restore_game.
 
-   Not ported yet: the continue kept on disk for the menu's "load game" (ONrPersist_SetContinue), the
-   autosave's sound (0x63117c), and the two holstered weapon slots (C+0x198, +0x19c) the port has no
+   Each one is kept in persist.dat for the menu's Load Game (ONrPersist_SetContinue). Not ported yet:
+   the autosave's sound (0x63117c), and the two holstered weapon slots (C+0x198, +0x19c) the port has no
    place for. */
 #pragma once
 #include <stdbool.h>
@@ -15,6 +15,11 @@
 void save_clear(void);
 int32_t save_point(void);
 void save_register_commands(void);
+/* ONrGameState_LevelBegin 0x4f5350's part: the level, the place recorded, the level reached. */
+void save_level_begin(int level);
+/* OWrGame_Start 0x4beb40's part: the persisted continue of the level's slot made the game's (0x4fdaa0),
+   false if there is none. */
+bool save_use_persisted(int level, int slot);
 /* What restore_game tells the in-game UI (ONrInGameUI_NotifyRestoreGame 0x5050b0), restored or not.
    Set by the app. */
 extern void (*save_restore_hook)(void);

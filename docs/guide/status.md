@@ -39,6 +39,9 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - **The HUD**: the health ring, and the left ring with the ballistic clips, the energy cells and the
   compass toward the objective's flag (`target_set`), its arrow up or down; the scripts show, hide and
   flash its elements.
+- **Saved games**: each save point is kept in `persist.dat` (the original's own layout), with the levels
+  reached; the main menu's Load Game lists them and starts the level from the one picked, in a later
+  session too.
 - **The pause screen** (F1): the objectives the level has set, the items and weapons the player has had,
   the diary's move pages with their key icons, and the controls' help, in the game's own dialog.
 - **The main menu**: the game starts on Oni's own menu (New Game, Quit; Escape in a level brings it

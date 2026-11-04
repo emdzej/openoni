@@ -1356,3 +1356,8 @@
 00423540	TMrInstance_GetDataPtr_List	TM	low	every named instance of a tag with data, file by file, by name
 00468bb0	WMrDialog_CheckRadioButton	WM	low	the ids first..last unhilited, the checked one hilited
 00475580	WMrWindow_SetEnabled	WM	low	flag 2 cleared or set
+0046c720	WMiListBox_Proc	WM	low	the list box (class 8) procedure (the Mac name WMiListBox_Create is a neighbour's)
+004d2ba0	ONiOutGameUI_LoadGame_Callback	ON	low	(again) Load: the selected line's data to OWrGame_Start
+0050f030	ONrPersist_LevelReached	ON	low	level 1 always, the bit of persist +0x08 (name made up)
+0050efd0	ONrPersist_SetLevelReached	ON	low	the bit set and the block saved (name made up)
+004fdaa0	ONrGameState_SetContinue	ON	low	(again) a persisted continue made the game's, with its save point

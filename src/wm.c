@@ -1060,6 +1060,147 @@ static uintptr_t button_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t 
     return default_proc(w, msg, p1, p2);
 }
 
+/* The list box (class 8, 0x46c720): lines of text, each with a long of data (0x45 adds one, sorted with
+   style 0x20000; 0x51 sets its data; 0x53 selects one, -1 none; 0x47 the data of a line, -1 the
+   selected one; 0x48 the count). A click selects the line under it and tells the parent (command, notice
+   1), a double click notice 2. Its frame is the PSUI's edit field (+0x44), a selected line the list
+   hilite (+0x4c) while it has the focus, else the background (+0x00). Not ported: the scroll bar (class
+   10, style 0x10000) and the owner-drawn lines (style 0x100000): the lines scroll to keep the selected
+   one in view. */
+typedef struct { char *text; uint32_t data; bool selected; } ListLine;
+typedef struct { ListLine *lines; uint32_t n, cap, top; bool focus, pressed, twice; } ListBox;
+
+static int16_t list_line_h(const WmWindow *w)
+{
+    int16_t tw = 0, th = 0;
+    text_extent(&w->font, "X", &tw, &th);
+    return th > 0 ? th : 12;
+}
+
+static void list_show(WmWindow *w, ListBox *b, uint32_t i)
+{
+    int16_t lh = list_line_h(w);
+    uint32_t rows = (uint32_t)((w->h - 16) / lh);
+    if (!rows) rows = 1;
+    if (i < b->top) b->top = i;
+    else if (i >= b->top + rows) b->top = i - rows + 1;
+}
+
+static uintptr_t list_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
+{
+    ListBox *b = (ListBox *)w->data;
+    switch (msg) {
+    case WM_PRECREATE:
+        w->data = (uintptr_t)calloc(1, sizeof(ListBox));
+        return w->data ? 0 : 1;
+    case WM_DESTROY:
+        if (b) {
+            for (uint32_t i = 0; i < b->n; i++) free(b->lines[i].text);
+            free(b->lines);
+            free(b);
+            w->data = 0;
+        }
+        return 0;
+    case WM_SETFOCUS: if (b) b->focus = true; return 0;
+    case WM_KILLFOCUS: if (b) b->focus = false; return 0;
+    case WM_WANTKEYS: return 0x33;
+    case WM_PAINT: {
+        if (!b) return 0;
+        /* (the frame is the original's non-client part, 0x11 and 4: here drawn first, the lines inside its
+           corners) */
+        WmDc *dc = wm_dc_begin(w);
+        const void *frame = wm_psui_part(0x44);
+        int16_t in[2] = { 0, 0 };
+        if (frame) {
+            wm_dc_part(dc, frame, 0xffff, 0, 0, w->w, w->h, 0xff);
+            wm_part_size(frame, &in[0], &in[1]);
+        }
+        wm_dc_set_font(&w->font);
+        int16_t lh = list_line_h(w), y = in[1], cw = (int16_t)(w->w - in[0]), ch = (int16_t)(w->h - in[1]);
+        for (uint32_t i = b->top; i < b->n && y < ch; i++, y = (int16_t)(y + lh)) {
+            if (b->lines[i].selected) {
+                const void *part = wm_psui_part(b->focus ? 0x4c : 0x00);
+                if (part) wm_dc_part(dc, part, 0xffff, in[0], y, (int16_t)(cw - in[0]), lh, 0xff);
+            }
+            wm_dc_set_colour(w->font.colour);
+            wm_dc_set_format(0);
+            int16_t pen[2] = { (int16_t)(in[0] + 3), (int16_t)(y + wm_dc_ascending()) }, r[4] = { in[0], y, cw, (int16_t)(y + lh) };
+            wm_dc_text(dc, r, pen, b->lines[i].text, NULL);
+        }
+        wm_dc_end(dc);
+        return 0;
+    }
+    case WM_LBUTTONDOWN:
+        if (!b || !enabled(w)) return 0;
+        set_focus(w);
+        b->pressed = true;
+        b->twice = false;
+        return 0;
+    case 0x21:      /* a double click */
+        if (b) b->twice = true;
+        return 0;
+    case WM_LBUTTONUP: {
+        if (!b || !b->pressed) return 0;
+        b->pressed = false;
+        int16_t r[4];
+        screen_rect(w, r);
+        const void *frame = wm_psui_part(0x44);
+        int16_t in[2] = { 0, 0 };
+        if (frame) wm_part_size(frame, &in[0], &in[1]);
+        int16_t y = (int16_t)((int16_t)p1 - r[1] - in[1]);
+        if (y < 0) return 0;
+        uint32_t i = b->top + (uint32_t)(y / list_line_h(w));
+        if (i >= b->n) return 0;
+        for (uint32_t k = 0; k < b->n; k++) b->lines[k].selected = k == i;
+        wm_send(w->parent, WM_COMMAND, (uintptr_t)w->id | (b->twice ? 0x20000u : 0x10000u), (uintptr_t)w);
+        return 0;
+    }
+    case 0x45: {    /* add a string */
+        if (!b || !p2) return (uintptr_t)-1;
+        if (b->n == b->cap) {
+            uint32_t cap = b->cap ? b->cap * 2 : 16;
+            ListLine *l = realloc(b->lines, cap * sizeof *l);
+            if (!l) return (uintptr_t)-1;
+            b->lines = l, b->cap = cap;
+        }
+        const char *s = (const char *)p2;
+        uint32_t at = b->n;
+        if (w->style & 0x20000)
+            for (at = 0; at < b->n && strcmp(s, b->lines[at].text) >= 0; at++) {}
+        memmove(b->lines + at + 1, b->lines + at, (b->n - at) * sizeof *b->lines);
+        size_t len = strlen(s) + 1;
+        b->lines[at].text = malloc(len);
+        if (b->lines[at].text) memcpy(b->lines[at].text, s, len);
+        b->lines[at].data = 0;
+        b->lines[at].selected = false;
+        b->n++;
+        return at;
+    }
+    case 0x47: {    /* a line's data, -1 the selected one */
+        if (!b) return (uintptr_t)-1;
+        uint32_t i = (uint32_t)p1;
+        if (i == 0xffffffffu)
+            for (i = 0; i < b->n && !b->lines[i].selected; i++) {}
+        return i < b->n ? b->lines[i].data : (uintptr_t)-1;
+    }
+    case 0x48: return b ? b->n : (uintptr_t)-1;
+    case 0x51:
+        if (!b || (uint32_t)p1 >= b->n) return (uintptr_t)-1;
+        b->lines[p1].data = (uint32_t)p2;
+        return 0;
+    case 0x53: {
+        if (!b) return (uintptr_t)-1;
+        for (uint32_t k = 0; k < b->n; k++) b->lines[k].selected = false;
+        if ((uint32_t)p1 == 0xffffffffu) return 0;
+        if ((uint32_t)p1 >= b->n) return (uintptr_t)-1;
+        b->lines[p1].selected = true;
+        list_show(w, b, (uint32_t)p1);
+        return 0;
+    }
+    }
+    return default_proc(w, msg, p1, p2);
+}
+
 /* The text (class 20, 0x4731f0): drawn by its dialog (style 0x800000: WM_DRAWITEM to the parent), else its
    title in its font. */
 static uintptr_t text_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
@@ -1102,6 +1243,7 @@ void wm_initialize(int w, int h)    /* WMrInitialize 0x475ad0 */
     class_register(3, box_proc);
     class_register(4, button_proc);
     class_register(6, dialog_proc);
+    class_register(8, list_proc);
     class_register(11, picture_proc);
     class_register(20, text_proc);
     desktop = wm_window_new(1, WM_STYLE_VISIBLE, 0, 0, 0, 0, (int16_t)w, (int16_t)h, NULL, 0);
