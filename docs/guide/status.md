@@ -30,7 +30,9 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   down, they lie dazed for their class's time and then get up. They start
   with the weapons the level gives them, and without one they may go for a gun lying nearby, by their
   class's chance. They run to alarm consoles when their scripts or combat settings say so, and an
-  alarm alerts the guards of its group. The bosses' behaviours are still missing, and the paths they take in a
+  alarm alerts the guards of its group. A guard that hears or glimpses Konoko pursues her: it goes
+  to where she was, glances or looks around there, and gives up as the trail goes cold, by the
+  character's own pursuit settings. The bosses' behaviours are still missing, and the paths they take in a
   fight are stand-ins.
 - **The scripts**: the BSL engine runs the level's own scripts, with their trigger volumes, doors,
   consoles, animated objects and a growing share of the game's script commands, among them those that
@@ -79,7 +81,7 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 ## Not yet
 
 - The particles' contrails, vectors, lens flares and decals (bullet holes), homing, and their sounds.
-- The bosses' fighting, and the AI's pursuit (a stand-in). The power-ups' physics and glow, and the
+- The bosses' fighting. The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.
 - The other 13 levels as a playthrough.

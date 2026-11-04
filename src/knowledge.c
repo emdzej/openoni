@@ -7,6 +7,7 @@
 #include "chr_anim.h"
 #include "chr_hit.h"
 #include "exe.h"
+#include "pursuit.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -237,7 +238,7 @@ static bool upgrade_alert(Chr *c, int level, KnowEntry *e)
    alert to the type's level (0x52a624) if not already above it, and any alert sends a calm character
    to pursue it. Not ported: the glance's look (0x4a8150), the vocalizations, the neutral state's
    danger test. */
-static void alert_notify(Chr *c, KnowEntry *e, bool degraded)
+void knowledge_alert_notify(Chr *c, KnowEntry *e, bool degraded)
 {
     AiState *a = &c->ai;
     if (degraded || (a->state == AI_STATE_PATROL && a->ignore_player)) return;
@@ -264,12 +265,7 @@ static void alert_notify(Chr *c, KnowEntry *e, bool degraded)
         }
     }
     if (a->alert && a->state != AI_STATE_PURSUIT && a->state != AI_STATE_COMBAT && a->state != AI_STATE_ALARM) {
-        /* the pursuit state (C+0x8c0 the contact) */
-        ai_exit_state(a);
-        a->state = AI_STATE_PURSUIT;
-        a->point_started = false;
-        a->target = e->target;
-        a->target_entry = e;
+        ai_pursue(a, e);    /* the pursuit state (C+0x8c0 the contact) */
     }
 }
 
@@ -278,20 +274,9 @@ static void notify(Chr *c, KnowEntry *e, bool degraded)
 {
     switch (c->ai.state) {
     case AI_STATE_NONE: case AI_STATE_IDLE: case AI_STATE_PATROL: case AI_STATE_ALARM: case AI_STATE_NEUTRAL:
-        if (!(c->ai.flags & AI_FLAG_NON_AGGRESSIVE)) alert_notify(c, e, degraded);
+        if (!(c->ai.flags & AI_FLAG_NON_AGGRESSIVE)) knowledge_alert_notify(c, e, degraded);
         break;              /* non-combatants (0x4adeb0): with panic */
-    case AI_STATE_PURSUIT:
-        /* 0x4b1750: the calm states' handler first (it may raise the alert to combat), then the
-           pursuit takes the most important contact if it is a hostile one. Not ported: the alarm and
-           the pursuit's modes (AI2iPursuit_ChangeMode 0x4b1260, AI2iPursuit_DesirePursuit 0x4b1620). */
-        alert_notify(c, e, degraded);
-        if (c->ai.state == AI_STATE_PURSUIT && c->ai.know && c->ai.know != c->ai.target_entry &&
-            c->ai.know->hostility >= 1) {
-            c->ai.target_entry = c->ai.know;
-            c->ai.target = c->ai.know->target;
-            c->ai.point_started = false;
-        }
-        break;
+    case AI_STATE_PURSUIT: pursuit_notify(c, e, degraded); break;
     case AI_STATE_COMBAT: ai_combat_notify(&c->ai, &c->c, e, degraded); break;
     default: break;
     }
@@ -432,6 +417,8 @@ void knowledge_forget_contacts(Chr *owner, const Chr *target)
         if (!target || e->target == target) {
             e->strength = KNOW_FORGOTTEN;
             notify(owner, e, true);
+            /* 0x49b8e0's state handlers: the pursuit's (the combat's 0x4908b0 and the panic's not yet) */
+            if (e->owner && owner->ai.state == AI_STATE_PURSUIT) pursuit_forgotten(owner, e);
             if (e->owner) remove_entry(e);
         }
         e = prev;
@@ -440,7 +427,7 @@ void knowledge_forget_contacts(Chr *owner, const Chr *target)
 
 /* The head (0x4e3460: A+0x247c, else the location 15 up), the pelvis (0x4e34f0) and the bottom
    (0x4e3590: the pelvis's x and z, the body's bottom + 1). */
-static void head_point(const Chr *c, float p[3])
+void knowledge_head_point(const Chr *c, float p[3])
 {
     if (!chr_part_point(&c->c, 10, p)) p[0] = c->c.pos[0], p[1] = c->c.pos[1] + 15.0f, p[2] = c->c.pos[2];
 }
@@ -460,7 +447,7 @@ static void pelvis_point(const Chr *c, float p[3])
 static void check_visible(Chr *looker, const void *env)
 {
     float eye[3], fwd[3] = { sinf(looker->c.facing), 0.0f, cosf(looker->c.facing) }, up[3] = { 0.0f, 1.0f, 0.0f };
-    head_point(looker, eye);
+    knowledge_head_point(looker, eye);
     float cdist = oncc_float(looker, 0x3f4), pdist = oncc_float(looker, 0x3f8), vert = oncc_float(looker, 0x3fc);
     float cmax = oncc_float(looker, 0x400), cmin = oncc_float(looker, 0x404);
     float pmax = oncc_float(looker, 0x408), pmin = oncc_float(looker, 0x40c);
@@ -505,7 +492,7 @@ static void check_visible(Chr *looker, const void *env)
            here), the first clear one the place posted */
         float pts[3][3];
         pelvis_point(t, pts[0]);
-        head_point(t, pts[1]);
+        knowledge_head_point(t, pts[1]);
         memcpy(pts[2], pts[0], sizeof pts[2]);
         pts[2][1] = t->c.pos[1] + 1.0f;
         int seen = -1;

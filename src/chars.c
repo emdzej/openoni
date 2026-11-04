@@ -114,6 +114,12 @@ static Chr *create(int object)
     c->ai.job = c->ai.state;
     c->ai.job_patrol = c->ai.patrol;
     c->ai.job_alert = (int)objc_char_job_alert(o);
+    c->ai.pursue_alert = (int)objc_char_pursue_alert(o);
+    c->ai.pursue_strong_low = (int)objc_char_pursuit(o, 0);
+    c->ai.pursue_weak_low = (int)objc_char_pursuit(o, 1);
+    c->ai.pursue_strong_high = (int)objc_char_pursuit(o, 2);
+    c->ai.pursue_weak_high = (int)objc_char_pursuit(o, 3);
+    c->ai.pursue_lost = (int)objc_char_pursuit(o, 4);
     c->ai.alarm_groups = objc_char_alarm_groups(o);
     chr_hit_init(&c->c, objc_char_extra_health(o));
     if (armed) arm(c);
@@ -194,9 +200,20 @@ static Chr *create_setup(const uint8_t *r, const ObjcObject *flag)
     return c;
 }
 
+/* The level's rooms' graph (the original's, from the level's load: AKEV's BNVs). */
+static void level_graph(void)
+{
+    TmFile *f = tm_file_at(tm_file_slots() - 1);
+    for (uint32_t i = 0; f && i < tm_file_instance_count(f); i++) {
+        const TmInstance *in = tm_file_instance(f, i);
+        if (in->tmpl->tag == TM_TAG("AKEV") && in->data) graph_for(in->data);
+    }
+}
+
 int chars_load(void)
 {
     chars_unload();
+    level_graph();      /* for the AIs' ways (the pursuit's distances) before any of them moves */
     patrol_load();      /* the paths first: the patrol jobs start with their characters */
     melee_initialize();
     melee_load();
@@ -412,11 +429,7 @@ static bool cmd_chr_create(SlThread *t, int c, const SlValue *v, SlValue *r, voi
     ObjcObject flag;
     if (!objc_flag_find((uint16_t)(s[0x22] | s[0x23] << 8), &flag)) return true;     /* "flag %d not found" */
     float p[3] = { flag.pos[0], flag.pos[1] + 15.0f, flag.pos[2] };     /* 0x529d84 */
-    TmFile *f = tm_file_at(tm_file_slots() - 1);
-    for (uint32_t i = 0; f && i < tm_file_instance_count(f); i++) {
-        const TmInstance *in = tm_file_instance(f, i);
-        if (in->tmpl->tag == TM_TAG("AKEV") && in->data) graph_for(in->data);
-    }
+    level_graph();
     if (graph_room_at(p) < 0) return true;      /* "flag was not inside a BNV" */
     create_setup(s, &flag);                       /* "failed to create a new character" */
     return true;
@@ -740,6 +753,7 @@ static bool cmd_setjobstate(SlThread *t, int c, const SlValue *v, SlValue *r, vo
     ch->ai.job = ch->ai.state;
     ch->ai.job_patrol = ch->ai.patrol;
     ch->ai.job_point = ch->ai.point;
+    ch->ai.job_pos_set = false;     /* the job's place, again */
     return true;
 }
 

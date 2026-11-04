@@ -182,6 +182,7 @@ int main(void)
         dum->c.pos[2] = p->c.pos[2] + 10.0f * cosf(f);
         dum->c.facing = f < 3.1415927f ? f + 3.1415927f : f - 3.1415927f;
         dum->c.desired_facing = dum->c.facing;
+        dum->ai.flags |= AI_FLAG_BLIND;     /* seeing her, it would startle out of the throw (by chance of the tick) */
         for (int k = 0; k < 300; k++) {
             CharacterInput in = { 0 };
             if (k < 12) in.forward = 1, in.punch = true;

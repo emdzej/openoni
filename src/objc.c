@@ -62,6 +62,12 @@ uint32_t objc_char_ammo(const ObjcObject *o) { return o->size >= 0x1d4 ? rd32(o-
 uint32_t objc_char_alarm_groups(const ObjcObject *o) { return o->size >= 0x1e8 ? rd32(o->data + 0x1e4) : 0; }
 uint32_t objc_char_alert(const ObjcObject *o) { return o->size >= 0x1d8 ? rd32(o->data + 0x1d4) : 0; }
 uint32_t objc_char_job_alert(const ObjcObject *o) { return o->size >= 0x1e0 ? rd32(o->data + 0x1dc) : 0; }
+uint32_t objc_char_pursue_alert(const ObjcObject *o) { return o->size >= 0x1e4 ? rd32(o->data + 0x1e0) : 2; }
+uint32_t objc_char_pursuit(const ObjcObject *o, int k)
+{
+    static const uint32_t none[5] = { 5, 1, 6, 4, 0 };     /* AI2rInitializeCharacter 0x48a6b0's defaults */
+    return o->size >= 0x1ecu + 4u * (unsigned)k ? rd32(o->data + 0x1e8 + 4 * k) : none[k];
+}
 
 typedef struct { uint16_t id; ObjcObject *out; bool found; } FlagFind;
 

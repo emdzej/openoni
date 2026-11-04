@@ -5,7 +5,7 @@
    forgotten with time (AI2rKnowledge_Update 0x499e80). Notes: docs/re/ai.md.
 
    Not ported yet: sounds (AI2rKnowledge_Sound 0x49a8a0), projectiles and firing spreads to dodge, the
-   alarm, the combat and pursuit states' notifications, cloaked characters, aiming's view direction. */
+   alarm, the combat state's notifications, cloaked characters, aiming's view direction. */
 #pragma once
 #include "ai.h"
 
@@ -66,6 +66,11 @@ KnowEntry *knowledge_find(const struct Chr *owner, const struct Chr *target);   
 int ai_team_relation(uint32_t a, uint32_t b);
 /* 0x48b1d0: whether a takes b for an enemy (known: also when made hostile by hits). */
 bool ai_is_hostile(const struct Chr *a, const struct Chr *b, bool known);
+
+/* AI2rAlert_NotifyKnowledge 0x48ecc0, the calm states' knowledge handler (the pursuit's runs it first). */
+void knowledge_alert_notify(struct Chr *c, KnowEntry *e, bool degraded);
+/* The head (0x4e3460: the head part's place, else the location 15 up). */
+void knowledge_head_point(const struct Chr *c, float p[3]);
 
 /* ai2_boss_battle, the script variable (knowledge.c). */
 extern bool knowledge_boss_battle;

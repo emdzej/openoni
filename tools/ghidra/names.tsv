@@ -749,6 +749,7 @@
 004b0c60	AI2rPatrol_DescribeWaypoint	AI2	med	name from the Intel Mac build (strings:5)
 004b0ea0	AI2rPursuit_Enter	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004b0f50	AI2rPursuit_Exit	AI2	med	name from the Intel Mac build (neighbours:0.83)
+004b0fb0	AI2rPursuit_Update	AI2	low	read: the pursuit state's tick, from AI2rUpdateAI's state 6 (name made up)
 004b1260	AI2iPursuit_ChangeMode	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004b1620	AI2iPursuit_DesirePursuit	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004b1750	AI2rPursuit_NotifyKnowledge	AI2	med	the pursuit state's knowledge handler (Mac name exists)

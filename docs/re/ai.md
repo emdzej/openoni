@@ -238,9 +238,8 @@ works by the contact's type t:
 3. **Combat.** At level 4, for a contact with a character, the AI leaves its state for combat (state
    5): the character at C+0x8c0, the contact at C+0x8c8.
 
-The pursuit's handler (0x4b1750) runs the calm handler first, then follows the most important
-contact if it is hostile. Its modes, `ChangeMode` 0x4b1260 and `DesirePursuit` 0x4b1620, are not
-ported.
+The pursuit's handler (0x4b1750) runs the calm handler first, then the pursuit's own reaction: see
+"The pursuit".
 
 ## The AI's character fields
 
@@ -503,13 +502,124 @@ C+0xfe4 the tries, C+0xfe8 the fight time left. The CHAR object's +0x1e4 is C+0x
 - **Into the alarm**: the combat maneuver 4 (the no-gun behaviour's fallback 2; the console set
   beforehand, B+0x1fc, is never written, so the nearest is looked for), then Setup after the
   selection; `ai2_doalarm char [console]` (`AI2iScript_SetState_Alarm` 0x4b4db0: by id, active and
-  unused, else the nearest); the pursuit's lost mode with C+0xfc4 2 (0x4b1350; not ported with the
-  pursuit) and the knockdown (0x48ea40; not ported).
+  unused, else the nearest); the pursuit's forget mode with C+0xfc4 2 (0x4b1350, "The pursuit") and the
+  knockdown (0x48ea40; not ported).
 - **The alarm event** (event type 6, its id the group: 0x49ac30): every AI not passive whose groups
   have that bit, but the setter, gets a pending alarm contact (`AI2iKnowledge_AddPending`, type 9,
   strength 3, the setter's place, value the group) and flag 0x10; a setter that is the player only if
   the AI doesn't ignore it (0x2000), an AI setter only if one of the two is hostile to the other.
   Event 7 (0x4cae10) does nothing.
+
+## The pursuit
+
+The pursuit state (6, `AI2_Pursuit.c`, ported in `src/pursuit.c`, tested by `tests/pursuit_test.c`) is
+what a calm character does with a contact it has noticed short of combat. All of it is *confirmed* in
+the Windows exe unless marked.
+
+| What | Where |
+|---|---|
+| Enter, exit | `AI2rPursuit_Enter` 0x4b0ea0, `AI2rPursuit_Exit` 0x4b0f50 |
+| The tick | 0x4b0fb0 (from `AI2rUpdateAI` 0x489d40) |
+| Hurrying | 0x4b0f90, through `AI2rIsHurrying` 0x48b020 |
+| The mode for the contact | `AI2iPursuit_ChangeMode` 0x4b1260 |
+| A mode begins, ends | 0x4b1350, 0x4b1570 |
+| Whether to go | `AI2iPursuit_DesirePursuit` 0x4b1620 |
+| The knowledge handler, the contact forgotten | 0x4b1750, 0x4b1830 (from 0x49b8e0 when `AI2rKnowledgeState_Forget` removes it) |
+| The look around | `AI2rGuard_UpdateScan` 0x499b50, with 0x499970 (a new scan), 0x499990 (the next look), 0x499d00 (the sweep) |
+
+### The settings
+
+From the CHAR object (file offsets; the reader 0x4bf290 moves them):
+
+| CHAR | C+ | What | Default |
+|---|---|---|---|
+| +0x1e0 | C+0xfa0 | The least alert that pursues | 2 |
+| +0x1e8 | C+0xfb4 | The mode for a strong contact (strength 3, 4) below medium alert | 5 |
+| +0x1ec | C+0xfb8 | The same for a weak one (strength 2) | 1 |
+| +0x1f0 | C+0xfbc | A strong one at medium alert or above | 6 |
+| +0x1f4 | C+0xfc0 | A weak one at medium or above | 4 |
+| +0x1f8 | C+0xfc4 | A lost contact: 0 the job, 1 keep looking, 2 the alarm | 0 |
+
+The modes: 0 none, 1 forget, 2 go to the place, 3 wait, 4 look around, 5 move, 6 hunt, 7 glance. The
+original prints "pursuit mode %s not yet implemented" for 5 and 6 and does nothing else: levels 2
+and 4 have characters with them (inferred from the data: on levels 1, 3, 9 every character has
+4, 1, 4, 4, 0). The Combat object's +0x68 (C+0x1054, default 200) is the pursuit's distance, 0 none.
+C+0xfc8 and C+0xfcc keep the job's place: `AI2rUpdateAI` writes the location there each tick the job's
+patrol is running and its block's +0x53a is set and +0x53b clear (the port: each tick of the job's
+patrol); `ai2_setjobstate` and the initialization clear it.
+
+### The block (C+0x8b8)
+
++0x08 the contact; +0x0c the mode; +0x10 the contact was seen (its highest strength above 3, or
+strength 4 at a mode change); +0x11 the alert above low; +0x12 the place reached; +0x14 the
+vocalization's timer; +0x18 ticks held still (only cleared in the exe); +0x1c the mode's timer; +0x20
+a time (only cleared: the test against it holds only in the game's first 15 ticks); +0x24 ticks seen
+close; +0x28 hurrying; +0x29 the look begun; +0x2c the scan.
+
+The scan (0x54 bytes): +0x00 about a facing, +0x04 that facing (1000: the character's), +0x08 the
+range about it, +0x0c the centre of the pick (1000 all round), +0x10 the first look, +0x14 started,
++0x18 the look picked, +0x1c the vector along it (30 long), +0x28 the sweep's offset, +0x2c its range
+(0 none), +0x30 the vector looked along, +0x3c/+0x40 how long a look is held (base, random part),
++0x44/+0x48 the ticks between sweeps, +0x4c/+0x50 their timers.
+
+### What it does
+
+- **Enter.** The aiming speed is halved (restored on exit). Alerted, and wanting to go (why 0), it goes
+  to the place; else it glances, for the contact type's glance time (0x52a64c, the calm handler's),
+  which is also the glance (C+0xf74) when not alerted. The vocalization timer starts at 120. Then the
+  mode for the contact, and the mode begins.
+- **Wanting to go** (0x4b1620, by a reason 0..3): not for an unhostile contact (but on entering), nor
+  below the least alert. With a pursuit distance: for 0 and 1 the contact's place must be within it
+  by the rooms' graph (`PHrPathDistance` 0x50edb0; a point in no room fails); for 2 and 3 the job's
+  place must be known and the way back to it shorter than the distance (no way found passes).
+- **The mode for the contact** (0x4b1260), only when the mode's timer isn't running. Strength 0 (the
+  character dead) starts the timer at the class's lost-target wait (ONCC+0x290). Strength 1 forgets,
+  unless lost contacts are kept looking for. 2 takes the weak mode, 3 and 4 the strong one (4 marks
+  it seen), by the alert. Mode 0, or the mode it has, changes nothing; going to the place keeps going
+  unless it forgets.
+- **A mode begins** (0x4b1350; held still, only forgetting does). The path halts and the aim stops.
+  - *Forget*: the lost setting below 0 does nothing; 2, with the contact seen and an alarm console
+    (the one it has, else `AI2rAlarm_FindAlarmConsole`), runs to the alarm; else back to the job
+    (0x48af80, both flags: idle below the job's alert).
+  - *Go*: the path to the contact's place (within 12), hurrying when alerted.
+  - *Look*: a scan all round, 45 degrees of sweep, looks held 100 to 200 ticks, sweeps every 40 to 80.
+  - *Glance*: a scan along the way to the contact, held 10,000 ticks, a sweep after 80.
+- **A mode ends** (0x4b1570): going ends in a glance (80 ticks) at an unhostile contact seen, else a
+  look around (600); the look goes on if it still wants to (why 2), else forgets, then takes the mode
+  for the contact; the glance goes to the place if it wants to (why 1), else forgets; any other mode
+  waits.
+- **The tick** (0x4b0fb0). Lying, the forward key (to get up). The hold, then the mode's timer, count
+  down. Waiting, looking, moving and hunting, the vocalization's timer runs (720 to 900 ticks;
+  `AI2rVocalize` 4 not ported). Looking and glancing run the scan. Going: the contact's fading is held
+  back a tick (its +0x38); then by the squared distance to the path's goal (the height ignored within
+  22.5, from the path's 0x4af030):
+  - beyond 200: on its way, hurrying when alerted, not looking;
+  - within 200, with the way from its head to the contact's place blocked (flags 0x42080): not looking;
+  - in sight beyond 60: it looks toward the place (a scan within 70 degrees of its facing, looks held
+    40 to 80 ticks), hurrying if alerted and not yet reached;
+  - in sight within 60 for 6 ticks, or arrived (within 12): reached, and the mode ends. In sight it
+    goes on looking. Arrived, the exe tests a flag that only the in-sight way sets: its value is the
+    stack's leftover (the port takes it as clear: the aim stops).
+- **Hurrying** (`AI2rIsHurrying`): the AI's movement takes the hurrying table (0x52af18: walk, walk,
+  run, run aiming, run aiming by the alert) in the states the table at 0x52a4d8 doesn't mark calm
+  (combat, alarm, panic, and 4), and in the pursuit while going and hurrying; else the calm table
+  (0x52af2c).
+- **The knowledge handler** (0x4b1750). The calm handler first (it may start combat). A fading contact
+  that is its own: with an alarm run set and strength below 3, back to the alarm; else the mode for
+  the contact. Then the most important contact: its own, and fading, nothing more; another, only if
+  hostile, becomes its contact. If it wants to go (why 3), it goes to the place.
+- **Forgotten** (0x4b1830): its own contact forgotten sends it to the alarm (as above), else to the
+  first other contact it wants to go to, else forgetting.
+- **The scan** (0x499b50). When not started or the look's hold is out: the centre (all round when not
+  about a facing), the next look (0x499990: first the scan's first look, then random about the centre
+  within its range, at least 40 degrees from the last, and 30 along it clear of the environment from
+  the head, flags 0x42080; six tries each), the hold and the sweep timers drawn. With a sweep range,
+  when its timer is out a new offset is drawn within the range. The look is the pick's vector, or it
+  turned by the offset (0x499d00); the movement looks along it (0x4a8090).
+
+Not ported: the vocalizations, the glance's look (0x4a8150) and the facing held, the report
+(`AI2rPursuit_Report` 0x4b18e0, debug text). A contact removed without the forget's notice leaves
+the exe with a stale pointer; the port goes back to the job.
 
 ## Melee
 

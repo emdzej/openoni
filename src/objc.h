@@ -57,6 +57,10 @@ uint32_t objc_char_alert(const ObjcObject *o);
 /* The alert at or above which the AI goes back to its job (+0x1dc, C+0xf9c: AI2rInitializeCharacter
    0x48a6b0 copies +0x1d4..+0x1e0 to C+0xf94..C+0xfa0). */
 uint32_t objc_char_job_alert(const ObjcObject *o);
+/* +0x1e0 the least alert that pursues; +0x1e8 + 4k the pursuit modes (k 0..4: strong and weak below
+   medium alert, the same at medium or above, then what a lost contact does). */
+uint32_t objc_char_pursue_alert(const ObjcObject *o);
+uint32_t objc_char_pursuit(const ObjcObject *o, int k);
 
 /* FLAG's data (the flag type's read method 0x4c55b0): a colour (u32), a prefix (u16), the id (u16 at +6,
    what OBJiFlag's search 0x4c56c0 compares), a note (128 bytes). ONrLevel_Flag_ID_To_Flag 0x506c80

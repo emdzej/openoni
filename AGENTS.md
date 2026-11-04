@@ -41,7 +41,7 @@ Steps 4 (renderer), 6 (character) and 7 (scripts) have begun:
 - `src/render/` (gasm only): `gl_dev.c`, `env_draw.c`, `char_draw.c`.
 - `src/trac.c`: the animation collections.
 - `src/chars.c`: the level's characters (from `CHAR` objects and `ai2_spawn`), their scripts (die,
-  defeated, hurt) and the `chr_*`/`ai2_*` commands. `src/ai.c` (the AI's executor, a stand-in mover), `src/patrol.c` (patrol paths and jobs), `src/alarm.c` (the alarm state and event),
+  defeated, hurt) and the `chr_*`/`ai2_*` commands. `src/ai.c` (the AI's executor, a stand-in mover), `src/patrol.c` (patrol paths and jobs), `src/alarm.c` (the alarm state and event), `src/pursuit.c` (the pursuit state and the guard's look around),
   `src/knowledge.c` (sight, hurts, the alert), `src/combat.c` (the combat settings, behaviours,
   maneuvers, the gun pickup, targeting and the executor's aim) and `src/melee.c` (the melee profiles and techniques; all
   in [docs/re/ai.md](docs/re/ai.md)) move the others; `--param ailog=1` logs each fighter once a second.

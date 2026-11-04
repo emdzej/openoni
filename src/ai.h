@@ -59,7 +59,47 @@ typedef struct {
        how long a fight lasts before the alarm again (ticks) */
     float alarm_find, alarm_ignore, alarm_chase;    /* C+0xfec, 0xff0, 0xff4 */
     uint32_t alarm_damage, alarm_fight;             /* C+0xff8, 0xffc */
+    float pursuit_distance;     /* C+0x1054 (the object's +0x68): how far from its job it pursues, 0 any */
 } CombatSettings;
+
+/* The guard's scan (AI2rGuard_UpdateScan 0x499b50: the pursuit's look around, at its block +0x2c): a
+   look direction picked now and then, within a range of a facing (or all round), swept a little. */
+typedef struct {
+    bool on;                    /* +0x00: about the facing (else all round) */
+    float face;                 /* +0x04: that facing, 1000 the character's at the pick */
+    float range;                /* +0x08: the pick's range about it */
+    float center;               /* +0x0c: the pick's centre, 1000 all round */
+    float first;                /* +0x10: the first look, 1000 the character's facing */
+    bool started, again;        /* +0x14, +0x15 */
+    float angle;                /* +0x18: the look picked */
+    float v[3];                 /* +0x1c: along it (30 long) */
+    float sweep;                /* +0x28: the sweep's offset */
+    float sweep_range;          /* +0x2c: 0 none */
+    float look[3];              /* +0x30: the direction looked along */
+    uint32_t hold_base, hold_rand;      /* +0x3c, +0x40: ticks a look is held (the base and a random part) */
+    uint32_t sweep_base, sweep_rand;    /* +0x44, +0x48: ticks between sweeps */
+    uint32_t hold, sweep_timer;         /* +0x4c, +0x50 */
+} AiScan;
+
+/* The pursuit's modes (+0x0c, the CHAR's pursuit fields). */
+enum { PURSUIT_NONE, PURSUIT_FORGET, PURSUIT_GOTO, PURSUIT_WAIT, PURSUIT_LOOK, PURSUIT_MOVE, PURSUIT_HUNT,
+       PURSUIT_GLANCE };
+
+/* The pursuit state's block (C+0x8b8 when C+0x1f8 is 6; +0x08, the contact, is target_entry). */
+typedef struct {
+    int mode;                   /* +0x0c: PURSUIT_* */
+    bool strong;                /* +0x10: the contact was seen (its highest strength above 3) */
+    bool alerted;               /* +0x11: the alert above low */
+    bool reached;               /* +0x12: the contact's place reached once */
+    uint32_t vocal;             /* +0x14: ticks to the next vocalization */
+    uint32_t halt;              /* +0x18: ticks held still before the mode starts */
+    uint32_t timer;             /* +0x1c: the mode's ticks left, 0 none */
+    uint32_t start;             /* +0x20 */
+    uint32_t close;             /* +0x24: ticks seen close on the way */
+    bool run;                   /* +0x28: hurrying (0x4b0f90) */
+    bool looked;                /* +0x29: the scan begun */
+    AiScan scan;                /* +0x2c */
+} PursuitState;
 
 
 /* The combat state's block (C+0x8b8, its +8 on: what the behaviours get). */
@@ -147,6 +187,13 @@ typedef struct {
     int job_patrol;         /* the job's patrol path (C+0x200's copy of the state block), -1 none */
     int job_point;          /* and the waypoint it was at */
     int job_alert;          /* C+0xf9c: the alert at or above which leaving combat goes back to the job */
+    int pursue_alert;       /* C+0xfa0: the least alert that pursues (the CHAR's +0x1e0) */
+    /* the CHAR's pursuit modes (+0x1e8..+0x1f8): for a strong and a weak contact below medium alert,
+       the same at medium or above, and what a lost one does (0 the job, 1 keep looking, 2 the alarm) */
+    int pursue_strong_low, pursue_weak_low, pursue_strong_high, pursue_weak_high, pursue_lost; /* C+0xfb4..0xfc4 */
+    bool job_pos_set;       /* C+0xfc8: the place of its job, kept while at it */
+    float job_pos[3];       /* C+0xfcc */
+    PursuitState pursuit;
     /* the combat state (C+0x8b8's block when C+0x1f8 is 5) */
     bool combat_lost;               /* +0x0c: the target dead, gone or forgotten */
     int combat_last_strength;       /* +0x14: the target's contact's strength, last told */

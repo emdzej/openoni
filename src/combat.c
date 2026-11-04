@@ -66,6 +66,7 @@ void combat_default_settings(AiState *a)
     s->alarm_chase = 0.0f;
     s->alarm_damage = 30;
     s->alarm_fight = 360;
+    s->pursuit_distance = 200.0f;
 }
 
 void combat_settings(AiState *a, uint16_t id)
@@ -89,6 +90,7 @@ void combat_settings(AiState *a, uint16_t id)
     s->alarm_chase = rdf(p + 0x84);
     s->alarm_damage = rd32(p + 0x88);
     s->alarm_fight = rd32(p + 0x8c);
+    s->pursuit_distance = rdf(p + 0x68);
 }
 
 /* ---- the targeting ---- */

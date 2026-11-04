@@ -2,12 +2,14 @@
 #include "ai.h"
 #include "chars.h"
 #include "combat.h"
+#include "exe.h"
 #include "alarm.h"
 #include "graph.h"
 #include "localpath.h"
 #include "knowledge.h"
 #include "melee.h"
 #include "patrol.h"
+#include "pursuit.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -37,6 +39,11 @@ void ai_init(AiState *a)
     a->aim.speed = 1.0f;
     a->aim.last_facing = 1000.0f;
     a->alarm_marker = a->alarm_last = -1;
+    /* AI2rInitializeCharacter 0x48a6b0's, without a CHAR */
+    a->pursue_alert = 2;
+    a->pursue_strong_low = PURSUIT_MOVE, a->pursue_weak_low = PURSUIT_FORGET;
+    a->pursue_strong_high = PURSUIT_HUNT, a->pursue_weak_high = PURSUIT_LOOK;
+    a->pursue_lost = 0;
 }
 
 void ai_executor_move(AiState *a, float facing, int mode, int kind, bool full_turn)
@@ -47,12 +54,23 @@ void ai_executor_move(AiState *a, float facing, int mode, int kind, bool full_tu
     a->kind = kind;
 }
 
-/* The movement's default mode for the alert level (0x4a8d00): the tables at 0x52af18 (hurrying,
-   AI2rIsHurrying 0x48b020) and 0x52af2c (not). The port has no hurry yet. */
+/* AI2rIsHurrying 0x48b020: an AI hurries in the states the table at 0x52a4d8 doesn't mark calm (combat,
+   alarm, panic), and in the pursuit while it hurries to the contact's place. */
+static bool hurrying(const AiState *a)
+{
+    if (a->state < 0 || a->state > 11) return true;
+    if (exe_data(0x52a4d8 + (uint32_t)a->state, 1)[0]) return false;
+    if (a->state == AI_STATE_PURSUIT) return pursuit_hurrying(a);
+    return true;
+}
+
+/* The movement's default mode for the alert level (0x4a8d00): the tables at 0x52af18 (hurrying) and
+   0x52af2c (not). */
 static int default_mode(const AiState *a)
 {
-    static const int calm[5] = { 4, 4, 5, 5, 5 };   /* 0x52af2c */
-    return a->alert >= 0 && a->alert < 5 ? calm[a->alert] : calm[0];
+    uint32_t table = hurrying(a) ? 0x52af18 : 0x52af2c;
+    int level = a->alert >= 0 && a->alert < 5 ? a->alert : 0;   /* else "illegal alert status" */
+    return (int)exe_u32(table + 4u * (uint32_t)level);
 }
 
 /* AI2rExecutor_Update 0x498550, with the keys' override (A+0x1ab9) and the attack override (A+0x1acc);
@@ -234,6 +252,7 @@ enum { ONCC_COMBAT_WAIT_RELOAD = 0x138 + 0x154, ONCC_COMBAT_WAIT = 0x138 + 0x158
 
 void ai_exit_state(AiState *a)
 {
+    if (a->state == AI_STATE_PURSUIT) pursuit_exit(a);
     if (a->state == AI_STATE_ALARM) a->movement_mode = 0;     /* 0x48e7f0: the default movement mode */
     /* the job's block (C+0x200) stays as it was: the port keeps its patrol */
     if (a->state == a->job && a->patrol >= 0) a->job_patrol = a->patrol, a->job_point = a->point;
@@ -288,9 +307,9 @@ void ai_pursue(AiState *a, KnowEntry *e)
 {
     ai_exit_state(a);
     a->state = AI_STATE_PURSUIT;
-    a->point_started = false;
     a->target = e->target;
     a->target_entry = e;
+    pursuit_enter(a, &e->owner->c);
 }
 
 void ai_combat_notify(AiState *a, const Character *c, KnowEntry *e, bool degraded)
@@ -365,19 +384,20 @@ static bool combat_update(AiState *a, Character *c)
     return false;
 }
 
-/* The combat state (AI2rCombat_Update 0x48f3e0: the lost target here, the rest in combat.c), and a
-   stand-in for the pursuit (AI2rPursuit_Update) until its port: it goes to where the contact was. */
-static void state_stand_in(AiState *a, Character *c, const void *env)
+/* The states' ticks: combat (AI2rCombat_Update 0x48f3e0: the lost target here, the rest in combat.c),
+   alarm and pursuit. */
+static void state_update(AiState *a, Character *c, const void *env)
 {
     if (a->state == AI_STATE_COMBAT) {
         bool has_target = combat_update(a, c);
         if (a->state == AI_STATE_COMBAT) combat_tick(a, c, env, has_target);
     } else if (a->state == AI_STATE_ALARM) {
         alarm_update(a, c);
-    } else if (a->state == AI_STATE_PURSUIT && a->target_entry && !a->point_started) {
-        const float *p = a->target_entry->pos;
-        ai_move_near(a, p, 8.0f, true, wrap_2pi(atan2f(p[0] - c->pos[0], p[2] - c->pos[2])));
-        a->point_started = true;    /* once: there, it looks the contact's way */
+    } else if (a->state == AI_STATE_PURSUIT) {
+        /* (a contact gone without the forget's notice leaves the original a stale pointer: the port
+           goes back to the job) */
+        if (!a->target_entry) ai_return_to_job(a);
+        else pursuit_update(a, c, env);
     }
 }
 
@@ -405,10 +425,16 @@ void ai_update(AiState *a, Character *c, const void *env)
 {
     /* AI2rUpdateAI 0x489d40: the daze runs out while lying */
     if (a->daze_timer && (c->state == 0x12 || c->state == 0x32)) a->daze_timer--;
+    /* the job's place is kept while at it (in its patrol; the original's test of the patrol's own
+       flags, +0x53a and +0x53b, isn't kept) */
+    if (a->state == AI_STATE_PATROL && a->job == AI_STATE_PATROL && !(c->flags & 1)) {
+        a->job_pos_set = true;
+        memcpy(a->job_pos, c->pos, sizeof a->job_pos);
+    }
     if (a->flags & AI_FLAG_PASSIVE) a->moving = false;     /* AI2rPassive 0x48b160: the state left, the path halted */
     else if (a->patrol >= 0 && !(c->flags & 1)) patrol_update(a, c->pos, c->facing, a->name);
     else if (!(c->flags & 1)) {
-        state_stand_in(a, c, env);
+        state_update(a, c, env);
         alarm_fight_tick(a, c);
     }
     a->ticks++;
