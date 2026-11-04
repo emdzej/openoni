@@ -46,12 +46,12 @@
         <h2>What you need</h2>
         <ul>
           <li><strong>Oni</strong> for Windows (Bungie West, 2001; the program <code>Oni.exe</code>
-            v1.0): an installed copy, or the folder <code>openoni-extract</code> makes from the CD. See
-            <a href="/guide/game-data">Game data</a>.</li>
+            v1.0): the CD as an <code>.iso</code> image, its files copied off the disc, or an installed
+            copy. See <a href="/guide/game-data">Game data</a>.</li>
           <li>A browser with WebAssembly, Web Workers, WebGL 2 and OffscreenCanvas: a recent Chrome, Edge,
             Firefox, or Safari 17 and later.</li>
-          <li>About 650 MB of browser storage to import the data (once; later visits start at once), or
-            none to play without importing.</li>
+          <li>About 650 MB of browser storage to import the data (once; later visits start at once; a CD
+            image takes its own size, about 420 MB), or none to play without importing.</li>
           <li>A keyboard and a mouse.</li>
         </ul>
       </div>
@@ -69,11 +69,15 @@
           <p class="small">Or choose the game again below to replace it.</p>
         </div>
         <div class="row">
-          <button id="pick-folder" class="primary">Choose the game's folder</button>
+          <button id="pick-image" class="primary">Choose a disc image</button>
+          <button id="pick-folder">Choose the game's folder</button>
         </div>
-        <p class="small">The folder with <code>Oni.exe</code> and <code>GameDataFolder</code>, or the folder
-          above it.</p>
+        <p class="small">An <code>.iso</code> image of the CD, or a folder with the CD's files
+          (<code>ONISETUP.EXE</code>, <code>ONISETUP.002</code>, ...) or an installed game (<code>Oni.exe</code>
+          and <code>GameDataFolder</code>). From the CD the game reads its files out of the installer's
+          archive itself, with no install step.</p>
         <input id="folder-input" type="file" webkitdirectory multiple hidden>
+        <input id="image-input" type="file" accept=".iso,.bin,.ISO,.BIN" hidden>
 
         <div id="check" hidden>
           <ul id="check-list" class="checks"></ul>

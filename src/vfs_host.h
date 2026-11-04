@@ -8,5 +8,6 @@
    mounted; whether it holds the game is up to the caller (vfs_exists("Oni.exe")). */
 bool vfs_mount_path(const char *path);
 /* $OPENONI_DATA if set, else ./game (tests and tools run from the project root): the installed game
-   folder (Oni.exe + GameDataFolder/), as made by openoni-extract or by the original installer. */
+   folder (Oni.exe + GameDataFolder/), as made by openoni-extract or by the original installer, or the
+   CD (its image or its files), read through its installer archive (vfs_vise.h). */
 bool vfs_mount_default(void);

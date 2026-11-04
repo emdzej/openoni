@@ -1,5 +1,10 @@
 # Getting the game files
 
+**You can skip this page:** OpenOni plays straight from the CD. Give the [player](/play/) (or
+`gasm-run openoni.wasm --asset cd="Oni (USA).iso"`) the CD's `.iso` image, or a folder with its files,
+and the game reads its files out of the installer's archive itself (`src/vfs_vise.c`): each file is
+inflated when the game opens it. Extracting first only makes the levels load faster (a few seconds less).
+
 Oni's Windows CD has no game files on it in the open: the game is packed inside its installer, a
 MindVision Installer VISE archive (`ONISETUP.EXE` + `ONISETUP.002`). You don't need to run that
 installer, nor Windows or Wine. Two tools read the archive straight from the CD and write the installed

@@ -2,6 +2,7 @@
    component) and image files read with pread (positional, so the audio thread can stream music while
    the main thread loads). */
 #include "vfs_host.h"
+#include "vfs_vise.h"
 #include <ctype.h>
 #include <dirent.h>
 #include <fcntl.h>
@@ -171,5 +172,5 @@ bool vfs_mount_path(const char *path)
 bool vfs_mount_default(void)
 {
     const char *e = getenv("OPENONI_DATA");
-    return vfs_mount_path(e && *e ? e : "game");
+    return vfs_mount_path(e && *e ? e : "game") && vfs_vise_layer();
 }

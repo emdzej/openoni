@@ -10,6 +10,7 @@
 #include "app.h"
 #include "platform.h"
 #include "vfs.h"
+#include "vfs_vise.h"
 #include <gasm.h>
 #include <gasm_loop.h>
 #include <stdio.h>
@@ -315,10 +316,45 @@ static bool files_list(void *ctx, const char *dir, VfsListFn fn, void *user)
     return any;
 }
 
-static bool has_game(void) { return vfs_exists("Oni.exe"); }
+/* The game: Oni.exe there, or the CD's installer archive under it (vfs_vise.h). */
+static bool has_game(void) { return vfs_vise_layer() && vfs_exists("Oni.exe"); }
 
+/* A disc image given as a named asset: ISO 9660 over asset_read_at (as OpenCMR2's). */
+typedef struct { char name[8]; } ImageAsset;
+
+static int64_t image_read_at(void *ctx, uint64_t off, void *dst, size_t len)
+{
+    const ImageAsset *a = ctx;
+    size_t done = 0;
+    while (done < len) {
+        uint32_t want = len - done > (1u << 30) ? 1u << 30 : (uint32_t)(len - done);
+        int32_t k = gasm_asset_read_at64(a->name, (uint32_t)strlen(a->name), off + done, (uint8_t *)dst + done, want);
+        if (k < 0) return done ? (int64_t)done : -1;
+        if (k == 0) break;
+        done += (size_t)k;
+    }
+    return (int64_t)done;
+}
+
+static void image_close(void *ctx) { free(ctx); }
+
+/* The CD's image as the asset "cd" (or "iso"), else the assets as the installed game's files or the
+   CD's. */
 static bool mount_game(void)
 {
+    static const char *const images[] = {"cd", "iso"};
+    for (size_t i = 0; i < sizeof images / sizeof *images; i++) {
+        int64_t size = gasm_asset_size64(images[i], (uint32_t)strlen(images[i]));
+        if (size < 0) continue;
+        ImageAsset *a = calloc(1, sizeof *a);
+        if (!a) return false;
+        snprintf(a->name, sizeof a->name, "%s", images[i]);
+        VfsSource src = {a, (uint64_t)size, image_read_at, image_close};
+        char d[32];
+        snprintf(d, sizeof d, "asset %s", images[i]);
+        if (vfs_mount_image(&src, 0, d) && has_game()) return true;
+        vfs_unmount();
+    }
     VfsBackend b = {NULL, files_open, files_read_at, files_close, files_list, NULL};
     vfs_mount(&b, "gasm assets");
     if (has_game()) return true;
@@ -364,7 +400,7 @@ int gasm_loop_init(void)
     init_keys();
     if (!mount_game()) {
         plat_log("OpenOni: game data not found. Pass the game folder: gasm-run openoni.wasm --asset-dir <folder "
-                 "with Oni.exe and GameDataFolder> (make it from the CD with openoni-extract or visextract)");
+                 "with Oni.exe and GameDataFolder, or the CD's files>, or the CD's image: --asset cd=<Oni.iso>");
         return 1;
     }
     char m[640];

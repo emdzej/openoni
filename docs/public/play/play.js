@@ -297,10 +297,16 @@ function showCheck(result) {
     li.textContent = text;
     list.append(li);
   };
-  item(`folder "${result.source.name}": ${result.files} files, ${data.mb(result.bytes)}`, true);
+  const src = result.source;
+  if (src.kind === 'image') item(`disc image "${src.name}": ${data.mb(result.bytes)}`, true);
+  else item(`folder "${src.name}": ${result.files} files, ${data.mb(result.bytes)}`, true);
   if (result.problems.length) {
     for (const p of result.problems) item(p, false);
-    item('This does not look like Oni: choose the installed game\'s folder (Oni.exe and GameDataFolder), or one made from the CD by openoni-extract.', false);
+    item('This does not look like Oni: choose an .iso of the CD, the CD\'s folder (ONISETUP.EXE and ONISETUP.002), or the installed game\'s folder (Oni.exe and GameDataFolder).', false);
+  } else if (src.kind === 'image') {
+    item('ISO 9660 volume found: the game reads the CD\'s installer archive inside it (it says so if Oni isn\'t on it)', true);
+  } else if (src.cd) {
+    item('the CD\'s installer archive found (ONISETUP.EXE and ONISETUP.002): the game reads the installed files out of it', true);
   } else {
     item('Oni.exe (v1.0) and GameDataFolder found', true);
   }
@@ -326,13 +332,21 @@ $('folder-input').onchange = (e) => {
   e.target.value = '';
 };
 
+$('pick-image').onclick = () => { message(''); $('image-input').click(); };
+$('image-input').onchange = async (e) => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  try { showCheck(await data.imageFromFile(f)); } catch (err) { message(`Could not read the image: ${err.message}`, 'error'); }
+};
+
 $('import').onclick = async () => {
   if (!checked) return;
   startAudio();
   const source = checked.source;
   show('check', false);
   show('progress', true);
-  $('pick-folder').disabled = true;
+  $('pick-folder').disabled = $('pick-image').disabled = true;
   const t0 = performance.now();
   try {
     await stopGame();
@@ -354,7 +368,7 @@ $('import').onclick = async () => {
     await data.removeImport().catch(() => {});
     refreshImported();
   } finally {
-    $('pick-folder').disabled = false;
+    $('pick-folder').disabled = $('pick-image').disabled = false;
   }
 };
 $('play-direct').onclick = () => { if (checked) play(checked.source); };
@@ -376,7 +390,8 @@ async function refreshImported() {
   show('imported', !!info);
   $('choose-title').textContent = info ? 'Your game' : 'Choose your game';
   if (info) {
-    $('imported-desc').textContent = `game folder "${info.name}", ${info.files} files, ${data.mb(info.bytes)}`;
+    $('imported-desc').textContent = info.kind === 'image' ? `disc image "${info.name}", ${data.mb(info.bytes)}`
+      : `game folder "${info.name}", ${info.files} files, ${data.mb(info.bytes)}`;
     const s = await data.storageInfo();
     $('storage').textContent = s.usage !== undefined
       ? `This site uses ${data.mb(s.usage)} of the ${data.mb(s.quota ?? 0)} the browser allows${s.persisted ? '; kept even when space runs low' : ''}.`

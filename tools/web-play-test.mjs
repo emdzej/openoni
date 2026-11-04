@@ -29,6 +29,8 @@ const DIST = join(repo, 'docs/.vitepress/dist');
 const WASM = join(DIST, 'play/openoni.wasm');   // the module the page runs: gasm-run gets the same one
 const PORT = 8793, DEBUG = 9336;
 const CHROME = process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+/* The CD's image (OPENONI_CD=<.iso>, as the native tests take it): the image case runs only with one. */
+const ISO = process.env.OPENONI_CD && /\.(iso|bin)$/i.test(process.env.OPENONI_CD) ? resolve(process.env.OPENONI_CD) : null;
 const RUN = process.env.GASM_RUN ?? join(repo, '.deps/gasm-runner-macos-universal/gasm-run');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 mkdirSync(OUT, { recursive: true });
@@ -214,6 +216,16 @@ try {
     await page.evaluate('document.getElementById("play-direct").click()');
     check('game folder without importing (File/Blob worker)', await result(page));
     await saveFrame(page, join(OUT, `${c.name}-direct.png`));
+
+    // 2. without importing: the CD's image (the game reads the installer archive inside it)
+    if (ISO) {
+      await page.open(url);
+      await page.setFiles('#image-input', [ISO]);
+      const img = await page.until('globalThis.__openoniChecked', 30000);
+      report(img.problems.length === 0, `${c.name}: disc image check`, `${(img.bytes / 1048576).toFixed(0)} MB ${img.problems.join('; ')}`);
+      await page.evaluate('document.getElementById("play-direct").click()');
+      check('CD image without importing (File/Blob worker)', await result(page));
+    }
 
     // 3. first visit: import the folder into OPFS (once), play from OPFS
     if (!imported) {

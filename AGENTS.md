@@ -116,7 +116,9 @@ cmake -S . -B build && cmake --build build
 ```
 
 Tests and tools read the game folder through the file layer (`OPENONI_DATA=<dir>`, default `./game`), the
-CD through `OPENONI_CD=<dir|image>`, and skip without data. **All data access goes through `src/vfs.h`**: no
+CD through `OPENONI_CD=<dir|image>`, and skip without data. The game also plays straight from the CD:
+`src/vfs_vise.c` layers the installer archive over a mounted CD (`OPENONI_DATA=<image>`, gasm-run
+`--asset cd=<image>`, the play page's disc image), inflating each file as it is opened. **All data access goes through `src/vfs.h`**: no
 `fopen`/`opendir` in the core.
 
 ## Reverse engineering
@@ -178,7 +180,8 @@ screenshots (`md5`) instead. `node ../gasm/runners/web/headless.mjs` must print 
 The browser player is `docs/public/play/` (the site's `/play/`): the player's own installed game folder,
 imported into OPFS or read in place, run as `openoni.wasm` in gasm's Worker mode. Locally:
 `docs/scripts/copy-wasm.sh && (cd docs && scripts/vendor-web.sh && pnpm build)`, then
-`node tools/web-play-test.mjs` (headless Chrome: the page's hash lines must equal gasm-run's).
+`node tools/web-play-test.mjs` (headless Chrome: the page's hash lines must equal gasm-run's; with
+`OPENONI_CD=<.iso>` it also plays from the CD image).
 
 ## Unattended runs
 
