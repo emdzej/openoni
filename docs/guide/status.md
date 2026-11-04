@@ -35,6 +35,11 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - **The level chain**: a level's `win` loads the next level and its `lose` plays the same level again,
   as the original's game loop does, from the last save point the level's scripts made (`save_game`,
   `restore_game`: health, place, inventory and weapon put back). The mission timer counts down and runs its script at zero.
+- **The HUD**: the health ring, and the left ring with the ballistic clips, the energy cells and the
+  compass toward the objective's flag (`target_set`), its arrow up or down; the scripts show, hide and
+  flash its elements.
+- **The splash screens** between the parts of a level ("Chapter 00 . Combat Training"), faded in
+  and out as the original does.
 - **The cutscenes**: the films (a character's input recorded tick by tick and played back), the
   characters carried by object animations (Konoko's motorbike ride into the airport), the camera's
   moves, the letterbox, and the AI held still while they play.
@@ -52,7 +57,7 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 
 - The particles' contrails, vectors, lens flares and decals (bullet holes), homing, and their sounds.
 - The AI's alarms, the gun pickups and the bosses' fighting. The power-ups' physics and glow, and the
-  HUD.
+  HUD's weapon and inventory displays.
 - The front end (the menus), saved games kept between sessions, and the Bink movies.
 - The other 13 levels as a playthrough.
 

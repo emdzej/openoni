@@ -37,7 +37,7 @@ if (!existsSync(CHROME)) { console.error(`no Chrome at ${CHROME} (CHROME=<binary
 
 // Add cases (frames, scripted input and the game's parameters) as the game grows.
 const CASES = [
-  { name: 'level1', frames: Number(process.env.FRAMES ?? 600), input: '', params: { play: '1', level: '1' } },   // the training's start
+  { name: 'level1', frames: Number(process.env.FRAMES ?? 600), input: '', params: { play: '1', level: '1' } },   // the training's splash screen
 ];
 
 // Reference hashes from the native runner (same module, same data, same input).

@@ -114,3 +114,21 @@ name, size, type, flags, CRC of the RGBA bytes) and one per level. `txmp_test` m
 The HUD's `right` and `left` (level 0) are RGB555 pictures on black, flags 0x1400 (0x400 not known);
 the port draws them added to the screen (inferred: the draw states the HUD sets aren't decoded yet).
 `rightRing` and `leftRing` are ARGB4444 rings the health and weapon arcs sample.
+
+## TXMB
+
+A big texture made of TXMP tiles: the splash screens (`splash_screen`, `ONrGameState_SplashScreen`
+0x4f4d40). Instance data:
+
+| Offset | Size | What |
+|---|---|---|
+| 0x08 | 2 | Width in pixels (the splash screens: 640) |
+| 0x0a | 2 | Height (480) |
+| 0x10 | 2 | Tiles across (3) |
+| 0x12 | 2 | Tiles down (2) |
+| 0x14 | 4 | Tile count |
+| 0x18 | 4 each | The tiles (TXMP links), by rows |
+
+The tiles are drawn side by side at their own sizes, from the top left; their sizes add up to the
+width and height. The port: `ui_draw_splash`
+(src/render/ui_draw.c).

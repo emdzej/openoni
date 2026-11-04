@@ -441,11 +441,13 @@ static float wrap_pi(float a)
 }
 
 /* The input the route asks for this frame (in is all zero on entry). */
+static uint32_t splash_frames;      /* the frames the splash screens took: the route's clock leaves them out */
+
 static void route_input(const Character *c, CharacterInput *in)
 {
     for (int guard = 0; route.step && guard < 8; guard++) {
         char *s = route.step;
-        uint32_t now = plat_frames();
+        uint32_t now = plat_frames() - splash_frames;
         if (*s == '@') {
             if ((int64_t)now < (int64_t)atoi(s + 1) + route.shift) return;
             route_next();
@@ -660,6 +662,45 @@ static int next_level(int level)
     return best == 0xffff ? 0 : best;
 }
 
+/* Any key or mouse button pressed this frame (the splash's events 2, 4, 6 and 9). */
+static bool any_press(void)
+{
+    uint8_t codes[16];
+    PlatMouse mouse;
+    return plat_key_presses(codes, (int)sizeof codes) > 0 || (plat_mouse(&mouse) && mouse.pressed);
+}
+
+static void splash_frame(const char *name, float blanket)
+{
+    if (plat_frame_shown()) {
+        int w, h;
+        plat_display_size(&w, &h);
+        ui_draw_splash(w, h, name, blanket);
+    }
+    sound_update();     /* 0x483bd0 */
+    plat_wait_frame();
+    splash_frames++;
+}
+
+/* ONrGameState_SplashScreen 0x4f4d40, the original's blocking loop in the game loop's place for the
+   frame: in from black over 120 ticks ((1 - t/120)^1.9; past 120 the power of a negative is no number and
+   no blanket is drawn) within 600, then 600 more, either ended by a key or a button, then out to black
+   over 120 ((t/120)^1.9). Its clock is the machine's sixtieths: here the frames. Not ported: the music's
+   volume (up at the start, down over the fade) and the listener kept on the player. */
+static void splash_screen(const char *name)
+{
+    bool skip = false;
+    for (int t = 0; t < 600 && !skip; t++) {
+        if (any_press()) skip = true;
+        else splash_frame(name, powf(1.0f - (float)t * (1.0f / 120.0f), 1.9f));
+    }
+    for (int t = 0; t < 600 && !skip; t++) {
+        if (any_press()) skip = true;
+        else splash_frame(name, 0.0f);
+    }
+    for (int t = 0; t < 120; t++) splash_frame(name, powf((float)t * (1.0f / 120.0f), 1.9f));
+}
+
 /* One level, until it ends (*next: the level to load then, 0 none) or the player quits (Esc). */
 static int play(int level, int *next)
 {
@@ -800,7 +841,10 @@ static int play(int level, int *next)
                 plat_log(m);
             }
         }
-        if (plat_frame_shown()) {
+        char splash[32];
+        bool splashing = ui_splash_take(splash);    /* ONiRunGame: G+0x118, the splash in the display's place */
+        if (splashing) splash_screen(splash);
+        if (!splashing && plat_frame_shown()) {
             int w, h;
             plat_display_size(&w, &h);
             float proj[16], view[16];
@@ -819,7 +863,7 @@ static int play(int level, int *next)
                 if (chars_get(i)) char_draw_character(&chars_get(i)->c);   /* the blended pose */
             particle_draw(view, p3_tick());     /* P3rDisplay */
             laser_draw(view);
-            if (player) ui_draw_hud(w, h, player->c.hit_points, player->c.max_hit_points, ticks);
+            if (player) ui_draw_hud(w, h, &player->c, ticks);
             ui_draw(w, h);
         }
         /* ONiRunGame 0x4d4640: won, the next level (after level 19, the outro: not yet); lost, this

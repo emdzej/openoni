@@ -44,6 +44,14 @@ uint32_t ui_message_time(const char *id);
 /* Adds a line (the oldest goes when the area is full). */
 void ui_print(int area, const char *text, const char *id, int32_t timer, uint32_t colour);
 
+/* The HUD's elements: the left (0) or right (1) shown; an element's alpha (its ui_flash_element bit:
+   1 health, 0x80 compass, ...) while flashing, else 255; the compass's target (its place, the radius
+   squared within which the arc is whole, the distance squared when it was set), false none. */
+bool ui_element_shown(int right);
+uint8_t ui_flash_alpha(uint32_t bit);
+bool ui_target(float pos[3], float *r2, float *d0);
+/* The splash screen a script asked for (G+0x118), taken (cleared); false none. */
+bool ui_splash_take(char name[32]);
 /* The timer's text now (timer_start), false when off or blinked out. */
 bool ui_timer_text(char out[32]);
 /* fade_in, fade_out, letterbox, input, message, message_remove, win, lose, timer_start, timer_stop. */

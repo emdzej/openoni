@@ -964,6 +964,7 @@
 004e1d70	ONiCharacter_Display_Body	ON	med	name from the Intel Mac build (strings:2)
 004e2ea0	ONrCharacter_NextAnimation	ON	med	name from the Intel Mac build (strings:1)
 004e3110	ONrCharacter_SetFacing	ON	low	facing and desired facing both
+004e33a0	ONrCharacter_GetFacing	ON	low	the desired facing less the run's turn (C+0x170 - C+0x174), in [0, 2 pi)
 004e3460	ONrCharacter_GetHeadPosition	ON	low	A+0x247c, else the location 15 up
 004e34f0	ONrCharacter_GetPelvisPosition	ON	med	A+0x229c, else the location with y + C+0x18c
 004e3590	ONrCharacter_GetFeetPosition	ON	low	the pelvis x, z; y the body bottom C+0x190 + 1
@@ -1115,6 +1116,7 @@
 00504c30	ONrInGameUI_TextConsole_Display	ON	med	name from the Intel Mac build (neighbours:0.75)
 00504cf0	ONrInGameUI_EnableHelpDisplay	ON	med	name from the Intel Mac build (neighbours:1.00)
 00504d50	ONiInGameUI_ShowElement	ON	med	name from the Intel Mac build (strings:1)
+00504e30	ONiInGameUI_FlashElement	ON	low	ui_flash_element: an element's flash bit set or cleared ("all" 0xfff)
 00505050	ONrInGameUI_NewWeapon	ON	med	name from the Intel Mac build (strings:1)
 005050b0	ONrInGameUI_NotifyRestoreGame	ON	med	name from the Intel Mac build (neighbours:1.00)
 005050d0	ONrDebugKey_WentDown	ON	med	name from the Intel Mac build (neighbours:1.00)

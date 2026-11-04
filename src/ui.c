@@ -3,6 +3,10 @@
 
 #include "sl.h"
 #include "text.h"
+#include "chars.h"
+#include "objc.h"
+
+#include <math.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -16,6 +20,14 @@ static struct { uint32_t time; float height; bool on, moving; } box;
 static bool input_on = true;
 static int level_end;            /* G+0x1679bc: 1 won, 2 lost */
 static bool cutscene, cutscene_sync;
+/* The HUD (ONrInGameUI): the left and right elements shown (0x5ed0dc, 0x5ed0a0), the elements flashing
+   (0x5ed02c, by ui_flash_element's bits) since when (0x5ecfb8), and the compass's target (target_set:
+   0x5ed02a on, the flag's place 0x5ecfd0, the radius squared 0x5ecfc4, the distance squared when set
+   0x5ed008). */
+static bool show_left, show_right;
+static uint32_t flash_bits, flash_since;
+static struct { bool on; float pos[3], r2, d0; } target;
+static char splash[32];            /* G+0x118: the splash screen to show at the frame's end */
 /* The timer (ONrGameState's, 0x5ece7c): 0 off, 1 counting down, 2 ended (its "0:00.0" shown for 300
    ticks); the function run at 0 (32 bytes), the ticks left, the blink and its counter. */
 static struct { int state; char func[32]; uint32_t ticks; bool shown; uint32_t blink; } timer;
@@ -44,6 +56,31 @@ void ui_reset(void)
     level_end = 0;
     cutscene = cutscene_sync = false;
     memset(&timer, 0, sizeof timer);
+    splash[0] = 0;
+    show_left = show_right = true;      /* ONrInGameUI's level start */
+    flash_bits = flash_since = 0;
+    memset(&target, 0, sizeof target);
+    target.d0 = 75000.0f;
+}
+
+bool ui_element_shown(int right) { return right ? show_right : show_left; }
+
+/* ONrInGameUI_Display's flash (0x5ecfe8): 255 e^(-0.03 t), t the sixtieths since anything began
+   flashing, modulo 60; 255 for an element not flashing. */
+uint8_t ui_flash_alpha(uint32_t bit)
+{
+    if (!flash_bits) flash_since = now;
+    if (!(flash_bits & bit)) return 255;
+    return (uint8_t)lrintf(expf(-0.03f * (float)((now - flash_since) % 60u)) * 255.0f);
+}
+
+bool ui_target(float pos[3], float *r2, float *d0)
+{
+    if (!target.on) return false;
+    memcpy(pos, target.pos, sizeof target.pos);
+    *r2 = target.r2;
+    *d0 = target.d0;
+    return true;
 }
 
 uint32_t ui_time(void) { return now; }
@@ -263,6 +300,85 @@ static bool cmd_timer_stop(SlThread *t, int c, const SlValue *v, SlValue *r, voi
     return true;
 }
 
+/* splash_screen name (AIiScript_SplashScreen 0x4bd460): the big texture's name (31 at most) for the game
+   loop to show (ONrGameState_SplashScreen 0x4f4d40). */
+static bool cmd_splash(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 1 || v[0].type != SL_STRING || !v[0].s) return true;   /* "expected name of splash screen" */
+    snprintf(splash, sizeof splash, "%s", v[0].s);
+    return true;
+}
+
+bool ui_splash_take(char name[32])
+{
+    if (!splash[0]) return false;
+    memcpy(name, splash, sizeof splash);
+    splash[0] = 0;
+    return true;
+}
+
+/* ui_show_element left|right on (ONiInGameUI_ShowElement 0x504d50) */
+static bool cmd_show_element(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 2 || v[0].type != SL_STRING || !v[0].s) return true;
+    bool on = num(&v[1]) > 0;
+    if (!strcmp(v[0].s, "left")) show_left = on;
+    else if (!strcmp(v[0].s, "right")) show_right = on;   /* else "unknown element" */
+    return true;
+}
+
+/* ui_flash_element name on (ONiInGameUI_FlashElement 0x504e30): the element's bit (the table at 0x5556d0: health 0, damage 1,
+   invis 2, shield 3, hypo 4, weapon 5, ammo 6, compass 7, arrow 8, ballistic 9, energy 10, lsi 11; "all"
+   0xfff) set or cleared. */
+static bool cmd_flash_element(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    static const char *const names[] = { "health", "damage", "invis", "shield", "hypo", "weapon", "ammo",
+                                         "compass", "arrow", "ballistic", "energy", "lsi" };
+    if (c < 2 || v[0].type != SL_STRING || !v[0].s) return true;
+    uint32_t bits = 0;
+    if (!strcmp(v[0].s, "all")) bits = 0xfff;
+    for (unsigned i = 0; !bits && i < sizeof names / sizeof *names; i++)
+        if (!strcmp(v[0].s, names[i])) bits = 1u << i;
+    if (!bits) return true;     /* "No such in-game UI element" */
+    if (num(&v[1]) > 0) flash_bits |= bits;
+    else flash_bits &= ~bits;
+    return true;
+}
+
+/* target_set flag radius (ONiInGameUI_TargetSet 0x503d80): the compass toward the flag; a radius of 0
+   turns it off. A flag within 10 of the one already set changes nothing; else the distance squared to
+   the player now is kept (the arc narrows as the player gets nearer). Not ported: its event sound. */
+static bool cmd_target_set(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    float radius = c >= 2 ? fnum(&v[1]) : 0.0f;
+    if (radius == 0.0f) {
+        target.on = false;
+        return true;
+    }
+    ObjcObject flag;
+    if (c < 1 || !objc_flag_find((uint16_t)num(&v[0]), &flag)) {
+        target.on = false;      /* "No Flag %d exists" */
+        return true;
+    }
+    if (target.on) {
+        float dx = flag.pos[0] - target.pos[0], dy = flag.pos[1] - target.pos[1], dz = flag.pos[2] - target.pos[2];
+        if (dx * dx + dy * dy + dz * dz < 100.0f) return true;
+    }
+    memcpy(target.pos, flag.pos, sizeof target.pos);
+    Chr *p = chars_player();
+    if (p) {
+        float dx = target.pos[0] - p->c.pos[0], dy = target.pos[1] - p->c.pos[1], dz = target.pos[2] - p->c.pos[2];
+        target.d0 = dx * dx + dy * dy + dz * dz;
+    }
+    target.r2 = radius * radius;
+    target.on = true;
+    return true;
+}
+
 static bool cmd_input(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;
@@ -328,6 +444,10 @@ void ui_register_commands(void)
     sl_register("win", cmd_win, NULL);
     sl_register("lose", cmd_lose, NULL);
     sl_register("timer_start", cmd_timer_start, NULL);
+    sl_register("splash_screen", cmd_splash, NULL);
+    sl_register("ui_show_element", cmd_show_element, NULL);
+    sl_register("ui_flash_element", cmd_flash_element, NULL);
+    sl_register("target_set", cmd_target_set, NULL);
     sl_register("timer_stop", cmd_timer_stop, NULL);
     sl_register("cutscene_sync", cmd_cutscene_sync, NULL);
     sl_register("message", cmd_message, NULL);

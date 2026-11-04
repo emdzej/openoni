@@ -1,6 +1,7 @@
 /* The screen's 2D layer: see ui_draw.h. */
 #include "ui_draw.h"
 
+#include "character.h"
 #include "cinematic.h"
 #include "exe.h"
 #include "font.h"
@@ -160,6 +161,46 @@ void ui_draw(int w, int h)
     }
 }
 
+/* ---- the splash screens ---- */
+
+static uint16_t tx16(const void *t, unsigned off);
+
+static uint16_t rd16b(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }
+
+/* TXMB (instance data): +0x08 width, +0x0a height, +0x10 the tiles across, +0x12 down, +0x14 their
+   count, +0x18 the TXMPs, by rows. */
+void ui_draw_splash(int w, int h, const char *name, float blanket)
+{
+    gl_dev_begin(w, h, 0.0f, 0.0f, 0.0f);
+    gl_dev_screen(w, h);
+    const uint8_t *b = tm_instance_get(TM_TAG("TXMB"), name);
+    float scale = (float)h / 480.0f;
+    static const uint8_t white[4] = { 255, 255, 255, 255 };
+    if (b) {
+        float bw = (float)rd16b(b + 0x08) * scale, bh = (float)rd16b(b + 0x0a) * scale;
+        float x0 = ((float)w - bw) / 2, y0 = ((float)h - bh) / 2, y = y0;
+        uint16_t across = rd16b(b + 0x10), down = rd16b(b + 0x12);
+        for (uint16_t r = 0, k = 0; r < down; r++) {
+            float x = x0, th = 0;
+            for (uint16_t c = 0; c < across; c++, k++) {
+                const void *t = tm_link(b + 0x18 + 4 * k);
+                if (!t) continue;
+                float pw = (float)tx16(t, TXMP_WIDTH), ph = (float)tx16(t, TXMP_HEIGHT);
+                float tw = pw * scale, du = pw > 0 ? 0.5f / pw : 0, dv = ph > 0 ? 0.5f / ph : 0;
+                th = ph * scale;
+                /* half a texel in from the edges, so the filtering doesn't wrap round the tile */
+                quad(x, y, x + tw, y + th, du, dv, 1 - du, 1 - dv, white, gl_dev_texture(t));
+                x += tw;
+            }
+            y += th;
+        }
+    }
+    if (blanket > 0.0f) {
+        uint8_t c[4] = { 0, 0, 0, (uint8_t)(255.0f * (blanket > 1.0f ? 1.0f : blanket)) };
+        rect(0, 0, (float)w, (float)h, c);
+    }
+}
+
 /* ---- the HUD ---- */
 
 static uint16_t tx16(const void *t, unsigned off) { const uint8_t *p = (const uint8_t *)t + off; return (uint16_t)(p[0] | p[1] << 8); }
@@ -219,14 +260,84 @@ static void arc(float cx, float cy, float a0, float a1, float ro, float ri, int 
     gl_dev_draw(v, (uint32_t)(2 * (segments + 1)), idx, (uint32_t)(6 * segments), gl_dev_texture(ring), GL_DEV_SCREEN);
 }
 
-void ui_draw_hud(int w, int h, uint32_t hp, uint32_t max, uint32_t time)
+/* A sprite (M3rDraw_Sprite) from (x0, y0) to (x1, y1), flipped upside down or not. */
+static void sprite(float x0, float y0, float x1, float y1, bool flip, const void *tex, uint8_t alpha, unsigned mode)
+{
+    float v0 = flip ? 1.0f : 0.0f, v1 = 1.0f - v0;
+    GlVertex v[4] = {
+        { x0, y0, 0, 0, v0, 255, 255, 255, alpha },
+        { x1, y0, 0, 1, v0, 255, 255, 255, alpha },
+        { x1, y1, 0, 1, v1, 255, 255, 255, alpha },
+        { x0, y1, 0, 0, v1, 255, 255, 255, alpha },
+    };
+    static const uint16_t idx[6] = { 0, 1, 2, 0, 2, 3 };
+    gl_dev_draw(v, 4, idx, 6, gl_dev_texture(tex), mode);
+}
+
+/* The left element (ONrInGameUI_Display 0x4fff50, while ui_show_element left is on): the "left"
+   picture, its ring's arcs (ONrInGameUI_SetArcPoints 0x504270, untinted) for the ballistic clips (from pi
+   to 3 pi / 2, radii 64 and 51.5, a segment a clip, 6 at most) and the energy cells (from pi back to
+   pi / 2), and the compass toward target_set's flag: an arc (radii 50 and 46, 32 segments) centred on
+   the flag's bearing from the player's facing, pi either side within the target's radius, else
+   narrowing with the distance from pi / 2 (as far as when it was set) to 0.349; then the "arrow" up
+   (the flag more than 10 above) or upside down (more than 10 below), 36.5 right of the centre.
+   Each flashes by its ui_flash_element bit (ballistic, energy, compass, arrow). Not ported: the
+   tutorial's forced elements (0x5ed09c, 0x5ed098) and the weapon and inventory displays after it
+   (0x500ea0, 0x501240). */
+static void draw_left(int w, int h, const Character *c, float scale)
+{
+    (void)w;
+    const void *left = tm_instance_get(TM_TAG("TXMP"), "left"), *ring = tm_instance_get(TM_TAG("TXMP"), "leftRing");
+    const void *arrow = tm_instance_get(TM_TAG("TXMP"), "arrow");
+    if (!left) return;
+    float lw = (float)tx16(left, TXMP_WIDTH), lh = (float)tx16(left, TXMP_HEIGHT);
+    float cx = (10.0f + (float)((int)lw >> 1)) * scale, cy = (float)h - (float)((int)lh >> 1) * scale;
+    sprite(cx - lw * 0.5f * scale, cy - lh * 0.5f * scale, cx + lw * 0.5f * scale, cy + lh * 0.5f * scale, false,
+           left, 255, GL_DEV_SCREEN_ADD);
+    unsigned clips = c->ammo < 6 ? c->ammo : 6, cells = c->cells < 6 ? c->cells : 6;
+    if (clips)
+        arc(cx, cy, 3.1415927f, 3.1415927f + (4.712389f - 3.1415927f) * (float)clips / 6.0f, 64.0f, 51.5f,
+            (int)clips, ring, scale, 0xffffffffu, ui_flash_alpha(0x200));
+    if (cells)
+        arc(cx, cy, 3.1415927f, 3.1415927f + (1.5707964f - 3.1415927f) * (float)cells / 6.0f, 64.0f, 51.5f,
+            (int)cells, ring, scale, 0xffffffffu, ui_flash_alpha(0x400));
+    float tp[3], r2, d0;
+    if (!ui_target(tp, &r2, &d0)) return;
+    float dx = tp[0] - c->pos[0], dy = tp[1] - c->pos[1], dz = tp[2] - c->pos[2];
+    float d2 = dx * dx + dy * dy + dz * dz, half;
+    if (d2 < r2) half = 3.1415927f;
+    else if (d2 <= d0) {
+        half = 1.5707964f - d2 / d0 * 1.5707964f;
+        if (half < 0.34906584f) half = 0.34906584f;
+        else if (half > 3.1415927f) half = 3.1415927f;
+    } else half = 0.34906584f;
+    /* the facing (ONrCharacter_GetFacing 0x4e33a0: the desired facing less the run's turn, in [0, 2 pi))
+       less the bearing */
+    float facing = c->desired_facing - c->facing_offset;
+    if (facing < 0.0f) facing += 6.2831855f;
+    else if (facing >= 6.2831855f) facing -= 6.2831855f;
+    float rel = facing - atan2f(dx, dz);
+    if (rel < -3.1415927f) rel += 6.2831855f;
+    else if (rel > 3.1415927f) rel -= 6.2831855f;
+    arc(cx, cy, rel - half + 4.712389f, rel + half + 4.712389f, 50.0f, 46.0f, 32, ring, scale, 0xffffffffu,
+        ui_flash_alpha(0x80));
+    if (arrow && (dy > 10.0f || dy < -10.0f)) {
+        float x0 = cx + (36.5f - 6.0f) * scale, y0 = cy - 6.0f * scale;
+        sprite(x0, y0, x0 + 12.0f * scale, y0 + 12.0f * scale, dy <= 10.0f, arrow, ui_flash_alpha(0x100),
+               GL_DEV_SCREEN);
+    }
+}
+
+void ui_draw_hud(int w, int h, const Character *c, uint32_t time)
 {
     const void *right = tm_instance_get(TM_TAG("TXMP"), "right"), *ring = tm_instance_get(TM_TAG("TXMP"), "rightRing");
     const uint8_t *gs = tm_instance_get(TM_TAG("ONGS"), "game_settings");
-    if (!right || !max) return;
+    uint32_t hp = c->hit_points, max = c->max_hit_points;
     gl_dev_screen(w, h);
     /* the original draws at the display's pixels; the port as at 640x480, scaled */
     float scale = (float)h / 480.0f;
+    if (ui_element_shown(0)) draw_left(w, h, c, scale);
+    if (!right || !max || !ui_element_shown(1)) return;
     float rw = (float)tx16(right, TXMP_WIDTH), rh = (float)tx16(right, TXMP_HEIGHT);
     /* the right element's centre (ONrInGameUI_SetArcPoints 0x504270): 10 from the right edge, on the
        bottom */
