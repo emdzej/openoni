@@ -11,8 +11,8 @@ enum { COMBAT_RANGE_NONE = 0, COMBAT_RANGE_LONG = 1, COMBAT_RANGE_MEDIUM = 2, CO
 /* The behaviours' messages (their handlers' second argument; the default AI2rBehavior_Default 0x493120
    takes those a behaviour leaves). */
 enum { MSG_ENTER = 0, MSG_WEIGHTS = 1, MSG_EXIT = 2, MSG_REPORT = 3, MSG_MELEE = 4, MSG_FLAGS = 5,
-       MSG_DAZE = 6, MSG_CLOSE = 7, MSG_FIRE = 8, MSG_KEEP_AIM = 9, MSG_HURT = 10, MSG_ANIM_START = 11,
-       MSG_ANIM_END = 12, MSG_DODGE = 13, MSG_STATE = 14, MSG_RANGE = 15 };
+       MSG_DAZE = 6, MSG_CLOSE = 7, MSG_FIRE = 8, MSG_KEEP_AIM = 9, MSG_HURT = 10, MSG_ACTION = 11,
+       MSG_ANIM_END = 12, MSG_FELL = 13, MSG_STATE = 14, MSG_RANGE = 15 };
 enum { COMBAT_MANEUVER_HOLD, COMBAT_MANEUVER_ADVANCE, COMBAT_MANEUVER_RETREAT, COMBAT_MANEUVER_GUN,
        COMBAT_MANEUVER_ALARM, COMBAT_MANEUVER_MELEE, COMBAT_MANEUVER_GETUP };
 
@@ -38,6 +38,8 @@ void combat_aim(AiState *a, Character *c);
 /* AI2rCombat_NotifyKnowledge 0x490510's message 10: a hit (contact e, of type 7 or 8) to the behaviour. */
 /* AI2rMelee_NotifyAnimation 0x49fd10's message 12: a new animation (its type, the TRAM) to the behaviour. */
 void combat_animation(AiState *a, const Character *c);
+/* DoCharacterFrame's message 11 (0x48b770): the animation's action frame (its type) to the behaviour. */
+void combat_action(AiState *a, const Character *c);
 struct KnowEntry;
 void combat_hurt(AiState *a, const Character *c, const struct KnowEntry *e);
 

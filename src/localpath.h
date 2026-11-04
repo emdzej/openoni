@@ -23,3 +23,10 @@ typedef struct LocalPoint {
    the waypoints' count (0: no path). */
 int local_path(const void *env, int room, const float start[3], const float end[3], const Character *c, bool allow7,
                bool simplify, LocalPoint *out);
+
+/* AI2rFindNearbyPoint 0x49cec0: a point dist from `from` toward angle reached by a straight line over the
+   grids (threshold: the cells' value it stays under, tolerance: blocked cells allowed at its start), else
+   the angle a step to either side, two steps, ... n steps; failing all, the farthest point a line got to
+   (if the last try got beyond min). False with none. */
+bool local_find_nearby_point(const float from[3], float dist, float min, float angle, float step, unsigned n,
+                             uint8_t threshold, int tolerance, float out[3]);

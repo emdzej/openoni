@@ -1,6 +1,7 @@
 /* The bosses' combat behaviours (the Combat objects' behaviours 5 to 13, the table at 0x52a6c4): Barabbas
    (5 shoot, 6 advance, 7 melee: AI2iBehavior_Barabbas 0x491540 under each), the super ninja (8 fireball,
-   9 advance, 10 melee) and Mutant Muro (12 melee, 13 thunderbolt), and Run For Alarm (11). Notes:
+   9 advance, 10 melee: AI2iBehavior_SuperNinja 0x491cc0 under each) and Mutant Muro (12 melee, 13
+   thunderbolt), and Run For Alarm (11, not yet). Notes:
    docs/re/ai.md, "The bosses". */
 #pragma once
 #include "ai.h"

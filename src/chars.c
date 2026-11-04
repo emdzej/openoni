@@ -332,10 +332,17 @@ static bool block(Character *c)
 static void new_animation(Character *c)
 {
     Chr *ch = (Chr *)c;
+    /* NewAnimationHook's teleport (chr_anim.c): with the AI's movement, the path made anew (0x4ae3d0) */
+    if (c->teleport && c->type == 0xdf) {
+        ch->ai.path_made = false;
+        ch->ai.local_seg = -1;
+    }
     if (ch->ai.state != AI_STATE_COMBAT) return;
     combat_animation(&ch->ai, c);
     melee_notify_animation(&ch->ai.melee, c->type, chr_is_victim_type(c->type));
 }
+
+static void action_frame(Character *c) { combat_action(&((Chr *)c)->ai, c); }
 
 /* ONrCharacter_Die_1_Animating_Hook 0x4eb550's scripts: the defeated one unless it ran already, then
    the death one, deferred with the character's name and run at once (0x4f2120). The scripts are the
@@ -379,6 +386,7 @@ void chars_update(const CharacterInput *player_in, const void *env)
     chr_die_hook = died;
     chr_script_hook = script;
     chr_animation_hook = new_animation;
+    character_action_frame_hook = action_frame;
     chr_block_hook = block;
     chr_knockdown_hook = knocked_down;
     throw_install();

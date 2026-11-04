@@ -126,6 +126,20 @@ typedef struct {
     uint32_t damage_timer;      /* +0x54: ticks before it is forgotten */
 } MuroState;
 
+/* The super ninja's behaviours' part (+0x2c..+0x58, boss.c). */
+typedef struct {
+    int mode;                   /* +0x2c: 1 melee, 2 fireball, 3 advance, 4 the alternate fireball, 5 teleport
+                                   to a flag, 6 teleport behind the target */
+    int prev;                   /* +0x30 */
+    uint32_t fire_cool, alt_cool, teleport_cool;    /* +0x34, +0x38, +0x3c */
+    bool fire_started, alt_started, teleport_started;   /* +0x44, +0x45, +0x46: their animations under way */
+    bool rolled, chance;        /* +0x47, +0x48: the even chance between the alternate and the teleport */
+    uint32_t count;             /* +0x4c: weights messages to the damage's next decay */
+    uint32_t damage_hold;       /* +0x50: ticks before the damage taken decays */
+    uint32_t damage;            /* +0x54: the damage taken lately */
+    uint32_t fallen;            /* +0x58: ticks below the level (message 13) */
+} NinjaState;
+
 /* The combat state's block (C+0x8b8, its +8 on: what the behaviours get). */
 enum { COMBAT_MANEUVERS = 7 };
 typedef struct {
@@ -143,6 +157,7 @@ typedef struct {
     union {                     /* +0x2c..: the bosses' behaviours' own (boss.c) */
         BarabbasState barabbas;
         MuroState muro;
+        NinjaState ninja;
     };
     bool targeting;             /* +0x8c */
     AiTargeting t;              /* +0x90 */
@@ -165,6 +180,8 @@ typedef struct {
     bool dazed;                 /* +0x189: lying through the daze (behaviour message 6) */
     int getup;                  /* +0x1f8: 4 none, else the getting up's weight is given */
     bool melee_ok;              /* +0x454: may fight hand to hand */
+    bool fall_check;            /* +0x5d8: message 13 below fall_y */
+    float fall_y;               /* +0x5dc */
 } CombatState;
 
 /* The executor's aim (A+0x1a88..A+0x1ab8, A+0x2195..A+0x21c8). */

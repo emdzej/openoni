@@ -329,6 +329,7 @@ bool (*character_action_hook)(Character *c, const ChrInput *in);
 bool (*character_pickup_hook)(Character *c, const ChrInput *in);
 void (*character_weapon_input_hook)(Character *c, const ChrInput *in);
 void (*character_frame_hook)(Character *c, int step);
+void (*character_action_frame_hook)(Character *c);
 
 /* HandleStartTauntOrAction 0x4f80d0: the console action under way, the action key's console or door
    (the hook), else the taunt (type 0x5e, the action key gone down). The taunt waits for the game time
@@ -810,6 +811,8 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
     uint64_t held = in->held;
     /* the pickup animation's action frame (weapon.c) */
     if (character_frame_hook) character_frame_hook(c, CHR_FRAME_PICKUP);
+    if (character_action_frame_hook && c->ai && c->anim && (int)c->frame == (int16_t)rd16((const uint8_t *)c->anim + 0x174))
+        character_action_frame_hook(c);
     sprint(c, in);
     chr_frame_countdowns(c);
     if (c->flags & 2) return;   /* step 8, dying: the body as it is (its drift with the physics) */

@@ -182,10 +182,15 @@ static const int32_t *point_kinds(void)
 }
 
 /* PHrLocalPathWeight 0x50dc60: the cells along the line (Bresenham) from (x0, z0) to (x1, z1) under the
-   threshold all the way, but for up to `tolerance` at its start; the line's highest and lowest values. */
+   threshold all the way, but for up to `tolerance` at its start; the line's highest and lowest values,
+   and its last cell under the threshold (the start if none: lx, lz may be NULL). */
 static bool line_weight(int x0, int z0, int x1, int z1, uint8_t threshold, int tolerance, bool *first_blocked,
-                        uint8_t *lowest, uint8_t *highest)
+                        uint8_t *lowest, uint8_t *highest, int *lx, int *lz)
 {
+    int last_x, last_z;
+    if (!lx) lx = &last_x;
+    if (!lz) lz = &last_z;
+    *lx = x0, *lz = z0;
     int dx = x1 - x0, dz = z1 - z0, nx = dx < 0 ? -dx : dx, nz = dz < 0 ? -dz : dz;
     int sx = dx < 0 ? -1 : (dx != 0), sz = dz < 0 ? -1 : (dz != 0);
     uint8_t lo = 9, hi = 0;
@@ -199,6 +204,7 @@ static bool line_weight(int x0, int z0, int x1, int z1, uint8_t threshold, int t
         if (v < lo) lo = v;
         if (hi < v) hi = v;
         if (v < threshold) {
+            *lx = x, *lz = z;
             if (x == x1 && z == z1) { *highest = hi, *lowest = lo; return true; }
         } else {
             if (lo < threshold || !tolerance || (x == x1 && z == z1) || (prev_blocked && 8 < v && !blocked)) {
@@ -259,7 +265,7 @@ static int waypoints(int found, bool simplify, LocalPoint *out)
             if (simplify) {
                 bool blocked;
                 uint8_t lo, hi;
-                if (line_weight(kx, kz, cell[i + 1][0], cell[i + 1][1], 3, 3, &blocked, &lo, &hi) && !blocked && hi < 3)
+                if (line_weight(kx, kz, cell[i + 1][0], cell[i + 1][1], 3, 3, &blocked, &lo, &hi, NULL, NULL) && !blocked && hi < 3)
                     continue;
             }
         }
@@ -426,4 +432,146 @@ int local_path(const void *env, int room, const float start[3], const float end[
         }
     }
     return 0;
+}
+
+/* ---- nearby points ---- */
+
+/* AI2rFindNearbyPoint's state (0x5eb858..0x5eb89c): the start's grid and cell, the point aimed at, the
+   line's threshold and tolerance, the rooms crossed in this try and the first one ever crossed. */
+static struct {
+    GraphGrid g;
+    int16_t sx, sz;
+    float to[3];
+    uint8_t threshold;
+    int tolerance;
+    int crossings;      /* 0x5eb898 */
+    int next_room;      /* 0x5eb89c, -1 none */
+} N;
+
+static int16_t round_cell(float v) { return (int16_t)lrintf(v); }   /* 0x434030 */
+
+/* AI2rDoLocalMovement 0x49d700: a straight line over the grid from the start's cell to the point's;
+   one leaving the grid is clipped at its edge (1 x < 0, 2 x past the width, 3 z < 0, 4 z past the
+   height) and goes on in the room beyond, from 7.5 beyond the edge cell (and half a cell). True with the
+   point reached (out: the point); else out is where it stopped: the line's last passable cell's middle,
+   or the edge cell's when no room beyond (or one with flag 8). The first room crossed into is kept
+   across the tries; the next try into it reuses it, but its cells are found on its grid while the line
+   goes on with the old grid's (an original bug: kept). The grid's obstacles aren't ported (localpath.h). */
+static bool local_movement(float out[3])
+{
+    GraphGrid g = N.g;
+    int16_t sx = N.sx, sz = N.sz;
+    for (;;) {
+        int16_t ex, ez;
+        graph_to_cell(&g, N.to, &ex, &ez);
+        int edge = 0, x1 = ex, z1 = ez, w = (int16_t)g.w, h = (int16_t)g.h;
+        if (x1 < 0) {
+            edge = 1;
+            z1 = round_cell((float)-sx * (float)(ez - sz) / (float)(x1 - sx)) + sz;
+            x1 = 0;
+        } else if (x1 >= w) {
+            edge = 2;
+            z1 = round_cell((float)(w - sx - 1) * (float)(ez - sz) / (float)(x1 - sx)) + sz;
+            x1 = w - 1;
+        }
+        if (z1 < 0) {
+            edge = 3;
+            x1 = round_cell((float)-sz * (float)(x1 - sx) / (float)(z1 - sz)) + sx;
+            z1 = 0;
+        } else if (z1 >= h) {
+            edge = 4;
+            x1 = round_cell((float)(h - sz - 1) * (float)(x1 - sx) / (float)(z1 - sz)) + sx;
+            z1 = h - 1;
+        }
+        P.grid = g;
+        bool first_blocked;
+        uint8_t lo, hi;
+        int lx, lz;
+        if (!line_weight(sx, sz, x1, z1, N.threshold, N.tolerance, &first_blocked, &lo, &hi, &lx, &lz)) {
+            graph_cell_middle(&g, lx, lz, NULL, out);
+            return false;
+        }
+        if (!edge) {
+            memcpy(out, N.to, sizeof N.to);
+            return true;
+        }
+        float e[3];
+        graph_cell_middle(&g, x1, z1, NULL, e);
+        int room = -1;
+        if (N.crossings == 0 && N.next_room >= 0) {
+            GraphGrid cg;
+            graph_grid(N.next_room, &cg);
+            graph_to_cell(&cg, e, &sx, &sz);
+            if (sx >= 0 && sx < (int16_t)g.w && sz >= 0 && sz < (int16_t)g.h) room = N.next_room;
+        }
+        if (room < 0) {
+            float p[3] = { e[0], e[1], e[2] }, step = g.cell * 0.5f + 7.5f;   /* 0x52a5bc */
+            if (edge == 1) p[0] -= step;
+            else if (edge == 2) p[0] += step;
+            else if (edge == 3) p[2] -= step;
+            else p[2] += step;
+            room = graph_room_at(p);
+            GraphGrid ng;
+            if (room < 0 || (graph_room_flags(room) & 8) || !graph_grid(room, &ng)) {
+                memcpy(out, e, sizeof e);
+                return false;
+            }
+            graph_to_cell(&ng, p, &sx, &sz);
+            if (sx < 0 || sx >= (int16_t)ng.w || sz < 0 || sz >= (int16_t)ng.h) {
+                memcpy(out, e, sizeof e);
+                return false;
+            }
+            g = ng;
+        }
+        if (N.crossings == 0) N.next_room = room;
+        N.crossings++;
+    }
+}
+
+bool local_find_nearby_point(const float from[3], float dist, float min, float angle, float step, unsigned n,
+                             uint8_t threshold, int tolerance, float out[3])
+{
+    int room = graph_room_at(from);
+    if (room < 0 || !graph_grid(room, &N.g) || !N.g.cells) return false;     /* (0x4936b0: a report) */
+    graph_to_cell(&N.g, from, &N.sx, &N.sz);
+    if (N.sx < 0) N.sx = 0;
+    else if (N.sx > (int16_t)N.g.w - 1) N.sx = (int16_t)N.g.w - 1;
+    if (N.sz < 0) N.sz = 0;
+    else if (N.sz > (int16_t)N.g.h - 1) N.sz = (int16_t)N.g.h - 1;
+    N.next_room = -1;
+    N.threshold = threshold;
+    N.tolerance = tolerance;
+    bool found = false;
+    float best[3] = { 0 }, best_d = 0.0f, d = 0.0f;
+    /* the angle, then a step to either side, two steps, ... up to n */
+    for (unsigned k = 0; k <= n; k++) {
+        for (int side = 0; side < (k ? 2 : 1); side++) {
+            float a = k ? (side ? -1.0f : 1.0f) * (float)k * step + angle : angle;
+            if (a < 0.0f) a += 6.2831854820251465f;
+            else if (a >= 6.2831854820251465f) a -= 6.2831854820251465f;
+            N.to[0] = from[0] + sinf(a) * dist;
+            N.to[1] = from[1];
+            N.to[2] = from[2] + cosf(a) * dist;
+            N.crossings = 0;
+            float at[3];
+            if (local_movement(at)) {
+                memcpy(out, N.to, sizeof N.to);
+                return true;
+            }
+            float dx = at[0] - from[0], dy = at[1] - from[1], dz = at[2] - from[2];
+            d = dz * dz + dy * dy + dx * dx;
+            /* the farthest it got */
+            if (!found || best_d < d) {
+                memcpy(best, at, sizeof best);
+                best_d = d;
+                found = true;
+            }
+        }
+    }
+    /* the farthest, if the last try (not the farthest: kept) got beyond min */
+    if (found && min * min < d) {
+        memcpy(out, best, sizeof best);
+        return true;
+    }
+    return false;
 }

@@ -145,6 +145,11 @@ typedef struct Character {
     uint16_t jumped;                /* A+0xf4: 1 for a jump, 0 for a fall */
     uint16_t air_ticks;             /* A+0xf6: 0 on the ground */
     float air_velocity[3];          /* A+0xf8, per tick, in the character's space */
+    /* the teleport (the super ninja's behaviours, boss.c): set (A+0x178), the point (A+0x17c) and the
+       facing (A+0x188) that the animation 0xdf (a teleport's second half) puts the character at */
+    bool teleport;
+    float teleport_to[3];
+    float teleport_facing;
     float jump_velocity[3];         /* A+0x104: the motion as the jump was asked for */
     bool jump_given;                /* A+0x110 */
     uint16_t jump_delay;            /* A+0x112 (nothing in v1.0 sets it) */
@@ -184,6 +189,9 @@ bool character_init(Character *c, const void *oncc, const float pos[3], float fa
    HandleHeartbeatInput, and two steps of DoCharacterFrame: the pickup animation's action frame (at the
    start) and the trigger (after the overlays). */
 enum { CHR_FRAME_PICKUP, CHR_FRAME_FIRE };
+/* DoCharacterFrame 0x4df571: at the animation's action frame (TRAM +0x174), after the pickup's, an AI's
+   combat behaviour hears of it (message 11, chars.c). */
+extern void (*character_action_frame_hook)(Character *c);
 extern bool (*character_pickup_hook)(Character *c, const ChrInput *in);
 extern void (*character_weapon_input_hook)(Character *c, const ChrInput *in);
 extern void (*character_frame_hook)(Character *c, int step);

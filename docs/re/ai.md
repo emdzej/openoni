@@ -351,8 +351,9 @@ one: a handler returning true keeps the range and the behaviour it has).
 The Combat profiles in level0 that use them (*confirmed* from the data): Barabbas_TCTF (id 9: 6, 5, 7, 5,
 6), SuperNinja (11: 8, 9, 10, 9, 8) and Mutant_Muro (13: 13, 12, 12, 12, 13), for Barabus on levels 3 and
 8, OutroNinja on level 12, and MutantMuro on level 19. Run For Alarm (11) is used by none. Their handlers
-were only reached through the table: `tools/ghidra/entries.tsv` creates them. Ported: Barabbas and
-Mutant Muro (`src/boss.c`, `tests/boss_test.c`).
+were only reached through the table: `tools/ghidra/entries.tsv` creates them; their names come from the
+Mac build, in the table's order. Ported: Barabbas, the super ninja and Mutant Muro (`src/boss.c`,
+`tests/boss_test.c`).
 
 **Barabbas** (5 Shoot 0x491470, 6 Advance 0x491b10, 7 Melee 0x491be0, each choosing a mode, then
 `AI2iBehavior_Barabbas` 0x491540). His block: B+0x24 the mode, +0x28 the last, +0x2c the shot's wait,
@@ -408,6 +409,68 @@ taken lately, +0x4c the ticks before it is forgotten (75 after a hit, message 10
   was). Message 9: keep aiming; 15: keep the range while he has the chance.
 - Message 16 answers whether the shield has been full less than 360 ticks (its sender isn't ported).
 
+**The super ninja** (8 `AI2iBehavior_SuperNinjaFireball` 0x491c50, 9 `...Advance` 0x492a20, 10
+`...Melee` 0x492a70, each setting the mode on entering and at every weights message, then
+`AI2iBehavior_SuperNinja` 0x491cc0). The Mac build splits the common part into helpers (ContinueTeleport,
+CheckTeleportFlee, CheckTeleportAdvance, CheckInvis, FindRetreatFlag, FindEdgeFlag); the Windows exe has
+them inline. His block: B+0x24 the mode, +0x28 the last, +0x2c/+0x30/+0x34 the cooldowns of the
+fireball, the alternate and the teleport, the bytes +0x3c..+0x3e their animations under way, +0x3f/+0x40
+an even chance rolled and its outcome, +0x44 the messages to the damage's decay, +0x48 the ticks before it
+decays, +0x4c the damage taken lately, +0x50 the ticks below the level. The modes: 1 melee, 2 fireball, 3
+advance, 4 the alternate fireball, 5 teleport to a flag, 6 teleport behind the target. Fireball: 2 on
+entering; then 2 with its cooldown over and free to act (0x4e3b10), else 3. Advance: 3; Melee: 1.
+
+- Entering (message 0): B+0x5d8 = 1 and B+0x5dc = 550 (the fall's watch, below); from another than 8 to
+  10 the twelve dwords from B+0x24 are cleared, the mode just set with them.
+- The weights: the cooldowns count down by 5; every 6 messages the damage falls by 3 (once its hold of
+  240 after a hit, message 10, has run out by 30 each time). Outside a teleport (or lying, or knocked,
+  0x4e37b0) and not invisible (C+0x1ba): 35 damage within 50 and free to act, mode 5; advancing at 80 or
+  more and free to act, the even chance (rolled once, `UUrRandom` < 0x7fff) takes 6; else the alternate's
+  cooldown over, free to act, not in 2 and 40 or more away, the chance's other side takes 4. In a teleport
+  the mode stays the last. A new mode ends the old one's animation flag; 5 picks a flag (fails: 1), 6 a
+  point (fails: 3).
+- Mode 5: of the flags from 9500 on, the best by distance from the target (1 − 0.008 × |r − 200| within
+  100 of 200, else 0.2) times its angle off the target's facing (`ONrCharacter_GetFacing` 0x4e33a0; within
+  15°, 1 − 3.0558 × |angle|, else 0.2); A+0x178 is set to whether one was found, A+0x17c the flag, A+0x188
+  the facing toward the target. Mode 6: `AI2rFindNearbyPoint` from the target's location, 35 away, at its
+  facing + π (min 15, steps of 15°, 6 each way, weight 4, tolerance 3); A+0x178 set only on success.
+- The animations: 1 melee 1 (the chance forgotten); 2 and 4 hold 1, and standing still, fight mode and
+  0xe0 or 0xe1 (flags 1) once; lying or a victim instead, that one's cooldown 300. 3 advance 1. 5 and 6
+  hold 1 and 0xde once; lying or a victim, the teleport's cooldown 300, mode 1, the last 0, melee 1.2.
+- Message 11 (`DoCharacterFrame` 0x4df571 through 0x48b770, at the animation's action frame, TRAM +0x174,
+  for an AI in combat): 0xe0 the fireball's cooldown 1200; 0xe1 invisibility 600 (`WPrInventory`
+  0x51ca30, forced) and its cooldown 1200. Message 12 (a new animation): another than the fireball's or
+  the alternate's while it is under way, its cooldown 300; else a teleport under way, or 0xdf, ends it
+  (mode and last 0; 0xdf also forgets the damage and the chance, the others give the teleport a cooldown
+  of 300). The flags: targeting and the tests, no aim. Message 9: keep aiming in 2. Message 4: melee.
+- **The teleport** is in `ONrCharacter_NewAnimationHook` 0x4e97a0: a new animation of type 0xdf with
+  A+0x178 set puts the character at A+0x17c (position, last position, location + 0.5 up, the physics',
+  the ground's), facing A+0x188, its room found again (0x4e91c0) and an AI's path made anew (0x4ae3d0).
+  0xde is always followed by 0xdf. A+0x178 is never cleared.
+- **The fall** (message 13, from `AI2rCombat_Update` after the targeting while B+0x5d8 is set and the
+  position is below B+0x5dc; taken, the tick ends there): for 150 ticks he is held at 550; then the flags
+  from 9000 on make a closed loop, and the point of it nearest him (across) is where he comes back, facing
+  square to it (atan2(dz, −dx) of the segment). `AI2rFindNearbyPoint` there (40, at that facing turned by
+  a random −30°..30°, steps of 11.25°, 4 each way, weight 4, tolerance 3), or 80 straight out; then 0xdf
+  from state 7 with the varient's 0x200 bit (0x4eb340), seen (C+0x1ba = 0), on the ground (A+0xf6, the air
+  velocity 0). No flag 9000, or no animation: not taken.
+
+**`AI2rFindNearbyPoint`** 0x49cec0 (from, distance, min, angle, step, count, weight, tolerance): the
+start's room and grid (none: fails) and its cell clamped into the grid; tries at the angle, then +step,
+−step, +2 steps, ...; each a straight line by `AI2rDoLocalMovement` to the point `distance` along it.
+One that gets there is the answer. Else the farthest point reached, if the *last* try's (not the
+farthest's) squared distance is over min² (kept as the exe has it).
+
+**`AI2rDoLocalMovement`** 0x49d700: from the start cell to the point's cell, clipped at the grid's edge
+(the crossing interpolated, rounded); `PHrLocalPathWeight` 0x50dc60 along it (the weight its threshold,
+the tolerance its blocked cells at the start). Blocked: the last passable cell's middle. Clipped: the edge
+cell's middle, stepped 7.5 plus half a cell (0x52a5bc) beyond the edge into the room there (none, or one
+with flag 8: fails at the edge cell); the line goes on from there on that room's grid. The first room
+crossed in a call of `AI2rFindNearbyPoint` is kept (0x5eb89c), and a later try's first crossing that falls
+inside it is taken straight, without the room's grid being loaded: the line goes on over the old grid from
+the new cell (an original bug: kept). The grids' run-time obstacles (0x50d660, the visited bits) aren't
+ported.
+
 ### The tick
 
 After the lost-target part (above), `AI2rCombat_Update`:
@@ -415,7 +478,8 @@ After the lost-target part (above), `AI2rCombat_Update`:
 1. A new weapon (or firing mode) goes to the targeting (0x4bb700) with the weapon's matrix (the body's
    node 19).
 2. With the targeting on, `AI2rTargeting_Update`; else the target's pelvis is the point and the aim stops.
-   (Message 13, a dodge from danger with B+0x5d8, isn't ported.)
+   Then message 13, the fall (the super ninja's, above), while B+0x5d8 is set and the character is
+   below B+0x5dc.
 3. The getting up (B+0x1f8) is set to 4, none. Lying (the character's state, A+0x1afc, 0x12 or 0x32:
    0x4ecdf0) with a behaviour, message 6 (**the daze**, below); if it answers 1 the path halts, the aim
    stops, the trigger is let go and the tick ends.
@@ -524,7 +588,7 @@ the feet, toward it at the aiming speed (A+0x1ab4 × 6° a tick, by the weapon's
 states, 0x52a4d8); more than 130° off the facing it aims ahead. `DoCharacterFrame` turns the point into
 the character's aim (A+0x21bc, 0x21c0) for an AI's character not under a film.
 
-Not ported yet: the super ninja's behaviours, the running gun pickup, Run For Alarm, the getting up, the attack of
+Not ported yet: the running gun pickup, Run For Alarm, the getting up, the attack of
 opportunity (0x49f2e0), the melee wait of an empty weapon (B+0x64), the objects in the line of fire,
 the arc's steps; the local paths of the advance and the retreat are the port's stand-ins.
 

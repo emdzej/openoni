@@ -268,8 +268,11 @@ static void old_animation_hook(Character *c, const void *next)
     /* The animation's particles stop here (A+0x1ca4, P3rSendEvent 0x45b2c0): with the particles. */
 }
 
-/* ONrCharacter_NewAnimationHook 0x4e97a0, the parts that touch the animation state. Not ported: the
-   sound serial and vocalization (C+0x1dc, 0x428970), the teleport of type 0xdf (A+0x178),
+/* ONrCharacter_NewAnimationHook 0x4e97a0, the parts that touch the animation state, and the teleport: a
+   type 0xdf with one set puts the character there (its position, the last one, the physics', the
+   ground's; the location, C+0x160, isn't kept apart in the port; the room, 0x4e91c0, is found from the
+   position), facing as given; an AI's path is made anew (chars.c). Not ported: the
+   sound serial and vocalization (C+0x1dc, 0x428970),
    dropping the weapon (flag 5), an attack's turn toward its target, dying, and the animation's
    particles. A throw (TRAM flag 15) starts its target's part through chr_throw_hook (throw.c); any
    other animation forgets the target. */
@@ -279,6 +282,15 @@ static void new_animation_hook(Character *c)
 {
     const void *t = c->anim;
     bool fight = (tr_varient(t) & 0x200) != 0;
+    if (c->teleport && tr_type(t) == 0xdf) {
+        c->facing = c->desired_facing = c->teleport_facing;
+        memcpy(c->prev_pos, c->teleport_to, sizeof c->prev_pos);
+        memcpy(c->pos, c->teleport_to, sizeof c->pos);
+        if (c->has_physics) {
+            memcpy(c->phys_pos, c->teleport_to, sizeof c->phys_pos);
+            c->ground_height = c->teleport_to[1];
+        }
+    }
     if (!tr_test_flag(t, TRAM_FLAG_THROW_SOURCE)) c->throw_target = NULL, c->throw_victim_anim = NULL;
     c->threw = NULL;                /* A+0x1ed8 = 0xffff: set again by a throw */
     if (tr_is_attack(t) && !tr_test_flag(t, TRAM_FLAG_THROW_SOURCE)) {

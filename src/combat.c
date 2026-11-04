@@ -411,6 +411,11 @@ void combat_animation(AiState *a, const Character *c)
     if (a->state == AI_STATE_COMBAT && a->combat.behaviour) send_args(a, c, MSG_ANIM_END, c->type, 0, c->anim, NULL);
 }
 
+void combat_action(AiState *a, const Character *c)
+{
+    if (a->state == AI_STATE_COMBAT && a->combat.behaviour) send_args(a, c, MSG_ACTION, c->type, 0, NULL, NULL);
+}
+
 void combat_hurt(AiState *a, const Character *c, const KnowEntry *e)
 {
     if (a->combat.behaviour) send_args(a, c, MSG_HURT, (int)e->value, 0, e, NULL);
@@ -774,7 +779,9 @@ void combat_tick(AiState *a, Character *c, const void *env, bool has_target)
         targeted = true;
         targeting_update(&s->t, has_target, s->aim, s->fire, &close);
     }
-    /* (message 13, the dodge from danger, isn't ported) */
+    /* below the height a behaviour watches (+0x5d8, +0x5dc: the super ninja's), message 13: taken, the
+       tick ends there */
+    if (s->fall_check && c->pos[1] < s->fall_y && s->behaviour && send(a, c, MSG_FELL, NULL)) return;
     s->getup = 4;
     /* lying: message 6 to a behaviour; dazed, the character stays down, still and not firing */
     if (lying(c) && s->behaviour && send(a, c, MSG_DAZE, NULL)) {

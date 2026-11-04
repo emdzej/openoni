@@ -34,8 +34,8 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   to where she was, glances or looks around there, and gives up as the trail goes cold, by the
   character's own pursuit settings. Barabbas fights as his own behaviours say: he shoots, closes in firing his gun's second mode, fights
   hand to hand, and backs off to heal when hurt. Mutant Muro fights behind his shield, which drops when he casts his thunderbolt. The super
-  ninja's behaviours are still missing, and the paths they take in a
-  fight are stand-ins.
+  ninja throws his fireballs, turns invisible, teleports behind his target or away when hit hard, and
+  comes back when he falls off the level. The paths the fighters take are stand-ins.
 - **The scripts**: the BSL engine runs the level's own scripts, with their trigger volumes, doors,
   consoles, animated objects and a growing share of the game's script commands, among them those that
   set the AI's awareness, health and movement modes, and `lock_keys`, with which the training lets
@@ -83,7 +83,7 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 ## Not yet
 
 - The particles' contrails, vectors, lens flares and decals (bullet holes), homing, and their sounds.
-- The super ninja's fighting. The power-ups' physics and glow, and the
+- The fireballs' and the teleports' particles. The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.
 - The other 13 levels as a playthrough.

@@ -1,11 +1,14 @@
 /* The bosses' behaviours (OPENONI_DATA=<dir>, default ./game; skipped without it): on level 3, Barabbas
    (his Combat profile, Barabbas_TCTF: behaviours 6, 5, 7) fights Konoko standing 60 away: he takes his
    behaviours by the range; hurt below 40 percent he backs off, then, far enough, heals (the animation
-   0xdb), gaining hit points. */
+   0xdb), gaining hit points. On level 19 Mutant Muro's shield and thunderbolt; on level 12 the super
+   ninja's fireball, teleports (behind her, to a flag when hit hard) and his return from below the
+   level. */
 #include "akev.h"
 #include "chars.h"
 #include "exe.h"
 #include "knowledge.h"
+#include "objc.h"
 #include "physics.h"
 #include "tm.h"
 #include "trac.h"
@@ -156,6 +159,97 @@ int main(void)
     printf("Muro: shield full at %d, thunderbolt at %d, shield down at %d\n", full_at, bolt_at, dropped_at);
     if (full_at < 0) failed |= 8;
     if (bolt_at < 0 || dropped_at < 0) failed |= 16;
+
+    /* level 12: the super ninja (OutroNinja, the combat SuperNinja: 8, 9, 10, 9, 8) with Konoko kept 120 away: his fireball (0xe0),
+       and advancing, the alternate (0xe1, invisible after it) or the teleport behind her (0xde, 0xdf: a
+       jump of his position) */
+    chars_unload();
+    trac_set_level(12);
+    if (!tm_level_load(12, err, sizeof err)) {
+        fprintf(stderr, "boss_test: %s\n", err);
+        return 1;
+    }
+    prepare();
+    env = NULL;
+    f = tm_file_at(tm_file_slots() - 1);
+    for (uint32_t i = 0; f && i < tm_file_instance_count(f); i++) {
+        const TmInstance *in = tm_file_instance(f, i);
+        if (in->tmpl->tag == AKEV_TAG && in->data) env = in->data;
+    }
+    chars_load();
+    for (int i = 0; i < chars_slots(); i++) {
+        Chr *c = chars_get(i);
+        if (c && !c->player) chars_delete(c);
+    }
+    knowledge_reset();
+    p = chars_player();
+    Chr *n = chars_spawn("OutroNinja", true);
+    if (!p || !n || !env) {
+        fprintf(stderr, "boss_test: no player or ninja\n");
+        return 1;
+    }
+    p->c.flags |= 0x20;
+    printf("ninja: combat %u, behaviours %d %d %d %d %d, hp %u\n", n->ai.combat_set.id, n->ai.combat_set.behaviour[0],
+           n->ai.combat_set.behaviour[1], n->ai.combat_set.behaviour[2], n->ai.combat_set.behaviour[3],
+           n->ai.combat_set.behaviour[4], n->c.hit_points);
+    f0 = n->c.facing;
+    const float off[3] = { n->c.pos[0] + 120.0f * sinf(f0), n->c.pos[1], n->c.pos[2] + 120.0f * cosf(f0) };
+    physics_place(&p->c, off);
+    knowledge_post(n, KNOW_SEEN_CENTRAL, KNOW_DEFINITE, p->c.pos, p, 0, false, false);
+    int fire_at = -1, alt_at = -1, tele_at = -1, jump_at = -1, invis_at = -1, nseen[7] = { 0 };
+    int hard_at = -1, flag_at = -1, flag_jump_at = -1, below_at = -1, back_at = -1;
+    float back[3] = { 0 };
+    ObjcObject fl;
+    printf("ninja: flags 9000 %d, 9500 %d, at y %.0f\n", objc_flag_find(9000, &fl), objc_flag_find(9500, &fl), n->c.pos[1]);
+    for (int k = 0; k < 4000; k++) {
+        float was[3] = { n->c.pos[0], n->c.pos[1], n->c.pos[2] };
+        ui_update();
+        knowledge_update(env);
+        chars_update(&(CharacterInput){ 0 }, env);
+        weapons_update(env);
+        if (n->ai.state == AI_STATE_COMBAT && n->ai.combat.ninja.mode >= 0 && n->ai.combat.ninja.mode < 7)
+            nseen[n->ai.combat.ninja.mode] = 1;
+        if (n->c.type == 0xe0 && fire_at < 0) fire_at = k;
+        if (n->c.type == 0xe1 && alt_at < 0) alt_at = k;
+        if (n->c.type == 0xde && tele_at < 0) tele_at = k;
+        float dx = n->c.pos[0] - was[0], dz = n->c.pos[2] - was[2];
+        if (n->c.type == 0xdf && dx * dx + dz * dz > 100.0f && jump_at < 0) jump_at = k;
+        if (n->c.invisibility && invis_at < 0) invis_at = k;
+        if (getenv("BOSS_TRACE") && k % 30 == 0)
+            printf("N %d state %d beh %d mode %d type 0x%x dist %.0f cool %u/%u/%u inv %u maneuver %d\n", k, n->ai.state,
+                   n->ai.combat.behaviour, n->ai.combat.ninja.mode, n->c.type, n->ai.combat.dist, n->ai.combat.ninja.fire_cool,
+                   n->ai.combat.ninja.alt_cool, n->ai.combat.ninja.teleport_cool, n->c.invisibility, n->ai.combat.maneuver);
+        /* she keeps away */
+        if (k % 30 == 0 && k < 1000) physics_place(&p->c, off);
+        /* hit hard (40 lately, from 140 on, after the teleport, until he goes): close and free to act, the teleport to a flag
+           (9500 on) */
+        if (k >= 140 && flag_at < 0 && k < 2400) {
+            n->ai.combat.ninja.damage = 40;
+            n->ai.combat.ninja.damage_hold = 240;
+            if (hard_at < 0) hard_at = k;
+        }
+        if (hard_at >= 0 && n->ai.combat.ninja.mode == 5 && flag_at < 0) flag_at = k;
+        if (flag_at >= 0 && n->c.type == 0xdf && dx * dx + dz * dz > 100.0f && flag_jump_at < 0) flag_jump_at = k;
+        /* below the level (550): hidden, then back by the flags from 9000 on */
+        if (k == 2500) {
+            physics_place(&n->c, (const float[3]){ n->c.pos[0], 540.0f, n->c.pos[2] });
+            below_at = k;
+        }
+        if (below_at >= 0 && n->c.type == 0xdf && back_at < 0) {
+            back_at = k;
+            memcpy(back, n->c.pos, sizeof back);
+        }
+    }
+    printf("ninja: modes");
+    for (int i = 0; i < 7; i++) if (nseen[i]) printf(" %d", i);
+    printf("; fireball at %d, alternate at %d (invisible at %d), teleport at %d (moved at %d)\n", fire_at, alt_at, invis_at,
+           tele_at, jump_at);
+    printf("ninja: hit hard at %d, to a flag at %d (moved at %d); below at %d, back at %d (%.0f %.0f %.0f)\n", hard_at, flag_at,
+           flag_jump_at, below_at, back_at, back[0], back[1], back[2]);
+    if (fire_at < 0) failed |= 32;
+    if ((alt_at < 0 || invis_at < 0) && (tele_at < 0 || jump_at < 0)) failed |= 64;
+    if (flag_at < 0 || flag_jump_at < 0) failed |= 128;
+    if (back_at < 0 || back[1] < 550.0f) failed |= 256;
     chars_unload();
     tm_terminate();
     exe_free();
