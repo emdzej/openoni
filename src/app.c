@@ -401,7 +401,9 @@ static void start_scripts(void)
    from the facing (measured), which the aim allows for. "M<message>,F" waits for a script's message and
    shifts the later "@" frames by when it came against F (when the route was made). "P" presses the pause
    key (the pause screen). "Gfrom,to,N" shoots
-   the unbroken glass targets of those script ids, aiming the weapon's barrel at each. ---- */
+   the unbroken glass targets of those script ids, aiming the weapon's barrel at each. "F<name>,N" fights
+   the character hand to hand for up to N frames, until it is down. Knocked down, any step first gets
+   up (forward). ---- */
 
 /* The level's environment, for the route's glass targets. */
 static const void *route_env;
@@ -467,6 +469,10 @@ static bool route_pause;     /* the route's "P": the pause key */
 
 static void route_input(const Character *c, CharacterInput *in)
 {
+    if (route.step && c->state == 0x32) {   /* knocked down, whatever the step: up again (forward, a getup move) */
+        in->forward = 1;
+        return;
+    }
     for (int guard = 0; route.step && guard < 8; guard++) {
         char *s = route.step;
         uint32_t now = plat_frames() - splash_frames;
@@ -560,6 +566,34 @@ static void route_input(const Character *c, CharacterInput *in)
             float err = wrap_pi(want - c->desired_facing);
             in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
             in->fire = (now - route.until + (uint32_t)n) % 20 == 0;
+            return;
+        }
+        if (*s == 'F') {
+            /* "F<name>,N": a melee fight with the character for up to N frames, or until it is down
+               to no hit points: turned to it, run at it past 9 away, a punch or kick tapped every
+               8 frames within (three punches, then a kick) */
+            char name[64];
+            int n = 0;
+            const char *comma = strchr(s, ',');
+            size_t len = comma ? (size_t)(comma - s - 1) : 0;
+            if (len >= sizeof name) len = sizeof name - 1;
+            memcpy(name, s + 1, len), name[len] = 0;
+            if (comma) n = atoi(comma + 1);
+            const Chr *t = chars_find(name);
+            if (!route.phase) route.until = now + (uint32_t)n, route.phase = 1;
+            if (!t || !t->c.hit_points || now >= route.until) { route_next(); continue; }
+            float dx = t->c.pos[0] - c->pos[0], dz = t->c.pos[2] - c->pos[2];
+            float err = wrap_pi(atan2f(dx, dz) - c->desired_facing);
+            in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
+            if (dx * dx + dz * dz > 81.0f) {
+                in->forward = fabsf(wrap_pi(atan2f(dx, dz) - c->facing)) < 0.6f;
+                return;
+            }
+            uint32_t k = (route.until - now) / 8;
+            if ((route.until - now) % 8 == 0) {
+                if (k % 4 == 3) in->kick = true;
+                else in->punch = true;
+            }
             return;
         }
         if (*s == 'G') {
@@ -853,6 +887,8 @@ static int play(int level, int *next)
     envparticle_load();     /* ONrLevel_Load: the level's environment particles, after the particle system starts */
     weapons_reset();
     powerups_reset();
+    weapons_level_begin();      /* 0x51b0f0: the level's Weapon and PowerUp objects */
+    powerups_level_begin();
     chars_arm();
     console_load();
     laser_set_environment(env);
@@ -975,8 +1011,8 @@ static int play(int level, int *next)
         if (player && plat_param("trace", dbg, sizeof dbg) && plat_frames() % (uint32_t)(atoi(dbg) > 1 ? atoi(dbg) : 30) == 0) {
             const Character *konoko = &player->c;
             const TmInstance *ti = konoko->anim ? tm_handle_instance(tm_handle_of(konoko->anim)) : NULL;
-            snprintf(m, sizeof m, "OpenOni: frame %u: %.1f %.1f %.1f facing %.2f (%.2f) type %u state %u varient %04x %s%s%u/%u ammo %d stowed %d%d particles %d glass %d clips %u pu %d",
-                     (unsigned)plat_frames(), konoko->pos[0], konoko->pos[1], konoko->pos[2], konoko->facing, konoko->desired_facing, konoko->type,
+            snprintf(m, sizeof m, "OpenOni: frame %u: %.1f %.1f %.1f hp %u facing %.2f (%.2f) type %u state %u varient %04x %s%s%u/%u ammo %d stowed %d%d particles %d glass %d clips %u pu %d",
+                     (unsigned)plat_frames(), konoko->pos[0], konoko->pos[1], konoko->pos[2], konoko->hit_points, konoko->facing, konoko->desired_facing, konoko->type,
                      konoko->state, konoko->varient, ti && ti->name ? ti->name : "", " overlay ",
                      konoko->overlay[0].anim ? tr_type(konoko->overlay[0].anim) : 0u,
                      konoko->overlay[1].anim ? tr_type(konoko->overlay[1].anim) : 0u, konoko->weapon ? konoko->weapon->ammo : -1,

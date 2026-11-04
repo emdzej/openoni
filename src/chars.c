@@ -43,7 +43,7 @@ static bool add_object(const ObjcObject *o, void *user)
     (void)user;
     if (o->tag != TM_TAG("CHAR") || n_objects == OBJECTS_MAX) return true;
     objects[n_objects] = *o;
-    object_flags[n_objects] = objc_char_flags(o);
+    object_flags[n_objects] = objc_char_flags(o) & ~0x20u;    /* OBJiCharacter_Read 0x4bf290: not spawned yet */
     n_objects++;
     return true;
 }
@@ -222,8 +222,11 @@ int chars_load(void)
     armed = false;
     objc_each("Character", add_object, NULL);
     int n = 0;
-    for (int i = 0; i < n_objects; i++)
-        if (!(object_flags[i] & OBJC_CHAR_NOT_INITIAL) && create(i)) n++;
+    for (int i = 0; i < n_objects; i++) {     /* 0x48a360: those present at the start are spawned */
+        if (object_flags[i] & OBJC_CHAR_NOT_INITIAL) continue;
+        object_flags[i] |= 0x20;
+        if (create(i)) n++;
+    }
     return n;
 }
 

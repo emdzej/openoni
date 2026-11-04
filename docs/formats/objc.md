@@ -77,11 +77,26 @@ has flag 0x04: the cutscene's.
 
 In memory (the object's OSD, the type's data at +0x2c) the game keeps flag 0x20 on a character it has
 spawned: `ai2_spawn` (the test in 0x48a480) spawns a character again only with `force` or with flag 0x10.
+The reader clears 0x20 (confirmed, 0x4bf290), so a file that has it set (level 1's `A_t48`: 0x24) still
+spawns once; the level's start (0x48a360) sets it on the characters it makes.
 
 Scripts pick a character by name or by script id (C+0x40). `AI2rInitializeCharacter` 0x48a6b0 gives
 the player script id 0 and every other character from the level -1, so a number only ever finds the
 player or a character made with `chr_create` (its id comes from the `.txt` file). The object id
 (0x08) is not the script id.
+
+## PWRU, WEAP
+
+A `PowerUp` object's data is its type's tag, four bytes read as a big-endian number: `AMMB` ammo, `AMME`
+an energy cell, `HYPO`, `SHLD` a shield, `INVI` invisibility, `ALSI` the LSI (the exe's table at
+0x54bed0: the type, the tag and the name, 12 bytes each, 6 of them; `OBJiPowerUp_Read` 0x4c9f40, a tag
+not in it leaves the type 0). A `Weapon` object's is the weapon class's name (`ONWC`, 32 bytes).
+
+At the level's start (0x51b0f0) the game makes them: each weapon (0x51ad90) 2 above the object's
+place, facing its first rotation angle (+0x18 of the object, the x one), and each powerup (0x51b080)
+placed with its geometry's bottom on the object's place (0x51c270), facing the y angle, with the type's
+default amount (1, a shield 100, invisibility 1800). Level 1 has eight: the LSI the mission needs at
+(424, 50, -639), ammo, cells and a hypo.
 
 ## CONS
 

@@ -831,6 +831,7 @@
 004b89c0	AI2iScript_MakeActive	AI2	med	name from the Intel Mac build (strings:2)
 004b8a70	AI2iScript_MakeInactive	AI2	med	name from the Intel Mac build (strings:2)
 004b8b10	AI2iScript_ChangeTeam	AI2	med	name from the Intel Mac build (strings:2)
+004b8c10	AI2iScript_HasLSI	AI2	low	chr_has_lsi (name made up)
 004b8cb0	AI2iScript_HasEmptyWeapon	AI2	med	name from the Intel Mac build (strings:1)
 004b8e50	AI2iScript_NonCombatant	AI2	med	name from the Intel Mac build (strings:1)
 004b8f50	AI2iScript_Panic	AI2	med	name from the Intel Mac build (strings:1)

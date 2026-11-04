@@ -613,6 +613,18 @@ Weapon *weapon_new(const void *onwc, const float pos[3], float facing)
     return w;
 }
 
+static bool place_object(const ObjcObject *o, void *user)
+{
+    (void)user;
+    char name[33] = { 0 };
+    memcpy(name, o->data, o->size < 32 ? o->size : 32);
+    const void *cls = tm_instance_get(TM_TAG("ONWC"), name);
+    if (cls) weapon_new(cls, o->pos, o->rot[0] * 0.017453293f);    /* 0x529550 */
+    return true;
+}
+
+void weapons_level_begin(void) { objc_each("Weapon", place_object, NULL); }
+
 void weapon_delete(Weapon *w)
 {
     if (!(w->flags & WEAPON_IN_USE)) return;
@@ -1162,6 +1174,17 @@ static bool cmd_has_empty(SlThread *t, int c, const SlValue *v, SlValue *r, void
     return true;
 }
 
+/* chr_has_lsi char (AI2iScript_HasLSI 0x4b8c10): a bool, whether the character carries the LSI
+   (C+0x1b4). */
+static bool cmd_has_lsi(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)u;
+    Chr *ch = c >= 1 ? char_arg(&v[0]) : NULL;
+    r->type = SL_BOOL;
+    r->i = ch && ch->c.lsi;     /* none: "chr_has_lsi: no such character" */
+    return true;
+}
+
 /* 0x519b30: the ammo set to a percentage of the class's shots (at most all of them); owned, the
    background events stop at none and start at some. */
 void weapon_set_ammo_percent(Weapon *w, unsigned percent)
@@ -1209,5 +1232,6 @@ void weapons_register_commands(void)
     sl_register("chr_inv_reset", cmd_inv_reset, NULL);
     sl_register("chr_giveweapon", cmd_give, NULL);
     sl_register("chr_has_empty_weapon", cmd_has_empty, NULL);
+    sl_register("chr_has_lsi", cmd_has_lsi, NULL);
     sl_register_bool("wp_disable_fade", &no_fade);
 }

@@ -19,6 +19,7 @@ enum {
     ONGS_POWERUP_GLOW = 0x418,      /* 0x80 each: the glow's TXMP name */
     ONGS_POWERUP_GLOW_SIZE = 0x798, /* 8 each: two floats */
     TYPE_NAMES = 0x5588f8,          /* the exe's table of the type names */
+    OBJECT_TYPES = 0x54bed0,        /* the PowerUp objects' types: 6 of (type, tag, name), 12 bytes each */
 };
 
 static Powerup powerups[POWERUPS_MAX];      /* 0x620460 */
@@ -32,6 +33,22 @@ void powerups_reset(void)
     memset(powerups, 0, sizeof powerups);
     count = 0;
 }
+
+/* 0x51b080 for each PowerUp object; OBJiPowerUp_Read 0x4c9f40 compares its first four bytes (as a big
+   end number) with each type's tag, the type left as it was (SetDefaults: 0) without a match. */
+static bool place_object(const ObjcObject *o, void *user)
+{
+    (void)user;
+    if (o->size < 4) return true;
+    uint32_t tag = (uint32_t)o->data[0] << 24 | (uint32_t)o->data[1] << 16 | (uint32_t)o->data[2] << 8 | o->data[3];
+    int type = 0;
+    for (int k = 0; k < 6; k++)
+        if (exe_u32(OBJECT_TYPES + 12 * k + 4) == tag) type = (int)exe_u32(OBJECT_TYPES + 12 * k);
+    powerup_place(type, powerup_default_amount(type), o->pos, o->rot[1] * 0.017453293f);   /* 0x529550 */
+    return true;
+}
+
+void powerups_level_begin(void) { objc_each("PowerUp", place_object, NULL); }
 
 int powerup_count(void) { return count; }
 Powerup *powerup_get(int i) { return i >= 0 && i < count ? &powerups[i] : NULL; }

@@ -26,6 +26,10 @@ typedef struct Powerup {
 
 /* The level's start and end (0x51b0f0, 0x51b150): none. */
 void powerups_reset(void);
+/* 0x51b0f0's second part (the callback 0x51b080): the level's PowerUp objects placed, each with its
+   type's default amount, facing its y rotation. Its type is read from the object's tag (OBJiPowerUp_Read
+   0x4c9f40: the exe's table of the types' tags). */
+void powerups_level_begin(void);
 /* 0x51c160: a new powerup of the type (WPrPowerup_SetType 0x51cc10) at pos, facing, with the amount;
    with all taken, the oldest one that isn't placed goes. NULL for a bad type or amount 0. */
 Powerup *powerup_new(int type, uint16_t amount, const float pos[3], float facing);

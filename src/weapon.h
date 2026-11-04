@@ -56,6 +56,10 @@ typedef struct Weapon {
 } Weapon;
 
 void weapons_reset(void);
+/* 0x51b0f0's first part (the callback 0x51ad90): the level's Weapon objects (the OSD: the class's name,
+   32 bytes) made, 2 above their place, facing their x rotation (the original reads +0x18 of the object,
+   the rotation's first angle: kept). */
+void weapons_level_begin(void);
 /* WPrTryReload 0x51c560: the reload overlay starts if the weapon isn't full, c has a clip (or cell) for
    it and nothing stops it (an attack, a hit, an overlay, the weapon's pause or delay): one is used up,
    and the overlay's action frame fills the weapon (WPrReloadDone 0x5181e0). *full: already full;
