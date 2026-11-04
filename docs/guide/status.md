@@ -36,6 +36,11 @@ the blast doors, the attack and the floors' locks, Shinatama's kidnap, the atriu
 the elevator and its fall, the lock to the stairs, the roof, the helicopter and Barabas, and level 9
 begins.
 
+Level 9, the power plant, plays through too: the upper floor's locks and the first lift with Muro's
+cutscene, the middle floor's locks and the second lift, the consoles that discharge the two power
+conduits and the runs through them before they recharge, the drop to the lowest floor, the last
+chambers' fight, and level 10 begins.
+
 It can be tried in the browser on the <a href="/play/" target="_self">play page</a>, with your own copy of the game.
 
 ## What works
@@ -124,7 +129,7 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - The impact effects (the hit sparks' classes). The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.
-- The other 9 levels as a playthrough.
+- The other 8 levels as a playthrough.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked
 against the original.
