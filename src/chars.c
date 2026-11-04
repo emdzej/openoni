@@ -1,5 +1,6 @@
 /* The level's characters: see chars.h. */
 #include "chars.h"
+#include "boss.h"
 #include "alarm.h"
 #include "combat.h"
 #include "film.h"
@@ -1221,6 +1222,7 @@ void chars_register_commands(void)
     sl_register("ai2_passive", cmd_passive, NULL);
     sl_register("chr_neutral", cmd_passive, NULL);     /* the same handler (0x4b4be0) */
     sl_register_bool("ai2_boss_battle", &knowledge_boss_battle);
+    sl_register_bool("ai2_barabbas_run", &boss_barabbas_run);
     sl_register("ai2_setjobstate", cmd_setjobstate, NULL);
     sl_register("ai2_doalarm", cmd_doalarm, NULL);
     sl_register("ai2_tripalarm", cmd_tripalarm, NULL);

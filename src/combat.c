@@ -1,5 +1,6 @@
 /* The AI's combat: see combat.h. */
 #include "combat.h"
+#include "boss.h"
 #include "alarm.h"
 #include "akev.h"
 #include "chars.h"
@@ -129,6 +130,8 @@ static bool picking_up(uint16_t t) { return t == 0x9d || t == 0x9e || t == 0x9f 
 
 /* FUN_00490a50: the trigger held (or the alternate's), unless picking up or the weapon can't; let go,
    the trigger's release. */
+static int send_args(AiState *a, const Character *c, int msg, int p5, int p6, const void *ptr, float *arg);
+
 static void fire(AiState *a, const Character *c, bool on)
 {
     CombatState *s = &a->combat;
@@ -139,11 +142,12 @@ static void fire(AiState *a, const Character *c, bool on)
         s->firing = s->firing_alt = false;
         if (!s->alt) a->aim.fire = true, s->firing = true;
         else a->aim.fire_alt = true, s->firing_alt = true;
-        return;
+    } else {
+        s->firing = false;
+        a->aim.fire = a->aim.fire_alt = false;
     }
-    s->firing = false;
-    a->aim.fire = a->aim.fire_alt = false;
-    /* (the behaviour's message 8 has no handler) */
+    /* message 8: the trigger, and whether it is the alternate's */
+    send_args(a, c, MSG_FIRE, on, s->alt, NULL, NULL);
 }
 
 
@@ -191,8 +195,6 @@ static AiTargeting *targeting(AiState *a, Character *c)
 
 /* ---- the behaviours ---- */
 
-enum { MSG_ENTER = 0, MSG_WEIGHTS = 1, MSG_EXIT = 2, MSG_MELEE = 4, MSG_FLAGS = 5, MSG_DAZE = 6, MSG_CLOSE = 7,
-       MSG_KEEP_AIM = 9, MSG_RANGE = 15 };
 
 /* The unarmed's choice (0x491060's test, and the default's message 7): 5 always fight, 1 when hurt in
    the last 4 seconds, 3 and up when the range is as close as the table's (0x52a688). */
@@ -246,9 +248,8 @@ static int no_gun(AiState *a, int msg, bool *handled)
 static bool needs_gun(const Character *c) { return !c->weapon || weapon_has_empty((Character *)c); }
 
 /* The behaviours (0x52a6c4): 1 Stare 0x490f20, 2 Hold And Fire 0x490f90, 3 Firing Charge 0x4911e0,
-   4 Melee 0x4912d0. The bosses' (5 to 13: Barabbas, the ninja, Muro) and Run For Alarm aren't ported:
-   the default's messages only. */
-static int behaviour(AiState *a, const Character *c, int id, int msg, bool *handled)
+   4 Melee 0x4912d0; the bosses' (5 to 13) in boss.c. */
+static int behaviour(AiState *a, Character *c, int id, int msg, bool *handled, int p5, int p6, const void *ptr)
 {
     CombatState *s = &a->combat;
     *handled = true;
@@ -292,8 +293,7 @@ static int behaviour(AiState *a, const Character *c, int id, int msg, bool *hand
             *handled = false;
         return 0;
     default:
-        *handled = false;
-        return 0;
+        return boss_behaviour(a, c, id, msg, handled, p5, p6, ptr);
     }
 }
 
@@ -310,7 +310,7 @@ static void start_daze_timer(AiState *a, const Character *c)
 }
 
 /* AI2rBehavior_Default 0x493120 (messages 0, 2 and 3, the vocalizations and the report, aren't kept). */
-static int behaviour_default(AiState *a, const Character *c, int msg, float *arg)
+static int behaviour_default(AiState *a, const Character *c, int msg, float *arg, const void *ptr)
 {
     CombatState *s = &a->combat;
     switch (msg) {
@@ -379,17 +379,36 @@ static int behaviour_default(AiState *a, const Character *c, int msg, float *arg
         }
         return 1;
     }
+    case MSG_HURT: {
+        /* a hit by the target: when (+0x84), and when hit hand to hand (+0x88) */
+        const KnowEntry *e = ptr;
+        if (e && a->target && e->target == a->target) {
+            s->hurt_any_time = e->posted;
+            if (e->type == KNOW_HURT_MELEE) s->hurt_time = e->posted;
+        }
+        return 0;
+    }
     default:
         return 0;
     }
 }
 
-static int send(AiState *a, const Character *c, int msg, float *arg)
+/* A message to the behaviour, then (unhandled) the default's. p5 and p6: the message's arguments (the
+   other behaviour for enter and exit, the trigger and the alternate for the fire, the damage and the
+   contact for a hit, the new range for a range's change). */
+static int send_args(AiState *a, const Character *c, int msg, int p5, int p6, const void *ptr, float *arg)
 {
     bool handled = false;
-    int r = behaviour(a, c, a->combat.behaviour, msg, &handled);
-    if (!handled) r = behaviour_default(a, c, msg, arg);
+    int r = behaviour(a, (Character *)c, a->combat.behaviour, msg, &handled, p5, p6, ptr);
+    if (!handled) r = behaviour_default(a, c, msg, arg, ptr);
     return r;
+}
+
+static int send(AiState *a, const Character *c, int msg, float *arg) { return send_args(a, c, msg, 0, 0, NULL, arg); }
+
+void combat_hurt(AiState *a, const Character *c, const KnowEntry *e)
+{
+    if (a->combat.behaviour) send_args(a, c, MSG_HURT, (int)e->value, 0, e, NULL);
 }
 
 /* AI2rCombat_GetRange 0x4901f0. */
@@ -408,11 +427,13 @@ static int get_range(AiState *a, const Character *c, int prev)
 static void switch_behaviour(AiState *a, const Character *c)
 {
     CombatState *s = &a->combat;
-    send(a, c, MSG_EXIT, NULL);
     int r = s->range;
     int id = r >= 1 && r <= 5 ? a->combat_set.behaviour[r - 1] : 0;
-    s->behaviour = id >= 0 && id < 14 ? id : 1;
-    send(a, c, MSG_ENTER, NULL);
+    if (id < 1 || id > 13) id = 1;      /* "illegal behaviour" (the default: Stare) */
+    int old = s->behaviour;
+    send_args(a, c, MSG_EXIT, id, 0, NULL, NULL);
+    s->behaviour = id;
+    send_args(a, c, MSG_ENTER, old, 0, NULL, NULL);
 }
 
 void combat_enter(AiState *a)
@@ -761,7 +782,8 @@ void combat_tick(AiState *a, Character *c, const void *env, bool has_target)
     /* every fifth tick, by the character's index: the range, the line of fire and the maneuver */
     if ((uint32_t)(c->id - 1) % 5 == ui_time() % 5) {
         int r = get_range(a, c, s->range);
-        if (r != s->range) {
+        /* (message 15: a behaviour may keep the range it has) */
+        if (r != s->range && !send_args(a, c, MSG_RANGE, r, 0, NULL, NULL)) {
             /* from none or short, or farther from long or medium, closer from the retreats: the gun's
                chance is drawn again */
             int old = s->range;

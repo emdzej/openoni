@@ -102,6 +102,15 @@ typedef struct {
 } PursuitState;
 
 
+/* Barabbas's behaviours' part of the combat block (+0x2c..+0x40, boss.c). */
+typedef struct {
+    int mode, prev;             /* +0x2c, +0x30 */
+    uint32_t shot_wait;         /* +0x34: ticks after a shot before the next */
+    uint32_t regen_damage;      /* +0x38: the damage taken while healing */
+    uint32_t regen_wait;        /* +0x3c: ticks before he may heal again */
+    uint32_t retreat;           /* +0x40: ticks of backing off */
+} BarabbasState;
+
 /* The combat state's block (C+0x8b8, its +8 on: what the behaviours get). */
 enum { COMBAT_MANEUVERS = 7 };
 typedef struct {
@@ -114,7 +123,9 @@ typedef struct {
     uint32_t backed, backed2;   /* +0x68, +0x6c */
     bool gun_rolled, gun_go;    /* +0x71, +0x72: the class's chance to go for a gun drawn, and its outcome */
     bool run_rolled, run_go;    /* +0x73, +0x74: the chance to pick it up running */
-    uint32_t hurt_time;         /* +0x88: of the last hit (message 10) */
+    uint32_t hurt_any_time;     /* +0x84: of the last hit by the target (message 10) */
+    uint32_t hurt_time;         /* +0x88: of the last hit hand to hand by the target */
+    BarabbasState barabbas;     /* +0x2c..: the bosses' behaviours' own (boss.c) */
     bool targeting;             /* +0x8c */
     AiTargeting t;              /* +0x90 */
     const void *weapon;         /* +0x180: the weapon the targeting has */
@@ -172,6 +183,7 @@ typedef struct {
     bool key_override;      /* A+0x1ab9: these keys for one tick (AI2rExecutor_MoveOverride 0x498b60) */
     uint64_t override_keys; /* A+0x1ac0 */
     bool daze_started;      /* C+0x101c: this fall's daze has begun */
+    uint32_t healed;        /* C+0x1024: the hit points Barabbas has healed */
     uint32_t daze_timer;    /* C+0x1020: ticks left lying */
     int alert;              /* C+0xf94: 0 lull .. 4 combat */
     /* the alarm (alarm.c) */

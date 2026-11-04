@@ -340,6 +340,45 @@ Message 7 (from the tick, when the target is within the weapon's closest distanc
 hold and advance down and fights, steps in or backs off; message 9 keeps the aim while firing or within
 the maneuver's distance (0x52a6a0: 80, 120, 140, 80, 60, 140, 160; else 500).
 
+The other messages and their arguments: 0 entered (the behaviour left), 2 left (the one entered), 6 lying,
+8 the trigger (from 0x490a50 each time it sets or lets go: on, the alternate's), 10 a hit
+(`AI2rCombat_NotifyKnowledge` 0x490510, for a hit contact: the damage, the contact; the default keeps the
+hit's time at B+0x84 when the target hit it, and at B+0x88 hand to hand), 15 a change of range (the new
+one: a handler returning true keeps the range and the behaviour it has).
+
+### The bosses
+
+The Combat profiles in level0 that use them (*confirmed* from the data): Barabbas_TCTF (id 9: 6, 5, 7, 5,
+6), SuperNinja (11: 8, 9, 10, 9, 8) and Mutant_Muro (13: 13, 12, 12, 12, 13), for Barabus on levels 3 and
+8, OutroNinja on level 12, and MutantMuro on level 19. Run For Alarm (11) is used by none. Their handlers
+were only reached through the table: `tools/ghidra/entries.tsv` creates them. Ported: Barabbas
+(`src/boss.c`, `tests/boss_test.c`).
+
+**Barabbas** (5 Shoot 0x491470, 6 Advance 0x491b10, 7 Melee 0x491be0, each choosing a mode, then
+`AI2iBehavior_Barabbas` 0x491540). His block: B+0x24 the mode, +0x28 the last, +0x2c the shot's wait,
++0x30 the damage taken while healing, +0x34 the wait before healing again, +0x38 the retreat's time. The
+modes: 1 shoot, 2 hold, 3 advance, 4 advance firing the alternate, 5 hand to hand or a gun, 6 heal, 7 hand
+to hand, 8 back off.
+
+- Shoot: 1, or 2 for 180 ticks after a primary shot (message 8). Advance: 4 for 360 to 450 ticks after a
+  primary shot, else 1. Melee: 7, or 2 while his gun fires. Shoot walks aiming unless `ai2_barabbas_run`
+  (0x545770, true; the movement mode 5).
+- The weights (every 5 ticks): the timers count down by 5 (the retreat only while free to act, 0x4e3b10;
+  its end bars healing for 600 ticks). His gun firing its primary: hold. Healing: unkillable (C+0x04 bit
+  0x20) with as much healed as his maximum (C+0x1024), no more (wait 10,000); 5% of his maximum taken
+  while healing stops it (wait from his health: 90 + 90 × hp/max); above 80% it stops (240); 20 or more
+  from the target he goes on; closer, under 15% he backs off. Not healing: at 40% or less, with no wait,
+  he backs off while the target is within 40 (80 once backing off), else heals if free to act. Without a
+  gun, or one out of ammo for good (0x4edc00): mode 5. The movement mode: run aiming with the flag or in
+  modes 5, 6 and 8, else walk aiming. Leaving the healing plays type 6 (flags 4).
+- The maneuvers: 1 and 2 hold 1; 3 and 4 hold 0.3, advance 1; 5 a gun (100 to 350) beyond 30, melee 0.8;
+  6 hold 1, fight mode and the animation 0xdb (flags 1), and at each tick of its loop (its animation's from
+  state 0x44, 0x4e3ab0) max × 8 / 1200 hit points; 7 melee 1; 8 hold 0.3, retreat 1 (30..100).
+- The flags: in 6, 7 and 8 targeting only; else targeting, the tests and the aim, firing in 1 (primary) and
+  4 (alternate). Message 4: no melee of opportunity. Message 6 restarts the healing's wait (then the
+  default). 7: handled in 2 and 5 to 8. 9: keep aiming in 1, 2 and 4. 10: the damage counts while healing,
+  else the healing's wait restarts.
+
 ### The tick
 
 After the lost-target part (above), `AI2rCombat_Update`:
@@ -456,7 +495,7 @@ the feet, toward it at the aiming speed (A+0x1ab4 × 6° a tick, by the weapon's
 states, 0x52a4d8); more than 130° off the facing it aims ahead. `DoCharacterFrame` turns the point into
 the character's aim (A+0x21bc, 0x21c0) for an AI's character not under a film.
 
-Not ported yet: the bosses' behaviours, the running gun pickup, Run For Alarm, the getting up, the attack of
+Not ported yet: the super ninja's and Muro's behaviours, the running gun pickup, Run For Alarm, the getting up, the attack of
 opportunity (0x49f2e0), the melee wait of an empty weapon (B+0x64), the objects in the line of fire,
 the arc's steps; the local paths of the advance and the retreat are the port's stand-ins.
 

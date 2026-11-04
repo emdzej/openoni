@@ -333,6 +333,9 @@ void ai_combat_notify(AiState *a, const Character *c, KnowEntry *e, bool degrade
         ai_pursue(a, e);
         return;
     }
+    /* a hit: message 10 to the behaviour */
+    if (e->type == KNOW_HURT || e->type == KNOW_HURT_MELEE) combat_hurt(a, c, e);
+    if (a->state != AI_STATE_COMBAT) return;
     if (e == a->target_entry) {
         a->combat_last_strength = e->strength;
         return;

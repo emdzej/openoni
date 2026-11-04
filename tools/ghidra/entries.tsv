@@ -65,3 +65,16 @@
 004a7a90	melee Throw function 3
 004a7b20	melee Throw function 5
 004a7b40	melee Throw function 6
+# the combat behaviours: the table at 0x52a6c4 (id, function)
+00490f20	behaviour 1 Stare
+004911e0	behaviour 3 Firing Charge
+004912d0	behaviour 4 Melee
+00491470	behaviour 5
+00491b10	behaviour 6
+00491be0	behaviour 7
+00491c50	behaviour 8
+00492a20	behaviour 9
+00492a70	behaviour 10
+00491350	behaviour 11
+00492ac0	behaviour 13
+00491cc0	the super ninja behaviours' shared part
