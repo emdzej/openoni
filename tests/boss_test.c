@@ -103,6 +103,59 @@ int main(void)
     if (combat_at < 0 || !(seen_beh[5] || seen_beh[6] || seen_beh[7])) failed |= 1;
     if (!seen_mode[8] && heal_at < 0) failed |= 2;
     if (heal_at < 0 || healed_hp <= 0) failed |= 4;
+
+    /* level 19: Mutant Muro (Mutant_Muro: 13, 12, 12, 12, 13) with Konoko 250 away (beyond his medium range, 120): his shield rises to
+       full (written 1 each weights message, falling 0.06 a tick between: 0.7 at the samples); at that range he casts the thunderbolt (0xe7), and his shield drops for it */
+    chars_unload();
+    trac_set_level(19);
+    if (!tm_level_load(19, err, sizeof err)) {
+        fprintf(stderr, "boss_test: %s\n", err);
+        return 1;
+    }
+    prepare();
+    env = NULL;
+    f = tm_file_at(tm_file_slots() - 1);
+    for (uint32_t i = 0; f && i < tm_file_instance_count(f); i++) {
+        const TmInstance *in = tm_file_instance(f, i);
+        if (in->tmpl->tag == AKEV_TAG && in->data) env = in->data;
+    }
+    chars_load();
+    for (int i = 0; i < chars_slots(); i++) {
+        Chr *c = chars_get(i);
+        if (c && !c->player) chars_delete(c);
+    }
+    knowledge_reset();
+    p = chars_player();
+    Chr *m = chars_spawn("MutantMuro", true);
+    if (!p || !m || !env) {
+        fprintf(stderr, "boss_test: no player or Muro\n");
+        return 1;
+    }
+        p->c.flags |= 0x20;
+    printf("Muro: medium %.0f, combat %u, behaviours %d %d %d %d %d, hp %u\n", m->ai.combat_set.medium, m->ai.combat_set.id, m->ai.combat_set.behaviour[0],
+           m->ai.combat_set.behaviour[1], m->ai.combat_set.behaviour[2], m->ai.combat_set.behaviour[3],
+           m->ai.combat_set.behaviour[4], m->c.hit_points);
+    float f0 = m->c.facing;
+    const float away[3] = { m->c.pos[0] + 250.0f * sinf(f0), m->c.pos[1], m->c.pos[2] + 250.0f * cosf(f0) };
+    knowledge_post(m, KNOW_SEEN_CENTRAL, KNOW_DEFINITE, p->c.pos, p, 0, false, false);
+    int full_at = -1, bolt_at = -1, dropped_at = -1;
+    for (int k = 0; k < 3000 && dropped_at < 0; k++) {
+        ui_update();
+        knowledge_update(env);
+        chars_update(&(CharacterInput){ 0 }, env);
+        /* she keeps away (he waits 300 ticks after entering his thunderbolt behaviour before the first) */
+        if (k % 30 == 0) physics_place(&p->c, away);
+        if (m->c.super_level > 0.65f && full_at < 0) full_at = k;
+        if (m->c.type == 0xe7 && bolt_at < 0) bolt_at = k;
+        if (bolt_at >= 0 && m->c.super_level < 0.1f) dropped_at = k;
+        if (getenv("BOSS_TRACE") && k % 30 == 0)
+            printf("M %d state %d beh %d shield %.2f type 0x%x dist %.0f charge %u cool %u maneuver %d\n", k, m->ai.state,
+                   m->ai.combat.behaviour, m->c.super_level, m->c.type, m->ai.combat.dist, m->ai.combat.muro.charge,
+                   m->ai.combat.muro.cooldown, m->ai.combat.maneuver);
+    }
+    printf("Muro: shield full at %d, thunderbolt at %d, shield down at %d\n", full_at, bolt_at, dropped_at);
+    if (full_at < 0) failed |= 8;
+    if (bolt_at < 0 || dropped_at < 0) failed |= 16;
     chars_unload();
     tm_terminate();
     exe_free();

@@ -332,7 +332,9 @@ static bool block(Character *c)
 static void new_animation(Character *c)
 {
     Chr *ch = (Chr *)c;
-    if (ch->ai.state == AI_STATE_COMBAT) melee_notify_animation(&ch->ai.melee, c->type, chr_is_victim_type(c->type));
+    if (ch->ai.state != AI_STATE_COMBAT) return;
+    combat_animation(&ch->ai, c);
+    melee_notify_animation(&ch->ai.melee, c->type, chr_is_victim_type(c->type));
 }
 
 /* ONrCharacter_Die_1_Animating_Hook 0x4eb550's scripts: the defeated one unless it ran already, then

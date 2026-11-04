@@ -93,7 +93,7 @@ static void enter(AiState *a)
 /* 0x48e7f0, the state's exit: the path halted, the default movement mode. */
 static void leave(AiState *a)
 {
-    a->moving = false;
+    ai_halt(a);
     a->movement_mode = 0;
 }
 
@@ -156,7 +156,7 @@ static bool standing(const Character *c)
 void alarm_update(AiState *a, Character *c)
 {
     if (c->console_marker >= 0) {
-        a->moving = false;      /* using the console */
+        ai_halt(a);      /* using the console */
         return;
     }
     if (a->alarm_marker < 0) {
@@ -177,13 +177,13 @@ void alarm_update(AiState *a, Character *c)
     }
     /* there */
     if (!standing(c)) {
-        a->moving = false;
+        ai_halt(a);
         if (a->alarm_wait == 0) a->alarm_wait = 60;
         if (--a->alarm_wait != 0) return;
     } else {
         if (action_can_use(c, a->alarm_marker, true)) {     /* ONrGameState_TryActionMarker(wide) */
             action_start(c, a->alarm_marker);               /* 0x4ee1b0 */
-            a->moving = false;
+            ai_halt(a);
             return;
         }
     }

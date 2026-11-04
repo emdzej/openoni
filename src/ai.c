@@ -46,6 +46,12 @@ void ai_init(AiState *a)
     a->pursue_lost = 0;
 }
 
+void ai_halt(AiState *a)
+{
+    a->moving = false;
+    a->kind = AI_MOVE_NONE;
+}
+
 void ai_executor_move(AiState *a, float facing, int mode, int kind, bool full_turn)
 {
     a->full_turn = full_turn;
@@ -257,7 +263,7 @@ void ai_exit_state(AiState *a)
     /* the job's block (C+0x200) stays as it was: the port keeps its patrol */
     if (a->state == a->job && a->patrol >= 0) a->job_patrol = a->patrol, a->job_point = a->point;
     a->patrol = -1;
-    a->moving = false;
+    ai_halt(a);
     a->aim.look = 0;
     a->aim.fire = a->aim.fire_alt = false;
 }
@@ -419,7 +425,7 @@ void ai_take_control(AiState *a, Character *c)
     character_set_facing_offset(c, 0.0f);   /* 0x4f5be0 */
     c->flags |= CHR_FLAG_AI_MOVEMENT;
     /* 0x4ae360 and 0x4a7ff0: the movement's state and path cleared, the default movement mode */
-    a->moving = false;
+    ai_halt(a);
     a->movement_mode = 0;
     a->aim.look = 0;
 }
@@ -434,7 +440,7 @@ void ai_update(AiState *a, Character *c, const void *env)
         a->job_pos_set = true;
         memcpy(a->job_pos, c->pos, sizeof a->job_pos);
     }
-    if (a->flags & AI_FLAG_PASSIVE) a->moving = false;     /* AI2rPassive 0x48b160: the state left, the path halted */
+    if (a->flags & AI_FLAG_PASSIVE) ai_halt(a);     /* AI2rPassive 0x48b160: the state left, the path halted */
     else if (a->patrol >= 0 && !(c->flags & 1)) patrol_update(a, c->pos, c->facing, a->name);
     else if (!(c->flags & 1)) {
         state_update(a, c, env);

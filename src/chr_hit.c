@@ -217,7 +217,12 @@ static void attack_lands(Character *x, Character *d, const uint8_t *e)
        high one (4) a block with flag 3. Then the character's block function (C+0x15ec, the AI's
        AI2rBlockFunction; none for the player) has the last word. */
     bool blocked = false;
-    if (!(aflags & 1)) {
+    /* a class with the super shield (ONCC+0xc8e) shielded (C+0x1668 above 0.5) takes it as blocked and
+       unstoppable (its material the shield's, not ported) */
+    if (((const uint8_t *)d->oncc)[0xc8e] && d->super_level > 0.5f) {
+        blocked = true;
+        unstoppable = true;
+    } else if (!(aflags & 1)) {
         bool high, low;
         blocked = could_block(d, x, &high, &low);
         if (blocked && (aflags & 2) && !low) blocked = false;

@@ -351,8 +351,8 @@ one: a handler returning true keeps the range and the behaviour it has).
 The Combat profiles in level0 that use them (*confirmed* from the data): Barabbas_TCTF (id 9: 6, 5, 7, 5,
 6), SuperNinja (11: 8, 9, 10, 9, 8) and Mutant_Muro (13: 13, 12, 12, 12, 13), for Barabus on levels 3 and
 8, OutroNinja on level 12, and MutantMuro on level 19. Run For Alarm (11) is used by none. Their handlers
-were only reached through the table: `tools/ghidra/entries.tsv` creates them. Ported: Barabbas
-(`src/boss.c`, `tests/boss_test.c`).
+were only reached through the table: `tools/ghidra/entries.tsv` creates them. Ported: Barabbas and
+Mutant Muro (`src/boss.c`, `tests/boss_test.c`).
 
 **Barabbas** (5 Shoot 0x491470, 6 Advance 0x491b10, 7 Melee 0x491be0, each choosing a mode, then
 `AI2iBehavior_Barabbas` 0x491540). His block: B+0x24 the mode, +0x28 the last, +0x2c the shot's wait,
@@ -378,6 +378,35 @@ to hand, 8 back off.
   4 (alternate). Message 4: no melee of opportunity. Message 6 restarts the healing's wait (then the
   default). 7: handled in 2 and 5 to 8. 9: keep aiming in 1, 2 and 4. 10: the damage counts while healing,
   else the healing's wait restarts.
+
+**Mutant Muro** (12 Melee 0x492f90, 13 Thunderbolt 0x492ac0, each after `AI2iBehavior_MutantMuro`
+0x492d50). His block: B+0x24 engaged (720, counted down and set again each time), +0x28 the
+thunderbolt's chance, +0x2c its cooldown, +0x30/+0x34 the shield's drop (length, left), +0x38 the ticks
+it stays down, +0x3c/+0x40 its rise (left, length), +0x44 the ticks it has been full, +0x48 the damage
+taken lately, +0x4c the ticks before it is forgotten (75 after a hit, message 10).
+
+- **The shield** is C+0x1668 (the shown super value; *confirmed*). Every weights message: dropping, the
+  part of the drop left; then 0 while down, and at its end a rise of 240; rising, the part done; else 1
+  (and its full time counts). `DoCharacterFrame` meanwhile moves C+0x1668 toward the super value C+0x1664
+  (or, for a class with ONCC+0xc8d, its health over the maximum, if more) by 0.06 a tick down and 0.03 up
+  (0x52b2d8, 0x52b2f0), so between his messages it sinks to 0.7. A class with ONCC+0xc8e above 0.5 is
+  shielded: `HandleAttackMask` takes a blow as blocked and unstoppable, with the shield's material.
+- **The drop** (0x492cd0, length and down time): from nothing, the full length; during a rise, the
+  rise's ticks left scaled to the new length (so it starts from the part left to rise, not the level: kept
+  as the exe has it); during a drop or a stay, the drop rescaled and the longer stay kept. An animation of
+  his with TRAM flag 22 (message 12, `AI2rMelee_NotifyAnimation` 0x49fd10) drops it for 30, down 360.
+- **Melee** (12): engaged, no chance. Shielded: the damage forgotten, melee 1. Unshielded with 12 or
+  more damage lately and the target within 30: lying, get up; else hold 1, and standing still (0x4ed3c0:
+  type 6 in state 7) his pauses cleared, fight mode and the animation 0x91, the damage forgotten. Else
+  melee 1. The flags: targeting only. Message 9: keep aiming.
+- **Thunderbolt** (13): lying, get up. More than 35 damage lately or the target within 40: a cooldown of
+  300; else with the target beyond 60 or in his line of fire, the chance (120). Engaged with the chance
+  and no cooldown: hold 1, and (not already queued; standing still or in it) fight mode and the animation
+  0xe7, its shield dropping for 90 and down 600 (refused: cooldown 300). Else, not engaged with a chance,
+  the cooldown 300; then engaged, the chance and the damage reset, advance 1. So he waits 300 ticks after
+  entering the behaviour before the first. The flags: targeting and the tests, no aim (the fire as it
+  was). Message 9: keep aiming; 15: keep the range while he has the chance.
+- Message 16 answers whether the shield has been full less than 360 ticks (its sender isn't ported).
 
 ### The tick
 
@@ -495,7 +524,7 @@ the feet, toward it at the aiming speed (A+0x1ab4 × 6° a tick, by the weapon's
 states, 0x52a4d8); more than 130° off the facing it aims ahead. `DoCharacterFrame` turns the point into
 the character's aim (A+0x21bc, 0x21c0) for an AI's character not under a film.
 
-Not ported yet: the super ninja's and Muro's behaviours, the running gun pickup, Run For Alarm, the getting up, the attack of
+Not ported yet: the super ninja's behaviours, the running gun pickup, Run For Alarm, the getting up, the attack of
 opportunity (0x49f2e0), the melee wait of an empty weapon (B+0x64), the objects in the line of fire,
 the arc's steps; the local paths of the advance and the retreat are the port's stand-ins.
 

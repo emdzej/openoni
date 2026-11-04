@@ -766,6 +766,27 @@ static void jump_and_fall(Character *c, const void *env, uint64_t held, float v[
     if (c->air_velocity[1] <= lim) c->air_velocity[1] = lim;
 }
 
+/* Step 14's part: the shown super value (C+0x1668) moved toward the super value (C+0x1664), or for a
+   class with ONCC+0xc8d its health over the maximum (as a part of the maximum) if more; down by 0.06 a
+   tick (0x52b2d8), up by 0.03 (0x52b2f0). */
+static void super_level_step(Character *c)
+{
+    float want = c->super;
+    if (((const uint8_t *)c->oncc)[0xc8d] && c->hit_points > c->max_hit_points) {
+        float over = (float)(c->hit_points - c->max_hit_points) / (float)c->max_hit_points;
+        if (want <= over) want = over;
+    }
+    if (want <= 0.0f) want = 0.0f;
+    if (want <= c->super_level) {
+        float d = c->super_level - 0.06f;
+        if (want < d) want = d;
+    } else {
+        float u = c->super_level + 0.03f;
+        if (u <= want) want = u;
+    }
+    c->super_level = want;
+}
+
 /* ONrGameState_DoCharacterFrame 0x4ddba0, the steps this port has: 6 (the countdowns), 9 and 10 (the
    jump and fall, the motion turned by the facing; the physics is a stand-in), 17 (the animation), 19
    (the pose). Pickup, aim, weapons, overlays, particles, footsteps, damage, knockback and the trigger
@@ -811,6 +832,7 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
         memcpy(c->prev_pos, c->pos, sizeof c->pos);     /* step 12: C+0x154 */
         for (int k = 0; k < 3; k++) c->pos[k] += w[k];
         c->pos[1] = before[1];
+        super_level_step(c);
         chr_frame_advance(c);
         chr_overlays_advance(c);
         if (character_frame_hook) character_frame_hook(c, CHR_FRAME_FIRE);
@@ -819,6 +841,7 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
     }
     if (!c->has_physics) physics_start(c);
     physics_take(c, w);                                 /* step 12 */
+    super_level_step(c);
     chr_frame_advance(c);
     chr_overlays_advance(c);
     if (character_frame_hook) character_frame_hook(c, CHR_FRAME_FIRE);

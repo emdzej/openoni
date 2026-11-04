@@ -36,6 +36,8 @@ void combat_tick(AiState *a, Character *c, const void *env, bool has_target);
    tick of a character the AI moves, before its input. */
 void combat_aim(AiState *a, Character *c);
 /* AI2rCombat_NotifyKnowledge 0x490510's message 10: a hit (contact e, of type 7 or 8) to the behaviour. */
+/* AI2rMelee_NotifyAnimation 0x49fd10's message 12: a new animation (its type, the TRAM) to the behaviour. */
+void combat_animation(AiState *a, const Character *c);
 struct KnowEntry;
 void combat_hurt(AiState *a, const Character *c, const struct KnowEntry *e);
 

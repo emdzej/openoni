@@ -370,7 +370,7 @@ static float maneuver_factor(const MeleeProfile *p, const MeleeTech *k, float di
 /* Sets the executor's move for the tick (AI2rExecutor_Move): the move's kind toward the target. */
 static void exec_move(AiState *a, float facing, int mode, int kind)
 {
-    a->moving = false;
+    ai_halt(a);
     ai_executor_move(a, facing, mode, kind, false);
 }
 

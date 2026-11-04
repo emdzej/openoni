@@ -35,13 +35,6 @@ static uint32_t random_ticks(uint32_t base, uint32_t n)
 
 static void stop_aiming(AiState *a) { a->aim.look = 0; }        /* AI2rMovement_StopAiming 0x4a8050 */
 
-/* AI2rPath_Halt 0x4ae660: no path (+0x10f0), and the movement's state cleared (0x4a8440), so no move
-   goes to the executor (the port's mover leaves the last one: it is stopped here). */
-static void halt(AiState *a)
-{
-    a->moving = false;
-    a->kind = AI_MOVE_NONE;
-}
 
 /* 0x4a8090: the movement looks along a direction. */
 static void look_along(AiState *a, const float v[3])
@@ -262,7 +255,7 @@ static void apply_mode(AiState *a, Character *c)
     AiScan *s = &p->scan;
     const KnowEntry *e = a->target_entry;
     if (p->halt != 0 && p->mode != PURSUIT_FORGET) return;
-    halt(a);
+    ai_halt(a);
     stop_aiming(a);
     switch (p->mode) {
     case PURSUIT_FORGET:
@@ -352,7 +345,7 @@ void pursuit_exit(AiState *a)
     p->halt = 0;
     p->mode = PURSUIT_NONE;
     p->timer = 0;
-    halt(a);                    /* the glance and the facing held aren't kept by the port */
+    ai_halt(a);                    /* the glance and the facing held aren't kept by the port */
     stop_aiming(a);
 }
 
@@ -372,7 +365,7 @@ void pursuit_update(AiState *a, Character *c, const void *env)
     }
     if (p->halt) {
         if (--p->halt) {
-            halt(a);
+            ai_halt(a);
             return;
         }
         apply_mode(a, c);

@@ -73,6 +73,8 @@ typedef struct Character {
     float facing;                   /* C+0x16c, radians [0, 2 pi) */
     float desired_facing;           /* C+0x170 */
     float super;                    /* C+0x1664: the super value (chr_super), the Daodan glow's */
+    float super_level;              /* C+0x1668: the value shown, moved toward it each tick; Mutant Muro's
+                                       shield (a class with ONCC+0xc8e is shielded above 0.5) */
     float facing_offset;            /* C+0x174: the diagonal or sideways run's turn, undone each tick */
     float pelvis_height;            /* C+0x18c */
     uint32_t last_action;           /* C+0x1e0, game time */

@@ -111,6 +111,21 @@ typedef struct {
     uint32_t retreat;           /* +0x40: ticks of backing off */
 } BarabbasState;
 
+/* Mutant Muro's behaviours' part (+0x2c..+0x54, boss.c). */
+typedef struct {
+    uint32_t engaged;           /* +0x2c: 720 once his behaviour has run (counted down, set again) */
+    uint32_t charge;            /* +0x30: ticks of a thunderbolt's chance (the target far or in the open) */
+    uint32_t cooldown;          /* +0x34: ticks without one */
+    uint32_t drop_length;       /* +0x38: the shield's drop, its length */
+    uint32_t drop;              /* +0x3c: ticks of it left */
+    uint32_t off;               /* +0x40: ticks the shield stays down */
+    uint32_t rise;              /* +0x44: ticks of its rise left */
+    uint32_t rise_length;       /* +0x48 */
+    uint32_t up;                /* +0x4c: ticks it has been full */
+    uint32_t damage;            /* +0x50: the damage taken lately */
+    uint32_t damage_timer;      /* +0x54: ticks before it is forgotten */
+} MuroState;
+
 /* The combat state's block (C+0x8b8, its +8 on: what the behaviours get). */
 enum { COMBAT_MANEUVERS = 7 };
 typedef struct {
@@ -125,7 +140,10 @@ typedef struct {
     bool run_rolled, run_go;    /* +0x73, +0x74: the chance to pick it up running */
     uint32_t hurt_any_time;     /* +0x84: of the last hit by the target (message 10) */
     uint32_t hurt_time;         /* +0x88: of the last hit hand to hand by the target */
-    BarabbasState barabbas;     /* +0x2c..: the bosses' behaviours' own (boss.c) */
+    union {                     /* +0x2c..: the bosses' behaviours' own (boss.c) */
+        BarabbasState barabbas;
+        MuroState muro;
+    };
     bool targeting;             /* +0x8c */
     AiTargeting t;              /* +0x90 */
     const void *weapon;         /* +0x180: the weapon the targeting has */
@@ -268,6 +286,9 @@ void ai_combat_notify(AiState *a, const Character *c, struct KnowEntry *e, bool 
 /* 0x48af80 (with both flags, as the combat state calls it): back to the job, or idle when the alert is
    below the job's start level. */
 void ai_return_to_job(AiState *a);
+/* AI2rPath_Halt 0x4ae660: no path (+0x10f0) and the movement's state cleared (0x4a8440), so no move
+   goes to the executor (the port's mover would leave its last one: it is stopped too). */
+void ai_halt(AiState *a);
 /* AI2rExecutor_Move 0x498b00. */
 void ai_executor_move(AiState *a, float facing, int mode, int kind, bool full_turn);
 /* One tick of a character the AI moves: the stand-in mover, then the executor, then the character's

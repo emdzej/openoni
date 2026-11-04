@@ -406,6 +406,11 @@ static int send_args(AiState *a, const Character *c, int msg, int p5, int p6, co
 
 static int send(AiState *a, const Character *c, int msg, float *arg) { return send_args(a, c, msg, 0, 0, NULL, arg); }
 
+void combat_animation(AiState *a, const Character *c)
+{
+    if (a->state == AI_STATE_COMBAT && a->combat.behaviour) send_args(a, c, MSG_ANIM_END, c->type, 0, c->anim, NULL);
+}
+
 void combat_hurt(AiState *a, const Character *c, const KnowEntry *e)
 {
     if (a->combat.behaviour) send_args(a, c, MSG_HURT, (int)e->value, 0, e, NULL);
@@ -482,7 +487,7 @@ static bool try_path_to_gun(AiState *a, const Character *c, const void *env, flo
     if (f <= 0.0f) f = 0.0f;
     s->weight[COMBAT_MANEUVER_GUN] *= 1.0f - f;
     if (s->weight[COMBAT_MANEUVER_GUN] < second) {
-        a->moving = false;
+        ai_halt(a);
         return false;
     }
     return true;
@@ -540,7 +545,7 @@ static bool try_gun_pickup(AiState *a, Character *c, const void *env, float seco
         }
         if (!s->gun) s->weight[COMBAT_MANEUVER_GUN] = 0.0f;
         if (second <= s->weight[COMBAT_MANEUVER_GUN]) return true;
-        a->moving = false;
+        ai_halt(a);
         return false;
     }
     if (lying(c)) {
@@ -552,14 +557,14 @@ static bool try_gun_pickup(AiState *a, Character *c, const void *env, float seco
     weapon_pickup_position(s->gun, h);
     float d = dist_to(c, h);
     if (s->gun_running && c->anim && tr_test_flag(c->anim, 20) && !tr_test_flag(c->anim, 23)) {
-        a->moving = false;
+        ai_halt(a);
         a->aim.look = 1;            /* AI2rMovement_LookAtPoint */
         memcpy(a->aim.look_at, h, sizeof h);
         return true;
     }
     if (d < 3.0f) {                 /* 0x52a9a0 */
         if (c->pickup == s->gun) return true;
-        a->moving = false;
+        ai_halt(a);
         if (!chr_do_animation(c, CHR_ANIM_WHEN_CAN, (weapon_options(s->gun) & ONWC_RIFLE) ? 0x9f : 0x9e)) return true;
         c->pickup = s->gun, c->pickup_powerup = NULL;
         if (c->weapon) chr_drop_weapon(c);
@@ -601,7 +606,7 @@ static void select_maneuver(AiState *a, Character *c, const void *env)
 {
     CombatState *s = &a->combat;
     bool arrived = !a->moving;      /* the path's C+0x112c, from its last update */
-    a->moving = false;      /* AI2rPath_Halt */
+    ai_halt(a);      /* AI2rPath_Halt */
     for (;;) {
         /* the heaviest, and w the next heaviest (what the tried one's weight must still reach) */
         int best = -1;
@@ -617,7 +622,7 @@ static void select_maneuver(AiState *a, Character *c, const void *env)
         bool ok = false;
         switch (best) {
         case COMBAT_MANEUVER_HOLD:
-            a->moving = false;
+            ai_halt(a);
             ok = true;
             break;
         case COMBAT_MANEUVER_ADVANCE: {     /* AI2iManeuver_CheckAdvance 0x49df80 */
@@ -665,7 +670,7 @@ static void select_maneuver(AiState *a, Character *c, const void *env)
                 break;
             }
             /* too far: advance to within 15 to 20 of it */
-            a->moving = false;
+            ai_halt(a);
             s->targeting = true;
             s->aim = false;
             float h = s->weight[COMBAT_MANEUVER_HOLD];
@@ -773,7 +778,7 @@ void combat_tick(AiState *a, Character *c, const void *env, bool has_target)
     s->getup = 4;
     /* lying: message 6 to a behaviour; dazed, the character stays down, still and not firing */
     if (lying(c) && s->behaviour && send(a, c, MSG_DAZE, NULL)) {
-        a->moving = false;                  /* AI2rPath_Halt */
+        ai_halt(a);                  /* AI2rPath_Halt */
         a->aim.look = 0;                    /* AI2rMovement_StopAiming */
         fire(a, c, false);                  /* AI2iCombat_Fire 0x490a50 */
         return;
