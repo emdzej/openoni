@@ -111,6 +111,7 @@ int main(void)
         memset(p->c.knockback, 0, sizeof p->c.knockback);
         for (int k = 0; k < 60; k++) chars_update(&(CharacterInput){ 0 }, env);    /* settle */
         p->player = false, e->player = true;
+        e->c.flags &= ~(uint32_t)CHR_FLAG_AI_MOVEMENT;     /* the keys drive it, not its AI */
         bool block_seen = false;
         for (int k = 0; k < 60; k++) {
             CharacterInput in = { .punch = k == 0 };
@@ -118,6 +119,7 @@ int main(void)
             if (p->c.type == 0x17) block_seen = true;
         }
         p->player = true, e->player = false;
+        e->c.flags |= CHR_FLAG_AI_MOVEMENT;
         if (round == 0) blocked_hp = (int)p->c.hit_points;
         else hit_hp = (int)p->c.hit_points;
         printf("block round %d: facing %s, hit points %u, block animation %d\n", round, round ? "away" : "the dummy",

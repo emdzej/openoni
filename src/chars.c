@@ -22,6 +22,7 @@
 #include "camera.h"
 
 #include <ctype.h>
+#include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -95,6 +96,7 @@ static Chr *create(int object)
     if (!c->player) {
         uint32_t f = object_flags[object];
         c->ai.flags = AI_FLAG_KNOWLEDGE | (f & 0x08 ? AI_FLAG_NON_AGGRESSIVE : 0) | (f & 0x100 ? AI_FLAG_NO_DEGRADE : 0);
+        c->c.flags |= CHR_FLAG_AI_MOVEMENT;     /* AI2rInitializeCharacter 0x48a6b0, an AI (C+0x1e8 2) */
         c->ai.alert = (int)objc_char_alert(o);
         c->ai.state = AI_STATE_IDLE;
         melee_start(&c->ai.melee, melee_find(objc_char_melee(o)), oncc);
@@ -177,6 +179,7 @@ static Chr *create_setup(const uint8_t *r, const ObjcObject *flag)
     uint32_t f = (uint32_t)(r[0x24] | r[0x25] << 8);
     if (c->script_id && !(f & 1)) {
         c->ai.flags = AI_FLAG_KNOWLEDGE;
+        c->c.flags |= CHR_FLAG_AI_MOVEMENT;
         c->ai.state = AI_STATE_IDLE;
         melee_start(&c->ai.melee, NULL, oncc);
         combat_default_settings(&c->ai);
@@ -425,6 +428,108 @@ static bool cmd_takecontrol(SlThread *t, int c, const SlValue *v, SlValue *r, vo
     if (!p || c < 1) return true;
     if (num(&v[0])) ai_take_control(&p->ai, &p->c);
     else p->c.flags &= ~(uint32_t)CHR_FLAG_AI_MOVEMENT;
+    return true;
+}
+
+/* trigvolume_kill id (AI2iScript_TriggerVolume_DeleteCharacters 0x4ba420, 0x4dcc70 for each volume of
+   the id) deletes the AI characters in it; trigvolume_corpse id (0x4ba450, 0x4dcbd0) the bodies in it,
+   the dead characters there at the next tick (C+0x1644 1). The original's test (0x4cc680) is the
+   volume's own, with the team mask; here trigger_contains, without it. Not kept: the level's corpse
+   list (GS+0x2f8) the second also clears, which the port doesn't have. */
+static bool volume_delete(int c, const SlValue *v, bool corpses)
+{
+    if (c < 1) return true;
+    uint32_t id = (uint32_t)num(&v[0]);
+    for (int k = 0; k < trigger_count(); k++) {
+        if (trigger_id(k) != id) continue;
+        Chr *in[CHARS_MAX];
+        int n = 0;
+        for (int i = 0; i < CHARS_MAX; i++)
+            if (used[i] && trigger_contains(k, slots[i].c.pos)) in[n++] = &slots[i];
+        for (int i = 0; i < n; i++) {
+            if (corpses) {
+                if (in[i]->c.flags & 1) in[i]->corpse_time = 1;
+            } else if (!in[i]->player) {
+                chars_delete(in[i]);
+            }
+        }
+    }
+    return true;
+}
+
+static bool cmd_trigvolume_kill(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    return volume_delete(c, v, false);
+}
+
+static bool cmd_trigvolume_corpse(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    return volume_delete(c, v, true);
+}
+
+/* ai2_lookatme [char] (0x4b49e0, 0x48bce0): the AI (an AI, C+0x1e8 2), or every AI, looks at the
+   player (AI2rMovement_LookAtCharacter; with no player, stops looking). */
+static bool cmd_lookatme(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    Chr *p = chars_player(), *one = c >= 1 ? arg_char(&v[0]) : NULL;
+    if (c >= 1 && !one) return true;
+    for (int i = 0; i < CHARS_MAX; i++) {
+        Chr *ch = &slots[i];
+        if (!used[i] || (one && ch != one) || ch->player) continue;
+        ch->ai.aim.look = p ? 3 : 0;
+        ch->ai.aim.look_char = p ? &p->c : NULL;
+    }
+    return true;
+}
+
+/* ai2_lookatchar a b (AI2iScript_LookAtChar 0x4b5550): a (moved by its AI: C+4 0x400000, the player
+   only with ai2_takecontrol) turns where it stands to face b (AI2rPath_GoToPoint, within 3) and looks
+   at b. */
+static bool cmd_lookatchar(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 2) return true;
+    Chr *a = arg_char(&v[0]), *b = arg_char(&v[1]);
+    if (!a || !b) return true;
+    if (!(a->c.flags & CHR_FLAG_AI_MOVEMENT)) return true;  /* "cannot move player..." */
+    float f = atan2f(b->c.pos[0] - a->c.pos[0], b->c.pos[2] - a->c.pos[2]);
+    if (f < 0.0f) f += 6.2831855f;
+    ai_move_near(&a->ai, a->c.pos, 3.0f, true, f);
+    a->ai.aim.look = 3;
+    a->ai.aim.look_char = &b->c;
+    return true;
+}
+
+/* chr_boss_shield char (AI2iScript_BossShield 0x4ba160): C+4 0x40000000, the boss's shield: its hits
+   take the shield's material (ONrCharacter_GetMaterialType 0x4e6200; the impact effects are
+   stand-ins). chr_shadow char 0|1 (AI2iScript_ChrShadow 0x4ba0c0): C+4 0x1000000 no shadow (0 or
+   less). chr_super char amount (0x4ba640): the super value (C+0x1664, the Daodan glow's). */
+static bool cmd_boss_shield(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    Chr *ch = c >= 1 ? arg_char(&v[0]) : NULL;
+    if (ch) ch->c.flags |= 0x40000000u;
+    return true;
+}
+
+static bool cmd_shadow(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    Chr *ch = c >= 1 ? arg_char(&v[0]) : NULL;
+    if (!ch) return true;
+    if (c >= 2 && num(&v[1]) > 0) ch->c.flags &= ~0x1000000u;
+    else ch->c.flags |= 0x1000000u;
+    return true;
+}
+
+static bool cmd_super(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    Chr *ch = c >= 2 ? arg_char(&v[0]) : NULL;
+    if (ch) ch->c.super = v[1].type == SL_FLOAT ? v[1].f : (float)v[1].i;
     return true;
 }
 
@@ -1086,6 +1191,13 @@ void chars_register_commands(void)
     sl_register("ai2_spawn", cmd_spawn, NULL);
     sl_register("chr_create", cmd_chr_create, NULL);
     sl_register("ai2_takecontrol", cmd_takecontrol, NULL);
+    sl_register("trigvolume_kill", cmd_trigvolume_kill, NULL);
+    sl_register("ai2_lookatme", cmd_lookatme, NULL);
+    sl_register("ai2_lookatchar", cmd_lookatchar, NULL);
+    sl_register("chr_boss_shield", cmd_boss_shield, NULL);
+    sl_register("chr_shadow", cmd_shadow, NULL);
+    sl_register("chr_super", cmd_super, NULL);
+    sl_register("trigvolume_corpse", cmd_trigvolume_corpse, NULL);
     sl_register("chr_delete", cmd_delete, NULL);
     sl_register("ai2_movetoflag", cmd_movetoflag, NULL);
     sl_register("ai2_dopath", cmd_dopath, NULL);

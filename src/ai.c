@@ -385,6 +385,7 @@ void ai_control_update(AiState *a, Character *c, const void *env)
 {
     a->ticks++;
     mover(a, c, env);
+    combat_aim(a, c);       /* the movement's look (ai2_lookatchar) */
     ChrInput in;
     executor_update(a, c, &in);
     character_update_input(c, &in, env);
