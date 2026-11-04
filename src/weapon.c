@@ -1040,6 +1040,9 @@ static int face_along(Character *c, const float d[3])
    (0x4f, 0x58), 5 the blow-up (0xd6, 0xd7). Not ported: the super shield (C+0x1b8) and the Daodan's
    (C+4 0x40000000), the hit flash (0x4eb0b0), the hit overlay of type 0 (0x4f1210), the HUD's direction,
    and type 6 (the pickup's). True when the particle already hurt the character. */
+static bool inflict_damage(Character *c, const float dir[3], int type, uint32_t dmg, uint32_t st, float knockback,
+                           uint32_t handle, uint32_t owner);
+
 static bool particle_damage(Character *c, const float point[3], const float move[3], int type, float damage,
                             float stun, float knockback, uint32_t owner, uint32_t handle, bool self_immune)
 {
@@ -1057,7 +1060,13 @@ static bool particle_damage(Character *c, const float point[3], const float move
     }
     l = 1.0f / sqrtf(l);
     dir[0] *= l, dir[1] *= l, dir[2] *= l;
-    uint32_t dmg = (uint32_t)lrintf(damage), st = (uint32_t)lrintf(stun);
+    return inflict_damage(c, dir, type, (uint32_t)lrintf(damage), (uint32_t)lrintf(stun), knockback, handle, owner);
+}
+
+/* InflictDamage 0x5179f0 */
+static bool inflict_damage(Character *c, const float dir[3], int type, uint32_t dmg, uint32_t st, float knockback,
+                           uint32_t handle, uint32_t owner)
+{
     if (handle) {
         if (c->last_particle == handle) return true;
         c->last_particle = handle;
@@ -1106,9 +1115,39 @@ static bool particle_damage(Character *c, const float point[3], const float move
     return false;
 }
 
+/* WPrBlast 0x517f40: the blast's damage to each living character but the one the particle hit (and,
+   when the class says so, its owner) whose pelvis is within the radius with no wall between (0x242000):
+   at the distance's share d of the radius, the falloff 2 gives 1/(1+d)^2, 1 gives 1-d, else all of it. */
+static void blast_damage(const void *env, const float pos[3], int type, float damage, float stun, float knockback,
+                         float radius, int falloff, uint32_t owner, Character *exclude, uint32_t handle,
+                         bool self_immune)
+{
+    if (owner == 0) owner = 0x4000000u;
+    static AkevHit hit[AKEV_HITS_MAX];
+    for (int i = 0; i < chars_slots(); i++) {
+        Chr *ch = chars_get(i);
+        if (!ch || !chars_in_use(ch)) continue;
+        Character *c = &ch->c;
+        if ((c->flags & 1) || c == exclude) continue;
+        if (self_immune && ((owner & 0xff000000u) == 0x1000000u || (owner & 0xff000000u) == 0x2000000u) &&
+            (owner & 0xffffff) == c->id)
+            continue;
+        float d[3];
+        if (!chr_part_point(c, 0, d)) continue;
+        d[0] -= pos[0], d[1] -= pos[1], d[2] -= pos[2];
+        float l = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]), t = l / radius;
+        if (!(t <= 1.0f) || (env && akev_collide_point(env, pos, d, 0x242000, 0, hit))) continue;
+        float f = falloff == 2 ? 1.0f / ((1.0f + t) * (1.0f + t)) : falloff == 1 ? 1.0f - t : 1.0f;
+        if (l > 0.0f) d[0] /= l, d[1] /= l, d[2] /= l;
+        inflict_damage(c, d, type, (uint32_t)lrintf(f * damage), (uint32_t)lrintf(f * stun), knockback * f, handle,
+                       owner);
+    }
+}
+
 void weapons_install(void)
 {
     p3_damage_hook = particle_damage;
+    p3_blast_hook = blast_damage;
     character_pickup_hook = start_pickup;
     character_weapon_input_hook = weapon_input;
     character_frame_hook = frame;

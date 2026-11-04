@@ -46,6 +46,10 @@ doors before they lock (the AI opens the doors on its way, manual ones too), Shi
 run from the bomb, the two pipes run while their discharge lasts, the vat room's walkways and the zaps,
 the control room and the elevator, the last pipe, the fan and the outro, and level 11 begins.
 
+Level 11, the TCTF's secure building, plays through too: the floors' consoles and their locks, the
+basement and the ramp, the ninja at the window, whose blast breaks the glass, the jump from the sill to
+the roof, the ninjas there, the outro, and level 12 begins.
+
 It can be tried in the browser on the <a href="/play/" target="_self">play page</a>, with your own copy of the game.
 
 ## What works
@@ -134,7 +138,7 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - The impact effects (the hit sparks' classes). The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.
-- The other 7 levels as a playthrough.
+- The other 6 levels as a playthrough.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked
 against the original.

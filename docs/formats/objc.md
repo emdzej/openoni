@@ -213,6 +213,24 @@ The reader is 0x4c55b0; the search by id is 0x4c56c0, through `ONrLevel_Flag_ID_
 which takes the flag's position from the object (0x10) and its facing from the rotation (0x1c).
 `chr_teleport` moves the character to the position and leaves its facing.
 
+## PART
+
+The `Particle` type: an environment particle placed as an object, read by *OBJiParticle_Read*
+0x4c87e0 (from OBJC version 0x20).
+
+| Offset (in the type's data) | What |
+|---|---|
+| 0x00 | The particle class's name, 64 bytes |
+| 0x40 | The tag scripts name it by (`particle <tag> ...`), 48 bytes |
+| 0x70 | Flags, u16: only 2 (not created at the start) is kept |
+| 0x72, 0x76 | The decal's width and height, floats |
+
+*OBJiParticle_New* 0x4c8760 makes from it a record like the `ENVP`'s (0xd0 bytes: the class, the tag,
+the matrix from the object's rotation through 0x437130, the position, the decal's size, the flags) and
+lists it with `EPrNew` 0x454a60, so the objects are environment particles like the `ENVP`'s; the port
+puts them after the `ENVP`'s (the order is inferred). Level 11's window glass (`WindowCharge`, the blast
+that breaks it in the window cutscene) is one.
+
 ## PATR
 
 The patrol path type (`CJBOPatrol Path`, the tag stored as `RTAP`), read by 0x4c9440 (registered by

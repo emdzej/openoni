@@ -230,7 +230,9 @@ static struct { uint32_t free_count; P3Particle *free; P3Particle *dhead, *dtail
 
 bool (*p3_damage_hook)(Character *c, const float point[3], const float dir[3], int type, float damage,
                        float stun, float knockback, uint32_t owner, uint32_t handle, bool self_immune);
-void (*p3_glass_hook)(uint32_t quad, const float point[3], const float dir[3], float force, bool blast);
+void (*p3_glass_hook)(uint32_t quad, const float point[3], const float dir[3], float force, float radius);
+void (*p3_blast_hook)(const void *env, const float pos[3], int type, float damage, float stun, float knockback,
+                     float radius, int falloff, uint32_t owner, Character *exclude, uint32_t handle, bool self_immune);
 
 static uint8_t *vars_of(const P3Class *c) { return c->def + D_BLOCKS; }
 static uint8_t *actions_of(const P3Class *c) { return vars_of(c) + rd16(c->def + D_VARS) * VAR; }
@@ -2056,14 +2058,43 @@ static bool do_action(Act *x)
             *x->stop = true;
         return false;
     }
-    case A_BLAST:       /* 0x517f40: the blast's damage (with the grenades): not ported */
+    case A_BLAST: {     /* P3iAction_DamageBlast 0x465f30 */
+        float dmg, stun, knock, r;
+        if (!pf(x, 0, &dmg) || !pf(x, 1, &stun) || !pf(x, 2, &knock) || !pf(x, 3, &r)) return false;
+        int falloff = (int)penum(a, 4), type = 0;
+        if (rd32(param(a, 5)) == 10) { int32_t t = (int32_t)penum(a, 5); if (t >= 0 && t < 7) type = t; }
+        bool self_immune = param(a, 6)[4] != 0;
+        bool damage_env = rd32(param(a, 7)) == 10 ? param(a, 7)[4] != 0 : true;
+        const uint8_t *ob = block(c, p, P3_X_OWNER);
+        uint32_t owner = ob ? rd32(ob) : 0;
+        Character *exclude = hit.hit && !hit.wall ? hit.chr : NULL;     /* the character hit */
+        float at[3];
+        if (hit.hit) {      /* half a unit out from the hit */
+            for (int i = 0; i < 3; i++) at[i] = hit.normal[i] * 0.5f + hit.point[i];
+        } else if (!p3_real_position(c, p, at)) return true;
+        if (damage_env && env && p3_glass_hook) {
+            /* the glass in the radius, pushed along the particle's move when it moves faster than 4 */
+            const float *v = fblock(c, p, P3_X_VELOCITY);
+            float d[3], *dir = NULL;
+            if (v) {
+                float l = sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+                if (l > 4.0f) { d[0] = v[0] / l, d[1] = v[1] / l, d[2] = v[2] / l; dir = d; }
+            }
+            static AkevHit hs[AKEV_HITS_MAX];
+            float sph[4] = { at[0], at[1], at[2], r }, mv[3] = { 0, 0, 0 };
+            unsigned n = akev_collide_sphere(env, sph, mv, 0x44800, 0xff, hs);
+            for (unsigned i = 0; i < n; i++) p3_glass_hook(hs[i].quad, at, dir, dmg, r);
+        }
+        if (!(p->flags & P_EXPIRING) && p3_blast_hook)
+            p3_blast_hook(env, at, type, dmg, stun, knock, r, falloff, owner, exclude, p->handle, self_immune);
         return false;
+    }
     case A_EXPLODE:
         return run_event(c, p, P3_EV_EXPLODE, c->def + D_EVENTS + 4 * P3_EV_EXPLODE, x->time, 0.0f, false);
     case A_STOP:
         return run_event(c, p, P3_EV_STOP, c->def + D_EVENTS + 4 * P3_EV_STOP, x->time, 0.0f, false);
     case A_DAMAGE_ENV:
-        if (hit.hit && hit.wall && pf(x, 0, &f0) && p3_glass_hook) p3_glass_hook(hit.quad, hit.point, NULL, f0, false);
+        if (hit.hit && hit.wall && pf(x, 0, &f0) && p3_glass_hook) p3_glass_hook(hit.quad, NULL, NULL, f0, 0.0f);
         return false;
     case A_GLASS: {     /* the glass in the radius (AKrCollision_Sphere) */
         float r;
@@ -2075,7 +2106,7 @@ static bool do_action(Act *x)
         float sph[4] = { at[0], at[1], at[2], r }, mv[3] = { 0, 0, 0 };
         unsigned n = akev_collide_sphere(env, sph, mv, 0x44800, 0xff, hs);
         const float *o = fblock(c, p, P3_X_ORIENTATION);
-        for (unsigned i = 0; i < n; i++) p3_glass_hook(hs[i].quad, at, o ? o + 3 : NULL, f0, true);
+        for (unsigned i = 0; i < n; i++) p3_glass_hook(hs[i].quad, at, o ? o + 3 : NULL, f0, r);
         return false;
     }
     case A_ROTATE_X: rotate(x, 0); return false;

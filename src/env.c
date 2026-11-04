@@ -98,8 +98,8 @@ int env_glass_broken(void) { return nbroken; }
    hit. Then the shards (glass_shard, "ONrParticle3_LevelZeroLoaded"): a grid of cells of 15 units (the
    detail's size, 0x52b7c0) over the quad, 5 shards a cell (0x52b7cc) on the first row down to the far
    edge's share on the last, each at a random place in its cell, moving at random up to 10 and, for a
-   hit at a point, pushed out from it (its force, at least 25, and the blast's radius). */
-static void glass_hit(uint32_t quad, const float point[3], const float dir[3], float force, bool blast)
+   hit at a point, pushed out from it (its force, at least 25, and its radius). */
+static void glass_hit(uint32_t quad, const float point[3], const float dir[3], float force, float radius)
 {
     AkevQuad q;
     if (!level_env || !akev_quad(level_env, quad, &q)) return;
@@ -107,12 +107,10 @@ static void glass_hit(uint32_t quad, const float point[3], const float dir[3], f
     float pl[4], n[3];
     if (!akev_quad_plane(level_env, quad, pl)) return;
     n[0] = pl[0], n[1] = pl[1], n[2] = pl[2];
-    float side = n[0] * point[0] + n[1] * point[1] + n[2] * point[2] + pl[3];
-    if (dir) {
-        if (side < -4.0f) { n[0] = -n[0], n[1] = -n[1], n[2] = -n[2]; blast = false; }
-        else if (side > 4.0f) blast = false;
-    }
-    if (blast && dir && n[0] * dir[0] + n[1] * dir[1] + n[2] * dir[2] > 0.0f) n[0] = -n[0], n[1] = -n[1], n[2] = -n[2];
+    float side = point ? n[0] * point[0] + n[1] * point[1] + n[2] * point[2] + pl[3] : 0.0f;
+    if (side < -4.0f) { n[0] = -n[0], n[1] = -n[1], n[2] = -n[2]; dir = NULL; }
+    else if (side > 4.0f) dir = NULL;
+    else if (dir && n[0] * dir[0] + n[1] * dir[1] + n[2] * dir[2] > 0.0f) n[0] = -n[0], n[1] = -n[1], n[2] = -n[2];
     P3Class *shard = p3_class("glass_shard");      /* 0x5ed310 */
     if (!shards_on || !shard || (q.flags & 0x40000)) return;
     akev_quad_set_flags(level_env, quad, 0x40000, 0);
@@ -154,14 +152,15 @@ static void glass_hit(uint32_t quad, const float point[3], const float dir[3], f
                 } while (l > 1.0f || l < 1e-6f);
                 l = sp / sqrtf(l);
                 for (int i = 0; i < 3; i++) vel[i] *= l;
-                float d[3] = { pos[0] - point[0], pos[1] - point[1], pos[2] - point[2] }, e[3];
-                float r2 = blast ? force : 1.0f;
-                for (int i = 0; i < 3; i++) e[i] = 2.0f * r2 * push[i] + d[i];
-                float le = 1.0f / sqrtf(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]);
-                float f = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]) / (r2 * 1.5f);
-                if (f > 1.0f) f = 1.0f;
-                float g = 1.0f - f, v = f * 12.0f + force * 0.04f * g * 90.0f;
-                for (int i = 0; i < 3; i++) vel[i] += (-f * n[i] + le * e[i] * g) * v;
+                if (point) {    /* pushed out from the point hit (none for a hit without one) */
+                    float d[3] = { pos[0] - point[0], pos[1] - point[1], pos[2] - point[2] }, e[3];
+                    for (int i = 0; i < 3; i++) e[i] = 2.0f * radius * push[i] + d[i];
+                    float le = 1.0f / sqrtf(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]);
+                    float f = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]) / (radius * 1.5f);
+                    if (f > 1.0f) f = 1.0f;
+                    float g = 1.0f - f, v = f * 12.0f + force * 0.04f * g * 90.0f;
+                    for (int i = 0; i < 3; i++) vel[i] += (-f * n[i] + le * e[i] * g) * v;
+                }
                 p3_effect(shard, pos, vel, NULL, tick);
             }
         }

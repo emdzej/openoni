@@ -106,8 +106,13 @@ void p3_each_drawn(P3DrawFn fn, void *user);
    0x5178c0). owner: 0x1000000 | id for a character's, 0 none. */
 extern bool (*p3_damage_hook)(Character *c, const float point[3], const float dir[3], int type, float damage,
                               float stun, float knockback, uint32_t owner, uint32_t handle, bool self_immune);
-/* The environment's damage at a quad (glass, 0x462bf0 then 0x508f10). */
-extern void (*p3_glass_hook)(uint32_t quad, const float point[3], const float dir[3], float force, bool blast);
+/* The environment's damage at a quad (glass, P3iDamageQuad 0x462bf0 then 0x508f10); point and dir may
+   be NULL. */
+extern void (*p3_glass_hook)(uint32_t quad, const float point[3], const float dir[3], float force, float radius);
+/* A blast's damage to the characters around pos (WPrBlast 0x517f40). */
+extern void (*p3_blast_hook)(const void *env, const float pos[3], int type, float damage, float stun, float knockback,
+                             float radius, int falloff, uint32_t owner, Character *exclude, uint32_t handle,
+                             bool self_immune);
 
 /* The script commands: particle (ONiParticle3_CreateParticle 0x509ff0), particle_kill_all. */
 void p3_register_commands(void);

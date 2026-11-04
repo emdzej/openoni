@@ -927,11 +927,26 @@ static void route_input(const Character *c, CharacterInput *in)
             float dx = t->c.pos[0] - c->pos[0], dy = t->c.pos[1] - c->pos[1], dz = t->c.pos[2] - c->pos[2];
             static char rest[16384];
             snprintf(rest, sizeof rest, "%s", semi ? semi + 1 : "");
+            /* no way to it (on a walkway the rooms don't reach): tried for N frames, then given up */
+            static const Chr *hunted;
+            static uint32_t hunt_until;
+            if (hunted != t) hunted = t, hunt_until = now + (uint32_t)n;
+            if (dx * dx + dz * dz > 900.0f || fabsf(dy) > 15.0f) {
+                static char steps[16384];
+                if (!route_plan(c, t->c.pos, steps, sizeof steps)) {
+                    if (now < hunt_until) return;
+                    hunted = NULL;
+                    route_next();
+                    continue;
+                }
+            }
             if (dx * dx + dz * dz > 900.0f || fabsf(dy) > 15.0f)
                 snprintf(route.buf, sizeof route.buf, "W%.1f,%.1f,%.1f;X%s,%d%s%s", t->c.pos[0], t->c.pos[1], t->c.pos[2],
                          name, n, rest[0] ? ";" : "", rest);
-            else
+            else {
+                hunted = NULL;
                 snprintf(route.buf, sizeof route.buf, "F%s,%d%s%s", name, n, rest[0] ? ";" : "", rest);
+            }
             route.step = route.buf;
             route.phase = 0;
             route.until = 0;

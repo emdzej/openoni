@@ -1,12 +1,14 @@
 /* The environment particles: see envparticle.h. */
 #include "envparticle.h"
 
+#include "objc.h"
 #include "particle.h"
 #include "sl.h"
 #include "tm.h"
 #include "trac.h"
 #include "ui.h"
 
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,6 +28,8 @@ typedef struct {
 
 static EnvParticle *eps;
 static int neps;
+/* The records of the level's particle objects (OBJC "Particle": D+0x2c), made from their data. */
+static uint8_t *obj_recs;
 /* The tags (0x6a8b60's buckets): for each record, the next of the same tag in the order the original's
    chains walk them (the first of a tag, then the others newest first). */
 static int *tag_next;
@@ -85,8 +89,10 @@ void envparticle_reset(void)
 {
     free(eps);
     free(tag_next);
+    free(obj_recs);
     eps = NULL;
     tag_next = NULL;
+    obj_recs = NULL;
     neps = 0;
 }
 
@@ -102,18 +108,75 @@ static const uint8_t *level_envp(void)
 
 static int first_of_tag(const char *tag);
 
+/* The particle object's data (OBJC version 39, OBJiParticle_Read 0x4c87e0 from version 0x20): the class
+   (64 bytes), the tag (48, +0x40), the flags (u16 +0x70, only 2 kept), the decal's size (+0x72, +0x76). */
+enum { OP_CLASS = 0x00, OP_TAG = 0x40, OP_FLAGS = 0x70, OP_DECAL_W = 0x72, OP_DECAL_H = 0x76, OP_SIZE = 0x7a };
+
+static bool count_object(const ObjcObject *o, void *user)
+{
+    if (o->size >= OP_SIZE) ++*(int *)user;
+    return true;
+}
+
+/* The Euler rotation (0x437130, order 0): R = Rz Ry Rx of the degrees, by columns (as console.c's). */
+static void rotation(const float deg[3], float m[9])
+{
+    const float rad = 0.017453292f;
+    float ci = cosf(deg[0] * rad), si = sinf(deg[0] * rad);
+    float cj = cosf(deg[1] * rad), sj = sinf(deg[1] * rad);
+    float ch = cosf(deg[2] * rad), sh = sinf(deg[2] * rad);
+    const float r[9] = { cj * ch, cj * sh, -sj,
+                         sj * si * ch - ci * sh, sj * si * sh + ci * ch, cj * si,
+                         sj * ci * ch + si * sh, sj * ci * sh - si * ch, cj * ci };
+    memcpy(m, r, sizeof r);
+}
+
+static void wrf(uint8_t *p, float f) { memcpy(p, &f, 4); }
+
+/* OBJiParticle_Read 0x4c87e0: the object's record (D+0x2c) from its data, at the object's matrix (its
+   rotation through 0x437130) and position. */
+static bool add_object(const ObjcObject *o, void *user)
+{
+    int *k = user;
+    if (o->size < OP_SIZE) return true;
+    uint8_t *r = obj_recs + (size_t)EP_SIZE * (size_t)(*k)++;
+    memcpy(r + EP_CLASS, o->data + OP_CLASS, 64);
+    r[EP_CLASS + 63] = 0;
+    memcpy(r + EP_TAG, o->data + OP_TAG, 48);
+    r[EP_TAG + 47] = 0;
+    float m[9];
+    rotation(o->rot, m);
+    for (int i = 0; i < 9; i++) wrf(r + EP_MATRIX + 4 * i, m[i]);
+    for (int i = 0; i < 3; i++) wrf(r + EP_POS + 4 * i, o->pos[i]);
+    memcpy(r + 0xa0, o->data + OP_DECAL_W, 4);
+    memcpy(r + 0xa4, o->data + OP_DECAL_H, 4);
+    uint16_t fl = (uint16_t)((o->data[OP_FLAGS] | o->data[OP_FLAGS + 1] << 8) & EPF_NOT_INITIAL);
+    r[EP_FLAGS] = (uint8_t)fl, r[EP_FLAGS + 1] = (uint8_t)(fl >> 8);
+    return true;
+}
+
 void envparticle_load(void)
 {
     envparticle_reset();
     const uint8_t *a = level_envp();
-    if (!a) return;
-    int n = rd16(a + 0x16);
-    eps = calloc((size_t)(n ? n : 1), sizeof *eps);
-    tag_next = malloc(sizeof *tag_next * (size_t)(n ? n : 1));
+    int nenvp = a ? rd16(a + 0x16) : 0, nobj = 0;
+    /* the level's particle objects too (OBJiParticle_New 0x4c8760 lists each with EPrNew 0x454a60):
+       after the ENVP's (inferred) */
+    objc_each("Particle", count_object, &nobj);
+    if (nobj) {
+        obj_recs = calloc((size_t)nobj, EP_SIZE);
+        int k = 0;
+        if (obj_recs) objc_each("Particle", add_object, &k);
+        else nobj = 0;
+    }
+    int n = nenvp + nobj;
+    if (!n) return;
+    eps = calloc((size_t)n, sizeof *eps);
+    tag_next = malloc(sizeof *tag_next * (size_t)n);
     if (!eps || !tag_next) { envparticle_reset(); return; }
     for (int i = 0; i < n; i++) {
         EnvParticle *e = &eps[neps];
-        e->rec = a + 0x18 + (size_t)EP_SIZE * (size_t)i;
+        e->rec = i < nenvp ? a + 0x18 + (size_t)EP_SIZE * (size_t)i : obj_recs + (size_t)EP_SIZE * (size_t)(i - nenvp);
         e->flags = (uint16_t)(rd16(e->rec + EP_FLAGS) | EPF_LISTED);
         tag_next[neps] = -1;
         if (tag_of(e)[0]) {

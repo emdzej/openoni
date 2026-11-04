@@ -361,6 +361,7 @@
 00454040	EPiParticle_Reset	EP	low	killed, then made again unless not initially created
 004543b0	EPrPrintTags	EP	med	name from the Intel Mac build (strings:2)
 00454420	EPrEnumerateTag	EP	low	the callback on every environment particle of a tag
+00454a60	EPrNew	EP	med	lists an environment particle record (the ENVP's and the Particle objects'); the Mac build's name
 00454f90	EPrLoadParticles	EP	low	an ENVP array listed and, once the level has begun, made
 00455500	EPrLevelBegin	EP	low	every listed environment particle made; the level begun
 004558a0	EPiDrawPositionMarker	EP	med	name from the Intel Mac build (neighbours:0.80)
@@ -390,9 +391,11 @@
 00461150	P3rDisplayClass_Sprite	P3	med	name from the Intel Mac build (strings:3)
 00461d20	P3rDisplayClass_Contrail	P3	med	name from the Intel Mac build (strings:3)
 00462a50	P3rEmitterSubsection	P3	med	name from the Intel Mac build (strings:5)
+00462bf0	P3iDamageQuad	P3	high	read: a particle's damage at a quad (breakable glass), the side from the point, then the glass pieces (0x508f10)
 004630c0	P3rIterateAttractors	P3	med	name from the Intel Mac build (neighbours:0.80)
 00463ab0	P3iAttractorSelector_Distance	P3	med	name from the Intel Mac build (neighbours:0.75)
 00463be0	P3iAttractorSelector_Conical	P3	med	name from the Intel Mac build (neighbours:0.75)
+00465f30	P3iAction_DamageBlast	P3	high	read: the particle action Blast Damage: the glass in the radius, then WPrBlast (not a function in the listing)
 00468650	P3iAction_SuperParticle	P3	med	name from the Intel Mac build (neighbours:1.00)
 00468770	WMiCursor_Draw	WM	low	the cursor's part spec, 32 by 32 over the mouse, while the WM takes input
 004687d0	WMrCursor_Get	WM	med	name from the Intel Mac build (strings:1)
@@ -1020,6 +1023,8 @@
 004c6500	OBJrFurniture_CreateParticles	OBJ	med	name from the Intel Mac build (neighbours:1.00)
 004c6520	OBJrMelee_Initialize	OBJ	med	name from the Intel Mac build (strings:1)
 004c6c10	OBJiMelee_Read	OBJ	med	name from the Intel Mac build (neighbours:1.00)
+004c8760	OBJiParticle_New	OBJ	med	the Particle object's environment particle (EPrNew); the Mac build's name
+004c87e0	OBJiParticle_Read	OBJ	med	the Particle object type's reader; the Mac build's name
 004c8cf0	OBJrPatrolPath_DrawInitialize	OBJ	med	name from the Intel Mac build (strings:2)
 004c8e60	OBJrPatrolPath_Initialize	OBJ	med	name from the Intel Mac build (strings:3)
 004c9440	OBJiPatrolPath_Read	OBJ	low	the Patrol Path type's read method: name, count, id, then the waypoints, their size by the type
@@ -1406,6 +1411,8 @@
 00516a60	ONrSpeech_Update	ON	med	name from the Intel Mac build (strings:1)
 00517790	ONrTextureMaterials_LevelLoad	ON	med	name from the Intel Mac build (neighbours:1.00)
 005177e0	ONrTextureMaterials_PreProcess	ON	med	name from the Intel Mac build (neighbours:1.00)
+005179f0	InflictDamage	WP	high	read: a hit's damage to a character (hurts once per handle, resistances, the reactions); the Mac build's name
+00517f40	WPrBlast	WP	high	read: a blast's damage to the characters within the radius, by the falloff; the Mac build's name
 00518180	WPrFillAmmo	WP	low	ammo to the class's shots; the background events
 005181e0	WPrReloadDone	WP	low	the reload overlay's action: full ammo, the reload wait
 005182c0	WPiNewParticles	WP	med	name from the Intel Mac build (strings:1)
