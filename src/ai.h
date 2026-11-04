@@ -5,6 +5,7 @@
    points, without the rooms' grids (the local paths). Notes:
    docs/re/character.md, "The AI's executor". */
 #pragma once
+#include "targeting.h"
 #include "character.h"
 
 #include <stdbool.h>
@@ -60,45 +61,6 @@ typedef struct {
     uint32_t alarm_damage, alarm_fight;             /* C+0xff8, 0xffc */
 } CombatSettings;
 
-/* The targeting (AI2rTargeting, the combat state's +0x90): where the target will be, the aim toward
-   it from the weapon, and when to fire. */
-enum { TARGETING_MEMORY = 64 };
-typedef struct {
-    int axis;                   /* +0x00: the barrel's axis (0 x) */
-    const Character *target;    /* +0x08 */
-    const uint8_t *cls;         /* +0x0c: the class's AI block (ONCC+0x138) */
-    bool active;                /* +0x14: aiming a weapon */
-    float speed;                /* +0x18: the target's */
-    float predict;              /* +0x1c: how much of its motion is led */
-    unsigned head, count;       /* +0x20, +0x24: the target's places, a ring of cls+0x18 */
-    float ring[TARGETING_MEMORY][3];    /* +0x28 */
-    float vel_short[3], vel_long[3];    /* +0x2c, +0x38 */
-    float point[3];             /* +0x44: where it is aimed at (the target, led) */
-    bool has_point;             /* +0x50 */
-    bool inaccurate;            /* +0x51: the first shots' error on */
-    float inaccuracy;           /* +0x54 */
-    float grouping;             /* +0x58 */
-    float offset[3];            /* +0x5c */
-    bool first;                 /* +0x68: not on target since the last delay */
-    uint32_t off_ticks;         /* +0x6c */
-    uint32_t delay;             /* +0x70: ticks before it may fire */
-    uint32_t close_ticks;       /* +0x74 */
-    int mode;                   /* +0x78: 1 aiming the weapon, 2 looking */
-    float aim[3];               /* +0x7c */
-    float from[3];              /* +0x88: the shooter's place (its pelvis) */
-    float muzzle[3];            /* +0x94 */
-    float barrel[3];            /* +0xa0 */
-    float vector[3];            /* +0xac: from the muzzle to the aim */
-    float dist, aim_dist;       /* +0xb8, +0xbc */
-    float close;                /* +0xc0: 1 within 10, 0 beyond 25 */
-    bool stopped, on_target, fire;      /* +0xc4, +0xc5, +0xc6 */
-    float error, tolerance;     /* +0xc8, +0xcc */
-    const uint8_t *params;      /* +0xd0: the weapon's AI firing mode (ONWC+0xd0, +0x150 the alternate) */
-    const uint8_t *skill;       /* +0xd4: the class's shooting skill for it */
-    float matrix[12];           /* +0xdc: the weapon's (the body's node 19) */
-    bool ballistic;             /* +0xe0: a ballistic solution (or none needed) */
-    float bal_h, bal_v, bal_angle;      /* +0xe4, +0xe8, +0xec */
-} AiTargeting;
 
 /* The combat state's block (C+0x8b8, its +8 on: what the behaviours get). */
 enum { COMBAT_MANEUVERS = 7 };
