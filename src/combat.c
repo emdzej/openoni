@@ -541,8 +541,19 @@ static int behaviour(AiState *a, const Character *c, int id, int msg, bool *hand
     }
 }
 
-/* AI2rBehavior_Default 0x493120 (messages 0, 2 and 3, the vocalizations and the report, aren't kept;
-   6, the daze, waits for the getting up). */
+/* 0x4ecdf0: lying (the states 0x12 and 0x32). */
+static bool lying(const Character *c) { return c->state == 0x12 || c->state == 0x32; }
+
+/* AI2rStartDazeTimer 0x48b9f0: the class's daze (ONCC+0x128 to +0x12a, a random part of the span). */
+static void start_daze_timer(AiState *a, const Character *c)
+{
+    const uint8_t *k = c->oncc;
+    uint16_t lo = rd16(k + 0x128), hi = rd16(k + 0x12a);
+    a->daze_timer = lo;
+    if (hi > lo) a->daze_timer = (uint16_t)(lo + (int)((trac_random() * (uint32_t)(hi - lo)) >> 16));   /* UUrRandom */
+}
+
+/* AI2rBehavior_Default 0x493120 (messages 0, 2 and 3, the vocalizations and the report, aren't kept). */
 static int behaviour_default(AiState *a, const Character *c, int msg, float *arg)
 {
     CombatState *s = &a->combat;
@@ -550,6 +561,24 @@ static int behaviour_default(AiState *a, const Character *c, int msg, float *arg
     case MSG_MELEE:
         s->melee_ok = true;
         return 0;
+    case MSG_DAZE:
+        /* lying: the daze first (once a fall: a new knockdown starts another), lying still with the
+           targeting off; after it, the getting up */
+        if (!s->dazed) {
+            if (!a->daze_started) {
+                s->dazed = a->daze_started = true;
+                start_daze_timer(a, c);
+                return 1;
+            }
+            s->getup = 0;
+            return 0;
+        }
+        if (!a->daze_timer) {
+            s->dazed = false;
+            return 0;
+        }
+        s->targeting = s->check_env = s->check_friends = s->aim = false;
+        return 1;
     case MSG_FLAGS:
         s->targeting = true;
         s->check_env = s->check_friends = s->aim = false;
@@ -722,6 +751,16 @@ static void select_maneuver(AiState *a, Character *c)
             s->adv_near = 15.0f;
             s->weight[COMBAT_MANEUVER_HOLD] = h >= 0.2f ? h : 0.2f;
             continue;
+        case COMBAT_MANEUVER_GETUP:
+            /* lying: forward, which gets it up */
+            if (lying(c)) {
+                a->key_override = true;     /* AI2rExecutor_MoveOverride(forward, 0) */
+                a->override_keys = CHR_KEY_FORWARD;
+                ok = true;
+                break;
+            }
+            s->weight[best] = 0.0f;
+            continue;
         default:
             break;
         }
@@ -805,8 +844,15 @@ void combat_tick(AiState *a, Character *c, const void *env, bool has_target)
         targeted = true;
         targeting_update(a, c, has_target, s->aim, s->fire, &close);
     }
-    /* (messages 13 and 6: the daze and the getting up, with the knockdowns' port) */
+    /* (message 13, the dodge from danger, isn't ported) */
     s->getup = 4;
+    /* lying: message 6 to a behaviour; dazed, the character stays down, still and not firing */
+    if (lying(c) && s->behaviour && send(a, c, MSG_DAZE, NULL)) {
+        a->moving = false;                  /* AI2rPath_Halt */
+        a->aim.look = 0;                    /* AI2rMovement_StopAiming */
+        fire(a, c, false);                  /* AI2iCombat_Fire 0x490a50 */
+        return;
+    }
     bool waiting = a->combat_wait != 0 && a->combat_wait_reload == 0;
     /* every fifth tick, by the character's index: the range, the line of fire and the maneuver */
     if ((uint32_t)(c->id - 1) % 5 == ui_time() % 5) {

@@ -31,6 +31,9 @@ extern void (*chr_die_hook)(Character *c);
    0x20) at a hit on the dead, or the hit an unkillable character survives. Set by chars.c. */
 enum { CHR_SCRIPT_HURT, CHR_SCRIPT_DEFEATED };
 extern void (*chr_script_hook)(Character *c, int script);
+/* What ONrCharacter_Knockdown tells the AI (0x48b530) of its character knocked down from not lying.
+   Set by chars.c. */
+extern void (*chr_knockdown_hook)(Character *c);
 /* The AI characters' block function (C+0x15ec): whether c blocks an attack it could block. */
 extern bool (*chr_block_hook)(Character *c);
 /* A part's place in the world (the translation of its matrix, A+0x2278 + 0x30 part + 0x24): 0 the

@@ -912,9 +912,11 @@ static int play(int level, int *next)
                 const Chr *c = chars_get(i);
                 if (!c || c->player) continue;
                 const KnowEntry *e = c->ai.know;
-                snprintf(m, sizeof m, "OpenOni:   %s: %.1f %.1f %.1f facing %.2f state %d alert %d hp %u know %d/%d", c->name,
-                         c->c.pos[0], c->c.pos[1], c->c.pos[2], c->c.facing, c->ai.state, c->ai.alert, c->c.hit_points,
-                         e ? e->strength : 0, e ? e->type : -1);
+                const TmInstance *ci = c->c.anim ? tm_handle_instance(tm_handle_of(c->c.anim)) : NULL;
+                snprintf(m, sizeof m, "OpenOni:   %s: %.1f %.1f %.1f facing %.2f state %d alert %d hp %u know %d/%d anim %u/%u %s frame %u",
+                         c->name, c->c.pos[0], c->c.pos[1], c->c.pos[2], c->c.facing, c->ai.state, c->ai.alert, c->c.hit_points,
+                         e ? e->strength : 0, e ? e->type : -1, c->c.type, c->c.state, ci && ci->name ? ci->name : "",
+                         (unsigned)c->c.frame);
                 plat_log(m);
             }
         }

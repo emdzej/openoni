@@ -40,8 +40,13 @@ static uint16_t knockdown_fallback(uint16_t t)
    state, else from standing (7), else its fallback the same way; at once. Not ported: the in-air remap
    of the types and the upgrade from crouching (state 0x13), the airborne states' own reactions, and the
    interpolation it changes with (the decompiler loses the values of its switches). */
+static bool down_type(uint16_t t);
+void (*chr_knockdown_hook)(Character *c);
+
 void chr_knockdown(Character *c, uint16_t type)
 {
+    /* a knockdown that leaves an AI's character down, from not lying: the AI told (0x48b530) */
+    if (down_type(type) && c->state != 0x12 && c->state != 0x32 && c->ai && chr_knockdown_hook) chr_knockdown_hook(c);
     c->varient |= 0x200;
     c->fight_timer = chr_class_fight_time(c->oncc);
     c->combo_type = 0;

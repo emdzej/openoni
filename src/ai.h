@@ -116,7 +116,8 @@ typedef struct {
     float weight[COMBAT_MANEUVERS];     /* +0x194 */
     float adv_near, adv_far;    /* +0x1b8, +0x1bc: the advance's */
     float ret_near, ret_far;    /* +0x1c4, +0x1c8: the retreat's */
-    int getup;                  /* +0x1f8 */
+    bool dazed;                 /* +0x189: lying through the daze (behaviour message 6) */
+    int getup;                  /* +0x1f8: 4 none, else the getting up's weight is given */
     bool melee_ok;              /* +0x454: may fight hand to hand */
 } CombatState;
 
@@ -151,6 +152,10 @@ typedef struct {
     bool full_turn;         /* A+0x1ab0: walking turns at the full rate */
     float turn_once;        /* A+0x1aa8: the turn rate for one tick, 0 none */
     float facing_override;  /* A+0x1ac8: 1000 none (reset every tick) */
+    bool key_override;      /* A+0x1ab9: these keys for one tick (AI2rExecutor_MoveOverride 0x498b60) */
+    uint64_t override_keys; /* A+0x1ac0 */
+    bool daze_started;      /* C+0x101c: this fall's daze has begun */
+    uint32_t daze_timer;    /* C+0x1020: ticks left lying */
     int alert;              /* C+0xf94: 0 lull .. 4 combat */
     int state;              /* C+0x1f8: AI_STATE_* */
     int job;                /* C+0x1f4: the state it goes back to (ai2_setjobstate) */

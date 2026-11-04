@@ -204,7 +204,15 @@ static void hurt(Character *c, Character *from, uint32_t damage, bool melee)
     Chr *v = (Chr *)c;
     if (v->ai.flags & AI_FLAG_PASSIVE) return;
     v->ai.vocal_delay = 0;
+    if (!melee && v->ai.daze_timer) v->ai.daze_timer = 1;  /* a shot (kind 0x1000000) ends the daze */
     knowledge_hurt_by(v, (Chr *)from, damage, melee);
+}
+
+/* 0x48b530, for an AI's character knocked down from not lying: a new daze to come. (Its other parts,
+   the scripted film stopped and the alarm's, aren't kept.) */
+static void knocked_down(Character *c)
+{
+    ((Chr *)c)->ai.daze_started = false;
 }
 
 /* AI2rBlockFunction 0x48b870, every AI's block function (AI2rInitializeCharacter 0x48a6b0). */
@@ -263,6 +271,7 @@ void chars_update(const CharacterInput *player_in, const void *env)
     chr_script_hook = script;
     chr_animation_hook = new_animation;
     chr_block_hook = block;
+    chr_knockdown_hook = knocked_down;
     throw_install();
     weapons_install();
     knowledge_update(env);      /* AI2rKnowledge_Update, before the characters */

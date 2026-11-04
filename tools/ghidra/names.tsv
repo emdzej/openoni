@@ -1346,3 +1346,5 @@
 004bd360	AIiScript_RestoreGame	AI	low	restore_game: ONrGameState_UseContinue
 004fda80	ONrGameState_ClearContinue	ON	low	the continue cleared, no save point (a won level)
 004fdaa0	ONrGameState_SetContinue	ON	low	the continue copied in with its save point
+004ecdf0	ONrAnimState_IsFallen	ON	low	the lying states 0x12 and 0x32 (name made up)
+0048b530	AI2rNotifyKnockdown	AI2	low	from ONrCharacter_Knockdown, not lying: the daze rearmed (C+0x101c), the film stopped, the alarm (name made up)

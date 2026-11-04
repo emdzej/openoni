@@ -348,13 +348,17 @@ After the lost-target part (above), `AI2rCombat_Update`:
 1. A new weapon (or firing mode) goes to the targeting (0x4bb700) with the weapon's matrix (the body's
    node 19).
 2. With the targeting on, `AI2rTargeting_Update`; else the target's pelvis is the point and the aim stops.
-3. Every fifth tick, by the character's index (C+0) against the game time: the range; the line of fire
+   (Message 13, a dodge from danger with B+0x5d8, isn't ported.)
+3. The getting up (B+0x1f8) is set to 4, none. Lying (the character's state, A+0x1afc, 0x12 or 0x32:
+   0x4ecdf0) with a behaviour, message 6 (**the daze**, below); if it answers 1 the path halts, the aim
+   stops, the trigger is let go and the tick ends.
+4. Every fifth tick, by the character's index (C+0) against the game time: the range; the line of fire
    (beyond the weapon's farthest, +0x60, none; else 0x490c50 from the muzzle to the point, or the arc of
    a ballistic weapon in steps); the weights cleared (0x49dbc0), message 1, the lost target's and the
    no-line-of-fire's weights (advance 1.2 to 12..30), message 7; the maneuver (0x49dbf0); messages 4
-   and 5.
-4. The melee maneuver runs `AI2rMelee_Update`.
-5. The trigger: unless meleeing, in an animation of the types 0xc0..0xc3, backing off too close, in an
+   and 5. A getting up that isn't 4 weighs 1.5.
+5. The melee maneuver runs `AI2rMelee_Update`.
+6. The trigger: unless meleeing, in an animation of the types 0xc0..0xc3, backing off too close, in an
    attack, with an attack override, or against a player whose input is off (`AI2rAllowedToAttack`
    0x48bc30), the fire decision; else the aim stops and the trigger is let go (0x490a50).
 
@@ -363,7 +367,24 @@ loses its weight and the next is tried. 0 hold (the path halted); 1 advance (`AI
 0x49df80: by how far beyond the near distance, at least half, then a path to the point); 2 retreat (a
 local path away, 15 long, by the distance between the near and far ones and the path's quality,
 0x52a944); 3 a gun to pick up; 4 the alarm; 5 melee (0x49e910: within 80 of the target, else an advance
-to 15..20); 6 getting up.
+to 15..20); 6 getting up (lying, the forward key for one tick, `AI2rExecutor_MoveOverride` 0x498b60;
+standing, it fails).
+
+**The daze** (the default behaviour's message 6, 0x493120; the combat block's dazed flag at B+0x189,
+the character's C+0x101c, this fall's daze begun, and C+0x1020, the ticks left). Not dazed: with no
+daze begun yet this fall, both are set, `AI2rStartDazeTimer` 0x48b9f0 draws the ticks (the class's
+ONCC+0x128 to ONCC+0x12a, the span times `UUrRandom & 0xffff` over 0x10000), and the answer is 1;
+with one done, the getting up is set to 0 (so it weighs) and the answer 0. Dazed: with no ticks left
+the flag goes and the answer is 0; else the targeting and the line-of-fire checks and the aim are off
+and the answer 1. `AI2rUpdateAI` 0x489d40 counts the ticks down while the character lies. A shot
+(damage kind 0x1000000 to `AI2rNotifyDamage` 0x48b480) cuts them to 1, and so does a block's
+decision (0x48b9d0, not ported yet). `ONrCharacter_Knockdown` 0x4e4e10, for an AI's character knocked down (the types 0x4f..0x5c that
+lie, 0x8d, 0xd6, 0xd7) while not lying, calls 0x48b530, which clears C+0x101c: a new fall, a new
+daze.
+
+**The keys' override** (A+0x1ab9, the keys at A+0x1ac0, flags at A+0x1ac4; cleared after each
+`AI2rExecutor_Update` 0x498550): the keys instead of the move's, the mode running (6, 7 aiming), 3
+with the crouch key, 4 (5 aiming) with flag 1.
 
 ### The targeting
 

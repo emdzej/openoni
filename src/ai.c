@@ -53,19 +53,26 @@ static int default_mode(const AiState *a)
     return a->alert >= 0 && a->alert < 5 ? calm[a->alert] : calm[0];
 }
 
-/* AI2rExecutor_Update 0x498550, without the overrides (A+0x1ab9: scripted keys), the attack override
-   (A+0x1acc) and the aim (AI2rExecutor_UpdateAim 0x498f50). */
+/* AI2rExecutor_Update 0x498550, with the keys' override (A+0x1ab9) and the attack override (A+0x1acc);
+   the aim is AI2rExecutor_UpdateAim 0x498f50 (combat.c). */
 static void executor_update(AiState *a, Character *c, ChrInput *in)
 {
     int mode = a->mode ? a->mode : a->movement_mode ? a->movement_mode : default_mode(a);
     uint64_t held = 0;
-    switch (a->kind) {
-    case AI_MOVE_FORWARD: held = CHR_KEY_FORWARD; break;
-    case AI_MOVE_BACK: held = CHR_KEY_BACK; break;
-    case AI_MOVE_LEFT: held = CHR_KEY_STEP_LEFT; break;
-    case AI_MOVE_RIGHT: held = CHR_KEY_STEP_RIGHT; break;
-    default: break;
-    }
+    if (a->key_override) {
+        /* the override's keys instead of the move's: running, or crouching with the crouch key (its
+           flag 1, walking, has no user here; the aiming forms, A+0x1a88, aren't kept) */
+        held = a->override_keys;
+        mode = (held & CHR_KEY_CROUCH) ? AI_MODE_CROUCH : AI_MODE_RUN;
+        a->key_override = false;
+    } else
+        switch (a->kind) {
+        case AI_MOVE_FORWARD: held = CHR_KEY_FORWARD; break;
+        case AI_MOVE_BACK: held = CHR_KEY_BACK; break;
+        case AI_MOVE_LEFT: held = CHR_KEY_STEP_LEFT; break;
+        case AI_MOVE_RIGHT: held = CHR_KEY_STEP_RIGHT; break;
+        default: break;
+        }
     /* the trigger (A+0x21e0, 0x21e1: the weapon's input reads them as the fire keys) */
     if (a->aim.fire) held |= CHR_KEY_FIRE;
     if (a->aim.fire_alt) held |= CHR_KEY_ALT_FIRE;
@@ -372,6 +379,8 @@ static void state_stand_in(AiState *a, Character *c, const void *env)
 
 void ai_update(AiState *a, Character *c, const void *env)
 {
+    /* AI2rUpdateAI 0x489d40: the daze runs out while lying */
+    if (a->daze_timer && (c->state == 0x12 || c->state == 0x32)) a->daze_timer--;
     if (a->flags & AI_FLAG_PASSIVE) a->moving = false;     /* AI2rPassive 0x48b160: the state left, the path halted */
     else if (a->patrol >= 0 && !(c->flags & 1)) patrol_update(a, c->pos, c->facing, a->name);
     else if (!(c->flags & 1)) state_stand_in(a, c, env);

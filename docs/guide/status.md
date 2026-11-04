@@ -26,7 +26,8 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - **The other characters**: they spawn from the level's objects and scripts, follow their patrol paths,
   and see, hear and react to the player. In combat they pick a behaviour for the range to their target
   from the level's combat settings, hold, advance or back off, fight hand to hand, and with a gun lead
-  their target, aim from the weapon's muzzle and fire within their class's shooting skill. They start
+  their target, aim from the weapon's muzzle and fire within their class's shooting skill. Knocked
+  down, they lie dazed for their class's time and then get up. They start
   with the weapons the level gives them. The bosses' behaviours, the gun pickup and the alarms are
   still missing, and the paths they take in a fight are stand-ins.
 - **The scripts**: the BSL engine runs the level's own scripts, with their trigger volumes, doors,
