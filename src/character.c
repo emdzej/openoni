@@ -813,6 +813,7 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
     if (character_frame_hook) character_frame_hook(c, CHR_FRAME_PICKUP);
     if (character_action_frame_hook && c->ai && c->anim && (int)c->frame == (int16_t)rd16((const uint8_t *)c->anim + 0x174))
         character_action_frame_hook(c);
+    chr_anim_particles_frame(c);
     sprint(c, in);
     chr_frame_countdowns(c);
     if (c->flags & 2) return;   /* step 8, dying: the body as it is (its drift with the physics) */
@@ -840,6 +841,7 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
         chr_overlays_advance(c);
         if (character_frame_hook) character_frame_hook(c, CHR_FRAME_FIRE);
         chr_build_quaternions(c);
+        if (c->anim_particles) chr_bone_matrices(c);
         return;
     }
     if (!c->has_physics) physics_start(c);
@@ -849,6 +851,7 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
     chr_overlays_advance(c);
     if (character_frame_hook) character_frame_hook(c, CHR_FRAME_FIRE);
     chr_build_quaternions(c);
+    if (c->anim_particles) chr_bone_matrices(c);        /* where the animation's particles hang */
     physics_body(c);                                    /* step 19 */
     /* OBiPhysics_Update runs after all the characters' frames; here right after each (physics.h) */
     physics_update(c, env);

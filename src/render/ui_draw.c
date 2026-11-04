@@ -2,6 +2,7 @@
 #include "ui_draw.h"
 
 #include "character.h"
+#include "chr_anim.h"
 #include "cinematic.h"
 #include "exe.h"
 #include "font.h"
@@ -208,29 +209,6 @@ static uint16_t tx16(const void *t, unsigned off) { const uint8_t *p = (const ui
 static uint32_t rd32p(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
 static float rdfp(const uint8_t *p) { uint32_t v = rd32p(p); float f; memcpy(&f, &v, 4); return f; }
 
-/* The health's colour (0x4ef450, which the Mac build's names call ONrCharacter_GetPartLocation): the
-   game settings' (ONGS "game_settings", 0x4f4920) thresholds at +0x18 (their count at +0x14) and
-   colours at +0x58, the colour lerped (0x447c10) between the two around the fraction. */
-static uint32_t health_colour(const uint8_t *gs, float f)
-{
-    if (!gs) return 0xff00ff00u;
-    if (f <= rdfp(gs + 0x18)) return rd32p(gs + 0x58);
-    uint32_t n = rd32p(gs + 0x14);
-    if (n > 16) n = 16;
-    if (rdfp(gs + 0x14 + n * 4) <= f) return rd32p(gs + 0x54 + n * 4);
-    uint32_t i = 1;
-    while (i < n && !(f < rdfp(gs + 0x18 + (i - 1) * 4 + 4))) i++;
-    float lo = rdfp(gs + 0x14 + i * 4), hi = rdfp(gs + 0x18 + i * 4);
-    float t = hi > lo ? (f - lo) / (hi - lo) : 0.0f;
-    t = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
-    uint32_t a = rd32p(gs + 0x54 + i * 4), b = rd32p(gs + 0x58 + i * 4), c = 0;
-    for (int k = 0; k < 32; k += 8) {
-        float x = (float)(a >> k & 0xff), y = (float)(b >> k & 0xff);
-        c |= (uint32_t)lrintf(x + (y - x) * t) << k;
-    }
-    return c;
-}
-
 /* An arc (0x5045a0, 0x5007d0): segments + 1 points from angle a0 to a1 at radii ro and ri around the
    centre, the texture's coordinates the same points on the ring texture (its middle the centre, its
    half width the scale); drawn (0x500640) as a quad per segment. */
@@ -358,7 +336,7 @@ void ui_draw_hud(int w, int h, const Character *c, uint32_t time)
        Under 30% (3.33, 0x52b3fc) the arcs pulse. Not ported: the displayed health's easing toward the
        real one (0x630fc4) and the damage arcs (0x630fcc, 0x630fcd). */
     float f = (float)hp / (float)max, cap = gs ? rdfp(gs) : 2.0f;
-    uint32_t col = health_colour(gs, (float)hp / (float)max);
+    uint32_t col = chr_health_colour((float)hp / (float)max);     /* 0x4ef450 */
     float alpha = 255.0f;
     float low = f * 3.3333333f;
     if (low < 1.0f) {

@@ -14,6 +14,8 @@
 /* The won level's clear (0x4fda80): no save point. */
 void save_clear(void);
 int32_t save_point(void);
+/* The scripts' save_point set (a debug aid's: --param save=N). */
+void save_set_point(int32_t n);
 void save_register_commands(void);
 /* ONrGameState_LevelBegin 0x4f5350's part: the level, the place recorded, the level reached. */
 void save_level_begin(int level);

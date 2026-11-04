@@ -133,3 +133,14 @@ extern void (*chr_throw_hook)(Character *c);
 bool chr_in_bad_varient(const Character *c);
 /* The class's fight time (ONCC+0xc44) and idle delays (+0xc48, +0xc4c). */
 uint16_t chr_class_fight_time(const void *oncc);
+
+/* The health's colour (0x4ef450, the Mac build's ONrCharacter_GetPartLocation): the game settings'
+   (ONGS "game_settings") thresholds at +0x18 (their count at +0x14) and colours at +0x58, lerped
+   (0x447c10) between the two around the fraction. */
+uint32_t chr_health_colour(float fraction);
+/* The bones' matrices (A+0x2278) the animation's particles hang from, from the pose shown. */
+void chr_bone_matrices(Character *c);
+/* The animation's particles (A+0x1ca4): DoCharacterFrame's start and stop by their frames, and their
+   end (OldAnimationHook 0x4ead30, the character's deletion). */
+void chr_anim_particles_frame(Character *c);
+void chr_anim_particles_stop(Character *c);

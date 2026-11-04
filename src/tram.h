@@ -13,7 +13,8 @@ enum {
     TRAM_HEIGHTS = 0x04,        /* a float per frame */
     TRAM_VELOCITIES = 0x08,     /* x, z per frame (TRrAnimation_GetPosition 0x428750) */
     TRAM_SHORTCUTS = 0x18,      /* 8 bytes each: the state (u16), ...; the count at 0x17d */
-    TRAM_ATTACKS = 0x24,        /* 0x18 bytes each, the count at 0x17f */
+    TRAM_PARTICLES = 0x24,      /* 0x18 bytes each, the count at 0x17f: the frames (first, last: u16s),
+                                   the bone (u16 +4), the name in the class's ONCP (+8, 16 bytes) */
     TRAM_ROTATIONS = 0x2c,      /* the keyframe streams, one per bone */
     TRAM_FLAGS = 0x34,          /* bit 0 is the run time's "prepared" */
     TRAM_FPS = 0x156,

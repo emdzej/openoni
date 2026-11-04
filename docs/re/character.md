@@ -581,6 +581,31 @@ Ported in `src/throw.c` (`chars_test`: Konoko throws the throw dummy, Throw_Forw
 KONCOMthrow_fw_p_tgt, 20 damage at frame 42). Not yet: the AI's throws, the AI's notice, the noise, the
 overpowered boost, the physics move (the port places the target).
 
+## The animation's particles
+
+An animation's particles are TRAM +0x24 (0x18 bytes each, the count the byte at +0x17f; earlier read as
+attacks): the first and last frame (u16s), the bone (u16 +4), a name (+8, 16 bytes). The class's list is
+ONCC +0x430, an ONCP: the count at +0x14, entries of 0x58 from +0x18: the name (16), the particle class's
+name (64, +0x10), a u16 at +0x50 (0x8000: an impact effect, "snap"), the class at +0x54 (run time).
+*Confirmed* on level 12: the ninja's list has `teleport` (teleport_e01) and `fireball` (w10_sni_e01).
+
+- `ONrCharacter_NewAnimationHook` 0x4e97a0, last: A+0x1ca4 the count, A+0x1ca6 = 0 (the mask of those in
+  their frames), and for each, by its name in the list, A+0x1ca8 + 0x10 i: the entry, the particle's
+  handle, the particle, the bone. The particles are made at once (0x4e96a0: `P3rCreateEffect` with the
+  orientation identity 0x529d10, the position the bone geometry's box middle in the bone's space, hanging
+  from the bone's matrix A+0x2278 + 0x30 bone, the owner `WPrOwner_MakeMeleeDamageFromCharacter` 0x51ce00,
+  0x2000000 | the index; then particle flag 0x2000) between `P3rSetGlobalTint` 0x456f90 with the health
+  colour (0x4ef450) and its end 0x456fa0: a class taking a tint (flags2 bit 0, its tint a variable's) gets
+  it. A name not in the list: "no particle found for anim".
+- `DoCharacterFrame` after the action frame (0x4df576): the mask of the particles whose first <= frame <=
+  last (0x4288c0); when it changes, each live one gets the health colour (0x456fb0) and event 2 (start)
+  coming in, 3 (stop) going out, at the game time / 60. An impact one coming in on a throw (the throw's
+  target, or this one when thrown) with the victim dead: its particle killed and, if the victim's C+4
+  0x20000000 isn't set, `ONrImpactEffect` 2 at the bone (with the material) and the bit set (the impact
+  effect isn't ported).
+- `ONiCharacter_OldAnimationHook` 0x4ead30, last: each live one stopped (event 3) if in its frames, then
+  killed (0x456c70); the count and the mask 0.
+
 ## Holstering
 
 A character has three weapon slots, C+0x194: slot 0 is the hand, slots 1 and 2 (C+0x198, C+0x19c)

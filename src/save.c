@@ -105,6 +105,7 @@ void save_clear(void)
 }
 
 int32_t save_point(void) { return point; }
+void save_set_point(int32_t n) { point = n; }
 
 /* The weapon class's name (TMrInstance_GetInstanceName), without its tag. */
 static bool class_name(const void *cls, char out[64])

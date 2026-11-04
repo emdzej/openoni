@@ -2,6 +2,9 @@
 #include "chr_anim.h"
 
 #include "body.h"
+#include "m3gm.h"
+#include "particle.h"
+#include "ui.h"
 #include "tm.h"
 #include "trac.h"
 #include "tram.h"
@@ -249,6 +252,170 @@ static const void *remap_hook(Character *c, const void *next)
     return chr_remap_hook && next ? chr_remap_hook(c, next) : next;
 }
 
+/* ---- the animation's particles ---- */
+
+static float rdf32(const uint8_t *p) { uint32_t v = rd32(p); float f; memcpy(&f, &v, 4); return f; }
+
+uint32_t chr_health_colour(float f)
+{
+    const uint8_t *gs = tm_instance_get(TM_TAG("ONGS"), "game_settings");
+    if (!gs) return 0xff00ff00u;
+    if (f <= rdf32(gs + 0x18)) return rd32(gs + 0x58);
+    uint32_t n = rd32(gs + 0x14);
+    if (n > 16) n = 16;
+    if (rdf32(gs + 0x14 + n * 4) <= f) return rd32(gs + 0x54 + n * 4);
+    uint32_t i = 1;
+    while (i < n && !(f < rdf32(gs + 0x18 + (i - 1) * 4 + 4))) i++;
+    float lo = rdf32(gs + 0x14 + i * 4), hi = rdf32(gs + 0x18 + i * 4);
+    float t = (f - lo) / (hi - lo);
+    t = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
+    uint32_t a = rd32(gs + 0x54 + i * 4), b = rd32(gs + 0x58 + i * 4), c = 0;
+    for (int k = 0; k < 32; k += 8) {
+        float x = (float)(a >> k & 0xff), y = (float)(b >> k & 0xff);
+        c |= (uint32_t)lrintf(x + (y - x) * t) << k;
+    }
+    return c;
+}
+
+static uint32_t health_colour_of(const Character *c)
+{
+    return chr_health_colour(c->max_hit_points ? (float)c->hit_points / (float)c->max_hit_points : 0.0f);
+}
+
+void chr_bone_matrices(Character *c)
+{
+    const void *body = body_of_class(c->oncc, 4);
+    if (!body || body_bones(body) != CHR_BONES) return;
+    BodyMatrix root, m[BODY_MAX_BONES];
+    chr_root_matrix(c, root);
+    if (!body_matrices(body, root, c->aimed, m)) return;
+    for (int b = 0; b < CHR_BONES; b++) memcpy(c->bone_world[b], m[b], sizeof c->bone_world[b]);
+}
+
+/* The class's particle list (ONCC +0x430, ONCP: the count at +0x14, entries of 0x58 from +0x18: the
+   name, 16 bytes; the particle class's, 64 at +0x10; flags (u16 +0x50: 0x8000 an impact effect)). */
+enum { ONCC_PARTICLES = 0x430, ONCP_ENTRY = 0x58 };
+
+/* 0x4e96a0: a particle of the class hanging from the bone, at its geometry's middle (the box's), owned by
+   the character's melee (WPrOwner_MakeMeleeDamageFromCharacter 0x51ce00: 0x2000000 | its index), its
+   dynamic matrix flag (0x2000) set. */
+static P3Particle *bone_particle(Character *c, P3Class *pc, uint16_t bone)
+{
+    const void *body = body_of_class(c->oncc, 4);
+    if (!body || bone >= CHR_BONES) return NULL;
+    float box[6] = { 0 }, sph[4];
+    m3gm_bounds(body_geometry(body, bone), box, sph);
+    const float pos[3] = { (box[3] + box[0]) * 0.5f, (box[4] + box[1]) * 0.5f, (box[5] + box[2]) * 0.5f };
+    static const float ID[9] = { 1, 0, 0, 0, 1, 0, 0, 0, 1 };     /* 0x529d10 */
+    P3Particle *p = p3_effect_owned(pc, pos, NULL, ID, c->bone_world[bone], 0x2000000u | c->id, ui_time());
+    if (p) p3_set_flags(p, p3_flags(p) | 0x2000);
+    return p;
+}
+
+/* NewAnimationHook's last part: the animation's particles (TRAM +0x24, the count at +0x17f), each by its
+   name in the class's list, made at once (tinted the character's health colour, 0x4ef450) and started
+   and stopped by their frames in DoCharacterFrame. A name not in the list: "no particle found". */
+static void anim_particles_start(Character *c)
+{
+    const void *t = c->anim;
+    c->anim_particles_on = 0;
+    c->anim_particles = ((const uint8_t *)t)[0x17f];
+    if (c->anim_particles > 16) c->anim_particles = 16;
+    if (!c->anim_particles) return;
+    const uint8_t *oncp = tm_link((const uint8_t *)c->oncc + ONCC_PARTICLES);
+    if (!oncp) {
+        c->anim_particles = 0;
+        return;
+    }
+    chr_bone_matrices(c);
+    p3_global_tint(true, health_colour_of(c));
+    uint32_t n = rd32(oncp + 0x14);
+    for (unsigned i = 0; i < c->anim_particles; i++) {
+        memset(&c->anim_particle[i], 0, sizeof c->anim_particle[i]);
+        const uint8_t *ap = raw_block(t, TRAM_PARTICLES, 0x18u * i, 0x18);
+        if (!ap) continue;
+        for (uint32_t k = 0; k < n; k++) {
+            const uint8_t *e = oncp + 0x18 + (size_t)k * ONCP_ENTRY;
+            if (strncmp((const char *)e, (const char *)ap + 8, 16)) continue;
+            c->anim_particle[i].entry = e;
+            c->anim_particle[i].bone = rd16(ap + 4);
+            char name[65];
+            memcpy(name, e + 0x10, 64);
+            name[64] = 0;
+            P3Class *pc = p3_class(name);
+            P3Particle *p = pc ? bone_particle(c, pc, c->anim_particle[i].bone) : NULL;
+            if (p) {
+                c->anim_particle[i].cls = pc;
+                c->anim_particle[i].handle = p3_handle(p);
+            }
+            break;
+        }
+    }
+    p3_global_tint(false, 0);
+}
+
+static P3Particle *anim_particle_live(Character *c, unsigned i)
+{
+    P3Class *pc;
+    P3Particle *p = c->anim_particle[i].handle ? p3_from_handle(c->anim_particle[i].handle, &pc) : NULL;
+    return p && pc == c->anim_particle[i].cls ? p : NULL;
+}
+
+void chr_anim_particles_stop(Character *c)
+{
+    float time = (float)ui_time() * (1.0f / 60.0f);
+    for (unsigned i = 0; i < c->anim_particles; i++) {
+        P3Particle *p = anim_particle_live(c, i);
+        if (p) {
+            if (c->anim_particles_on >> i & 1) p3_send_event(c->anim_particle[i].cls, p, P3_EV_STOP, time);
+            if ((p = anim_particle_live(c, i))) p3_kill(c->anim_particle[i].cls, p);
+        }
+        c->anim_particle[i].handle = 0;
+    }
+    c->anim_particles = 0;
+    c->anim_particles_on = 0;
+}
+
+/* DoCharacterFrame's step after the action frame (0x4df576): the animation's particles in their frames
+   (0x4288c0: first <= frame <= last), when that changes: each live one tinted the health colour, started
+   (event 2) as it comes in, stopped (3) as it goes out. An impact one (0x8000) coming in on a throw whose
+   victim is dead (this one's target, or this one thrown) goes instead: its particle killed and, once a
+   victim (C+4 0x20000000), the impact effect (ONrImpactEffect 2 with the material; not ported). */
+void chr_anim_particles_frame(Character *c)
+{
+    if (!c->anim_particles || !c->anim) return;
+    uint16_t on = 0;
+    for (unsigned i = 0; i < c->anim_particles; i++) {
+        const uint8_t *ap = raw_block(c->anim, TRAM_PARTICLES, 0x18u * i, 0x18);
+        if (ap && rd16(ap) <= c->frame && c->frame <= rd16(ap + 2)) on |= (uint16_t)(1u << i);
+    }
+    if (on == c->anim_particles_on) return;
+    float time = (float)ui_time() * (1.0f / 60.0f);
+    uint32_t tint = health_colour_of(c);
+    for (unsigned i = 0; i < c->anim_particles; i++) {
+        const uint8_t *e = c->anim_particle[i].entry;
+        if (!e) continue;
+        uint16_t bit = (uint16_t)(1u << i);
+        if (rd16(e + 0x50) == 0x8000 && (on & bit) && !(c->anim_particles_on & bit)) {
+            Character *victim = c->throw_target ? c->throw_target : c->thrown_by ? c : NULL;
+            if (victim && (victim->flags & 1)) {
+                P3Particle *p = anim_particle_live(c, i);
+                if (p) p3_kill(c->anim_particle[i].cls, p);
+                c->anim_particle[i].handle = 0;
+                c->anim_particle[i].cls = NULL;
+                if (!(victim->flags & 0x20000000u)) victim->flags |= 0x20000000u;  /* (the impact effect) */
+                continue;
+            }
+        }
+        P3Particle *p = anim_particle_live(c, i);
+        if (!p) continue;
+        p3_set_tint(c->anim_particle[i].cls, p, tint);
+        if ((on & bit) && !(c->anim_particles_on & bit)) p3_send_event(c->anim_particle[i].cls, p, P3_EV_START, time);
+        else if (!(on & bit) && (c->anim_particles_on & bit)) p3_send_event(c->anim_particle[i].cls, p, P3_EV_STOP, time);
+    }
+    c->anim_particles_on = on;
+}
+
 /* ONiCharacter_OldAnimationHook 0x4ead30, as the animation is left for next. */
 static void old_animation_hook(Character *c, const void *next)
 {
@@ -265,7 +432,8 @@ static void old_animation_hook(Character *c, const void *next)
         c->facing = wrap_2pi(r + c->facing);
         c->desired_facing = wrap_2pi(r + c->desired_facing);
     }
-    /* The animation's particles stop here (A+0x1ca4, P3rSendEvent 0x45b2c0): with the particles. */
+    /* the animation's particles: those in their frames stopped, all killed */
+    chr_anim_particles_stop(c);
 }
 
 /* ONrCharacter_NewAnimationHook 0x4e97a0, the parts that touch the animation state, and the teleport: a
@@ -273,9 +441,9 @@ static void old_animation_hook(Character *c, const void *next)
    ground's; the location, C+0x160, isn't kept apart in the port; the room, 0x4e91c0, is found from the
    position), facing as given; an AI's path is made anew (chars.c). Not ported: the
    sound serial and vocalization (C+0x1dc, 0x428970),
-   dropping the weapon (flag 5), an attack's turn toward its target, dying, and the animation's
-   particles. A throw (TRAM flag 15) starts its target's part through chr_throw_hook (throw.c); any
-   other animation forgets the target. */
+   dropping the weapon (flag 5), an attack's turn toward its target, and dying. The animation's
+   particles are made last. A throw (TRAM flag 15) starts its target's part through chr_throw_hook
+   (throw.c); any other animation forgets the target. */
 void (*chr_animation_hook)(Character *c);
 
 static void new_animation_hook(Character *c)
@@ -319,6 +487,7 @@ static void new_animation_hook(Character *c)
     }
     if (tr_test_flag(t, TRAM_FLAG_THROW_SOURCE) && chr_throw_hook) chr_throw_hook(c);
     if (!c->fight_timer && !fight) c->varient &= (uint16_t)~0x200u;
+    anim_particles_start(c);
     if (c->ai && chr_animation_hook) chr_animation_hook(c);
 }
 

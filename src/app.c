@@ -377,6 +377,10 @@ static void start_scripts(void)
     if (!sl_load_folder("GameDataFolder/IGMD/global", err, sizeof err)) plat_log(err);
     snprintf(dir, sizeof dir, "GameDataFolder/IGMD/%.63s", name ? name : "");
     if (name && !sl_load_folder(dir, err, sizeof err)) plat_log(err);
+    /* a debug aid: --param save=N starts the level's scripts at save point N (as a continue from it
+       sets save_point; the continue itself, without one, puts nothing back) */
+    char sp[16];
+    if (first && plat_param("save", sp, sizeof sp)) save_set_point(atoi(sp));
     if (!sl_call("main", 0, NULL)) plat_log("OpenOni: the level has no main script");
     /* a debug aid: --param call=<function>[,<function>...] runs the level's functions at the start */
     char fn[192];

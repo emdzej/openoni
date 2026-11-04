@@ -286,6 +286,7 @@ void chars_delete(Chr *c)
         if (w) weapon_delete(w);
     }
     c->c.weapon = c->c.stowed[0] = c->c.stowed[1] = NULL;
+    chr_anim_particles_stop(&c->c);
     knowledge_forget(c);
     used[c - slots] = false;
     actors[c - slots].alive = false;

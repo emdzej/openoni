@@ -150,6 +150,17 @@ typedef struct Character {
     bool teleport;
     float teleport_to[3];
     float teleport_facing;
+    /* the animation's particles (A+0x1ca4..0x1da8, set up by NewAnimationHook): each the class's ONCP
+       entry, the particle (by handle) and its class, the bone it hangs from */
+    uint8_t anim_particles;         /* A+0x1ca4 */
+    uint16_t anim_particles_on;     /* A+0x1ca6: those in their frames, a bit each */
+    struct {
+        const uint8_t *entry;
+        uint32_t handle;
+        void *cls;
+        uint16_t bone;
+    } anim_particle[16];            /* A+0x1ca8, 0x10 each */
+    float bone_world[19][12];       /* A+0x2278 (0x30 each): the bones' matrices the particles hang from */
     float jump_velocity[3];         /* A+0x104: the motion as the jump was asked for */
     bool jump_given;                /* A+0x110 */
     uint16_t jump_delay;            /* A+0x112 (nothing in v1.0 sets it) */

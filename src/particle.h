@@ -1,7 +1,7 @@
 /* The particle system (P3, Particle3.c): the classes (the BINA instances "3RAP<name>", format
    docs/formats/par3.md), the particles, their events and actions, their emitters, their collisions with
    the walls and the characters, and their damage. Weapons' shooters, projectiles, sparks, glass and
-   smoke are all particles. Notes: docs/re/particles.md.
+   smoke are all particles; so are the animations' own (docs/re/character.md, "The animation's particles").
 
    Not ported yet (stand-ins marked in the code): the decals (bullet holes), the attractors (homing),
    the impact effects (ONrImpactEffect: their sounds and particles), the particles' sounds, the AI's
@@ -49,6 +49,15 @@ void p3_update(uint32_t tick, bool gameplay, Character **chars, int nchars);
 /* P3rCreateEffect 0x456030's common part: a particle at pos with vel and orient (3x3, NULL along the
    velocity), its create event. NULL if none could be made. */
 P3Particle *p3_effect(P3Class *c, const float pos[3], const float vel[3], const float *orient, uint32_t tick);
+/* P3rCreateEffect with an owner (P3_X_OWNER) and the matrix the particle hangs from (P3_X_ATTACH, NULL
+   none; pos then in its space). */
+P3Particle *p3_effect_owned(P3Class *c, const float pos[3], const float vel[3], const float *orient,
+                            const float *attach_m, uint32_t owner, uint32_t tick);
+/* P3rSetGlobalTint 0x456f90 (on) and 0x456fa0 (off): the particles created meanwhile take the tint
+   (into their tint variable). */
+void p3_global_tint(bool on, uint32_t tint);
+/* 0x456fb0: the particle's tint variable set, if its class has one. */
+bool p3_set_tint(P3Class *c, P3Particle *p, uint32_t tint);
 /* The tick of the last update. */
 uint32_t p3_tick(void);
 /* The level's environment the particles collide with (AKEV). */

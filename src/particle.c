@@ -307,7 +307,7 @@ static float wrap_2pi(float a)
 
 /* The original keeps a pointer to the matrix in the particle (P3_X_ATTACH); the port an id of a table
    of the matrices handed out. */
-enum { ATTACH_MAX = 256 };
+enum { ATTACH_MAX = 2048 };   /* the weapons', the turrets', the characters' bones (64 x 19) */
 static const float *attach[ATTACH_MAX];
 static unsigned nattach;
 uint32_t p3_attach_id(const float *m)
@@ -819,6 +819,28 @@ static void free_particle(P3Class *c, P3Particle *p)
     bucket[c->bucket].free_count++;
 }
 
+static bool global_tint_on;
+static uint32_t global_tint;
+
+void p3_global_tint(bool on, uint32_t tint)
+{
+    global_tint_on = on;
+    if (on) global_tint = tint;     /* 0x456fa0 only turns it off */
+}
+
+/* 0x456fb0's write: the tint into the class's tint variable (D_TINT +0x18) when its tint is a variable's
+   (its type 0) and flags2 bit 0 asks for it. False if the class takes none. */
+static bool tint_variable(P3Class *c, P3Particle *p, uint32_t tint)
+{
+    if (!(flags2(c) & 1) || rd32(c->def + D_TINT) != 0) return false;
+    uint16_t off = rd16(c->def + D_TINT + 0x18);
+    if (off == 0xffff || (uint32_t)off + 4 > sizeof p->v) return false;
+    wr32(p->v + off, tint);
+    return true;
+}
+
+bool p3_set_tint(P3Class *c, P3Particle *p, uint32_t tint) { return c && p && tint_variable(c, p, tint); }
+
 /* P3rCreateParticle 0x455e40: the header, the lifetime drawn, the emitters (on if the flag says so,
    never emitted), the variables' first values. */
 P3Particle *p3_create(P3Class *c, uint32_t tick)
@@ -867,7 +889,9 @@ P3Particle *p3_create(P3Class *c, uint32_t tick)
         }
         if (value(c, p, v + 0x18, &x)) wr32(p->v + off, x.u);
     }
-    /* the global tint (0x659ce6, set by the cutscenes' tint): not ported */
+    /* the creation's tint (0x659ce6, 0x6a8660: P3rSetGlobalTint 0x456f90) into a class's tint
+       variable that has one (flags2 bit 0) and no other tint value */
+    if (global_tint_on) tint_variable(c, p, global_tint);
     return p;
 }
 
@@ -1498,7 +1522,7 @@ static bool check_collisions(P3Class *c, P3Particle *p, float t0, float *t1, flo
     float radius = 0.0f;
     if (!point) fvalue(c, p, c->def + D_RADIUS, &radius);
     if (!still && (flags1(c) & F1_COLLIDE_WALLS) && env) {
-        AkevHit h[1];
+        static AkevHit h[AKEV_HITS_MAX];     /* (the walk fills the whole leaf: up to the list's size) */
         if (akev_collide_point(env, pos, hit.move, 0x44800, 1, h)) {
             hit.hit = hit.wall = true;
             hit.other = false;
@@ -2301,13 +2325,19 @@ void p3_register_commands(void) {}
    attachment to a character's part, the wall's offset kinds. */
 P3Particle *p3_effect(P3Class *c, const float pos[3], const float vel[3], const float *orient, uint32_t tick)
 {
+    return p3_effect_owned(c, pos, vel, orient, NULL, 0, tick);
+}
+
+P3Particle *p3_effect_owned(P3Class *c, const float pos[3], const float vel[3], const float *orient,
+                            const float *attach_m, uint32_t owner, uint32_t tick)
+{
     P3Particle *q = c ? p3_create(c, tick) : NULL;
     if (!q) return NULL;
     memcpy(q->pos, pos, 12);
     uint8_t *b;
     float *v;
-    if ((b = block(c, q, P3_X_OWNER))) wr32(b, 0);
-    if ((b = block(c, q, P3_X_ATTACH))) wr32(b, 0);
+    if ((b = block(c, q, P3_X_OWNER))) wr32(b, owner);
+    if ((b = block(c, q, P3_X_ATTACH))) wr32(b, attach_m ? p3_attach_id(attach_m) : 0);
     if ((v = fblock(c, q, P3_X_OFFSET))) v[0] = v[1] = v[2] = 0.0f;
     if ((v = fblock(c, q, P3_X_VELOCITY))) {
         if (vel) memcpy(v, vel, 12);

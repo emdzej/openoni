@@ -9,6 +9,7 @@
 #include "exe.h"
 #include "knowledge.h"
 #include "objc.h"
+#include "particle.h"
 #include "physics.h"
 #include "tm.h"
 #include "trac.h"
@@ -176,6 +177,9 @@ int main(void)
         const TmInstance *in = tm_file_instance(f, i);
         if (in->tmpl->tag == AKEV_TAG && in->data) env = in->data;
     }
+    p3_reset();
+    p3_load();
+    p3_set_environment(env);
     chars_load();
     for (int i = 0; i < chars_slots(); i++) {
         Chr *c = chars_get(i);
@@ -197,6 +201,8 @@ int main(void)
     physics_place(&p->c, off);
     knowledge_post(n, KNOW_SEEN_CENTRAL, KNOW_DEFINITE, p->c.pos, p, 0, false, false);
     int fire_at = -1, alt_at = -1, tele_at = -1, jump_at = -1, invis_at = -1, nseen[7] = { 0 };
+    int fire_particles_at = -1, hurt_at = -1;
+    uint32_t hp_start = p->c.hit_points;
     int hard_at = -1, flag_at = -1, flag_jump_at = -1, below_at = -1, back_at = -1;
     float back[3] = { 0 };
     ObjcObject fl;
@@ -207,6 +213,11 @@ int main(void)
         knowledge_update(env);
         chars_update(&(CharacterInput){ 0 }, env);
         weapons_update(env);
+        Character *both[2] = { &p->c, &n->c };
+        p3_update(ui_time() + 1, true, both, 2);
+        p3_update(ui_time(), false, both, 2);      /* the decorative ones */
+        if (n->c.type == 0xe0 && n->c.anim_particles && n->c.anim_particles_on && fire_particles_at < 0) fire_particles_at = k;
+        if (p->c.hit_points < hp_start && hurt_at < 0) hurt_at = k;
         if (n->ai.state == AI_STATE_COMBAT && n->ai.combat.ninja.mode >= 0 && n->ai.combat.ninja.mode < 7)
             nseen[n->ai.combat.ninja.mode] = 1;
         if (n->c.type == 0xe0 && fire_at < 0) fire_at = k;
@@ -244,12 +255,15 @@ int main(void)
     for (int i = 0; i < 7; i++) if (nseen[i]) printf(" %d", i);
     printf("; fireball at %d, alternate at %d (invisible at %d), teleport at %d (moved at %d)\n", fire_at, alt_at, invis_at,
            tele_at, jump_at);
+    printf("ninja: the fireball's particles started at %d, Konoko hurt at %d (%u of %u)\n", fire_particles_at, hurt_at,
+           p->c.hit_points, hp_start);
     printf("ninja: hit hard at %d, to a flag at %d (moved at %d); below at %d, back at %d (%.0f %.0f %.0f)\n", hard_at, flag_at,
            flag_jump_at, below_at, back_at, back[0], back[1], back[2]);
     if (fire_at < 0) failed |= 32;
     if ((alt_at < 0 || invis_at < 0) && (tele_at < 0 || jump_at < 0)) failed |= 64;
     if (flag_at < 0 || flag_jump_at < 0) failed |= 128;
     if (back_at < 0 || back[1] < 550.0f) failed |= 256;
+    if (fire_particles_at < 0) failed |= 512;
     chars_unload();
     tm_terminate();
     exe_free();

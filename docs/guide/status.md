@@ -77,13 +77,15 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   Projectiles fly and stop on what they hit, and break the glass made of breakable materials. The
   particles are drawn as the original draws them: sprites with their orientations, fades and animated
   textures, and geometry such as the glass shards and the shell casings. The level's own emitters
-  (smoke, sparks, steam) run and answer the scripts' `particle` command.
+  (smoke, sparks, steam) run and answer the scripts' `particle` command. The characters' animations
+  make theirs too, hanging from the bones: the dust and trails of the moves, the ninja's fireballs and
+  teleports.
 - **Sound** from the game's own sound groups.
 
 ## Not yet
 
 - The particles' contrails, vectors, lens flares and decals (bullet holes), homing, and their sounds.
-- The fireballs' and the teleports' particles. The power-ups' physics and glow, and the
+- The impact effects (the hit sparks' classes). The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.
 - The other 13 levels as a playthrough.
