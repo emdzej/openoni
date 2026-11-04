@@ -1,5 +1,6 @@
 /* The AI's knowledge: see knowledge.h. */
 #include "knowledge.h"
+#include "panic.h"
 #include "combat.h"
 
 #include "akev.h"
@@ -34,6 +35,8 @@ static Pending pending[PENDING_MAX];       /* DAT_0063a2a0, 0x24 bytes each */
 static int npending;                       /* DAT_0063b340 */
 
 static uint32_t now;                       /* stand-in for the game time (GS+0x144) */
+
+uint32_t knowledge_now(void) { return now; }
 
 static float wrap_2pi(float a) { return a < 0.0f ? a + TWO_PI : a >= TWO_PI ? a - TWO_PI : a; }
 
@@ -275,7 +278,9 @@ static void notify(Chr *c, KnowEntry *e, bool degraded)
     switch (c->ai.state) {
     case AI_STATE_NONE: case AI_STATE_IDLE: case AI_STATE_PATROL: case AI_STATE_ALARM: case AI_STATE_NEUTRAL:
         if (!(c->ai.flags & AI_FLAG_NON_AGGRESSIVE)) knowledge_alert_notify(c, e, degraded);
-        break;              /* non-combatants (0x4adeb0): with panic */
+        else panic_notify(c, e, degraded);      /* the non-combatants' (0x4adeb0) */
+        break;
+    case AI_STATE_PANIC: panic_notify(c, e, degraded); break;
     case AI_STATE_PURSUIT: pursuit_notify(c, e, degraded); break;
     case AI_STATE_COMBAT: ai_combat_notify(&c->ai, &c->c, e, degraded); break;
     default: break;

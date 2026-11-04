@@ -45,6 +45,8 @@ uint16_t objc_char_job_path(const ObjcObject *o);
 /* The melee profile's id (the u16 at +0x1b0: 0x27 THUG_Wh for the warehouse thugs, inferred from the
    data; 0xffff none). */
 uint16_t objc_char_melee(const ObjcObject *o);
+/* The Neutral behaviour's id (+0x1b2), 0xffff none. */
+uint16_t objc_char_neutral(const ObjcObject *o);
 /* The combat settings' id (the u16 at +0x1ae: a Combat object's, AI2rInitializeCharacter 0x48a6b0). */
 uint16_t objc_char_combat(const ObjcObject *o);
 /* The weapon's ammo, a percentage (+0x1d0, D+0x1c4 in memory: ONrGameState_NewCharacter 0x4dac50

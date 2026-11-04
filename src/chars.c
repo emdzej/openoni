@@ -1,5 +1,6 @@
 /* The level's characters: see chars.h. */
 #include "chars.h"
+#include "neutral.h"
 #include "boss.h"
 #include "alarm.h"
 #include "combat.h"
@@ -122,6 +123,7 @@ static Chr *create(int object)
     c->ai.pursue_weak_high = (int)objc_char_pursuit(o, 3);
     c->ai.pursue_lost = (int)objc_char_pursuit(o, 4);
     c->ai.alarm_groups = objc_char_alarm_groups(o);
+    neutral_change_behavior(c, objc_char_neutral(o), true);   /* AI2rInitializeCharacter 0x48a6b0 */
     chr_hit_init(&c->c, objc_char_extra_health(o));
     if (armed) arm(c);
     return c;
@@ -290,6 +292,7 @@ void chars_delete(Chr *c)
     }
     c->c.weapon = c->c.stowed[0] = c->c.stowed[1] = NULL;
     chr_anim_particles_stop(&c->c);
+    neutral_deleted(c);         /* 0x48b3e0 */
     knowledge_forget(c);
     used[c - slots] = false;
     actors[c - slots].alive = false;
@@ -354,6 +357,7 @@ static void action_frame(Character *c) { combat_action(&((Chr *)c)->ai, c); }
 static void died(Character *c)
 {
     Chr *ch = (Chr *)c;
+    neutral_died(ch);           /* 0x48b370 */
     /* C+0x1644: the body stays the class's time (ONCC+0xc8a) */
     const uint8_t *k = (const uint8_t *)c->oncc + 0xc8a;
     ch->corpse_time = (uint16_t)(k[0] | k[1] << 8);
@@ -404,9 +408,15 @@ void chars_update(const CharacterInput *player_in, const void *env)
             chars_delete(&slots[i]);
             continue;
         }
+        speech_update(&slots[i]);     /* ONrSpeech_Update 0x516a60, first in the character's update 0x4ddba0 */
         if (slots[i].player && (slots[i].c.flags & CHR_FLAG_AI_MOVEMENT)) ai_control_update(&slots[i].ai, &slots[i].c, env);
-        else if (slots[i].player) character_update(&slots[i].c, player_in, env);
-        else ai_update(&slots[i].ai, &slots[i].c, env);
+        else if (slots[i].player) {
+            CharacterInput in = *player_in;
+            neutral_filter_input(&slots[i], &in);     /* 0x4fa520, the player's keys */
+            character_update(&slots[i].c, &in, env);
+        } else {
+            ai_update(&slots[i].ai, &slots[i].c, env);
+        }
     }
     Character *list[CHARS_MAX];
     int n = 0;
@@ -617,6 +627,20 @@ static bool cmd_passive(SlThread *t, int c, const SlValue *v, SlValue *r, void *
     if (!ch || ch->player) return true;
     if (num(&v[1])) ch->ai.flags |= AI_FLAG_PASSIVE;
     else ch->ai.flags &= ~(uint32_t)AI_FLAG_PASSIVE;
+    return true;
+}
+
+/* ai2_neutralbehavior char name (AI2iScript_SetNeutralBehavior 0x4b87b0): an AI character's Neutral, by its
+   name ("none": none), the one it has kept ("can't find behavior" for an unknown one). */
+static bool cmd_neutralbehavior(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 2 || v[1].type != SL_STRING) return true;
+    Chr *ch = arg_char(&v[0]);
+    if (!ch || ch->player) return true;
+    int id = -1;
+    if (strcmp(v[1].s, "none") != 0 && (id = neutral_id_named(v[1].s)) < 0) return true;
+    neutral_change_behavior(ch, id, false);
     return true;
 }
 
@@ -1235,6 +1259,7 @@ void chars_register_commands(void)
     sl_register("ai2_dopath", cmd_dopath, NULL);
     sl_register("ai2_passive", cmd_passive, NULL);
     sl_register("chr_neutral", cmd_passive, NULL);     /* the same handler (0x4b4be0) */
+    sl_register("ai2_neutralbehavior", cmd_neutralbehavior, NULL);
     sl_register_bool("ai2_boss_battle", &knowledge_boss_battle);
     sl_register_bool("ai2_barabbas_run", &boss_barabbas_run);
     sl_register("ai2_setjobstate", cmd_setjobstate, NULL);

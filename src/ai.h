@@ -60,6 +60,9 @@ typedef struct {
     float alarm_find, alarm_ignore, alarm_chase;    /* C+0xfec, 0xff0, 0xff4 */
     uint32_t alarm_damage, alarm_fight;             /* C+0xff8, 0xffc */
     float pursuit_distance;     /* C+0x1054 (the object's +0x68): how far from its job it pursues, 0 any */
+    /* how long a non-combatant panics (ticks, and up to half again): at a melee sound, gunfire, a
+       sighting, a hurt (C+0x1058..0x1064, the object's +0x6c..+0x78) */
+    uint32_t panic_melee, panic_gunfire, panic_sight, panic_hurt;
 } CombatSettings;
 
 /* The guard's scan (AI2rGuard_UpdateScan 0x499b50: the pursuit's look around, at its block +0x2c): a
@@ -200,12 +203,32 @@ typedef struct {
     bool fire, fire_alt;        /* A+0x21e0, 0x21e1: the trigger held */
 } AiAim;
 
+/* The neutral state's block (C+0x8b8 +8 when C+0x1f8 is 8; AI2rNeutral, neutral.c). */
+enum { NEUTRAL_LINES_MAX = 10, NEUTRAL_DATA = 0x26c };
+typedef struct {
+    struct Chr *player;         /* +0x08 */
+    uint8_t osd[NEUTRAL_DATA];  /* +0x0c: the Neutral's data (docs/formats/objc.md, "NEUT") */
+    bool accepted;              /* +0x278: the player asked (the action key) */
+    bool line_begun;            /* +0x279 */
+    bool anim_done[2];          /* +0x27a, 0x27b: the speaker's and the listener's animations played */
+    int32_t line;               /* +0x27c: -1 not talking yet */
+    uint32_t idle;              /* +0x280: ticks to the next call */
+    uint32_t patience;          /* +0x284: ticks it waits for the player to ask */
+    uint32_t follow_time;       /* +0x288: the last move after the player */
+    uint32_t enemy_time;        /* +0x28c: the last look for enemies */
+    float home[3];              /* +0x290: where it started */
+    bool ended;                 /* +0x29c: the abort or enemy line said */
+    bool giving, given;         /* +0x29d, 0x29e */
+    bool give_done[2];          /* +0x29f, 0x2a0: its and the player's give animations played */
+    uint32_t give_wait;         /* +0x2a4 */
+} NeutralTalk;
+
 /* The AI's states (C+0x1f8). */
 enum { AI_STATE_NONE = 0, AI_STATE_IDLE = 1, AI_STATE_PATROL = 3, AI_STATE_COMBAT = 5, AI_STATE_PURSUIT = 6,
        AI_STATE_ALARM = 7, AI_STATE_NEUTRAL = 8, AI_STATE_PANIC = 9 };
 /* Its flags (C+0x1f0, AI2rInitializeCharacter 0x48a6b0 starts them at 1). */
-enum { AI_FLAG_KNOWLEDGE = 0x01, AI_FLAG_PASSIVE = 0x02, AI_FLAG_NON_AGGRESSIVE = 0x04, AI_FLAG_NO_DEGRADE = 0x400,
-       AI_FLAG_BLIND = 0x800, AI_FLAG_DEAF = 0x1000, AI_FLAG_IGNORE_PLAYER = 0x2000, AI_FLAG_STARTLED = 0x8000 };
+enum { AI_FLAG_KNOWLEDGE = 0x01, AI_FLAG_PASSIVE = 0x02, AI_FLAG_NON_AGGRESSIVE = 0x04, AI_FLAG_END_SCRIPT = 0x20,
+       AI_FLAG_NO_DEGRADE = 0x400, AI_FLAG_BLIND = 0x800, AI_FLAG_DEAF = 0x1000, AI_FLAG_IGNORE_PLAYER = 0x2000, AI_FLAG_STARTLED = 0x8000 };
 
 typedef struct {
     int mode;               /* A+0x1a98: 0 the default for the alert level */
@@ -290,6 +313,23 @@ typedef struct {
     struct LocalPoint *local;   /* LOCAL_PATH_MAX of them, +0x8b8 */
     int local_n, local_k;       /* +0x18b8, +0x18ba */
     int local_seg;              /* the global path's link it was made for (path_n: the last room), -1 none */
+    /* the neutral behaviour (neutral.h, C+0x1000..0x1018) */
+    int neutral_id;             /* C+0x100c: the Neutral object's id, -1 none */
+    uint16_t neutral_line;      /* C+0x100e: the line a conversation starts (or resumes) at */
+    uint32_t neutral_flags;     /* C+0x1000: NEUTRAL_* */
+    uint32_t neutral_time;      /* C+0x1004: the last automatic check (and the one put off to) */
+    uint32_t neutral_wait;      /* C+0x1008: ticks before it may start one by itself again */
+    float neutral_trigger;      /* C+0x1010: the Neutral's trigger range */
+    float neutral_enemy;        /* C+0x1014: and its enemy range (100 without one) */
+    char end_script[32];        /* C+0x1018: the conversation's end script to run (flag 0x20) */
+    NeutralTalk talk;           /* the neutral state's block (C+0x8b8 when C+0x1f8 is 8) */
+    /* the panic state's block (C+0x8b8 +8 when C+0x1f8 is 9; panic.c) */
+    struct KnowEntry *panic_entry;  /* +0x08: what it fears */
+    uint32_t panic_until;           /* +0x0c */
+    bool panic_cower;               /* +0x10: crouching */
+    bool panic_dazed;               /* +0x11: lying through its daze */
+    bool panic_known;               /* +0x12: the fear is someone's hostility */
+    uint32_t panic_vocal;           /* +0x14: ticks to its next cry */
 } AiState;
 
 void ai_init(AiState *a);

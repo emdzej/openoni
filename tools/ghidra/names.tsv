@@ -118,6 +118,7 @@
 00423160	TMiGame_InstanceFile_GetDataPtr	TM	high	read: binary search of one file's name directory
 00423260	TMrLevel_Unload	TM	med	name from the Intel Mac build (neighbours:1.00)
 004232e0	TMrInstance_GetDataPtr	TM	med	name from the Intel Mac build (neighbours:0.97)
+00423540	TMrInstance_GetDataPtr_List	TM	low	every named instance of a tag with data, file by file, by name
 00423680	TMrInstance_GetDataPtr_ByNumber	TM	med	name from the Intel Mac build (neighbours:0.91)
 004236f0	TMrInstance_GetTagCount	TM	med	name from the Intel Mac build (neighbours:1.00)
 00423720	TMrInstance_Dynamic_New	TM	med	name from the Intel Mac build (neighbours:0.80)
@@ -352,7 +353,13 @@
 00450c30	P3iDecal_BarycentricShadeInterpolate	P3	med	name from the Intel Mac build (neighbours:1.00)
 00450f50	P3iDecal_ProcessAdjacency	P3	med	name from the Intel Mac build (strings:1)
 00453760	P3iDisplayDecals	P3	med	name from the Intel Mac build (neighbours:1.00)
+00453d50	EPiParticle_Create	EP	low	an environment particle made at its matrix, its create event
+00453fe0	EPiParticle_Kill	EP	low	not running; the live particle killed
+00454040	EPiParticle_Reset	EP	low	killed, then made again unless not initially created
 004543b0	EPrPrintTags	EP	med	name from the Intel Mac build (strings:2)
+00454420	EPrEnumerateTag	EP	low	the callback on every environment particle of a tag
+00454f90	EPrLoadParticles	EP	low	an ENVP array listed and, once the level has begun, made
+00455500	EPrLevelBegin	EP	low	every listed environment particle made; the level begun
 004558a0	EPiDrawPositionMarker	EP	med	name from the Intel Mac build (neighbours:0.80)
 00455a50	P3rInitialize	P3	med	name from the Intel Mac build (neighbours:1.00)
 00455d00	P3rNewParticleStorage	P3	med	name from the Intel Mac build (strings:2)
@@ -391,6 +398,7 @@
 004689c0	WMrDialog_GetParam	WM	low	the parameter given to WMrDialog_ModalBegin
 004689d0	WMrDialog_ModalBegin	WM	med	name from the Intel Mac build (neighbours:0.80)
 00468b90	WMrDialog_ModalEnd	WM	low	the dialog done, with its result
+00468bb0	WMrDialog_CheckRadioButton	WM	low	the ids first..last unhilited, the checked one hilited
 00468cd0	WMiDialog_Create	WM	med	name from the Intel Mac build (neighbours:1.00)
 00469180	WMiDialog_Center	WM	med	name from the Intel Mac build (neighbours:1.00)
 00469330	WMrDialog_SetDrawCallback	WM	med	name from the Intel Mac build (neighbours:1.00)
@@ -411,6 +419,7 @@
 0046a5b0	DCrText_SetFormat	DC	med	name from the Intel Mac build (neighbours:0.75)
 0046a5c0	DCrText_SetShade	DC	low	the text context's colour
 0046a610	PSrPartSpec_Draw	PS	med	name from the Intel Mac build (neighbours:1.00)
+0046a980	PSrPartSpec_GetSize	PS	low	1, 4, 0x40, 0x100: a corner's column width and row height
 0046aa10	PSrPartSpec_LoadByType	PS	med	name from the Intel Mac build (strings:1)
 0046aa60	PSrPartSpecUI_GetActive	PS	med	name from the Intel Mac build (strings:1)
 0046aa80	PSrPartSpecUI_GetByName	PS	low	the PSUI of the name
@@ -419,27 +428,47 @@
 0046ac80	PSiPartSpec_PartUV	PS	low	a part's texture coordinates (its corners over the texture's size)
 0046af20	WMiBox_Paint	WM	med	name from the Intel Mac build (neighbours:0.83)
 0046b150	WMiButton_Create	WM	med	name from the Intel Mac build (strings:1)
+0046b5e0	WMiCheckBox_Callback	WM	low	class 5: the check part, a release toggles it (0x3b set, 0x2d get)
+0046b900	WMrCheckBox_SetCheck	WM	low	0x3b
+0046b920	WMrCheckBox_GetCheck	WM	low	0x2d
 0046c5b0	WMiEditField_HandleSetMaxChars	WM	med	name from the Intel Mac build (neighbours:1.00)
 0046c720	WMiListBox_Create	WM	med	name from the Intel Mac build (strings:1)
+0046c720	WMiListBox_Proc	WM	low	the list box (class 8) procedure (the Mac name WMiListBox_Create is a neighbour's)
 0046d940	WMiListBox_GetText	WM	med	name from the Intel Mac build (neighbours:0.75)
 0046db60	WMiListBox_InsertString	WM	med	name from the Intel Mac build (neighbours:0.75)
 0046dcc0	WMiListBox_ReplaceString	WM	med	name from the Intel Mac build (neighbours:0.80)
 0046e810	WMrMenu_GetWidth	WM	med	name from the Intel Mac build (neighbours:1.00)
 0046e830	WMrMenu_Locate	WM	med	name from the Intel Mac build (neighbours:1.00)
 0046ea40	WMrMenu_Create	WM	med	name from the Intel Mac build (neighbours:1.00)
+0046ea80	WMrMenu_GetItemFlags	WM	low	the flags of the item of that id
+0046eb30	WMrMenu_GetItemID	WM	low	the id of the item at that index
 0046eb90	WMrMenu_GetItemText	WM	med	name from the Intel Mac build (neighbours:1.00)
 0046ecd0	WMiMenu_Callback	WM	low	class 10's procedure (registered by 0x46ec40); the Mac build's neighbour name WMiMenu_Create was off
 0046f060	WMiMenu_GetItemUnderPoint	WM	med	name from the Intel Mac build (neighbours:0.75)
 0046f1d0	WMiMenu_Layout	WM	med	name from the Intel Mac build (neighbours:1.00)
+0046f330	WMiMenu_Paint	WM	low	the columns' backgrounds, the lit item, separators, checks, titles
 0046f660	WMrMenu_InsertItem	WM	med	name from the Intel Mac build (neighbours:1.00)
+0046f8d0	WMrMenu_RemoveAllItems	WM	low	the items cleared, the layout dirty
 004700b0	WMiMenuBar_Paint	WM	med	name from the Intel Mac build (neighbours:0.78)
 00470260	WMiPicture_Paint	WM	med	name from the Intel Mac build (neighbours:0.75)
+004704d0	WMrPopupMenu_AppendItem	WM	low	an enabled item of the id given
+004705c0	WMiPopupMenu_Callback	WM	low	class 12: its menu opened by a press, a quick release keeps it open
 00470a90	WMiPopupMenu_SetMenuPosition	WM	med	name from the Intel Mac build (neighbours:1.00)
 00470ae0	WMiPopupMenu_Update	WM	med	name from the Intel Mac build (neighbours:0.75)
+00470bd0	WMiPopupMenu_HandleMenuSelection	WM	low	0x19 from its menu: closed, selected, passed to the parent
 00470c30	WMiPopupMenu_HandleFontInfoChanged	WM	med	name from the Intel Mac build (neighbours:0.75)
+00470c70	WMrPopupMenu_Reset	WM	low	the menu's items removed
+00470d00	WMrPopupMenu_SetSelection	WM	low	the item selected and the parent told (0x19)
 00470e10	WMiProgressBar_Paint	WM	med	name from the Intel Mac build (neighbours:0.83)
 00471b10	WMiScrollbar_Create	WM	med	name from the Intel Mac build (neighbours:1.00)
+004723a0	WMrSlider_GetPosition	WM	low	the long's +8
+004723b0	WMrSlider_SetPosition	WM	low	clamped to the range, the thumb placed
 004724c0	WMiSlider_GetPartRect	WM	low	the slider's track (1), sides (2, 3) and thumb (4); the Mac build's neighbour name was off
+00472650	WMrSlider_SetRange	WM	low	min, max, the value the min
+004727f0	WMiSlider_Callback	WM	low	class 17: track, thumb, its timer (1, 10 ticks)
+00472c40	WMiSlider_GetTrackRect	WM	low	the track less its end parts
+00472cc0	WMiSlider_PlaceThumb	WM	low	the thumb's x from the value, its y the track's middle
+00472db0	WMiSlider_HandleMouse	WM	low	drag the thumb, a press beside it steps a tenth
 004731f0	WMiText_Callback	WM	low	class 20: owner drawn (0x36 to the parent) or its title
 00473350	WMrWindow_DefaultCallback	WM	low	the messages a class leaves: hit test, frame paint, frame mouse, client rect
 004738e0	WMiSlider_GetTrackBounds	WM	med	name from the Intel Mac build (neighbours:1.00)
@@ -452,7 +481,9 @@
 00474dc0	WMrWindow_GetLong	WM	med	name from the Intel Mac build (neighbours:0.75)
 00474e60	WMrWindow_GetScreenRect	WM	low	the window on the desktop: the parents' places and client origins added
 00474f40	WMrWindow_GetStyle	WM	med	name from the Intel Mac build (neighbours:1.00)
+00475060	WMrWindow_GlobalToLocal	WM	low	a desktop point in the window's pixels
 00475160	WMrWindow_New	WM	med	name from the Intel Mac build (neighbours:1.00)
+00475580	WMrWindow_SetEnabled	WM	low	flag 2 cleared or set
 004755c0	WMrWindow_SetFocus	WM	low	the keys' window (0x2a to the old, 0x29 to the new)
 00475630	WMrWindow_SetFont	WM	low	the window's font info (16 bytes at +0x148), then 0x35
 004756d0	WMrWindow_SetLocation	WM	med	name from the Intel Mac build (neighbours:0.75)
@@ -463,6 +494,7 @@
 00475a70	WMrWindowClass_Register	WM	low	a class number, its procedure and data size into the table at 0x5ea1b0
 00475ad0	WMrInitialize	WM	low	the desktop class and window (the display's size), the cursor
 00475b70	WMrTimer_Start	WM	med	name from the Intel Mac build (neighbours:1.00)
+00475c40	WMrTimer_Stop	WM	low	the window's timer of that id removed
 00475ca0	WMrMessage_Dispatch	WM	low	a queued message to its window; a press activates the window
 00475f50	WMiWindow_FindUnderPoint	WM	low	the deepest window with the flags under the point
 00476010	WMrMessage_Get	WM	low	the next of the 32 queued messages
@@ -569,10 +601,14 @@
 0048ad50	AI2rEnterState	AI2	med	name from the Intel Mac build (strings:1)
 0048ae80	AI2rExitState	AI2	med	name from the Intel Mac build (strings:1)
 0048af80	AI2rReturnToJob	AI2	low	leaves the state for the job, or idle below the job alert C+0xf9c (name made up)
+0048b0d0	AI2rAllPassive	AI2	med	read: every AI character's passive bit (+0x1f0 bit 2); the Mac build's name
 0048b160	AI2rPassive	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0048b1d0	AI2rCharacter_IsHostile	AI2	low	whether a takes b for an enemy (teams, then past hits)
 0048b2c0	AI2rTeam_FriendOrFoe	AI2	med	name from the Intel Mac build (neighbours:1.00)
+0048b370	AI2rNotifyDeath	AI2	low	a character died: its killer's taunt readied, its conversation ended (name made up)
+0048b3e0	AI2rDeleteCharacter	AI2	low	a character goes: its conversation partner forgotten, its state left, its knowledge gone (name made up)
 0048b480	AI2rNotifyDamage	AI2	low	TakeDamage for AI characters: the damage owner to AI2rKnowledge_HurtBy
+0048b530	AI2rNotifyKnockdown	AI2	low	from ONrCharacter_Knockdown, not lying: the daze rearmed (C+0x101c), the film stopped, the alarm (name made up)
 0048b670	AI2rTryToPathfindThrough	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0048b6d0	AI2rStopMeleeTechnique	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0048b700	AI2rNotifyAttackLanded	AI2	med	name from the Intel Mac build (neighbours:1.00)
@@ -603,15 +639,20 @@
 0048f290	AI2rCombat_Enter	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0048f3e0	AI2rCombat_Update	AI2	med	name from the Intel Mac build (strings:1)
 004901f0	AI2rCombat_GetRange	AI2	med	name from the Intel Mac build (neighbours:1.00)
+00490290	AI2iCombat_ChangeBehavior	AI2	low	the range's behaviour: the old one's exit message, the new one's enter
 00490510	AI2rCombat_NotifyKnowledge	AI2	low	the combat state's knowledge handler
 004908e0	AI2rCombat_SetNewTarget	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004909a0	AI2iCombat_LostTarget	AI2	low	the combat state loses its target: the waits start (name made up)
+00490a50	AI2iCombat_Fire	AI2	low	the trigger (A+0x21e0, 0x21e1) held or released; behaviour message 8
+00490c50	AI2iCombat_LineClear	AI2	low	a line of fire clear of the environment (0x242000), the objects and the non-enemies
 00490f20	AI2iBehavior_Stare	AI2	med	name from the Intel Mac build (the behaviour table 0x52a6c4, in the Mac's order)
 00490f90	AI2iBehavior_HoldAndFire	AI2	med	name from the Intel Mac build (the behaviour table 0x52a6c4, in the Mac's order)
+00491060	AI2iBehavior_NoGun	AI2	low	a gun behaviour without a usable gun: by C+0x104c and C+0x1050
 004911e0	AI2iBehavior_FiringCharge	AI2	med	name from the Intel Mac build (the behaviour table 0x52a6c4, in the Mac's order)
 004912d0	AI2iBehavior_Melee	AI2	med	name from the Intel Mac build (the behaviour table 0x52a6c4, in the Mac's order)
 00491350	AI2iBehavior_RunForAlarm	AI2	med	name from the Intel Mac build (the behaviour table 0x52a6c4, in the Mac's order)
 00491470	AI2iBehavior_BarabbasShoot	AI2	med	name from the Intel Mac build (the behaviour table 0x52a6c4, in the Mac's order)
+00491540	AI2iBehavior_Barabbas	AI2	med	name from the Intel Mac build (neighbours:1.00)
 00491b10	AI2iBehavior_BarabbasAdvance	AI2	med	name from the Intel Mac build (the behaviour table 0x52a6c4, in the Mac's order)
 00491be0	AI2iBehavior_BarabbasMelee	AI2	med	name from the Intel Mac build (the behaviour table 0x52a6c4, in the Mac's order)
 00491c50	AI2iBehavior_SuperNinjaFireball	AI2	med	name from the Intel Mac build (the behaviour table 0x52a6c4, in the Mac's order)
@@ -619,7 +660,6 @@
 00492a20	AI2iBehavior_SuperNinjaAdvance	AI2	med	name from the Intel Mac build (the behaviour table 0x52a6c4, in the Mac's order)
 00492a70	AI2iBehavior_SuperNinjaMelee	AI2	med	name from the Intel Mac build (the behaviour table 0x52a6c4, in the Mac's order)
 00492ac0	AI2iBehavior_MutantMuroZeus	AI2	med	name from the Intel Mac build (the behaviour table 0x52a6c4, in the Mac's order)
-00491540	AI2iBehavior_Barabbas	AI2	med	name from the Intel Mac build (neighbours:1.00)
 00492d50	AI2iBehavior_MutantMuro	AI2	med	name from the Intel Mac build (neighbours:1.00)
 00492f90	AI2iBehavior_MutantMuroMelee	AI2	med	name from the Intel Mac build (neighbours:1.00)
 00493120	AI2rBehavior_Default	AI2	med	name from the Intel Mac build (strings:2)
@@ -639,6 +679,9 @@
 00498d00	AI2rExecutor_HasAttackOverride	AI2	med	name from the Intel Mac build (neighbours:1.00)
 00498d30	AI2rExecutor_HasThrowOverride	AI2	med	name from the Intel Mac build (neighbours:1.00)
 00498d50	AI2rExecutor_TryingToThrow	AI2	med	name from the Intel Mac build (neighbours:1.00)
+00498da0	AI2rExecutor_StopAiming	AI2	low	the aim asked to stop (A+0x1a89)
+00498dc0	AI2rExecutor_AimAtPoint	AI2	low	the executor's aim at a point (A+0x1a88..0x1a94)
+00498e10	AI2rExecutor_AimDirection	AI2	low	the executor's aim along a direction
 00498e80	AI2rExecutor_SetAimingSpeed	AI2	med	name from the Intel Mac build (neighbours:1.00)
 00498ea0	AI2rExecutor_SetCurrentState	AI2	med	name from the Intel Mac build (neighbours:1.00)
 00498f50	AI2rExecutor_UpdateAim	AI2	med	name from the Intel Mac build (neighbours:1.00)
@@ -675,9 +718,12 @@
 0049d560	AI2rTryLocalMovement	AI2	med	name from the Intel Mac build (neighbours:0.80)
 0049d700	AI2rDoLocalMovement	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0049db70	AI2iManeuver_Initialize	AI2	low	from AI2rCombat_Enter: no maneuver, the gun search and the guns out of reach forgotten (name made up)
+0049dbc0	AI2iManeuver_ClearWeights	AI2	low	the seven maneuvers' weights zeroed
+0049dbf0	AI2iManeuver_Select	AI2	low	the heaviest maneuver that can be done (hold, advance, retreat, gun, alarm, melee, getup)
 0049df80	AI2iManeuver_CheckAdvance	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0049e390	AI2iManeuver_CheckGun	AI2	med	name from the Intel Mac build (strings:4)
 0049e810	AI2iManeuver_TryPathToGun	AI2	med	name from the Intel Mac build (neighbours:1.00)
+0049e910	AI2iManeuver_CheckMelee	AI2	low	melee within 80 of the target, else an advance to 15..20
 0049ea60	AI2rManeuver_CheckBlockage	AI2	med	name from the Intel Mac build (neighbours:0.82)
 0049eb80	AI2rManeuver_CheckInterveningCharacters	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0049ec30	AI2rManeuver_TrySphereTreeCollision	AI2	med	name from the Intel Mac build (neighbours:1.00)
@@ -736,14 +782,22 @@
 004ac220	AI2rMovementStub_Update	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004ac4d0	AI2iMovementStub_SetupPath	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004ac640	AI2rMovementStub_Report	AI2	med	name from the Intel Mac build (strings:2)
+004ac870	AI2rNeutral_ChangeBehavior	AI2	low	the character's Neutral by id (C+0x100c), its ranges copied (name made up)
 004ac950	AI2rNeutral_CheckTrigger	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004acbc0	AI2iNeutral_CheckEnemies	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004acc90	AI2rNeutral_CheckActionAcceptance	AI2	low	the player near and facing a neutral already calling it (name made up)
 004acdb0	AI2rNeutral_Enter	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004acf20	AI2rNeutral_Exit	AI2	low	the neutral state left: the conversation stopped, aborted unless every line was said (name made up)
 004acf70	AI2rNeutral_Stop	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004ad090	AI2iNeutral_ResetCharacterState	AI2	low	a side of a conversation's end: flags off, the abort or enemy line, back to the job (name made up)
+004ad1f0	AI2rNeutral_Update	AI2	low	the neutral state's tick: calling, following, the lines and the give (name made up)
 004adb00	AI2iNeutral_ConversationAnimation	AI2	med	name from the Intel Mac build (strings:1)
 004adbe0	AI2rPanic_Enter	AI2	med	name from the Intel Mac build (neighbours:0.88)
+004adc50	AI2rPanic_Exit	AI2	low	the panic state left: the movement mode, the flags and the variant undone (name made up)
+004adc80	AI2rPanic_Update	AI2	low	the panic state's tick: cower, the daze, getting up (name made up)
 004adeb0	AI2rNonCombatant_NotifyKnowledge	AI2	low	the non-combatants' knowledge handler (C+0x1f0 bit 4)
 004ae070	AI2rCharacter_IsDangerousContact	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004ae170	AI2rCharacter_HasDangerousContact	AI2	low	one of the character's contacts is dangerous (0x4ae070) near it (name made up)
 004ae1e0	AI2rCharacter_Panic	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004ae480	AI2rPath_GoToPoint	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004ae660	AI2rPath_Halt	AI2	med	name from the Intel Mac build (neighbours:1.00)
@@ -807,7 +861,10 @@
 004b6b50	AI2iScript_Playback_Internal	AI2	med	name from the Intel Mac build (strings:4)
 004b6da0	AI2iScript_Playback_Debug	AI2	med	name from the Intel Mac build (strings:1)
 004b6e10	AI2iScript_Animate_Internal	AI2	med	name from the Intel Mac build (strings:2)
+004b6ff0	AI2iScript_EnvAnimate	AI2	low	chr_envanim: the internal without the block
 004b7010	AI2iScript_EnvAnimate_Internal	AI2	med	name from the Intel Mac build (strings:2)
+004b7220	AI2iScript_EnvAnimateBlock	AI2	low	chr_envanim_block: waits while an earlier one plays
+004b7240	AI2iScript_EnvAnimateStop	AI2	low	chr_envanim_stop: the physics context's animation cleared
 004b7320	AI2iScript_WaitForAnimation	AI2	med	name from the Intel Mac build (strings:1)
 004b7400	AI2iScript_WaitForAnimType	AI2	med	name from the Intel Mac build (strings:3)
 004b75c0	AI2iScript_WaitForAnimState	AI2	med	name from the Intel Mac build (strings:3)
@@ -859,11 +916,14 @@
 004ba450	AI2iScript_TriggerVolume_DeleteCorpses	AI2	med	name from the Intel Mac build (strings:1)
 004ba480	AI2iScript_Poison	AI2	med	name from the Intel Mac build (strings:1)
 004ba520	AI2iScript_Pain	AI2	med	name from the Intel Mac build (strings:1)
+004ba6d0	AI2rTargeting_Initialize	AI2	low	the targeting's owner, class block and callbacks (0x53ebf8)
 004ba720	AI2rTargeting_Update	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004ba830	AI2iTargeting_FireDecision	AI2	low	the aim against the barrel within the tolerance, the delays, point blank
 004babb0	AI2rTargeting_SetupNewTarget	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004bacc0	AI2iTargeting_UpdatePrediction	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004bb240	ONrCreateTargetingVector	ON	med	name from the Intel Mac build (neighbours:1.00)
 004bb370	AI2iTargeting_UpdateTargeting	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004bb700	AI2rTargeting_SetWeapon	AI2	low	the weapon's AI firing mode and the class's shooting skill for it
 004bb790	AIrScript_LevelBegin_Triggers	AI	med	name from the Intel Mac build (strings:1)
 004bb880	AI2rFindCharacter_ByScriptID	AI2	low	the living list by C+0x40, then (with the flag) every used slot
 004bc320	AIiObjectsFromScript	AI	med	name from the Intel Mac build (strings:2)
@@ -871,10 +931,16 @@
 004bc780	AIiScript_EnvSetAnim_Internal	AI	med	name from the Intel Mac build (strings:2)
 004bc920	AIiScript_EnvAnim_Internal	AI	med	name from the Intel Mac build (neighbours:1.00)
 004bca90	AIiScript_BeginCutScene	AI	med	name from the Intel Mac build (neighbours:1.00)
+004bcbb0	AIiScript_EndCutScene	AI	med	end_cutscene; the Mac build's name
 004bcbc0	AIiScript_CutsceneSyncMark	AI	med	name from the Intel Mac build (strings:1)
 004bcdc0	AIiScript_EnvTexSwap	AI	med	name from the Intel Mac build (strings:2)
 004bcf60	AIiScript_EnvBroken	AI	med	name from the Intel Mac build (strings:1)
+004bd1f0	SLiCmd_Win	SL	low	win: the level end at G+0x1679bc set to 1
+004bd210	SLiCmd_Lose	SL	low	lose: the level end set to 2
+004bd270	SLiCmd_TimerStart	SL	low	timer_start: seconds as ticks, clamped to an hour
+004bd2d0	SLiCmd_TimerStop	SL	low	timer_stop
 004bd2e0	AIiScript_SaveGame	AI	med	name from the Intel Mac build (strings:1)
+004bd360	AIiScript_RestoreGame	AI	low	restore_game: ONrGameState_UseContinue
 004bd3b0	AIiScript_Message	AI	med	name from the Intel Mac build (strings:1)
 004bd460	AIiScript_SplashScreen	AI	med	name from the Intel Mac build (strings:2)
 004bd4e0	AIiScript_LockKeys	AI	med	name from the Intel Mac build (neighbours:1.00)
@@ -952,6 +1018,11 @@
 004ca900	OSiScriptAmbient_Start	OS	med	name from the Intel Mac build (neighbours:1.00)
 004cada0	OBJrSound_PointIn	OBJ	med	name from the Intel Mac build (neighbours:1.00)
 004cae40	OBJrTrigger_Reset	OBJ	med	name from the Intel Mac build (neighbours:1.00)
+004cafc0	OBJiTrigger_Step	OBJ	low	each emitter a step along the animation, then its matrix
+004cb100	OBJiTrigger_Update	OBJ	low	the mechanics update: the active sound, the step, the on and off countdown
+004cb230	OBJiTrigger_Activate_Callback	OBJ	low	trig_activate's: flag 4, the countdown restarted
+004cb2b0	OBJiTrigger_Deactivate_Callback	OBJ	low	trig_deactivate's
+004cb3f0	OBJiTrigger_Speed_Callback	OBJ	low	trig_speed's: the speed now the factor times the object's
 004cb420	OBJrTrigger_Initialize	OBJ	med	name from the Intel Mac build (strings:2)
 004cb6f0	OBJrTrigger_OnTrigger	OBJ	med	name from the Intel Mac build (strings:1)
 004cbf30	OBJiTrigger_Read	OBJ	med	name from the Intel Mac build (neighbours:0.75)
@@ -982,7 +1053,9 @@
 004d24e0	OBDrLevel_Load	OBD	med	name from the Intel Mac build (neighbours:1.00)
 004d25c0	ONiOutGameUI_Options_Callback	ON	low	the options dialog (152)
 004d2aa0	ONiOutGameUI_Choice_Callback	ON	low	the yes or no dialogs: a button ends them with its id
+004d2ad0	ONiOutGameUI_Options_SetValues	ON	low	the options' items from the persisted settings
 004d2ba0	ONiOutGameUI_LoadGame_Callback	ON	low	the load game dialog (151): the levels reached
+004d2ba0	ONiOutGameUI_LoadGame_Callback	ON	low	(again) Load: the selected line's data to OWrGame_Start
 004d2c70	ONrOutGameUI_MainMenu_Display	ON	med	name from the Intel Mac build (neighbours:1.00)
 004d2cd0	ONiOutGameUI_MainMenu_Callback	ON	low	the main menu (150): New Game, Load Game, Options, Resume, Quit
 004d3100	ONiOGU_MainMenu_FadeMusic	ON	med	name from the Intel Mac build (neighbours:0.80)
@@ -1037,8 +1110,10 @@
 004e34f0	ONrCharacter_GetPelvisPosition	ON	med	A+0x229c, else the location with y + C+0x18c
 004e3590	ONrCharacter_GetFeetPosition	ON	low	the pelvis x, z; y the body bottom C+0x190 + 1
 004e36b0	ONrAnimType_ThrowIsFromFront	ON	med	name from the Intel Mac build (neighbours:1.00)
+004e37b0	ONrCharacter_IsKnockedDown	ON	low	the knockdown, getup, victim and stun animation types
 004e38b0	ONiCharacter_InBlockState	ON	low	from standing/crouching/0x2f in a standing, turning, crouching or block type, or backing
 004e3f30	ONrCharacter_IsPickingUp	ON	med	name from the Intel Mac build (neighbours:1.00)
+004e3ff0	ONrCharacter_InSpecialAnimation	ON	low	an animation of the types 0xc0..0xc3 (now or queued)
 004e4070	ONrCharacter_IsFallen	ON	low	the active record's state 0x12 or 0x32 (name made up)
 004e4400	ONrCharacter_DoAnimation	ON	med	name from the Intel Mac build (neighbours:0.80)
 004e4ab0	ONrCharacter_LetGoWeapon	ON	low	the hand's weapon dropped (ONrCharacter_DropWeapon) and the varient made again (name made up)
@@ -1065,6 +1140,7 @@
 004eaa10	AttemptThrow	-	med	name from the Intel Mac build (neighbours:0.80)
 004eafc0	ONrCharacter_GetVelocityEstimate	ON	med	Mac match (caller): the mean root motion of up to four frames
 004eb1a0	ONrCharacter_UpdateAnimationForVarient	ON	med	name from the Intel Mac build (neighbours:1.00)
+004eb220	ONrCharacter_SetHitPoints	ON	med	read: C+0x38 set, 0 kills, a dead character revived; the Mac build's name
 004eb340	ONrCharacter_SetAnimation_External	ON	med	what chr_animate calls (from state, tram, interpolation); the Mac match of 0x4e41e0 by callee looks wrong
 004eb550	ONrCharacter_Die_1_Animating_Hook	ON	med	name from the Intel Mac build (strings:2)
 004eb970	ONiCharacter_RunDeathAnimation	ON	med	Mac name: knockdown 0x4f unless lying in a reaction
@@ -1073,12 +1149,18 @@
 004ec040	FindGroundCollision	-	med	name from the Intel Mac build (strings:6)
 004eca00	ONiCharacter_GroundCallback	ON	low	the physics' ground callback: FindGroundCollision, ticks without ground (A+0xe0), fall at 12
 004ecb20	ONiCharacter_Callback_PostCollision	ON	low	a hit's move down cleared
+004ecdf0	ONrAnimState_IsFallen	ON	low	the lying states 0x12 and 0x32 (name made up)
 004ece10	ONrAnimState_IsCrouch	ON	med	name from the Intel Mac build (neighbours:1.00)
+004ecf30	ONrCharacter_SetPanicVarient	ON	low	the variant 0x8000 on or off (name made up)
+004ed080	ONiCharacter_SetPhysicsFlags	ON	low	the context's flags: 0x44 while animated, 0x8000 without a weapon, 0x10 by C+4 bit 2
 004ed280	ONrCharacter_IsStandingStill	ON	low	state 7 in a standing type (6, 7, 8, 0xce, 0xcf, 0xd8) (name made up)
 004ed420	DoFilmUpdate	-	med	name from the Intel Mac build (strings:5)
 004ed770	ONrCharacter_PickupWeapon	ON	med	name from the Intel Mac build (neighbours:1.00)
 004eda40	ONrCharacter_HandlePickupInput	ON	med	name from the Intel Mac build (neighbours:1.00)
+004edbd0	ONrCharacter_HasWeapon	ON	low	one in the hand or stowed
 004edc90	ONrCharacter_HasAmmoForReload	ON	med	name from the Intel Mac build (neighbours:1.00)
+004edd20	ONrCharacter_Holster	ON	med	read: the weapon overlay (lookup 7) into slot 1; the Mac build's name
+004edeb0	ONrCharacter_Draw	ON	low	a stowed weapon drawn by Draw_Pistol/Rifle (0xa1, 0xa2)
 004ee020	ONrCharacterClass_MovementSpeed	ON	med	name from the Intel Mac build (neighbours:1.00)
 004ee1b0	ONrCharacter_ConsoleAction_Begin	ON	high	read: C+0x1680 the marker, C+0x1684 0 (name made up)
 004ee220	ONrCharacter_ConsoleAction_Update	ON	med	name from the Intel Mac build (strings:2)
@@ -1089,6 +1171,8 @@
 004ef530	ONrCharacter_Invis_Update	ON	med	name from the Intel Mac build (neighbours:1.00)
 004ef710	ONrCharacter_Shield_Update	ON	med	name from the Intel Mac build (neighbours:1.00)
 004efad0	ONrCharacter_AutoAim	ON	med	name from the Intel Mac build (neighbours:1.00)
+004eff60	ONrCharacter_ForceHolster	ON	low	the hand's weapon holstered, forced (begin_cutscene, chr_forceholster)
+004effa0	ONrCharacter_ForceDraw	ON	low	the stowed weapon drawn into the empty hand (end_cutscene, chr_forceholster)
 004f0150	ONrCharacter_IsGunThroughWall	ON	med	name from the Intel Mac build (neighbours:1.00)
 004f0370	ONrStringToAnimType	ON	med	Mac name; sorts the type table at 0x54d7c0 once, searches it without case
 004f0450	ONrAnimState_FromString	ON	low	an animation state by its name in the table at 0x54df10 (name made up)
@@ -1137,6 +1221,7 @@
 004f8ef0	HandleStartRunning	-	med	name from the Intel Mac build (strings:1)
 004f9a70	HandleFallThrough	-	med	name from the Intel Mac build (strings:1)
 004fa2f0	HandleStartJumping	-	high	Mac name (its layout match ONrInput_Update_Keys is wrong): the jump table, then 0x4fa1c0
+004fa520	ONiCharacter_PlayerKeyFilter	ON	low	the player's keys: a conversation's mask and end, fire to punch or kick without a weapon (name made up)
 004faec0	ONiGameState_PlayerEscape	ON	low	the player's input bit 1 (escape): the main menu over the level, at most once in 15 ticks
 004fafb0	iComputeDeltaTicks	-	med	name from the Intel Mac build (strings:2)
 004fb2e0	ONrBlanketScreen	ON	med	name from the Intel Mac build (neighbours:0.80)
@@ -1153,10 +1238,19 @@
 004fcaf0	ONrGameState_LivingCharacterList_Remove	ON	med	name from the Intel Mac build (neighbours:1.00)
 004fcd00	ONrGameState_MotionBlur_Display_One	ON	med	name from the Intel Mac build (neighbours:0.86)
 004fceb0	ONrGameState_LetterBox_Display	ON	med	name from the Intel Mac build (neighbours:0.86)
+004fd070	ONrGameState_BeginCutscene	ON	med	read: begin_cutscene's flags (letterbox, input, AI passive, jello); the Mac build's name
+004fd1a0	ONrGameState_EndCutscene	ON	med	read: undoes BeginCutscene; the Mac build's name
+004fd250	ONrGameState_Cutscene_Sync_Mark	ON	low	called by cutscene_sync; the Mac build's name
 004fd270	ONrGameState_Timer_LevelBegin	ON	med	name from the Intel Mac build (strings:1)
+004fd370	ONrGameState_Timer_Start	ON	low	the timer on with its function and ticks
+004fd3a0	ONrGameState_Timer_Stop	ON	low	the timer off (a sound if it ran)
+004fd3d0	ONrGameState_Timer_Update	ON	low	the timer's tick: at 0 the function runs, then 300 ticks of 0:00.0
 004fd500	ONrGameState_Timer_Display	ON	med	name from the Intel Mac build (strings:1)
 004fd690	ONrGameState_MakeContinue	ON	med	name from the Intel Mac build (strings:2)
 004fd8b0	ONrGameState_UseContinue	ON	med	name from the Intel Mac build (strings:2)
+004fda80	ONrGameState_ClearContinue	ON	low	the continue cleared, no save point (a won level)
+004fdaa0	ONrGameState_SetContinue	ON	low	the continue copied in with its save point
+004fdaa0	ONrGameState_SetContinue	ON	low	(again) a persisted continue made the game's, with its save point
 004fdac0	ONrGameState_EventSound_Play	ON	med	name from the Intel Mac build (neighbours:0.80)
 004fdcf0	ONiImpactEffect_MakeDirty	ON	med	name from the Intel Mac build (neighbours:1.00)
 004fe150	ONiImpactEffect_DeallocateEntry	ON	med	name from the Intel Mac build (strings:1)
@@ -1174,12 +1268,17 @@
 00501330	ONiInGameUI_DisplayLSIIcon	ON	med	name from the Intel Mac build (neighbours:1.00)
 00501440	ONiInGameUI_DisplayHelp	ON	med	name from the Intel Mac build (neighbours:1.00)
 005018c0	ONrPauseScreen_Display	ON	med	name from the Intel Mac build (strings:2)
+00501990	ONiPauseScreen_Proc	ON	low	the pause screen dialog (70): pages, prev/next, the radio buttons (name made up)
+00502100	ONiPauseScreen_LoadItems	ON	low	the IPge of the types had, at most 10 (name made up)
+00502250	ONiPauseScreen_LoadWeapons	ON	low	the WPge of the classes had, at most 15 (name made up)
+005023c0	ONiPauseScreen_LoadHelp	ON	low	the HPge pages (name made up)
 005024c0	ONiIGUI_Page_PaintOverlay	ON	med	name from the Intel Mac build (neighbours:1.00)
 005028d0	ONiIGUI_State_Push	ON	low	a text state over the top one, with an IGSt's or IGPG's set fields
 005029a0	ONiIGUI_Page_Paint	ON	med	name from the Intel Mac build (neighbours:1.00)
 00502bf0	ONiPS_Paint_Objective	ON	med	name from the Intel Mac build (neighbours:1.00)
 00502ef0	ONiPauseScreen_Paint	ON	med	name from the Intel Mac build (neighbours:1.00)
 00503040	ONrInGameUI_Initialize	ON	med	name from the Intel Mac build (strings:3)
+005039f0	ONiInGameUI_DiaryLoad	ON	low	the DPge up to the unlocked page, sorted by level and page (name made up)
 00503c90	ONiInGameUI_ObjectiveSet	ON	med	name from the Intel Mac build (strings:3)
 00503d80	ONiInGameUI_TargetSet	ON	med	name from the Intel Mac build (strings:1)
 00503eb0	ONiInGameUI_LevelLoad	ON	med	name from the Intel Mac build (strings:3)
@@ -1247,13 +1346,23 @@
 0050ed90	PHrNotifyDoorStateChange	PH	med	name from the Intel Mac build (neighbours:1.00)
 0050edb0	PHrPathDistance	PH	med	name from the Intel Mac build (neighbours:0.80)
 0050ee80	ONrPersistance_Initialize	ON	med	name from the Intel Mac build (neighbours:1.00)
+0050efd0	ONrPersist_SetLevelReached	ON	low	the bit set and the block saved (name made up)
+0050f030	ONrPersist_LevelReached	ON	low	level 1 always, the bit of persist +0x08 (name made up)
 0050f060	ONrWeKilledGriffen	ON	med	name from the Intel Mac build (strings:2)
 0050f0d0	ONrPersist_GetGraphicsQuality	ON	med	name from the Intel Mac build (neighbours:0.80)
+0050f0e0	ONrPersist_SetGraphicsQuality	ON	low	+0x3c, then the draw engine's (0x508ef0)
 0050f120	ONrPersist_GetOverallVolume	ON	med	name from the Intel Mac build (neighbours:1.00)
+0050f130	ONrPersist_SetOverallVolume	ON	low	+0x40, then SS2rVolume_Set
+0050f180	ONrPersist_IsInvertMouseOn	ON	low	+0x44 bit 1
+0050f190	ONrPersist_AreSubtitlesOn	ON	low	+0x44 bit 0
+0050f1a0	ONrPersist_SetInvertMouse	ON	low	+0x44 bit 1
+0050f1f0	ONrPersist_SetSubtitles	ON	low	+0x44 bit 0
 0050f240	ONrPersist_GetDifficulty	ON	med	name from the Intel Mac build (by its callers): 0x5ed388 clamped to 0..2
 0050f260	ONrPersist_SetDifficulty	ON	med	name from the Intel Mac build (by its callers): clamped to 0..2, then saved
 0050f320	ONrPersist_GetContinue	ON	med	name from the Intel Mac build (neighbours:1.00)
 0050f360	ONrPersist_SetContinue	ON	med	name from the Intel Mac build (strings:1)
+0050f3e0	ONrPersist_SetGamma	ON	low	+0x54 if 0..1, then the display's (0x407a60)
+0050f450	ONrPersist_GetGamma	ON	low	+0x54 clamped to 0..1
 0050f4a0	ONrPersist_SetPlace	ON	med	name from the Intel Mac build (neighbours:1.00)
 0050f7a0	ONiPlatform_WindowProc	ON	low	the Windows window procedure: mouse and keys into the LI's queue
 0050fba0	ONrScript_Initialize	ON	med	name from the Intel Mac build (strings:3)
@@ -1263,8 +1372,12 @@
 00511320	ONrSky_DrawLensFlare	ON	med	name from the Intel Mac build (neighbours:0.80)
 00511670	OSrAmbient_GetByName	OS	med	name from the Intel Mac build (neighbours:1.00)
 005116b0	OSrAmbient_Halt	OS	med	name from the Intel Mac build (neighbours:1.00)
+00511730	OSrAmbient_Start	OS	low	an ambient at a place, the OS layer's table of 0x400 (name made up)
 00511a00	OSiCalc_PositionAndVolume	OS	med	name from the Intel Mac build (neighbours:0.75)
+00511e40	OSrAmbient_Stop	OS	low	the ambient of the id stopped (name made up)
+00511ec0	OSrAmbient_Update	OS	low	whether the ambient of the id still plays, its place moved (name made up)
 00511f00	OSiAmbient_Update	OS	med	name from the Intel Mac build (neighbours:1.00)
+005125c0	OSiDialog_Play	OS	low	a dialogue line started, its subtitle shown when on
 00512700	OSrMusic_Halt	OS	med	name from the Intel Mac build (neighbours:1.00)
 00512730	OSrMusic_SetVolume	OS	med	name from the Intel Mac build (neighbours:1.00)
 00512a10	OSrSA_ListBrokenSounds	OS	med	name from the Intel Mac build (strings:1)
@@ -1280,6 +1393,7 @@
 00515c90	OSrVariantList_Initialize	OS	med	name from the Intel Mac build (strings:1)
 00516670	OSiVariant_Impulse_Get	OS	med	name from the Intel Mac build (strings:1)
 00516940	ONrSpeech_Say	ON	med	name from the Intel Mac build (neighbours:1.00)
+00516a50	ONrSpeech_IsSpeaking	ON	low	C+0x15f0 (name made up)
 00516a60	ONrSpeech_Update	ON	med	name from the Intel Mac build (strings:1)
 00517790	ONrTextureMaterials_LevelLoad	ON	med	name from the Intel Mac build (neighbours:1.00)
 005177e0	ONrTextureMaterials_PreProcess	ON	med	name from the Intel Mac build (neighbours:1.00)
@@ -1287,6 +1401,7 @@
 005181e0	WPrReloadDone	WP	low	the reload overlay's action: full ammo, the reload wait
 005182c0	WPiNewParticles	WP	med	name from the Intel Mac build (strings:1)
 00518650	WPrGetPickupPosition	WP	med	name from the Intel Mac build (re/mac-matches.tsv)
+00518690	WPrNew	WP	low	a new weapon of a class (a free slot, else the oldest unowned)
 005189c0	WPiGenerateFallImpact	WP	med	name from the Intel Mac build (neighbours:1.00)
 00518c00	WPiInit	WP	med	name from the Intel Mac build (re/mac-matches.tsv); a new weapon of a class at a place (weapon_spawn's)
 00518e10	WPiWeapon_CreatePhysics	WP	med	name from the Intel Mac build (neighbours:1.00)
@@ -1295,6 +1410,7 @@
 00519680	WPiCreateParticles	WP	med	name from the Intel Mac build (neighbours:1.00)
 00519710	WPrDisplay	WP	med	name from the Intel Mac build (neighbours:1.00)
 00519a90	WPrSetAmmo	WP	med	name from the Intel Mac build (re/mac-matches.tsv)
+00519b30	WPrSetAmmoPercentage	WP	low	the ammo at a percentage of the class's shots; the background events
 00519c50	WPiPulseShooter	WP	med	name from the Intel Mac build (re/mac-matches.tsv); a shot: ammo, delays, the recoil overlay
 00519f70	WPiDoEvent	WP	med	name from the Intel Mac build (strings:1)
 0051a1b0	WPrDepressTrigger	WP	med	name from the Intel Mac build (neighbours:1.00)
@@ -1312,12 +1428,15 @@
 0051b290	WPrLocateNearbyWeapons	WP	med	name from the Intel Mac build (neighbours:1.00)
 0051b3b0	WPrNextNearbyWeapon	WP	low	the next of WPrLocateNearbyWeapons' list, nearest first (name made up)
 0051b590	ONrCharacter_DropWeapon	ON	med	name from the Intel Mac build (re/mac-matches.tsv)
+0051b5f0	WPrSlot_DeleteAll	WP	low	the three slots' weapons deleted (the character's deletion)
 0051b690	WPrNotThroughWall	WP	med	name from the Intel Mac build (neighbours:1.00)
 0051bad0	WPrInventory_Update	WP	med	name from the Intel Mac build (neighbours:1.00)
+0051bc20	WPrSlot_FindEmpty	WP	low	an empty slot: slot 1 first if asked, else the last but 1
 0051bc70	WPrSlot_FindLastStowed	WP	med	name from the Intel Mac build (re/mac-matches.tsv)
 0051bd00	WPrSlot_Swap	WP	med	name from the Intel Mac build (re/mac-matches.tsv)
 0051c560	WPrTryReload	WP	med	name from the Intel Mac build (strings:1)
 0051c730	ONrCharacter_InventoryCount	ON	low	the clips, cells or hypos of the type (name made up)
+0051c8f0	WPiCommand_GivePowerup	WP	med	read: give_powerup type [amount [player]]; the Mac build's name
 0051cc10	WPrPowerup_SetType	WP	med	name from the Intel Mac build (strings:1)
 0051cce0	WPrWeapon_AmmoType	WP	low	-1 none (+0xcc 0x800), 1 a cell (0x4), else 0 a clip (name made up)
 0051ce00	WPrOwner_MakeMeleeDamageFromCharacter	WP	med	name from the Intel Mac build (neighbours:1.00)
@@ -1325,106 +1444,3 @@
 0051d080	WPrOutOfAmmoSound	WP	med	name from the Intel Mac build (neighbours:1.00)
 0051d180	WPrInventory_Weapon_Purge_Magic	WP	med	name from the Intel Mac build (strings:1)
 0051d1c0	TMrTemplate_SetupLayouts	TM	low	read: stores each template's layout pointer, then the table base (compiler-generated; name made up)
-004fd070	ONrGameState_BeginCutscene	ON	med	read: begin_cutscene's flags (letterbox, input, AI passive, jello); the Mac build's name
-004fd1a0	ONrGameState_EndCutscene	ON	med	read: undoes BeginCutscene; the Mac build's name
-004fd250	ONrGameState_Cutscene_Sync_Mark	ON	low	called by cutscene_sync; the Mac build's name
-0048b0d0	AI2rAllPassive	AI2	med	read: every AI character's passive bit (+0x1f0 bit 2); the Mac build's name
-004eb220	ONrCharacter_SetHitPoints	ON	med	read: C+0x38 set, 0 kills, a dead character revived; the Mac build's name
-004edd20	ONrCharacter_Holster	ON	med	read: the weapon overlay (lookup 7) into slot 1; the Mac build's name
-0051c8f0	WPiCommand_GivePowerup	WP	med	read: give_powerup type [amount [player]]; the Mac build's name
-004bcbb0	AIiScript_EndCutScene	AI	med	end_cutscene; the Mac build's name
-00490290	AI2iCombat_ChangeBehavior	AI2	low	the range's behaviour: the old one's exit message, the new one's enter
-00490a50	AI2iCombat_Fire	AI2	low	the trigger (A+0x21e0, 0x21e1) held or released; behaviour message 8
-00490c50	AI2iCombat_LineClear	AI2	low	a line of fire clear of the environment (0x242000), the objects and the non-enemies
-004ba6d0	AI2rTargeting_Initialize	AI2	low	the targeting's owner, class block and callbacks (0x53ebf8)
-004ba830	AI2iTargeting_FireDecision	AI2	low	the aim against the barrel within the tolerance, the delays, point blank
-004bb700	AI2rTargeting_SetWeapon	AI2	low	the weapon's AI firing mode and the class's shooting skill for it
-0049dbc0	AI2iManeuver_ClearWeights	AI2	low	the seven maneuvers' weights zeroed
-0049dbf0	AI2iManeuver_Select	AI2	low	the heaviest maneuver that can be done (hold, advance, retreat, gun, alarm, melee, getup)
-0049e910	AI2iManeuver_CheckMelee	AI2	low	melee within 80 of the target, else an advance to 15..20
-00491060	AI2iBehavior_NoGun	AI2	low	a gun behaviour without a usable gun: by C+0x104c and C+0x1050
-004e37b0	ONrCharacter_IsKnockedDown	ON	low	the knockdown, getup, victim and stun animation types
-004e3ff0	ONrCharacter_InSpecialAnimation	ON	low	an animation of the types 0xc0..0xc3 (now or queued)
-00519b30	WPrSetAmmoPercentage	WP	low	the ammo at a percentage of the class's shots; the background events
-00518690	WPrNew	WP	low	a new weapon of a class (a free slot, else the oldest unowned)
-00498da0	AI2rExecutor_StopAiming	AI2	low	the aim asked to stop (A+0x1a89)
-00498dc0	AI2rExecutor_AimAtPoint	AI2	low	the executor's aim at a point (A+0x1a88..0x1a94)
-00498e10	AI2rExecutor_AimDirection	AI2	low	the executor's aim along a direction
-004bd1f0	SLiCmd_Win	SL	low	win: the level end at G+0x1679bc set to 1
-004bd210	SLiCmd_Lose	SL	low	lose: the level end set to 2
-004bd270	SLiCmd_TimerStart	SL	low	timer_start: seconds as ticks, clamped to an hour
-004bd2d0	SLiCmd_TimerStop	SL	low	timer_stop
-004fd370	ONrGameState_Timer_Start	ON	low	the timer on with its function and ticks
-004fd3a0	ONrGameState_Timer_Stop	ON	low	the timer off (a sound if it ran)
-004fd3d0	ONrGameState_Timer_Update	ON	low	the timer's tick: at 0 the function runs, then 300 ticks of 0:00.0
-004cafc0	OBJiTrigger_Step	OBJ	low	each emitter a step along the animation, then its matrix
-004cb100	OBJiTrigger_Update	OBJ	low	the mechanics update: the active sound, the step, the on and off countdown
-004cb230	OBJiTrigger_Activate_Callback	OBJ	low	trig_activate's: flag 4, the countdown restarted
-004cb2b0	OBJiTrigger_Deactivate_Callback	OBJ	low	trig_deactivate's
-004cb3f0	OBJiTrigger_Speed_Callback	OBJ	low	trig_speed's: the speed now the factor times the object's
-00453d50	EPiParticle_Create	EP	low	an environment particle made at its matrix, its create event
-00453fe0	EPiParticle_Kill	EP	low	not running; the live particle killed
-00454040	EPiParticle_Reset	EP	low	killed, then made again unless not initially created
-00454420	EPrEnumerateTag	EP	low	the callback on every environment particle of a tag
-00454f90	EPrLoadParticles	EP	low	an ENVP array listed and, once the level has begun, made
-00455500	EPrLevelBegin	EP	low	every listed environment particle made; the level begun
-004b6ff0	AI2iScript_EnvAnimate	AI2	low	chr_envanim: the internal without the block
-004b7220	AI2iScript_EnvAnimateBlock	AI2	low	chr_envanim_block: waits while an earlier one plays
-004b7240	AI2iScript_EnvAnimateStop	AI2	low	chr_envanim_stop: the physics context's animation cleared
-004ed080	ONiCharacter_SetPhysicsFlags	ON	low	the context's flags: 0x44 while animated, 0x8000 without a weapon, 0x10 by C+4 bit 2
-004bd360	AIiScript_RestoreGame	AI	low	restore_game: ONrGameState_UseContinue
-004fda80	ONrGameState_ClearContinue	ON	low	the continue cleared, no save point (a won level)
-004fdaa0	ONrGameState_SetContinue	ON	low	the continue copied in with its save point
-004ecdf0	ONrAnimState_IsFallen	ON	low	the lying states 0x12 and 0x32 (name made up)
-0048b530	AI2rNotifyKnockdown	AI2	low	from ONrCharacter_Knockdown, not lying: the daze rearmed (C+0x101c), the film stopped, the alarm (name made up)
-00501990	ONiPauseScreen_Proc	ON	low	the pause screen dialog (70): pages, prev/next, the radio buttons (name made up)
-00502100	ONiPauseScreen_LoadItems	ON	low	the IPge of the types had, at most 10 (name made up)
-00502250	ONiPauseScreen_LoadWeapons	ON	low	the WPge of the classes had, at most 15 (name made up)
-005023c0	ONiPauseScreen_LoadHelp	ON	low	the HPge pages (name made up)
-005039f0	ONiInGameUI_DiaryLoad	ON	low	the DPge up to the unlocked page, sorted by level and page (name made up)
-00423540	TMrInstance_GetDataPtr_List	TM	low	every named instance of a tag with data, file by file, by name
-00468bb0	WMrDialog_CheckRadioButton	WM	low	the ids first..last unhilited, the checked one hilited
-00475580	WMrWindow_SetEnabled	WM	low	flag 2 cleared or set
-0046c720	WMiListBox_Proc	WM	low	the list box (class 8) procedure (the Mac name WMiListBox_Create is a neighbour's)
-004d2ba0	ONiOutGameUI_LoadGame_Callback	ON	low	(again) Load: the selected line's data to OWrGame_Start
-0050f030	ONrPersist_LevelReached	ON	low	level 1 always, the bit of persist +0x08 (name made up)
-0050efd0	ONrPersist_SetLevelReached	ON	low	the bit set and the block saved (name made up)
-004fdaa0	ONrGameState_SetContinue	ON	low	(again) a persisted continue made the game's, with its save point
-0046a980	PSrPartSpec_GetSize	PS	low	1, 4, 0x40, 0x100: a corner's column width and row height
-0046b5e0	WMiCheckBox_Callback	WM	low	class 5: the check part, a release toggles it (0x3b set, 0x2d get)
-0046b900	WMrCheckBox_SetCheck	WM	low	0x3b
-0046b920	WMrCheckBox_GetCheck	WM	low	0x2d
-0046ea80	WMrMenu_GetItemFlags	WM	low	the flags of the item of that id
-0046eb30	WMrMenu_GetItemID	WM	low	the id of the item at that index
-0046f330	WMiMenu_Paint	WM	low	the columns' backgrounds, the lit item, separators, checks, titles
-0046f8d0	WMrMenu_RemoveAllItems	WM	low	the items cleared, the layout dirty
-004704d0	WMrPopupMenu_AppendItem	WM	low	an enabled item of the id given
-004705c0	WMiPopupMenu_Callback	WM	low	class 12: its menu opened by a press, a quick release keeps it open
-00470bd0	WMiPopupMenu_HandleMenuSelection	WM	low	0x19 from its menu: closed, selected, passed to the parent
-00470c70	WMrPopupMenu_Reset	WM	low	the menu's items removed
-00470d00	WMrPopupMenu_SetSelection	WM	low	the item selected and the parent told (0x19)
-004723a0	WMrSlider_GetPosition	WM	low	the long's +8
-004723b0	WMrSlider_SetPosition	WM	low	clamped to the range, the thumb placed
-00472650	WMrSlider_SetRange	WM	low	min, max, the value the min
-004727f0	WMiSlider_Callback	WM	low	class 17: track, thumb, its timer (1, 10 ticks)
-00472c40	WMiSlider_GetTrackRect	WM	low	the track less its end parts
-00472cc0	WMiSlider_PlaceThumb	WM	low	the thumb's x from the value, its y the track's middle
-00472db0	WMiSlider_HandleMouse	WM	low	drag the thumb, a press beside it steps a tenth
-00475060	WMrWindow_GlobalToLocal	WM	low	a desktop point in the window's pixels
-00475c40	WMrTimer_Stop	WM	low	the window's timer of that id removed
-004d2ad0	ONiOutGameUI_Options_SetValues	ON	low	the options' items from the persisted settings
-0050f0e0	ONrPersist_SetGraphicsQuality	ON	low	+0x3c, then the draw engine's (0x508ef0)
-0050f130	ONrPersist_SetOverallVolume	ON	low	+0x40, then SS2rVolume_Set
-0050f180	ONrPersist_IsInvertMouseOn	ON	low	+0x44 bit 1
-0050f190	ONrPersist_AreSubtitlesOn	ON	low	+0x44 bit 0
-0050f1a0	ONrPersist_SetInvertMouse	ON	low	+0x44 bit 1
-0050f1f0	ONrPersist_SetSubtitles	ON	low	+0x44 bit 0
-0050f3e0	ONrPersist_SetGamma	ON	low	+0x54 if 0..1, then the display's (0x407a60)
-0050f450	ONrPersist_GetGamma	ON	low	+0x54 clamped to 0..1
-005125c0	OSiDialog_Play	OS	low	a dialogue line started, its subtitle shown when on
-0051b5f0	WPrSlot_DeleteAll	WP	low	the three slots' weapons deleted (the character's deletion)
-0051bc20	WPrSlot_FindEmpty	WP	low	an empty slot: slot 1 first if asked, else the last but 1
-004edeb0	ONrCharacter_Draw	ON	low	a stowed weapon drawn by Draw_Pistol/Rifle (0xa1, 0xa2)
-004eff60	ONrCharacter_ForceHolster	ON	low	the hand's weapon holstered, forced (begin_cutscene, chr_forceholster)
-004effa0	ONrCharacter_ForceDraw	ON	low	the stowed weapon drawn into the empty hand (end_cutscene, chr_forceholster)
-004edbd0	ONrCharacter_HasWeapon	ON	low	one in the hand or stowed

@@ -44,6 +44,9 @@ typedef struct KnowEntry {
 } KnowEntry;
 
 void knowledge_reset(void);
+/* The game time's stand-in the AI counts (GS+0x144, ONrGameState_GetGameTime 0x4fc880): a tick each
+   knowledge update, from the level's start. */
+uint32_t knowledge_now(void);
 /* AI2iKnowledge_AddPending 0x49b300 (immediate posts: 0x49b3f0): owner learns of target at pos. */
 void knowledge_post(struct Chr *owner, int type, int strength, const float pos[3], struct Chr *target,
                     uint32_t value, bool silent, bool force_hostile);

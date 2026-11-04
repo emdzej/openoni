@@ -19,6 +19,16 @@
 
 enum { CHR_BONES = 19 };
 
+/* A line to say (ONrSpeech_Say 0x516940's six words): its kind (the higher interrupts a lower one, 7
+   always; 3 a conversation's line, 4 a neutral's call or abort, 6 its enemy line), the ticks before and
+   after it, the flag set while it waits (NULL none), the ambient's name. */
+typedef struct {
+    uint32_t type, pre_delay;
+    bool *waiting;
+    char name[32];
+    uint32_t post_delay;
+} ChrSpeech;
+
 /* One tick's input. turn is added to the desired facing (radians, + to the left): the mouse's part of
    HandleTurnInput 0x4f7b90. The keys map to the original's action bits (chr_input_bits); the other keys
    (crouch, jump, turn left and right, ...) go through character_update_keys. */
@@ -201,6 +211,15 @@ typedef struct Character {
     int32_t console_marker;         /* C+0x1680: the action marker it goes to use, -1 none */
     uint32_t console_deadline;      /* C+0x1684: the time it has to reach it by, 0 not yet set */
     uint32_t sprint_time;           /* A+0x2190: the last forward press, 0xffffffff sprinting */
+    /* the speech (ONrSpeech, neutral.h): saying, begun, over (C+0x15f0..0x15f2), the sound's id and
+       when it counts as over (+0x15f4, +0x15f8), the line and the one queued (+0x15fc, +0x1614) */
+    bool speaking, speech_begun, speech_over;
+    uint32_t speech_id, speech_end;
+    ChrSpeech speech, speech_next;
+    /* a neutral's conversation (neutral.h): the other one (C+0x162c) and the player's moves that end
+       it (C+0x1630) */
+    struct Character *talk_partner;
+    uint32_t talk_moves;
 } Character;
 
 bool character_init(Character *c, const void *oncc, const float pos[3], float facing);
@@ -229,6 +248,9 @@ void character_update_aim(Character *c, uint64_t held, float turn, float pitch, 
 void character_update_input(Character *c, const ChrInput *in, const void *env);
 /* 0x4e3d00: the character doesn't turn to its desired facing by itself now. */
 bool chr_holds_facing(const Character *c);
+/* 0x4e3230: how far the facing is from the desired one (signed, the long way round kept as the turn
+   makes it). */
+float chr_facing_delta(const Character *c);
 /* The key state of a CharacterInput as the action bits held. */
 uint64_t chr_input_bits(const CharacterInput *in);
 /* The input with only the keys of those action bits (lock_keys). The mouse's turn and pitch are

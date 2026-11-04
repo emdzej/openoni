@@ -98,6 +98,35 @@ placed with its geometry's bottom on the object's place (0x51c270), facing the y
 default amount (1, a shield 100, invisibility 1800). Level 1 has eight: the LSI the mission needs at
 (424, 50, -639), ammo, cells and a hypo.
 
+## NEUT
+
+A `Neutral` object (version 39) is a neutral character's behaviour, read as it is stored
+(`OBJiNeutral_Read`; `ONrLevel_Neutral_ID_To_Neutral` 0x506c00 copies its 0x26c bytes out). Confirmed
+in the Windows exe's use of it (src/neutral.c) and against level 1's 39 of them:
+
+| Offset | What |
+|---|---|
+| 0x00 | name (32 bytes) |
+| 0x20 | id (u16): a CHAR's +0x1b2 picks it, or `ai2_neutralbehavior` by the name |
+| 0x22 | count of lines (u16, 10 at most) |
+| 0x24 | flags (u32): 1 one conversation only, 2 one give only, 4 it can't be broken off |
+| 0x28 | trigger range: it calls the player within it (100 on level 1) |
+| 0x2c | talk range: it talks within it (40) |
+| 0x30 | follow range: how far from its place it follows the player (200) |
+| 0x34 | enemy range: a fight this near puts it off or ends the talk (70) |
+| 0x38 | the call's sound (an ambient, 32 bytes) |
+| 0x58 | the abort's sound |
+| 0x78 | the enemy's sound |
+| 0x98 | the end script (a BSL function, run when every line was said) |
+| 0xb8 | the weapon given (an ONWC name, `none`) |
+| 0xd8 | the gifts: ammo clips, energy cells, hypos (a byte each), then flags: 1 a shield, 2 invisibility, 4 the LSI |
+| 0xdc | the lines, 0x28 bytes each |
+
+A line: flags (u16: 1 the player says it, 2 the give, 4 the speaker's animation is waited for, 8 the
+listener's), a u16 not read, the speaker's animation type (u16, 0 none) and the listener's, the sound
+(32 bytes). Level 1's "Talk_About_Truck" (18) is one line, flag 4 on the neutral, with the end script
+`gotoconsole` (what lets console 9 open the warehouse); its "Give ..." ones are a line and the give.
+
 ## CONS
 
 The console type's data, read by `OBJiConsole_Read` 0x4c1710. The port: `src/console.c`; how consoles

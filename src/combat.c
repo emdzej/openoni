@@ -68,6 +68,10 @@ void combat_default_settings(AiState *a)
     s->alarm_damage = 30;
     s->alarm_fight = 360;
     s->pursuit_distance = 200.0f;
+    s->panic_melee = 600;
+    s->panic_gunfire = 900;
+    s->panic_sight = 600;
+    s->panic_hurt = 1200;
 }
 
 void combat_settings(AiState *a, uint16_t id)
@@ -92,6 +96,10 @@ void combat_settings(AiState *a, uint16_t id)
     s->alarm_damage = rd32(p + 0x88);
     s->alarm_fight = rd32(p + 0x8c);
     s->pursuit_distance = rdf(p + 0x68);
+    s->panic_melee = rd32(p + 0x6c);
+    s->panic_gunfire = rd32(p + 0x70);
+    s->panic_sight = rd32(p + 0x74);
+    s->panic_hurt = rd32(p + 0x78);
 }
 
 /* ---- the targeting ---- */

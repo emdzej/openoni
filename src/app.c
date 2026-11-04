@@ -402,7 +402,9 @@ static void start_scripts(void)
    shifts the later "@" frames by when it came against F (when the route was made). "P" presses the pause
    key (the pause screen). "Gfrom,to,N" shoots
    the unbroken glass targets of those script ids, aiming the weapon's barrel at each. "F<name>,N" fights
-   the character hand to hand for up to N frames, until it is down. Knocked down, any step first gets
+   the character hand to hand for up to N frames, until it is down; "A<N>" the nearest one in combat
+   with her, while there is one. "N<name>,N" talks with a neutral (the action key near it) until the
+   conversation is over. Knocked down, any step first gets
    up (forward). ---- */
 
 /* The level's environment, for the route's glass targets. */
@@ -566,6 +568,59 @@ static void route_input(const Character *c, CharacterInput *in)
             float err = wrap_pi(want - c->desired_facing);
             in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
             in->fire = (now - route.until + (uint32_t)n) % 20 == 0;
+            return;
+        }
+        if (*s == 'A') {
+            /* "A<N>": for up to N frames, fights (as "F") the nearest character within 80 that is in
+               combat (alert 4) and has hit points; done when there is none */
+            if (!route.phase) route.until = now + (uint32_t)atoi(s + 1), route.phase = 1;
+            const Chr *t = NULL;
+            float best = 80.0f * 80.0f;
+            for (int i = 0; i < chars_slots(); i++) {
+                const Chr *o = chars_get(i);
+                if (!o || o->player || !chars_in_use(o) || !o->c.hit_points || o->ai.alert < 4) continue;
+                float ox = o->c.pos[0] - c->pos[0], oy = o->c.pos[1] - c->pos[1], oz = o->c.pos[2] - c->pos[2];
+                float d2 = ox * ox + oz * oz;
+                if (fabsf(oy) < 20.0f && d2 < best) best = d2, t = o;
+            }
+            if (!t || now >= route.until) { route_next(); continue; }
+            float dx = t->c.pos[0] - c->pos[0], dz = t->c.pos[2] - c->pos[2];
+            float err = wrap_pi(atan2f(dx, dz) - c->desired_facing);
+            in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
+            if (dx * dx + dz * dz > 81.0f) {
+                in->forward = fabsf(wrap_pi(atan2f(dx, dz) - c->facing)) < 0.6f;
+                return;
+            }
+            if ((route.until - now) % 8 == 0) {
+                if ((route.until - now) / 8 % 4 == 3) in->kick = true;
+                else in->punch = true;
+            }
+            return;
+        }
+        if (*s == 'N') {
+            /* "N<name>,N": for up to N frames, a talk with the character (a neutral): walked up to
+               within 20, turned to it, the action key tapped every 30 frames until the conversation
+               begins; done when it has ended */
+            char name[64];
+            int n = 0;
+            const char *comma = strchr(s, ',');
+            size_t len = comma ? (size_t)(comma - s - 1) : 0;
+            if (len >= sizeof name) len = sizeof name - 1;
+            memcpy(name, s + 1, len), name[len] = 0;
+            if (comma) n = atoi(comma + 1);
+            const Chr *t = chars_find(name);
+            if (!route.phase) route.until = now + (uint32_t)n, route.phase = 1;
+            if (c->talk_partner) { route.phase = 2; return; }
+            if (!t || route.phase == 2 || now >= route.until) { route_next(); continue; }
+            float dx = t->c.pos[0] - c->pos[0], dz = t->c.pos[2] - c->pos[2];
+            float err = wrap_pi(atan2f(dx, dz) - c->desired_facing);
+            in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
+            if (dx * dx + dz * dz > 400.0f) {
+                in->forward = fabsf(wrap_pi(atan2f(dx, dz) - c->facing)) < 0.6f;
+                in->walk = true;
+                return;
+            }
+            in->action = fabsf(err) < 0.3f && (route.until - now) % 30 == 0;
             return;
         }
         if (*s == 'F') {
@@ -1011,12 +1066,13 @@ static int play(int level, int *next)
         if (player && plat_param("trace", dbg, sizeof dbg) && plat_frames() % (uint32_t)(atoi(dbg) > 1 ? atoi(dbg) : 30) == 0) {
             const Character *konoko = &player->c;
             const TmInstance *ti = konoko->anim ? tm_handle_instance(tm_handle_of(konoko->anim)) : NULL;
-            snprintf(m, sizeof m, "OpenOni: frame %u: %.1f %.1f %.1f hp %u facing %.2f (%.2f) type %u state %u varient %04x %s%s%u/%u ammo %d stowed %d%d particles %d glass %d clips %u pu %d",
+            snprintf(m, sizeof m, "OpenOni: frame %u: %.1f %.1f %.1f hp %u facing %.2f (%.2f) type %u state %u varient %04x %s%s%u/%u ammo %d stowed %d%d particles %d glass %d clips %u pu %d talk %s cons %d step %.24s",
                      (unsigned)plat_frames(), konoko->pos[0], konoko->pos[1], konoko->pos[2], konoko->hit_points, konoko->facing, konoko->desired_facing, konoko->type,
                      konoko->state, konoko->varient, ti && ti->name ? ti->name : "", " overlay ",
                      konoko->overlay[0].anim ? tr_type(konoko->overlay[0].anim) : 0u,
                      konoko->overlay[1].anim ? tr_type(konoko->overlay[1].anim) : 0u, konoko->weapon ? konoko->weapon->ammo : -1,
-                     konoko->stowed[0] != NULL, konoko->stowed[1] != NULL, p3_live_count(), env_glass_broken(), konoko->ammo, powerup_count());
+                     konoko->stowed[0] != NULL, konoko->stowed[1] != NULL, p3_live_count(), env_glass_broken(), konoko->ammo, powerup_count(),
+                     konoko->talk_partner ? ((const Chr *)konoko->talk_partner)->name : "-", (int)konoko->console_marker, route.step ? route.step : "-");
             plat_log(m);
             for (int i = 0; i < door_count(); i++) {
                 float d[3];

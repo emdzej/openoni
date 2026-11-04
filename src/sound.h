@@ -50,6 +50,11 @@ void sound_set_volume(float v);
 bool sound_dialog_play(const char *name);           /* false: a dialog is playing, nothing started */
 bool sound_dialog_playing(void);
 void sound_dialog_interrupt(const char *name);
+/* A character's line (OSiDialog_Play 0x5125c0) at pos: its id (UINT32_MAX none), *ticks its length, *missing
+   no such ambient or a sound of it missing. */
+uint32_t sound_speech_play(const char *name, const float pos[3], uint32_t *ticks, bool *missing);
+bool sound_speech_playing(uint32_t id);
+void sound_speech_stop(uint32_t id);
 void sound_music_start(const char *name, float volume);
 void sound_music_stop(const char *name);
 void sound_music_volume(const char *name, float volume, float seconds);

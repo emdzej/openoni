@@ -213,6 +213,8 @@ static float facing_delta(const Character *c)
     return wrap_pi(d);
 }
 
+float chr_facing_delta(const Character *c) { return facing_delta(c); }
+
 /* 0x4e3d00: whether the character doesn't turn to the desired facing by itself (standing still, a
    standing turn's job; throws; victims). */
 bool chr_holds_facing(const Character *c)
@@ -912,6 +914,7 @@ bool character_init(Character *c, const void *oncc, const float pos[3], float fa
     c->pelvis_height = 7.5f;    /* ONrGameState_NewCharacter 0x4dac50 */
     chr_hit_init(c, 0);
     c->console_marker = -1;
+    c->speech_id = UINT32_MAX;
     chr_recalculate_idle_delay(c);
     if (!tm_link((const uint8_t *)oncc + ONCC_ANIMATIONS)) return false;
     /* 0x4d7f90, the first animation of ONrGameState_NewActiveCharacter 0x4db830: stand, from standing,

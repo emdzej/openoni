@@ -6,6 +6,7 @@
 #include "chr_anim.h"
 #include "console.h"
 #include "door.h"
+#include "neutral.h"
 #include "physics.h"
 #include "tram.h"
 
@@ -148,11 +149,9 @@ static bool hook(Character *c, const ChrInput *in)
     const Chr *who = (const Chr *)c;
     bool can = false;
     int door = door_try_action(who, p, &can);
-    if (door >= 0) {
-        if (can && door_action_open(door, who)) return true;
-        /* (0x48bb40, a neutral character's talk, isn't ported; then the locked door's sound) */
-        return true;
-    }
+    if (door >= 0 && can && door_action_open(door, who)) return true;
+    if (neutral_try_interaction((Chr *)who, true)) return true;     /* AI2rTryNeutralInteraction 0x48bb40 */
+    if (door >= 0) return true;     /* (the locked door's sound) */
     return false;
 }
 

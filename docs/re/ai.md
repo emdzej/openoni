@@ -21,6 +21,7 @@ inferred means from the data or the context.
 | Raising the alert | `AI2rAlert_UpgradeStatus` 0x48eee0 | confirmed |
 | The pursuit's handler | 0x4b1750 | confirmed |
 | Teams | `AI2rTeam_FriendOrFoe` 0x48b2c0; enemy test 0x48b1d0 | confirmed |
+| Neutrals | `AI2rNeutral_*` 0x4ac870..0x4adb00, speech 0x516940, 0x516a60 | confirmed |
 
 ## Contacts
 
@@ -752,6 +753,102 @@ range about it, +0x0c the centre of the pick (1000 all round), +0x10 the first l
 Not ported: the vocalizations, the glance's look (0x4a8150) and the facing held, the report
 (`AI2rPursuit_Report` 0x4b18e0, debug text). A contact removed without the forget's notice leaves
 the exe with a stale pointer; the port goes back to the job.
+
+## Neutral characters
+
+The port is `src/neutral.c`. A neutral is an AI character with a Neutral behaviour
+([objc.md](../formats/objc.md), NEUT): `AI2rNeutral_ChangeBehavior` 0x4ac870 (from
+`AI2rInitializeCharacter` 0x48a6b0 with the CHAR's id, forced, and from `ai2_neutralbehavior`
+0x4b87b0) keeps its id at C+0x100c, the line to start at (C+0x100e, 0), the flags (C+0x1000), the
+time of the last check (C+0x1004), and the trigger and enemy ranges (C+0x1010, C+0x1014; without one
+the enemy range is 100). C+0x1008 is a wait before it may start by itself again. Confirmed:
+
+- **Starting.** `AI2rUpdateAI` 0x489d40, before the state's update (not passive), asks
+  `AI2rNeutral_CheckTrigger` 0x4ac950 (automatic) of every AI not in the neutral state, else counts the
+  wait down. The check: an AI with a behaviour, no partner, not panicking, not done (flag 0x10); the
+  player not its enemy (0x48b1d0) and the way to the player's pelvis not blocked (0x49ea60).
+  Automatic: no wait, within the trigger range, at most every 30 ticks, the player a seen contact
+  (strength 4), and with an enemy range, no dangerous contact (0x4ae170: a hurt, or a melee sound,
+  gunfire or a sighting of someone hostile, within the enemy range) nor a fighter after it or the player
+  (`AI2iNeutral_CheckEnemies` 0x4acbc0: an AI in combat with either as its target, within the range of
+  either), else not for 300 ticks. With the action key (`AI2rTryNeutralInteraction` 0x48bb40, from
+  `HandleStartTauntOrAction` 0x4f80d0 after the doors, and to show the hint, 0x4fa6a0): within 35 of
+  the player, the player facing it within 60 degrees. A neutral already calling the player that the
+  player faces (0x4acc90) is taken first; the key starts the state for one that isn't and marks the
+  conversation asked (+0x278).
+- **The state** (C+0x1f8 8; its block from C+0x8b8, +8 on: the player, the Neutral's 0x26c bytes,
+  then the conversation's fields, `NeutralTalk` in src/ai.h). `AI2rNeutral_Enter` 0x4acdb0: its place
+  kept (+0x290), no line (+0x27c -1), flag 1, the player, 600 ticks of patience, the first call in
+  300 + a random 0..89 ticks, the call's sound said (speech kind 4), running.
+- **Before the talk** (`AI2rNeutral_Update` 0x4ad1f0, line -1): in the talk range and not blocked,
+  asked: it stays and faces the player; with the player free and itself standing (its animation ending
+  in state 7) the conversation begins: flag 2 (with 0x10 for a once-only Neutral), the partners
+  (C+0x162c, both), C+0x04 0x800000 on both if it can't be broken off, the player turned to face it,
+  the player's move count (C+0x1630) 0, both out of fight mode with the weapon hidden (C+0x04 0x10000,
+  0x2000: 0x4ed030, 0x4ecf80), and the line from C+0x100e. Not asked: it faces the player and waits
+  (the patience out: the wait 180), every 360 + 0..89 ticks the call's sound and animation 0xe6. Out of
+  the follow range from its place: the wait 180, back to its place and job. Within 1.5 times the
+  trigger range: after the player (within 25) every 20 ticks. Farther: back to the job. Every 10 ticks
+  (not during a give) a fighter near ends it (aborted, the enemy's line).
+- **The lines.** Each is said by its speaker (flag 1 the player, else the neutral; speech kind 3) and
+  plays its animations (the speaker's, the listener's), waited for if flagged
+  (`AI2iNeutral_ConversationAnimation` 0x4adb00); the next follows when they and the speech are done.
+  A give line: the neutral walks to the player (within 20), plays 0xcd, 15 ticks later the player too,
+  and at its animation's action frame (TRAM+0x174) gives: flag 4 (0x10 for a once-only give); the
+  clips, cells and hypos through 0x51ca30 (what can't be carried dropped by the neutral 10 ahead,
+  0x51bd80); the shield and invisibility at their default amounts; the LSI (with invisibility's default
+  amount, as the exe asks) taken from the neutral (C+0x1b4); the weapon into the player's hand, or
+  dropped by the neutral (0x51b790) when the player has one. C+0x100e moves past the give, so a
+  conversation broken off and started again resumes after it. After the last line: flags 0x18, back to
+  the job.
+- **The end.** `AI2rNeutral_Stop` 0x4acf70 (refused during a give unless forced): aborted, the neutral
+  waits 180 ticks; else the Neutral's end script is due for the character stopped (C+0x1018, C+0x1f0
+  flag 0x20, run by the next `AI2rUpdateAI`). Each side (0x4ad090): out of the conversation's flags; an
+  aborted neutral says the enemy's or the abort's line once (none when done), stops looking and moving,
+  and goes back to its job when asked. The partners are cleared. The state's exit (0x4acf20) stops it,
+  aborted unless every line was said. A death (0x48b370) ends it (aborted, with the enemy's line); a
+  deletion (0x48b3e0) only clears the partners.
+- **The player's keys** (0x4fa520, every tick): in a conversation, fire, alternate fire or a blow
+  ends it (aborted, back to the job); moving (forward, back, sideways, jump, crouch) counts 2 a tick
+  (not if it can't be broken off), still counts back 2, and past 14 ends it. While it goes on the
+  player's movement, blows, jump, crouch and the action keys are taken (the turn keys and walk stay).
+
+### Speech
+
+Every character has one line at a time (`ONrSpeech_Say` 0x516940, `ONrSpeech_Update` 0x516a60 first
+in each character's update 0x4ddba0): C+0x15f0 saying, +0x15f1 begun, +0x15f2 over, +0x15f4 the
+sound's id, +0x15f8 its end, +0x15fc the line (kind, ticks before, a byte, a flag set while it waits,
+the ambient's name, ticks after), +0x1614 one queued. A line of a kind no higher than the current one
+is queued (if higher than the queued one and not interrupting) or refused; kind 7 always plays. The
+sound starts at the head (`OSiDialog_Play` 0x5125c0, the ambient at its place, its subtitle as a
+dialog's) and the line is over when it ends or its first sound's length (0x78 ticks without) passes;
+then the ticks after, then the queued one.
+
+Not ported: the blockage test (0x49ea60, as for the consoles), the action hint, the movement's free
+facing and glance, a dropped powerup's fall (it is placed).
+
+## Panic
+
+The port is `src/panic.c`. A non-combatant (CHAR flag 0x08, C+0x1f0 bit 4) has its knowledge handled
+by `AI2rNonCombatant_NotifyKnowledge` 0x4adeb0 in the calm states and the neutral one, and keeps it in
+the panic state (C+0x1f8 9). Confirmed:
+
+- **News** (not a degrade) from someone hostile (hostility 2) or a combat sound that is dangerous
+  (0x4ae070, with "known" from the panic's +0x12) ends a conversation (aborted, the enemy line) and
+  panics it: `AI2rCharacter_Panic` 0x4ae1e0. The time is by the contact's kind from the combat
+  settings (C+0x1058 a melee sound, +0x105c gunfire, +0x1060 a sighting, +0x1064 a hurt; the Combat
+  object's +0x6c..+0x78; defaults 600, 900, 600, 1200), plus a random part of up to half again; other
+  kinds don't panic it. The end (+0x0c) only moves later. A hostile contact sets +0x12; a hurt brings
+  the cry (+0x14) nearer by 5 a point of damage. The strongest contact (of no less hostility) becomes
+  the fear (+0x08), looked at unless cowering.
+- **A degrade** of the fear (weak, or no longer hostile by its hits) takes the next dangerous contact,
+  else the panic ends 180 ticks after the fear's last post.
+- **The state** (`AI2rPanic_Enter` 0x4adbe0): out of fight mode, the weapon hidden and the variant
+  0x8000 (0x4ed030, 0x4ecf80, 0x4ecf30), halted, running, the first cry in 45 ticks. The update
+  (0x4adc80): past its end, back to the job; a cry (`AI2rVocalize` type 5, not ported) every 1500 +
+  0..499 ticks; crouching (mode 3) once crouched or the fear within 20; lying, the class's daze once a
+  fall, then up with the move override: back when facing the fear within 90 degrees (or with none),
+  else forward, crouched if cowering. The exit (0x4adc50) undoes the flags.
 
 ## Melee
 

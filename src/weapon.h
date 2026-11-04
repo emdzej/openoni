@@ -84,6 +84,8 @@ void weapons_update(const void *env);
 void weapons_install(void);
 /* ONrCharacter_SetWeapon 0x4e4c00: the weapon in the character's hand (NULL none). */
 void chr_set_weapon(Character *c, Weapon *w);
+/* 0x4ecf80: the hand's weapon hidden (C+0x04 flag 0x2000: the variant without it) or shown again. */
+void chr_hide_weapon(Character *c, bool hide);
 /* The slots: 0 the hand (C+0x194), 1 and 2 the stowed ones (C+0x198, 0x19c). */
 Weapon *chr_slot(const Character *c, int i);
 /* 0x4eff60: the hand's weapon holstered (forced: stowed even with slot 1 taken, else dropped); 0x4effa0:

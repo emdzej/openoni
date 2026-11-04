@@ -1130,6 +1130,44 @@ static bool dialog_start(const char *name, bool interrupt)
     return false;
 }
 
+/* OSiDialog_Play 0x5125c0: a character's line (ONrSpeech_Update), the ambient of the name at pos with
+   its own distances at full volume (OSrAmbient_Start 0x511730). *ticks: how long it counts as playing,
+   as the dialog's (0x78 without a sound); *missing: no such ambient, or a track of it short of a sound
+   (0x481ab0). The subtitle as the dialog's. */
+uint32_t sound_speech_play(const char *name, const float pos[3], uint32_t *ticks, bool *missing)
+{
+    uint32_t id = UINT32_MAX, len = 0;
+    bool miss = true;
+    const Ambient *amb = name ? ambient_named(name) : NULL;
+    if (amb) {
+        const Group *g[5] = { amb->detail, amb->base1, amb->base2, amb->in, amb->out };
+        miss = false;
+        for (int k = 0; k < 5; k++)
+            for (uint32_t i = 0; g[k] && i < g[k]->nperms; i++) miss |= !g[k]->perms[i].sndd;
+        float vol = 1.0f;
+        id = ambient_start(amb, pos, amb->min_dist, amb->max_dist, &vol);
+        if (amb->base1)
+            for (uint32_t i = 0; i < amb->base1->nperms; i++)
+                if (amb->base1->perms[i].sndd) {
+                    SnddInfo info;
+                    sndd_info(amb->base1->perms[i].sndd, &info);
+                    len = info.duration;
+                    break;
+                }
+        if (!len) len = 0x78;
+        const char *sub;
+        if (persist_subtitles() && (sub = text_subtitle(name)))
+            ui_print(UI_AREA_SUBTITLE, sub, NULL, (int32_t)(len + 0x3c), 0xffffffffu);
+    }
+    if (ticks) *ticks = len;
+    if (missing) *missing = miss;
+    return id;
+}
+
+/* OSrAmbient_Update 0x511ec0 (no new place): whether it still plays. OSrAmbient_Stop 0x511e40. */
+bool sound_speech_playing(uint32_t id) { return id != UINT32_MAX && ambient_alive(id); }
+void sound_speech_stop(uint32_t id) { if (id != UINT32_MAX) ambient_stop(id); }
+
 bool sound_dialog_play(const char *name) { return !dialog_start(name, false); }
 void sound_dialog_interrupt(const char *name) { dialog_start(name, true); }
 bool sound_dialog_playing(void) { return dialog_on; }

@@ -409,6 +409,13 @@ static void hand_varient(Character *c)
     c->varient |= rifle && left ? 0x4000 : rifle ? 0x2000 : left ? 0x1000 : 0x800;
 }
 
+void chr_hide_weapon(Character *c, bool hide)
+{
+    if (hide) c->flags |= 0x2000;
+    else c->flags &= ~0x2000u;
+    hand_varient(c);
+}
+
 /* The hand's weapon dropped, as 0x4ed770 and the holster do (0x51b590, the hand's firing cleared). */
 static void drop_hand(Character *c)
 {

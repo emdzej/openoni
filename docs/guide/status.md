@@ -38,6 +38,9 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   hand to hand, and backs off to heal when hurt. Mutant Muro fights behind his shield, which drops when he casts his thunderbolt. The super
   ninja throws his fireballs, turns invisible, teleports behind his target or away when hit hard, and
   comes back when he falls off the level. The paths the fighters take are stand-ins.
+- **Neutral characters**: the civilians call Konoko over or answer the action key, talk with her line
+  by line, with their animations and speech, hand over weapons and power-ups, and run their scripts
+  when the talk is over; firing, a blow, walking off or a fight nearby breaks it off.
 - **The scripts**: the BSL engine runs the level's own scripts, with their trigger volumes, doors,
   consoles, animated objects and a growing share of the game's script commands, among them those that
   set the AI's awareness, health and movement modes, and `lock_keys`, with which the training lets

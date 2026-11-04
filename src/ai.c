@@ -7,11 +7,14 @@
 #include "graph.h"
 #include "localpath.h"
 #include "knowledge.h"
+#include "neutral.h"
+#include "panic.h"
 #include "melee.h"
 #include "patrol.h"
 #include "pursuit.h"
 
 #include <math.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -35,6 +38,8 @@ void ai_init(AiState *a)
     a->facing_override = 1000.0f;
     a->patrol = -1;
     a->job_patrol = -1;
+    a->neutral_id = -1;
+    a->neutral_enemy = 100.0f;      /* AI2rNeutral_ChangeBehavior 0x4ac870 without one */
     a->local_seg = -1;
     a->aim.speed = 1.0f;
     a->aim.last_facing = 1000.0f;
@@ -258,6 +263,8 @@ enum { ONCC_COMBAT_WAIT_RELOAD = 0x138 + 0x154, ONCC_COMBAT_WAIT = 0x138 + 0x158
 
 void ai_exit_state(AiState *a)
 {
+    if (a->state == AI_STATE_NEUTRAL) neutral_exit((Chr *)((char *)a - offsetof(Chr, ai)));
+    if (a->state == AI_STATE_PANIC) panic_exit((Chr *)((char *)a - offsetof(Chr, ai)));
     if (a->state == AI_STATE_PURSUIT) pursuit_exit(a);
     if (a->state == AI_STATE_ALARM) a->movement_mode = 0;     /* 0x48e7f0: the default movement mode */
     /* the job's block (C+0x200) stays as it was: the port keeps its patrol */
@@ -406,6 +413,10 @@ static void state_update(AiState *a, Character *c, const void *env)
            goes back to the job) */
         if (!a->target_entry) ai_return_to_job(a);
         else pursuit_update(a, c, env);
+    } else if (a->state == AI_STATE_NEUTRAL) {
+        neutral_update((Chr *)c);
+    } else if (a->state == AI_STATE_PANIC) {
+        panic_update((Chr *)c);
     }
 }
 
@@ -439,6 +450,9 @@ void ai_update(AiState *a, Character *c, const void *env)
         a->job_pos_set = true;
         memcpy(a->job_pos, c->pos, sizeof a->job_pos);
     }
+    neutral_end_script((Chr *)c);   /* the conversation's end script, due from the last tick */
+    /* before the states (not passive): a neutral may start a conversation by itself */
+    if (!(a->flags & AI_FLAG_PASSIVE) && !(c->flags & 1)) neutral_check((Chr *)c);
     if (a->flags & AI_FLAG_PASSIVE) ai_halt(a);     /* AI2rPassive 0x48b160: the state left, the path halted */
     else if (a->patrol >= 0 && !(c->flags & 1)) patrol_update(a, c->pos, c->facing, a->name);
     else if (!(c->flags & 1)) {
