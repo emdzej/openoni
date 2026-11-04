@@ -1,5 +1,6 @@
 /* The level's objects: see object.h. */
 #include "object.h"
+#include "env.h"
 
 #include "body.h"
 #include "oban.h"
@@ -22,6 +23,9 @@ typedef struct {
     float pos[3], rot[4], scale, place[12];
     ObanPlayer anim;
     bool shown;
+    uint16_t flags;             /* +0x12: 0x8 always drawn (obj_force_draw), 0x8000 its own shade */
+    uint32_t shade;             /* +0x20: the shade OBiDraw lights it with (the port's draw has no lights
+                                   yet, so neither is applied) */
 } Object;
 
 /* The level's array (its elements made into objects by obj_create, 0x4bc690), and the objects there are:
@@ -247,6 +251,26 @@ static bool show(int c, const SlValue *v, bool on)
     for (int k = 0; k < n; k++) objs[ids[k]].shown = on;
     return true;
 }
+/* obj_force_draw from [to] (AIiScript_ForceDraw 0x4bc2c0): the objects are drawn whatever their visibility (+0x12 bit 8). */
+static bool cmd_force_draw(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    int ids[128], n = objects_of(c, v, ids, 128);
+    for (int k = 0; k < n; k++) objs[ids[k]].flags |= 0x8;
+    return true;
+}
+
+/* obj_shade from to r g b (AIiScript_ObjShade 0x4bc540): the objects get their own shade (opaque). */
+static bool cmd_shade(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 5) return true;
+    uint32_t shade = env_script_shade(&v[2]);
+    int ids[128], n = objects_of(2, v, ids, 128);
+    for (int k = 0; k < n; k++) objs[ids[k]].flags |= 0x8000, objs[ids[k]].shade = shade;
+    return true;
+}
+
 static bool cmd_show(SlThread *t, int c, const SlValue *v, SlValue *r, void *u) { (void)t, (void)r, (void)u; return show(c, v, true); }
 static bool cmd_hide(SlThread *t, int c, const SlValue *v, SlValue *r, void *u) { (void)t, (void)r, (void)u; return show(c, v, false); }
 
@@ -256,6 +280,8 @@ void object_register_commands(void)
     sl_register("obj_kill", cmd_kill, NULL);
     sl_register("obj_show", cmd_show, NULL);
     sl_register("obj_hide", cmd_hide, NULL);
+    sl_register("obj_force_draw", cmd_force_draw, NULL);
+    sl_register("obj_shade", cmd_shade, NULL);
     sl_register("env_setanim", cmd_setanim, NULL);
     sl_register("env_setanim_block", cmd_setanim_block, NULL);
     sl_register("env_anim", cmd_anim, NULL);

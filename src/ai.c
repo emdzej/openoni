@@ -53,6 +53,7 @@ void ai_init(AiState *a)
 
 void ai_halt(AiState *a)
 {
+    a->follow = NULL;
     a->moving = false;
     a->kind = AI_MOVE_NONE;
 }
@@ -150,9 +151,12 @@ static void executor_update(AiState *a, Character *c, ChrInput *in)
     a->held = held;
 }
 
+/* AI2rPath_GoToPoint 0x4ae480: the radius at least 3 (0x529808) */
 void ai_move_near(AiState *a, const float p[3], float radius, bool face, float angle)
 {
+    if (radius <= 3.0f) radius = 3.0f;
     memcpy(a->goal, p, sizeof a->goal);
+    a->follow = NULL;
     a->moving = true;
     a->goal_facing = face;
     a->goal_angle = angle;
@@ -160,6 +164,16 @@ void ai_move_near(AiState *a, const float p[3], float radius, bool face, float a
 }
 
 void ai_move_to(AiState *a, const float p[3], bool face, float angle) { ai_move_near(a, p, 4.0f, face, angle); }
+
+void ai_follow(AiState *a, const Character *who)
+{
+    if (!who) {
+        ai_halt(a);
+        return;
+    }
+    ai_move_near(a, who->pos, 12.0f, false, 0.0f);   /* (0x4aefb0: 12 for type 2) */
+    a->follow = who;
+}
 
 /* AI2iPath_MakePath 0x4aeb10: the path kept while it goes between the same rooms to within 20 of the
    same point (400 squared, 0x529dec) and is younger than 90 ticks; else the rooms' A* again (the
@@ -214,6 +228,7 @@ static void make_local(AiState *a, const Character *c, const void *env, int seg)
 static void mover(AiState *a, const Character *c, const void *env)
 {
     if (!a->moving) return;
+    if (a->follow) memcpy(a->goal, a->follow->pos, sizeof a->goal);    /* AI2iPath_MakePath: type 2 */
     if (env && graph_for(env)) make_path(a, c);
     else a->path_n = 0;
     while (a->path_k < a->path_n) {
@@ -241,6 +256,11 @@ static void mover(AiState *a, const Character *c, const void *env)
     bool last = a->path_k >= a->path_n;
     float dx = (last ? a->goal[0] : at[0]) - c->pos[0], dz = (last ? a->goal[2] : at[2]) - c->pos[2];
     if (last && dx * dx + dz * dz < a->goal_radius * a->goal_radius) {
+        if (a->follow) {
+            /* there, it waits for the character to move on (the path's goal stays) */
+            ai_executor_move(a, c->facing, AI_MODE_DEFAULT, AI_MOVE_NONE, false);
+            return;
+        }
         a->moving = false;
         a->path_made = false;
         a->local_seg = -1;

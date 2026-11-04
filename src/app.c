@@ -541,7 +541,8 @@ static bool route_plan(const Character *c, const float b[3], char *out, size_t s
     /* the locked doors' links blocked while the path is found (the graph's own door links aren't kept) */
     static uint32_t saved[4096];
     int nl = graph_link_count() < 4096 ? graph_link_count() : 4096;
-    for (int i = 0; i < nl; i++) saved[i] = graph_link(i)->flags;
+    static bool door_blocked[4096];
+    for (int i = 0; i < nl; i++) saved[i] = graph_link(i)->flags, door_blocked[i] = false;
     for (int d = 0; d < door_count(); d++) {
         if (!(door_flags(d) & DOOR_LOCKED)) continue;
         if ((door_flags(d) & DOOR_JAMMED) && door_state(d) != 0) continue;     /* jammed open */
@@ -557,7 +558,15 @@ static bool route_plan(const Character *c, const float b[3], char *out, size_t s
             GraphLink *l = (GraphLink *)graph_link(i);
             float dx = l->mid[0] - dp[0], dz = l->mid[2] - dp[2];
             float across = fabsf(dx * n[0] + dz * n[1]), along = fabsf(dz * n[0] - dx * n[1]);
-            if (across < 12 && along < (w > 12.0f ? w : 12.0f) && fabsf(l->mid[1] - dp[1]) < 10) l->flags |= 1;
+            if (across >= 12 || along >= (w > 12.0f ? w : 12.0f) || fabsf(l->mid[1] - dp[1]) >= 10) continue;
+            /* a one-way lock: blocked only from the side it keeps (the link's room centre on it) */
+            if (door_flags(d) & DOOR_ONE_WAY) {
+                float box[6];
+                graph_room_box(l->from, box);
+                float from[3] = { (box[0] + box[3]) * 0.5f, box[1], (box[2] + box[5]) * 0.5f };
+                if (door_lock_passes(d, from)) continue;
+            }
+            l->flags |= 1, door_blocked[i] = true;
         }
     }
     float a[3] = { c->pos[0], c->pos[1], c->pos[2] };
@@ -568,6 +577,15 @@ static bool route_plan(const Character *c, const float b[3], char *out, size_t s
     if (rb < 0) rb = graph_room_at(b);
     static int path[GRAPH_PATH_MAX];
     int n = ra < 0 || rb < 0 ? 0 : graph_find_path(ra, a, rb, b, true, path);
+    /* none for a character: then through the links the graph itself marks blocked too (a stair's foot
+       the body can still take), the locked doors' still kept out */
+    if (n == 0 && ra >= 0 && rb >= 0) {
+        for (int i = 0; i < nl; i++) {
+            GraphLink *l = (GraphLink *)graph_link(i);
+            l->flags = (l->flags & ~1u) | (door_blocked[i] ? 1u : 0u);
+        }
+        n = graph_find_path(ra, a, rb, b, true, path);
+    }
     size_t len = 0;
     out[0] = 0;
 #define EMIT(...) (len += (size_t)snprintf(out + len, len < size ? size - len : 0, __VA_ARGS__))
@@ -821,7 +839,9 @@ static void route_input(const Character *c, CharacterInput *in)
             if (!route_plan(c, b, steps, sizeof steps)) {
                 if (!route.phase) {
                     char m[400];
-                    int n = snprintf(m, sizeof m, "OpenOni: route: no way yet to %.40s (locked:", s);
+                    float bu[3] = { b[0], b[1] + 3.0f, b[2] };
+                    int n = snprintf(m, sizeof m, "OpenOni: route: no way yet from room %d to %d: %.40s (locked:",
+                                     graph_room_at(c->pos), graph_room_at(bu) >= 0 ? graph_room_at(bu) : graph_room_at(b), s);
                     for (int d = 0; d < door_count() && n < (int)sizeof m - 8; d++)
                         if (door_flags(d) & DOOR_LOCKED) n += snprintf(m + n, sizeof m - (size_t)n, " %u", door_id(d));
                     snprintf(m + n, sizeof m - (size_t)n, ")");

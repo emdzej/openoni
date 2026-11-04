@@ -802,6 +802,7 @@
 004ae170	AI2rCharacter_HasDangerousContact	AI2	low	one of the character's contacts is dangerous (0x4ae070) near it (name made up)
 004ae1e0	AI2rCharacter_Panic	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004ae480	AI2rPath_GoToPoint	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004ae580	AI2rPath_FollowCharacter	AI2	med	name from the Intel Mac build (called by AI2rDebug_FollowMe)
 004ae660	AI2rPath_Halt	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004aea30	AI2iPath_NextNode	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004aea60	AI2rPath_FindGhostWaypoint	AI2	med	name from the Intel Mac build (neighbours:1.00)
@@ -929,6 +930,7 @@
 004bb700	AI2rTargeting_SetWeapon	AI2	low	the weapon's AI firing mode and the class's shooting skill for it
 004bb790	AIrScript_LevelBegin_Triggers	AI	med	name from the Intel Mac build (strings:1)
 004bb880	AI2rFindCharacter_ByScriptID	AI2	low	the living list by C+0x40, then (with the flag) every used slot
+004bc2c0	AIiScript_ForceDraw	AI	med	name from the Intel Mac build (the obj_force_draw registration)
 004bc320	AIiObjectsFromScript	AI	med	name from the Intel Mac build (strings:2)
 004bc540	AIiScript_ObjShade	AI	med	name from the Intel Mac build (neighbours:1.00)
 004bc780	AIiScript_EnvSetAnim_Internal	AI	med	name from the Intel Mac build (strings:2)
@@ -938,6 +940,7 @@
 004bcbc0	AIiScript_CutsceneSyncMark	AI	med	name from the Intel Mac build (strings:1)
 004bcdc0	AIiScript_EnvTexSwap	AI	med	name from the Intel Mac build (strings:2)
 004bcf60	AIiScript_EnvBroken	AI	med	name from the Intel Mac build (strings:1)
+004bd070	AIiScript_EnvShade	AI	med	name from the Intel Mac build (the env_shade registration)
 004bd1f0	SLiCmd_Win	SL	low	win: the level end at G+0x1679bc set to 1
 004bd210	SLiCmd_Lose	SL	low	lose: the level end set to 2
 004bd270	SLiCmd_TimerStart	SL	low	timer_start: seconds as ticks, clamped to an hour
@@ -1426,6 +1429,7 @@
 0051aa00	WPrInitialize	WP	med	name from the Intel Mac build (strings:6)
 0051b180	WPrFindPickup	WP	low	the unowned weapon whose handle is within heights and a squared distance
 0051b240	WPrWeapon_IsFree	WP	low	in use, not owned, not flag 4 (name made up)
+0051b260	WPrFindBarabbasWeapon	WP	med	name from the Intel Mac build (called by AI2iScript_BarabbasRetrieveGun)
 0051b290	WPrLocateNearbyWeapons	WP	med	name from the Intel Mac build (neighbours:1.00)
 0051b3b0	WPrNextNearbyWeapon	WP	low	the next of WPrLocateNearbyWeapons' list, nearest first (name made up)
 0051b590	ONrCharacter_DropWeapon	ON	med	name from the Intel Mac build (re/mac-matches.tsv)

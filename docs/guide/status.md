@@ -30,6 +30,12 @@ rappel, and level 8 begins. The original's scripts are kept as they are, their b
 past the hangar's door 20 turns off every console (`console_deactivate` without an id), so a player who
 goes that way can't open the office; the run takes the upper way.
 
+Level 8, the TCTF's regional headquarters, plays through as well: the van through the lobby's wall and
+the blast doors, the attack and the floors' locks, Shinatama's kidnap, the atrium's broken stairs
+(crossed with a running jump, then a sprinting one), the LSI from the civilian who has it, the leap onto
+the elevator and its fall, the lock to the stairs, the roof, the helicopter and Barabas, and level 9
+begins.
+
 It can be tried in the browser on the <a href="/play/" target="_self">play page</a>, with your own copy of the game.
 
 ## What works
@@ -118,7 +124,7 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - The impact effects (the hit sparks' classes). The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.
-- The other 10 levels as a playthrough.
+- The other 9 levels as a playthrough.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked
 against the original.

@@ -324,6 +324,17 @@ static bool may_pass(const Door *d, const Chr *c)
     return d->key != 0 && has_key(c, d->key);
 }
 
+bool door_lock_passes(int i, const float p[3])
+{
+    const Door *d = &doors[i];
+    if (d->flags & DOOR_JAMMED) return false;
+    if (!(d->flags & DOOR_LOCKED)) return true;
+    if (!(d->flags & DOOR_ONE_WAY)) return false;
+    int side = point_on_side(d, p);
+    if (d->flags & DOOR_ONE_WAY_REVERSED) side = !side;
+    return side != 0;
+}
+
 static void play_sound(const Door *d, unsigned name_at)
 {
     /* the class's sound (UpdateSoundPointers 0x4c4ce0 looks it up), played at the door (0x512480): the

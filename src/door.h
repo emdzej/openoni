@@ -63,6 +63,10 @@ struct Chr;
 int door_try_action(const struct Chr *c, const float pelvis[3], bool *can);
 bool door_action_open(int i, const struct Chr *c);
 
+/* may_pass's lock test for a character at p, without keys: not jammed, and unlocked or one way with p
+   on the side it lets through. */
+bool door_lock_passes(int i, const float p[3]);
+
 /* OBJrDoor_Lock_ID 0x4c1d80 (on) and OBJrDoor_Unlock_ID 0x4c1e30: every door of the id, 0xffff all. */
 void door_lock_id(uint16_t id, bool on);
 

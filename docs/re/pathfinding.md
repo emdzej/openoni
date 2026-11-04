@@ -81,6 +81,10 @@ graph node is the BNV's (+0x18, 0x50c9c0).
 
 ## The global path
 
+`AI2rPath_GoToPoint` 0x4ae480 keeps the destination (C+0x1100), its radius (C+0x10f4, at least 3.0,
+0x529808), the facing asked for (C+0x10f8, C+0x10fc), and sets C+0x10f0 to 1. A radius of 0, as a
+neutral's talk asks for at its own place, is still reached within 3 (confirmed).
+
 `AI2iPath_MakePath` 0x4aeb10 (from `AI2rPath_GoToPoint` 0x4ae480 and `AI2rPath_Repath` 0x4ae3d0): the
 character's node (C+0x188) and the destination's. The path is kept if it was made for the same two
 nodes, to within 20 of the point (400 squared, 0x529dec), less than 90 ticks ago. In one node there is

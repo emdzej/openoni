@@ -33,6 +33,34 @@ static bool cmd_show(SlThread *t, int argc, const SlValue *argv, SlValue *r, voi
     return true;
 }
 
+static float fnum(const SlValue *v) { return v->type == SL_FLOAT ? v->f : (float)v->i; }
+
+/* A shade's channel: clamped to 0..1, times 255, rounded (0x4340a0). */
+static uint32_t channel(const SlValue *v)
+{
+    float f = fnum(v);
+    f = f < 0.0f ? 0.0f : f > 1.0f ? 1.0f : f;
+    return (uint32_t)lrintf(f * 255.0f) & 0xff;
+}
+
+uint32_t env_script_shade(const SlValue *rgb) { return 0xff000000u | channel(&rgb[0]) << 16 | channel(&rgb[1]) << 8 | channel(&rgb[2]); }
+
+/* env_shade gq_ref:int gq_ref:int r g b (AIiScript_EnvShade 0x4bd070): the quads of the ids in the range
+   get the shade (opaque) at their four corners. The original's walk reads one entry past the end of the
+   id list; the port stops at the end. */
+static bool cmd_shade(SlThread *t, int argc, const SlValue *argv, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (!level_env || argc < 5) return true;
+    int32_t a = num(&argv[0]), b = num(&argv[1]);
+    if (a > b) { int32_t x = a; a = b; b = x; }
+    uint32_t shade = env_script_shade(&argv[2]), quad, id;
+    for (uint32_t i = 0; i < akev_script_count(level_env); i++)
+        if (akev_script_entry(level_env, i, &quad, &id) && id >= (uint32_t)a && id <= (uint32_t)b)
+            akev_quad_set_shade(level_env, quad, shade);
+    return true;
+}
+
 /* env_broken gq_ref:int [gq_endref:int] (AIiScript_EnvBroken 0x4bcf60): of the ids in the range (at most
    0x400), how many have no glass (quad flag 0x200000) left unbroken (0x40000): each id with unbroken
    glass counted once, taken from the range's size. The original's walk reads one entry past the end of
@@ -144,6 +172,7 @@ void env_register_commands(void)
 {
     p3_glass_hook = glass_hit;
     sl_register("env_show", cmd_show, NULL);
+    sl_register("env_shade", cmd_shade, NULL);
     sl_register("env_broken", cmd_broken, NULL);
     sl_register_bool("p3_glass_breakable", &shards_on);
     sl_register_bool("p3_everything_breakable", &break_all);

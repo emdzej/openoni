@@ -301,6 +301,8 @@ typedef struct {
     bool goal_facing;
     float goal_angle;
     float goal_radius;      /* arrived within this */
+    const Character *follow;    /* +0x10f4 with the path's type 2 (+0x10f0): the character followed, its
+                                   place the goal (AI2rPath_FollowCharacter 0x4ae580), NULL none */
     /* the global path (AI2iPath_MakePath 0x4aeb10, graph.h): the links to cross, then the goal */
     int path[199];          /* +0x1174 (GRAPH_PATH_MAX) */
     int path_n, path_k;     /* the links, the next one */
@@ -361,6 +363,9 @@ void ai_take_control(AiState *a, Character *c);
 void ai_move_to(AiState *a, const float p[3], bool face, float angle);
 /* The same, arriving within radius (and not stopping there when through). */
 void ai_move_near(AiState *a, const float p[3], float radius, bool face, float angle);
+/* AI2rPath_FollowCharacter 0x4ae580: the path's goal is the character, wherever it goes (to within 12);
+   NULL halts. */
+void ai_follow(AiState *a, const Character *who);
 /* The pursuit state (C+0x1f8 6, C+0x8c0 the contact), as the combat and alarm states enter it
    (AI2rExitState, then AI2rEnterState on C+0x8b8's block). */
 void ai_pursue(AiState *a, struct KnowEntry *e);

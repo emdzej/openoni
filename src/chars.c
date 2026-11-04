@@ -557,6 +557,21 @@ static bool cmd_lookatme(SlThread *t, int c, const SlValue *v, SlValue *r, void 
     return true;
 }
 
+/* ai2_followme [char] (AI2iScript_Debug_FollowMe 0x4b4a60, AI2rDebug_FollowMe 0x48bd40): the AI (an AI,
+   C+0x1e8 2), or every living AI, follows the player (AI2rPath_FollowCharacter); nothing without one. */
+static bool cmd_followme(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    Chr *p = chars_player(), *one = c >= 1 ? arg_char(&v[0]) : NULL;
+    if ((c >= 1 && !one) || !p) return true;     /* "ai2_followme": no such AI */
+    for (int i = 0; i < CHARS_MAX; i++) {
+        Chr *ch = &slots[i];
+        if (!used[i] || (one && ch != one) || !ch->c.ai || (ch->c.flags & 1)) continue;
+        ai_follow(&ch->ai, &p->c);
+    }
+    return true;
+}
+
 /* ai2_lookatchar a b (AI2iScript_LookAtChar 0x4b5550): a (moved by its AI: C+4 0x400000, the player
    only with ai2_takecontrol) turns where it stands to face b (AI2rPath_GoToPoint, within 3) and looks
    at b. */
@@ -1319,6 +1334,7 @@ void chars_register_commands(void)
     sl_register("ai2_takecontrol", cmd_takecontrol, NULL);
     sl_register("trigvolume_kill", cmd_trigvolume_kill, NULL);
     sl_register("ai2_lookatme", cmd_lookatme, NULL);
+    sl_register("ai2_followme", cmd_followme, NULL);
     sl_register("ai2_lookatchar", cmd_lookatchar, NULL);
     sl_register("chr_boss_shield", cmd_boss_shield, NULL);
     sl_register("chr_shadow", cmd_shadow, NULL);

@@ -1181,6 +1181,31 @@ static bool cmd_has_empty(SlThread *t, int c, const SlValue *v, SlValue *r, void
     return true;
 }
 
+/* WPrFindBarabbasWeapon 0x51b260: the first weapon in use of a class with nothing to reload it
+   (ONWC +0xcc 0x800). */
+static Weapon *barabbas_weapon(void)
+{
+    for (int i = 0; i < WEAPONS_MAX; i++)
+        if ((weapons[i].flags & WEAPON_IN_USE) && (options(&weapons[i]) & ONWC_NO_AMMO)) return &weapons[i];
+    return NULL;
+}
+
+/* ai2_barabbas_retrievegun char (AI2iScript_BarabbasRetrieveGun 0x4b50d0): an AI (C+0x1e8 2) with
+   nothing in its hand takes that gun into the hand at once, wherever it lies, unless someone holds it
+   or it is above 700 (0x52afd4). */
+static bool cmd_barabbas_retrievegun(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    Chr *ch = c >= 1 ? char_arg(&v[0]) : NULL;
+    if (!ch || !ch->c.ai) return true;      /* "ai2_barabbas_retrievegun": no such AI */
+    if (ch->c.weapon) return true;
+    Weapon *w = barabbas_weapon();
+    if (!w) return true;                    /* "ai2_barabbas_retrievegun: can't find..." */
+    if (w->owner || w->m[10] > 700.0f) return true;
+    pickup_weapon(&ch->c, w);               /* ONrCharacter_PickupWeapon */
+    return true;
+}
+
 /* chr_has_lsi char (AI2iScript_HasLSI 0x4b8c10): a bool, whether the character carries the LSI
    (C+0x1b4). */
 static bool cmd_has_lsi(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
@@ -1240,5 +1265,6 @@ void weapons_register_commands(void)
     sl_register("chr_giveweapon", cmd_give, NULL);
     sl_register("chr_has_empty_weapon", cmd_has_empty, NULL);
     sl_register("chr_has_lsi", cmd_has_lsi, NULL);
+    sl_register("ai2_barabbas_retrievegun", cmd_barabbas_retrievegun, NULL);
     sl_register_bool("wp_disable_fade", &no_fade);
 }
