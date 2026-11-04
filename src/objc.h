@@ -52,6 +52,9 @@ uint16_t objc_char_combat(const ObjcObject *o);
 /* The weapon's ammo, a percentage (+0x1d0, D+0x1c4 in memory: ONrGameState_NewCharacter 0x4dac50
    passes it to 0x519b30; 100 for most, 10 for one of level 1's strikers). */
 uint32_t objc_char_ammo(const ObjcObject *o);
+/* The inventory (+0x1b4): what it carries and what it drops at death, u16 each, of the clips (0), cells
+   (1), hypos (2), shield (3), invisibility (4); a sixth pair unused. */
+uint16_t objc_char_inventory(const ObjcObject *o, int k, bool drop);
 /* The alarm groups (+0x1e4, C+0xfd8: the bits of the groups whose alarms it answers). */
 uint32_t objc_char_alarm_groups(const ObjcObject *o);
 /* The initial alert level (+0x1d4, C+0xf94: 1 for the thugs, 0 for Konoko). */

@@ -14,6 +14,7 @@
 #include "melee.h"
 #include "objc.h"
 #include "patrol.h"
+#include "powerup.h"
 #include "physics.h"
 #include "sl.h"
 #include "tm.h"
@@ -91,6 +92,21 @@ static Chr *create(int object)
     c->object = object;
     c->c.id = (uint16_t)(i + 1);
     c->c.ai = !c->player;
+    /* the inventory: carried and dropped at death; a shield of 1 is a full one, invisibility starts
+       hidden (C+0x1bc 600); the LSI is the CHAR's flag 0x200 */
+    c->c.ammo = objc_char_inventory(o, 0, false);
+    c->c.cells = objc_char_inventory(o, 1, false);
+    c->c.hypos = objc_char_inventory(o, 2, false);
+    c->c.drop_ammo = objc_char_inventory(o, 0, true);
+    c->c.drop_cells = objc_char_inventory(o, 1, true);
+    c->c.drop_hypos = objc_char_inventory(o, 2, true);
+    c->c.shield = objc_char_inventory(o, 3, false);
+    if (c->c.shield == 1) c->c.shield = 100;
+    c->c.drop_shield = objc_char_inventory(o, 3, true) != 0;
+    c->c.invisibility = objc_char_inventory(o, 4, false);
+    c->c.drop_invisibility = objc_char_inventory(o, 4, true) != 0;
+    c->c.invisible_ticks = c->c.invisibility ? 600 : 0;
+    c->c.lsi = (object_flags[object] & 0x200) != 0;
     ai_init(&c->ai);
     c->ai.name = c->name;
     /* AI2rInitializeCharacter 0x48a6b0: the AI's flags (knowledge on; CHAR flag 0x08 non-aggressive,
@@ -363,6 +379,19 @@ static void died(Character *c)
     /* C+0x1644: the body stays the class's time (ONCC+0xc8a) */
     const uint8_t *k = (const uint8_t *)c->oncc + 0xc8a;
     ch->corpse_time = (uint16_t)(k[0] | k[1] << 8);
+    /* (ONrCharacter_Die_1_Animating_Hook 0x4eb550) an AI's inventory: the clips, cells and hypos it drops, one each, a
+       shield and an invisibility; then (unless C+4 0x4000000, not kept) what is left of its own shield
+       and invisibility, and the LSI */
+    if (c->ai) {
+        for (unsigned n = 0; n < c->drop_ammo; n++) powerup_drop(c, POWERUP_AMMO, 1, false);
+        for (unsigned n = 0; n < c->drop_cells; n++) powerup_drop(c, POWERUP_CELL, 1, false);
+        for (unsigned n = 0; n < c->drop_hypos; n++) powerup_drop(c, POWERUP_HYPO, 1, false);
+        if (c->drop_shield) powerup_drop(c, POWERUP_SHIELD, 100, false);
+        if (c->drop_invisibility) powerup_drop(c, POWERUP_INVISIBILITY, 1800, false);
+        if (c->shield) powerup_drop(c, POWERUP_SHIELD, c->shield, false);
+        if (c->invisibility) powerup_drop(c, POWERUP_INVISIBILITY, c->invisibility, false);
+        if (c->lsi) powerup_drop(c, POWERUP_LSI, 1, false);
+    }
     if (ch->object < 0) return;
     const ObjcObject *o = &objects[ch->object];
     const char *defeated = objc_char_script(o, OBJC_SCRIPT_DEFEATED), *death = objc_char_script(o, OBJC_SCRIPT_DIE);

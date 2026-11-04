@@ -440,15 +440,6 @@ static bool conversation_animation(Chr *who, uint16_t type, bool wait, bool agai
     return false;
 }
 
-/* WPrPowerup_Drop 0x51bd80 (the port's stand-in: placed on the floor, no fall): the amount of the type
-   at c's feet 10 ahead, facing anywhere. */
-static void drop_powerup(const Character *c, int type, uint16_t amount)
-{
-    float p[3] = { c->pos[0] + sinf(c->facing) * 10.0f, c->pos[1], c->pos[2] + cosf(c->facing) * 10.0f };   /* 0x52a190 */
-    float facing = (float)trac_random() * TWO_PI * (1.0f / 65535.0f);     /* 0x5294fc */
-    powerup_place(type, amount, p, facing);
-}
-
 /* The give (at the AI's give animation's action frame): the gifts to the player, what it can't carry
    dropped by the AI; the weapon into the player's hand, or dropped by the AI with one in it. */
 static void give(Chr *n, Chr *p)
@@ -461,7 +452,7 @@ static void give(Chr *n, Chr *p)
         uint16_t amount = d[N_GIFTS + k];
         if (!amount) continue;
         uint16_t left = (uint16_t)(amount - powerup_give(&p->c, k, amount, false, true));     /* 0x51ca30 */
-        if (left) drop_powerup(&n->c, k, left);
+        if (left) powerup_drop(&n->c, k, left, true);
     }
     uint8_t f = d[N_GIFTS + 3];
     if (f & 1) powerup_give(&p->c, POWERUP_SHIELD, powerup_default_amount(POWERUP_SHIELD), false, true);

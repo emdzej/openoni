@@ -47,7 +47,8 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   from the level's combat settings, hold, advance or back off, fight hand to hand, and with a gun lead
   their target, aim from the weapon's muzzle and fire within their class's shooting skill. Knocked
   down, they lie dazed for their class's time and then get up. They start
-  with the weapons the level gives them, and without one they may go for a gun lying nearby, by their
+  with the weapons and the inventory the level gives them, and drop what they were to drop when they die
+  (clips, cells, hypos, a shield, invisibility, the LSI), and without one they may go for a gun lying nearby, by their
   class's chance. They run to alarm consoles when their scripts or combat settings say so, and an
   alarm alerts the guards of its group. A guard that hears or glimpses Konoko pursues her: it goes
   to where she was, glances or looks around there, and gives up as the trail goes cold, by the

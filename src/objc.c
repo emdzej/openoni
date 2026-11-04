@@ -8,6 +8,7 @@
 enum { BINA_TAG = 0x42494e41, OBJC_VERSION = 39 };
 
 static uint32_t rd32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
+static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }
 static float rdf(const uint8_t *p) { uint32_t v = rd32(p); float f; memcpy(&f, &v, 4); return f; }
 
 void objc_each(const char *type, ObjcFn fn, void *user)
@@ -59,6 +60,11 @@ uint16_t objc_char_job_path(const ObjcObject *o) { return o->size >= 0x1b0 ? (ui
 uint16_t objc_char_melee(const ObjcObject *o) { return o->size >= 0x1b2 ? (uint16_t)(o->data[0x1b0] | o->data[0x1b1] << 8) : 0xffff; }
 uint16_t objc_char_neutral(const ObjcObject *o) { return o->size >= 0x1b4 ? (uint16_t)(o->data[0x1b2] | o->data[0x1b3] << 8) : 0xffff; }
 uint16_t objc_char_combat(const ObjcObject *o) { return o->size >= 0x1b0 ? (uint16_t)(o->data[0x1ae] | o->data[0x1af] << 8) : 0; }
+uint16_t objc_char_inventory(const ObjcObject *o, int k, bool drop)
+{
+    unsigned off = 0x1b4 + 4u * (unsigned)k + (drop ? 2u : 0u);
+    return o->size >= off + 2 ? rd16(o->data + off) : 0;
+}
 uint32_t objc_char_ammo(const ObjcObject *o) { return o->size >= 0x1d4 ? rd32(o->data + 0x1d0) : 100; }
 uint32_t objc_char_alarm_groups(const ObjcObject *o) { return o->size >= 0x1e8 ? rd32(o->data + 0x1e4) : 0; }
 uint32_t objc_char_alert(const ObjcObject *o) { return o->size >= 0x1d8 ? rd32(o->data + 0x1d4) : 0; }

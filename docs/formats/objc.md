@@ -43,7 +43,7 @@ Each object:
 
 | Offset (in the type's data) | What |
 |---|---|
-| 0x00 | Flags: 0x01 the player, 0x04 not there at the start (spawned by a script) |
+| 0x00 | Flags: 0x01 the player, 0x04 not there at the start (spawned by a script), 0x200 carries the LSI (C+0x1b4) |
 | 0x04 | Character class (`ONCC` name, without the tag), 64 bytes |
 | 0x44 | Name (what scripts call it), 32 bytes |
 | 0x64 | Weapon, 64 bytes |
@@ -54,7 +54,7 @@ Each object:
 | 0x1ae | Combat settings id (u16): a `Combat` object's |
 | 0x1b0 | Melee profile id (u16) |
 | 0x1b2 | Neutral settings id (u16) |
-| 0x1b4 | Six pairs of u16 (the ammunition and the like, not used by the port) |
+| 0x1b4 | Six pairs of u16, the inventory: carried, then dropped at death, of the ballistic clips, energy cells, hypos, shield, invisibility; the sixth pair unused (D+0x1d4..D+0x1eb). `ONrGameState_NewCharacter` 0x4dac50 copies them to C+0x1a2/0x1a6/0x1a4 (carried clips, cells, hypos), C+0x1a8/0x1ac/0x1aa (dropped), C+0x1b8 the shield (1 is 100), C+0x1b2 whether one is dropped, C+0x1ba the invisibility (C+0x1bc 600 with one), C+0x1b3 whether one is dropped. The death hook (0x4eb550) of an AI drops them (`WPrPowerup_Drop` 0x51bd80): the clips, cells, hypos one by one, a shield of 100, an invisibility of 1800, then its own shield, invisibility and the LSI |
 | 0x1cc | Team: an index into the exe's eight names (0x54b38c: Konoko, TCTF, Syndicate, Neutral, SecurityGuard, RogueKonoko, Switzerland, SyndicateAccessory) |
 | 0x1d0 | The weapon's ammo, a percentage of its shots (u32; `ONrGameState_NewCharacter` 0x4dac50 passes it to 0x519b30) |
 | 0x1d4 | Alert levels, four u32: initial, minimal, job start, investigate (C+0xf94..C+0xfa0) |

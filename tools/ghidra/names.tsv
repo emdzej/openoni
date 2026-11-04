@@ -1435,6 +1435,7 @@
 0051bc20	WPrSlot_FindEmpty	WP	low	an empty slot: slot 1 first if asked, else the last but 1
 0051bc70	WPrSlot_FindLastStowed	WP	med	name from the Intel Mac build (re/mac-matches.tsv)
 0051bd00	WPrSlot_Swap	WP	med	name from the Intel Mac build (re/mac-matches.tsv)
+0051bd80	WPrPowerup_Drop	WP	med	name from the Intel Mac build (the same drop calls as _ONiCharacter_DropInventoryItems)
 0051c560	WPrTryReload	WP	med	name from the Intel Mac build (strings:1)
 0051c730	ONrCharacter_InventoryCount	ON	low	the clips, cells or hypos of the type (name made up)
 0051c8f0	WPiCommand_GivePowerup	WP	med	read: give_powerup type [amount [player]]; the Mac build's name

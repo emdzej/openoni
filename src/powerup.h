@@ -37,6 +37,7 @@ Powerup *powerup_new(int type, uint16_t amount, const float pos[3], float facing
 Powerup *powerup_place(int type, uint16_t amount, const float pos[3], float facing);
 /* 0x51c4f0: gone (the last one takes its slot). */
 void powerup_delete(Powerup *p);
+void powerup_drop(const Character *c, int type, uint16_t amount, bool ahead);
 /* WPrPowerup_DefaultAmount 0x51d000: 1, a shield 100, invisibility 1800 (ticks). */
 uint16_t powerup_default_amount(int type);
 /* 0x51b3e0: the nearest powerup c can take something of, between the heights, nearer than sqrt(r2)

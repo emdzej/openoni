@@ -9,6 +9,7 @@
 #include "sl.h"
 #include "sound.h"
 #include "tm.h"
+#include "trac.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -201,6 +202,22 @@ void powerup_matrix(const Powerup *p, float m[12])
 /* ---- the commands ---- */
 
 static int32_t num(const SlValue *v) { return v->type == SL_FLOAT ? (int32_t)v->f : v->i; }
+
+/* WPrPowerup_Drop 0x51bd80 (the port's stand-in: placed on the floor, no fall): the amount of the type
+   at c's feet, deviated up to 1 in x and z (AUrDeviateXZ 0x4380e0), 10 ahead if asked (0x52a190), facing
+   anywhere. */
+void powerup_drop(const Character *c, int type, uint16_t amount, bool ahead)
+{
+    const float r = 1.0f / 65535.0f;    /* 0x529d74 */
+    float p[3] = { c->pos[0], c->pos[1], c->pos[2] };
+    float dx = (float)trac_random() * r, dz = (float)trac_random() * r;
+    if ((uint16_t)(trac_random() * 100u >> 16) < 50) dx = -dx;
+    if ((uint16_t)(trac_random() * 100u >> 16) < 50) dz = -dz;
+    p[0] += dx, p[2] += dz;
+    if (ahead) p[0] += sinf(c->facing) * 10.0f, p[2] += cosf(c->facing) * 10.0f;
+    float facing = (float)trac_random() * 6.2831855f * r;   /* 0x529548, 0x5294fc */
+    powerup_place(type, amount, p, facing);
+}
 
 /* powerup_spawn type flag [amount] (AI2iScript_PowerupSpawn 0x4b85e0): a placed powerup at the flag. */
 static bool cmd_spawn(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)

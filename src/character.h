@@ -140,6 +140,8 @@ typedef struct Character {
     float visibility;               /* A+0x2818: how much of the body shows (1 all), while it is on or a
                                        teleport (0xde) fades it (C+4 0x40000) */
     bool lsi;                       /* C+0x1b4: carries the LSI */
+    uint16_t drop_ammo, drop_hypos, drop_cells;     /* C+0x1a8, 0x1aa, 0x1ac: dropped at death */
+    bool drop_shield, drop_invisibility;            /* C+0x1b2, 0x1b3: a shield, an invisibility dropped */
     float aim_kick;                 /* C+0x1d0: the recoil's speed (class +0x80 a shot) */
     float recoil;                   /* C+0x1d4: the recoil, raising the aim (ONrCharacter_BuildQuaternions) */
     bool fire_down, fire2_down, fire_again, fire_empty, stop_fire, stop_fire2;  /* A+0x21e0, 0x21e1, 0x21df, 0x21e2, 0x21e3, 0x21e4 */
