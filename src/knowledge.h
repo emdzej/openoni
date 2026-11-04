@@ -57,6 +57,10 @@ void knowledge_forget(struct Chr *c);
 void knowledge_forget_contacts(struct Chr *owner, const struct Chr *target);
 /* AI2rKnowledge_Update 0x499e80, once a tick before the characters. env: the AKEV for the sight lines. */
 void knowledge_update(const void *env);
+/* AI2rAlert_UpgradeStatus 0x48eee0 without a contact; AI2rAlert_DowngradeStatus 0x48f180 (force: in
+   combat too). */
+bool knowledge_upgrade_alert(struct Chr *c, int level);
+void knowledge_downgrade_alert(struct Chr *c, int level, bool force);
 KnowEntry *knowledge_find(const struct Chr *owner, const struct Chr *target);   /* 0x49b8c0 */
 /* AI2rTeam_FriendOrFoe 0x48b2c0: 0 friends, 1 neutral, 2 enemies. */
 int ai_team_relation(uint32_t a, uint32_t b);

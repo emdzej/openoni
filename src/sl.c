@@ -623,7 +623,7 @@ bool sl_load_text(const char *name, const char *text, char *err, size_t errcap)
     int n = lex(text, name, &toks);
     bool ok = n >= 0;
     for (int pass = 1; pass < 3 && ok; pass++) {
-        Parser P = { toks, 0, n, name, NULL, { 0 }, { 0 }, 0, false };
+        Parser P = { toks, 0, n, name, NULL, { 0 }, { 0 }, 0, false, false };
         if (pass == 1) declare(&P);
         else define(&P);
         if (P.failed) ok = false;
@@ -664,7 +664,7 @@ bool sl_load_folder(const char *dir, char *err, size_t errcap)
                 stats.files++;
                 continue;
             }
-            Parser P = { toks[i], 0, ntok[i], l.names[i], NULL, { 0 }, { 0 }, 0, false };
+            Parser P = { toks[i], 0, ntok[i], l.names[i], NULL, { 0 }, { 0 }, 0, false, false };
             if (pass == 1) declare(&P);
             else define(&P);
             if (P.failed) ok = false;
@@ -697,6 +697,7 @@ static SlThread *threads[256];
 static int n_threads;
 
 int sl_threads(void) { return n_threads; }
+void sl_thread_sleep(SlThread *t, uint32_t ticks) { if (t) t->sleep = ticks; }
 
 static bool enter(SlThread *t, int func, int argc)
 {
@@ -854,6 +855,7 @@ static bool run(SlThread *t)
             }
             t->sp -= argc;
             if (o->op == OP_CALL) t->stack[t->sp++] = r;
+            if (t->sleep) return true;      /* the command put it to sleep (sl_thread_sleep) */
             break;
         }
         case OP_RET: {

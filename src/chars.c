@@ -428,6 +428,89 @@ static bool cmd_doalarm(SlThread *t, int c, const SlValue *v, SlValue *r, void *
     return true;
 }
 
+/* ai2_tripalarm alarm [char] (0x4b5dd0): the alarm of that group (1..100) set off by the AI given, else
+   the player (0x49ac30, alarm.c). */
+static bool cmd_tripalarm(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 1) return true;
+    int32_t id = num(&v[0]);
+    Chr *who = c >= 2 && (uint32_t)(id - 1) < 100 ? arg_char(&v[1]) : NULL;
+    if (who && who->player) who = NULL;
+    if (!who) who = chars_player();
+    alarm_notify((unsigned)id, who);
+    return true;
+}
+
+/* ai2_setalert char level (AI2iScript_Debug_SetAlert 0x4b60a0): by the level's name (the five at
+   0x52a5d4, 16 bytes apart: lull to combat), raised (AI2rAlert_UpgradeStatus) or lowered, forced
+   (AI2rAlert_DowngradeStatus). */
+static bool cmd_setalert(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    Chr *ch = c >= 2 ? arg_char(&v[0]) : NULL;
+    if (!ch || ch->player || v[1].type != SL_STRING) return true;     /* "ai2_setalert" */
+    for (int k = 0; k < 5; k++) {
+        const char *name = exe_str(0x52a5d4 + 16u * (uint32_t)k);
+        if (!name || strcmp(name, v[1].s)) continue;
+        if (k <= ch->ai.alert) knowledge_downgrade_alert(ch, k, true);
+        else knowledge_upgrade_alert(ch, k);
+        return true;
+    }
+    return true;        /* "could not find alert status" */
+}
+
+/* chr_peace char (AI2iScript_Leave_FightMode 0x4ba370 -> 0x4eb130): out of fight mode (the 0x200
+   variant, the fight timer A+0x1ca2). */
+static bool cmd_peace(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    Chr *ch = c >= 1 ? arg_char(&v[0]) : NULL;
+    if (!ch) return true;
+    ch->c.varient &= (uint16_t)~0x200;
+    ch->c.fight_timer = 0;
+    return true;
+}
+
+/* chr_facetoflag char flag (AI2iScript_FaceToFlag 0x4b68c0): the facing and the desired facing the
+   flag's (its y rotation), C+0x174 cleared. */
+static bool cmd_facetoflag(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 2) return true;
+    Chr *ch = arg_char(&v[0]);
+    ObjcObject flag;
+    if (!ch || !objc_flag_find((uint16_t)num(&v[1]), &flag)) return true;   /* "flag %d does not exist" */
+    float f = flag.rot[1] * 0.017453292f;
+    while (f < 0.0f) f += 6.2831855f;
+    while (f >= 6.2831855f) f -= 6.2831855f;
+    ch->c.facing = ch->c.desired_facing = f;
+    return true;
+}
+
+/* chr_wait_health char hp (AI2iScript_WaitForHealth 0x4b7ac0): waits while its hit points (C+0x38) are
+   above hp. */
+static bool cmd_wait_health(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    Chr *ch = c >= 2 ? arg_char(&v[0]) : NULL;
+    if (!ch) return true;
+    return !(num(&v[1]) < (int32_t)ch->c.hit_points);
+}
+
+/* ai2_makedeaf/ai2_makeblind char 0|1 (AI2iScript_MakeDeaf 0x4b90e0 and its neighbour): C+0x1f0 bits
+   0x1000, 0x800. */
+static bool set_ai_flag(int c, const SlValue *v, uint32_t bit)
+{
+    Chr *ch = c >= 2 ? arg_char(&v[0]) : NULL;
+    if (!ch || ch->player) return true;
+    if (num(&v[1])) ch->ai.flags |= bit;
+    else ch->ai.flags &= ~bit;
+    return true;
+}
+static bool cmd_makedeaf(SlThread *t, int c, const SlValue *v, SlValue *r, void *u) { (void)t, (void)r, (void)u; return set_ai_flag(c, v, AI_FLAG_DEAF); }
+static bool cmd_makeblind(SlThread *t, int c, const SlValue *v, SlValue *r, void *u) { (void)t, (void)r, (void)u; return set_ai_flag(c, v, AI_FLAG_BLIND); }
+
 /* ai2_setjobstate char (AI2iScript_MakeCurrentStateJob 0x4b4b00): an AI character takes its state (C+0x1f8, the
    state block at C+0xf70) as its job (C+0x1f4, C+0x200), what it goes back to after combat. */
 static bool cmd_setjobstate(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
@@ -624,6 +707,9 @@ static bool cmd_playback(SlThread *t, int c, const SlValue *v, SlValue *r, void 
         else if (!strcmp(v[2].s, "interp")) mode = FILM_START_INTERP, ticks = c > 3 ? (uint32_t)num(&v[3]) : 30;
     }
     film_start(&ch->c, film, mode, ticks);
+    /* playback_block (0x4b6d80): the script sleeps the film's length (FILM +0x1c) */
+    if (u) sl_thread_sleep(t, (uint32_t)(((const uint8_t *)film)[0x1c] | ((const uint8_t *)film)[0x1d] << 8 |
+                                         ((const uint8_t *)film)[0x1e] << 16 | (uint32_t)((const uint8_t *)film)[0x1f] << 24));
     return true;
 }
 
@@ -894,6 +980,13 @@ void chars_register_commands(void)
     sl_register("ai2_passive", cmd_passive, NULL);
     sl_register("ai2_setjobstate", cmd_setjobstate, NULL);
     sl_register("ai2_doalarm", cmd_doalarm, NULL);
+    sl_register("ai2_tripalarm", cmd_tripalarm, NULL);
+    sl_register("ai2_setalert", cmd_setalert, NULL);
+    sl_register("chr_peace", cmd_peace, NULL);
+    sl_register("chr_facetoflag", cmd_facetoflag, NULL);
+    sl_register("chr_wait_health", cmd_wait_health, NULL);
+    sl_register("ai2_makedeaf", cmd_makedeaf, NULL);
+    sl_register("ai2_makeblind", cmd_makeblind, NULL);
     sl_register("chr_changeteam", cmd_changeteam, NULL);
     sl_register("chr_nocollision", cmd_nocollision, NULL);
     sl_register("chr_forceholster", cmd_forceholster, NULL);
@@ -913,6 +1006,7 @@ void chars_register_commands(void)
     sl_register("chr_weapon_immune", cmd_weapon_immune, NULL);
     sl_register("chr_teleport", cmd_teleport, NULL);
     sl_register("playback", cmd_playback, NULL);
+    sl_register("playback_block", cmd_playback, (void *)1);
     sl_register("chr_full_health", cmd_full_health, NULL);
     sl_register("begin_cutscene", cmd_begin_cutscene, NULL);
     sl_register("end_cutscene", cmd_end_cutscene, NULL);

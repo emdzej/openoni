@@ -27,6 +27,9 @@ typedef struct SlThread SlThread;
 typedef bool (*SlCommand)(SlThread *t, int argc, const SlValue *argv, SlValue *result, void *user);
 
 void sl_reset(void);
+/* From a command: the thread sleeps that many ticks once the command is done (a blocking command
+   that hands the script its wait, as playback_block does). */
+void sl_thread_sleep(SlThread *t, uint32_t ticks);
 /* Registers a command, replacing one of the same name. */
 void sl_register(const char *name, SlCommand fn, void *user);
 /* An engine variable (SLrGlobalVariable_Register_*): scripts read and set it by name. */

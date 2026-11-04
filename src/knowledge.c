@@ -169,6 +169,19 @@ static void remove_entry(KnowEntry *e)
    0xc0..0xc3 by the contact's side) unless the class has none (ONCC+0x120 bit 0); at combat, the combat
    state against the contact's character. Returns whether it startled. Not ported: the movement's
    notification, the turn during the startle (C+0xfac, C+0xfb0). */
+static bool upgrade_alert(Chr *c, int level, KnowEntry *e);
+bool knowledge_upgrade_alert(Chr *c, int level) { return upgrade_alert(c, level, NULL); }
+
+/* AI2rAlert_DowngradeStatus 0x48f180: the alert set lower (in combat only if forced); under low the
+   time it rose (C+0xf90) is forgotten. (The movement's notification isn't kept.) */
+void knowledge_downgrade_alert(Chr *c, int level, bool force)
+{
+    AiState *a = &c->ai;
+    if ((!force && a->state == AI_STATE_COMBAT) || a->alert == level) return;
+    a->alert = level;
+    if (level < 2) a->alert_time = 0;
+}
+
 static bool upgrade_alert(Chr *c, int level, KnowEntry *e)
 {
     AiState *a = &c->ai;
