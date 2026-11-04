@@ -328,8 +328,8 @@ static bool cmd_dprint(SlThread *t, int argc, const SlValue *argv, SlValue *r, v
 
 static float fog_rgb[3], fog_start = 0.99f, fog_end = 1.0f, far_clip = 10000.0f;
 
-/* The fog's smooth changes (gl_fog_start_changeto_func 0x40cb20, gl_fog_end_changeto_func 0x40cb90): to the value
-   over the frames (none, or not above 0: at once), by a step a tick. */
+/* The fog's smooth changes (gl_fog_start_changeto_func 0x40cb20, gl_fog_end_changeto_func 0x40cb90):
+   to the value over the frames (none, or not above 0: at once), by a step a tick. */
 static struct { bool on; float to, step; } fog_change[2];
 
 static bool fog_changeto(int k, float *v, int argc, const SlValue *argv)
