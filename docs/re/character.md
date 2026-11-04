@@ -645,3 +645,15 @@ How an AI character's wishes become its input (notes for step 1 of the AI's port
 Ported in `src/ai.c` (the overrides, the attack override and the aim not yet), driven by a stand-in
 mover (straight to a point) until the movement layer is; `ai2_movetoflag` uses it. `ai_test`: a thug
 turns round, walks 60 to a point and faces the way asked.
+
+## Character setups (AISA)
+
+`chr_create <id>` (*AI2iScript_ChrCreate* 0x4b7710) makes a character from the level's setup array,
+AISA, linked at ONLV +0x5c (*confirmed*). It is a u16 count at +0x16, then 0x160-byte records from
++0x18: +0x00 the name (empty: `ai_<slot>`), +0x20 the script id (0x506d50 looks it up), +0x22 the flag id,
++0x24 the flags, +0x26 the team, +0x28 the ONCC, +0x4c the scripts and +0x150 the ONWC. The
+character stands at the flag (*ONrLevel_Flag_ID_To_Flag*), if 15 above it is inside a BNV
+(*AKrNodeFromPoint* 0x440600). *ONrGameState_NewCharacter* 0x4dac50 takes the setup when there is no
+CHAR object. *AI2rInitializeCharacter* 0x48a6b0 then gives it the default combat and melee and alert
+lull, with job alert low and no alarm groups; script id 0 or flag 1 means no AI. In every level's
+AISA the names, scripts and weapons are empty. The cutscenes use these characters as the films' actors.

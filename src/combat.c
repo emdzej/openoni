@@ -50,6 +50,24 @@ void combat_load(void)
     objc_each("Combat", add_profile, NULL);
 }
 
+void combat_default_settings(AiState *a)
+{
+    /* the defaults: medium 200, short 40, Hold And Fire at every range, unarmed: fight when the
+       target is close (3) */
+    CombatSettings *s = &a->combat_set;
+    s->id = 0;
+    s->medium = 200.0f;
+    for (int k = 0; k < 5; k++) s->behaviour[k] = 2;
+    s->no_gun = 3;
+    s->no_gun_else = 0;
+    s->near = 40.0f;
+    s->alarm_find = 300.0f;
+    s->alarm_ignore = 80.0f;
+    s->alarm_chase = 0.0f;
+    s->alarm_damage = 30;
+    s->alarm_fight = 360;
+}
+
 void combat_settings(AiState *a, uint16_t id)
 {
     CombatSettings *s = &a->combat_set;
@@ -57,19 +75,7 @@ void combat_settings(AiState *a, uint16_t id)
     for (int i = 0; i < n_profiles && !p; i++)     /* ONrLevel_Combat_ID_To_Combat 0x506b30 */
         if (rd16(profiles[i] + 0x40) == id) p = profiles[i];
     if (!p) {
-        /* the defaults: medium 200, short 40, Hold And Fire at every range, unarmed: fight when the
-           target is close (3) */
-        s->id = 0;
-        s->medium = 200.0f;
-        for (int k = 0; k < 5; k++) s->behaviour[k] = 2;
-        s->no_gun = 3;
-        s->no_gun_else = 0;
-        s->near = 40.0f;
-        s->alarm_find = 300.0f;
-        s->alarm_ignore = 80.0f;
-        s->alarm_chase = 0.0f;
-        s->alarm_damage = 30;
-        s->alarm_fight = 360;
+        combat_default_settings(a);
         return;
     }
     s->id = id;

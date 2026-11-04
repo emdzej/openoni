@@ -1,10 +1,9 @@
 /* The level's characters: ONrGameState's character list (0x16a0 bytes each from GS+0x1260, a slot used
    while its flag 0x8000 is set), filled from the level's CHAR objects (objc.h) at the start and by
-   ai2_spawn, emptied by chr_delete; and the script commands that pick a character by its name or its
+   ai2_spawn, and from the level's character setups (AISA) by chr_create; emptied by chr_delete; and the script commands that pick a character by its name or its
    script id (FUN_004bb880 and FUN_0048a5a0 through the living list).
 
-   Not yet: the AI (every character but the player stands, with no input), chr_create (characters from
-   a .txt file), and the many chr_* and ai2_* commands that set AI state. */
+   The AI is ai.c's; the chr_* and ai2_* commands are below. */
 #pragma once
 #include "ai.h"
 #include "character.h"

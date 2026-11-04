@@ -15,6 +15,8 @@ enum { COMBAT_MANEUVER_HOLD, COMBAT_MANEUVER_ADVANCE, COMBAT_MANEUVER_RETREAT, C
 void combat_load(void);
 /* AI2rInitializeCharacter 0x48a6b0's copy: the Combat object of that id, else the defaults. */
 void combat_settings(AiState *a, uint16_t id);
+/* The settings of a character with no combat profile (FUN_004936b0's defaults). */
+void combat_default_settings(AiState *a);
 /* AI2rCombat_Enter 0x48f290's resets: the maneuver (0x49db70: none, the gun's search and the guns out
    of reach forgotten) and the gun's chances. */
 void combat_enter(AiState *a);

@@ -3,6 +3,7 @@
 #include "alarm.h"
 #include "combat.h"
 #include "film.h"
+#include "graph.h"
 
 #include "chr_anim.h"
 #include "chr_hit.h"
@@ -22,6 +23,7 @@
 
 #include <ctype.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 
 /* The CHAR objects, with the flags the game sets on them as it goes (0x20 spawned: the OSD's +0x2c). */
@@ -51,6 +53,7 @@ static bool armed;
    percentage ("none" and "" have none). */
 static void arm(Chr *c)
 {
+    if (c->object < 0) return;      /* from a setup (chr_create) */
     const ObjcObject *o = &objects[c->object];
     const char *w = objc_char_weapon(o);
     if (*w && strcmp(w, "none")) weapon_give_class(&c->c, w, objc_char_ammo(o));
@@ -110,6 +113,78 @@ static Chr *create(int object)
     c->ai.alarm_groups = objc_char_alarm_groups(o);
     chr_hit_init(&c->c, objc_char_extra_health(o));
     if (armed) arm(c);
+    return c;
+}
+
+/* The level's character setups (AISA, ONLV +0x5c): a u16 count at +0x16, 0x160-byte records from +0x18
+   (+0x00 name, +0x20 script id, +0x22 flag id, +0x24 flags, +0x26 team, +0x28 ONCC, +0x4c the scripts,
+   +0x150 ONWC). */
+static const uint8_t *level_setups(void)
+{
+    TmFile *f = tm_file_at(tm_file_slots() - 1);
+    for (uint32_t i = 0; f && i < tm_file_instance_count(f); i++) {
+        const TmInstance *in = tm_file_instance(f, i);
+        if (in->tmpl->tag == TM_TAG("ONLV") && in->data) return tm_link(in->data + 0x5c);
+    }
+    return NULL;
+}
+
+/* 0x506d50: the setup of that script id, NULL none. */
+static const uint8_t *find_setup(int16_t id)
+{
+    const uint8_t *a = level_setups();
+    if (!a) return NULL;
+    unsigned n = (unsigned)(a[0x16] | a[0x17] << 8);
+    for (unsigned i = 0; i < n; i++) {
+        const uint8_t *r = a + 0x18 + 0x160 * i;
+        if ((int16_t)(r[0x20] | r[0x21] << 8) == id) return r;
+    }
+    return NULL;
+}
+
+/* ONrGameState_NewCharacter 0x4dac50 from a setup (no CHAR object) at a flag: the class (+0x28; none,
+   the first ONCC), the name (none: "ai_<slot>"), the team; AI2rInitializeCharacter 0x48a6b0's setup
+   part: the script id (0 no AI), the default combat and melee, alert lull, job alert low, no alarm
+   groups. The setup's weapon (+0x150) and scripts are empty in every level's AISA (not read). */
+static Chr *create_setup(const uint8_t *r, const ObjcObject *flag)
+{
+    const void *oncc = tm_link(r + 0x28);
+    if (!oncc) return NULL;
+    int i = 0;
+    while (i < CHARS_MAX && used[i]) i++;
+    if (i == CHARS_MAX) return NULL;
+    Chr *c = &slots[i];
+    memset(c, 0, sizeof *c);
+    if (!character_init(&c->c, oncc, flag->pos, flag->rot[1] * 0.017453293f)) return NULL;
+    used[i] = true;
+    memset(&actors[i], 0, sizeof actors[i]);
+    if (r[0]) {
+        memcpy(c->name, r, sizeof c->name - 1);
+    } else {
+        const char *fmt = exe_str(0x5509f0);     /* the "ai_" and slot format */
+        size_t k = fmt ? strcspn(fmt, "%") : 0;
+        if (k >= sizeof c->name - 4) k = 0;
+        memcpy(c->name, fmt, k);
+        snprintf(c->name + k, sizeof c->name - k, "%d", i);
+    }
+    c->script_id = (int16_t)(r[0x20] | r[0x21] << 8);
+    c->team = (uint32_t)(r[0x26] | r[0x27] << 8);
+    c->object = -1;
+    c->c.id = (uint16_t)(i + 1);
+    c->c.ai = true;
+    ai_init(&c->ai);
+    c->ai.name = c->name;
+    uint32_t f = (uint32_t)(r[0x24] | r[0x25] << 8);
+    if (c->script_id && !(f & 1)) {
+        c->ai.flags = AI_FLAG_KNOWLEDGE;
+        c->ai.state = AI_STATE_IDLE;
+        melee_start(&c->ai.melee, NULL, oncc);
+        combat_default_settings(&c->ai);
+    }
+    c->ai.job = c->ai.state;
+    c->ai.job_patrol = c->ai.patrol;
+    c->ai.job_alert = 1;
+    chr_hit_init(&c->c, 0);
     return c;
 }
 
@@ -316,6 +391,28 @@ static Chr *arg_char(const SlValue *v)
     long id = strtol(v->s, &end, 10);
     if (*v->s && !*end) return find_id((int32_t)id);
     return chars_find(v->s);
+}
+
+/* chr_create id [start] (AI2iScript_ChrCreate 0x4b7710): a character from the level's setup of that
+   script id at the setup's flag, if the flag (15 above it) is in a room. The second argument isn't
+   read. */
+static bool cmd_chr_create(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 1) return true;
+    const uint8_t *s = find_setup((int16_t)num(&v[0]));
+    if (!s) return true;            /* "no character setup with script id %d" and the ids there are */
+    ObjcObject flag;
+    if (!objc_flag_find((uint16_t)(s[0x22] | s[0x23] << 8), &flag)) return true;     /* "flag %d not found" */
+    float p[3] = { flag.pos[0], flag.pos[1] + 15.0f, flag.pos[2] };     /* 0x529d84 */
+    TmFile *f = tm_file_at(tm_file_slots() - 1);
+    for (uint32_t i = 0; f && i < tm_file_instance_count(f); i++) {
+        const TmInstance *in = tm_file_instance(f, i);
+        if (in->tmpl->tag == TM_TAG("AKEV") && in->data) graph_for(in->data);
+    }
+    if (graph_room_at(p) < 0) return true;      /* "flag was not inside a BNV" */
+    create_setup(s, &flag);                       /* "failed to create a new character" */
+    return true;
 }
 
 /* ai2_spawn name [force] (AI2iScript_Spawn 0x4b4780) */
@@ -974,6 +1071,7 @@ void chars_register_commands(void)
 {
     sl_register("chr_wait_animation", cmd_wait_animation, NULL);
     sl_register("ai2_spawn", cmd_spawn, NULL);
+    sl_register("chr_create", cmd_chr_create, NULL);
     sl_register("chr_delete", cmd_delete, NULL);
     sl_register("ai2_movetoflag", cmd_movetoflag, NULL);
     sl_register("ai2_dopath", cmd_dopath, NULL);
