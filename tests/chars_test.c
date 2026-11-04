@@ -153,6 +153,11 @@ int main(void)
     /* a throw: the throw dummy 10 units in front of the player, facing her; forward and punch (Punch_Forward)
        become Throw_Forward_Punch (0x6a), the dummy takes the victim's animation (type 96) and its own
        damage (its flag 0x1000, being thrown, lasts until its AI asks for an animation: the same tick) */
+    /* the fight next to her may have hit her and left her facing off the way she wants to face, and its
+       survivor would go for the (Syndicate) dummy, hitting her too: where it ended is chance, so the
+       throw starts from her facing settled and the survivor far away */
+    p->c.facing = p->c.desired_facing;
+    if (d2 && d3) ((d2->c.flags & 1) ? d3 : d2)->c.pos[0] += 1000.0f;
     snprintf(script, sizeof script, "func void dummy(void) {\n  ai2_spawn dum_train_throw\n}\n");
     if (!sl_load_text("chars_dummy", script, err, sizeof err) || !sl_call("dummy", 0, NULL)) failed++;
     sl_update();

@@ -76,5 +76,11 @@ void weapons_install(void);
 /* ONrCharacter_SetWeapon 0x4e4c00: the weapon in the character's hand (NULL none). */
 void chr_set_weapon(Character *c, Weapon *w);
 
+/* 0x519b30: the ammo at a percentage of the class's shots. */
+void weapon_set_ammo_percent(Weapon *w, unsigned percent);
+/* ONrGameState_NewCharacter 0x4dac50's weapon: a new weapon of the class (an ONWC name) in c's hand,
+   its ammo at percent (the CHAR object's). False without the class. */
+bool weapon_give_class(Character *c, const char *name, unsigned percent);
+
 /* weapon_spawn, chr_inv_reset, chr_giveweapon, wp_disable_fade. */
 void weapons_register_commands(void);

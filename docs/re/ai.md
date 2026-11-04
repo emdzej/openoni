@@ -1,7 +1,7 @@
-# The AI: knowledge, alert and melee
+# The AI: knowledge, alert, combat and melee
 
-How an AI character learns of others and what it does with it. The port is `src/knowledge.c`, with
-its test `tests/knowledge_test.c`. The executor, the patrol and the AI's character fields are in
+How an AI character learns of others and what it does with it. The ports are `src/knowledge.c` (with
+its test `tests/knowledge_test.c`), `src/combat.c` and `src/melee.c`. The executor, the patrol and the AI's character fields are in
 [character.md](character.md) ("The AI's executor") and [objc.md](../formats/objc.md) (PATR). Offsets
 are of the character record (C+) unless marked otherwise. Confirmed means read in the Windows exe;
 inferred means from the data or the context.
@@ -292,6 +292,116 @@ a time (190); every other has 0, and its bodies stay.
 
 `ai2_passive` (`AI2iScript_Passive` 0x4b4be0 → `AI2rPassive` 0x48b160) sets or clears bit 2. Setting
 it leaves the state and halts the path; clearing it re-enters the state.
+
+## Combat
+
+What the combat state does with its target once it has one (`src/combat.c`). The state's block is at
+C+0x8b8 (B+ below); the behaviours get B+8.
+
+### The settings
+
+`AI2rInitializeCharacter` 0x48a6b0 looks up the CHAR object's combat id (+0x1ae) among the level's
+Combat objects (`ONrLevel_Combat_ID_To_Combat` 0x506b30; OBJcCombat, version 39) and copies:
+
+| Object | Character | What | Default |
+|---|---|---|---|
+| +0x40 (u16) | C+0x1028 | the id | 0 |
+| +0x44 (5 u32) | C+0x1034 | the behaviour of each range, 1 to 5 | 2 (Hold And Fire) |
+| +0x58 | C+0x102c | the medium range | 200 |
+| +0x5c | C+0x104c | when an unarmed one fights (below) | 3 |
+| +0x60 | C+0x1050 | what else it does unarmed: 0 melee, 1 retreat, 2 the alarm | 0 |
+| +0x64 | C+0x1030 | the short range | 40 |
+| +0x68.. | C+0x1054.., C+0xfec.. | the pursuit's and the alarm's settings | 200, 600, ... |
+
+Level 1 has 19 of them (`Stand_and_Fire` id 0: Hold And Fire everywhere, medium 120, short 40;
+`Assault` id 4: Firing Charge at long and short range; ...).
+
+### The range and the behaviour
+
+`AI2rCombat_GetRange` 0x4901f0, from the targeting's point (none: long): under the short range 3;
+under the medium 2, or 4 coming from 3 or more; else 1, or 5 coming from 2 or more. A change switches the
+behaviour (0x490290): the old one gets message 2, the new one (C+0x1034 by the range) message 0. The
+behaviours are a table of 14 (names at 0x53eb98, handlers at 0x52a6c4): 0 None, 1 Stare (0x490f20), 2
+Hold And Fire (0x490f90), 3 Firing Charge (0x4911e0), 4 Melee (0x4912d0), 5 to 13 the bosses' and Run For
+Alarm. A handler takes (message, &handled, args); unhandled goes to `AI2rBehavior_Default` 0x493120.
+
+| Message | Hold And Fire | Firing Charge | Melee | Stare | Default |
+|---|---|---|---|---|---|
+| 1, the weights | hold 1 | advance 1 (20..80), hold 0.2 | melee 1 | hold 1 | - |
+| 4 | may melee | may melee | may melee unless meleeing | may melee | may melee |
+| 5, the flags | all on | all on | targeting only | targeting, the environment's test | targeting only |
+
+The flags (B+0x5c..0x5f) are the line of fire's environment test, its friends test, the aim and the fire;
+B+0x8c turns the targeting on. Hold And Fire and Firing Charge without a usable gun (none, or empty with
+nothing to reload: 0x4edc00) go to 0x491060: it fights hand to hand (melee 1) when C+0x104c is 5, or 1
+and hit in the last 240 ticks, or 3 to 5 and the range as close as the table at 0x52a688; else it wants a
+gun (weight 1) and, by C+0x1050, melee 0.8, a retreat 0.8 (100..1000) or the alarm.
+
+Message 7 (from the tick, when the target is within the weapon's closest distance, ONWC+0xd0+0x5c) scales
+hold and advance down and fights, steps in or backs off; message 9 keeps the aim while firing or within
+the maneuver's distance (0x52a6a0: 80, 120, 140, 80, 60, 140, 160; else 500).
+
+### The tick
+
+After the lost-target part (above), `AI2rCombat_Update`:
+
+1. A new weapon (or firing mode) goes to the targeting (0x4bb700) with the weapon's matrix (the body's
+   node 19).
+2. With the targeting on, `AI2rTargeting_Update`; else the target's pelvis is the point and the aim stops.
+3. Every fifth tick, by the character's index (C+0) against the game time: the range; the line of fire
+   (beyond the weapon's farthest, +0x60, none; else 0x490c50 from the muzzle to the point, or the arc of
+   a ballistic weapon in steps); the weights cleared (0x49dbc0), message 1, the lost target's and the
+   no-line-of-fire's weights (advance 1.2 to 12..30), message 7; the maneuver (0x49dbf0); messages 4
+   and 5.
+4. The melee maneuver runs `AI2rMelee_Update`.
+5. The trigger: unless meleeing, in an animation of the types 0xc0..0xc3, backing off too close, in an
+   attack, with an attack override, or against a player whose input is off (`AI2rAllowedToAttack`
+   0x48bc30), the fire decision; else the aim stops and the trigger is let go (0x490a50).
+
+**The maneuvers** (0x49dbf0, B+0x194, seven weights): the heaviest is tried; one that can't be done
+loses its weight and the next is tried. 0 hold (the path halted); 1 advance (`AI2iManeuver_CheckAdvance`
+0x49df80: by how far beyond the near distance, at least half, then a path to the point); 2 retreat (a
+local path away, 15 long, by the distance between the near and far ones and the path's quality,
+0x52a944); 3 a gun to pick up; 4 the alarm; 5 melee (0x49e910: within 80 of the target, else an advance
+to 15..20); 6 getting up.
+
+### The targeting
+
+The targeting (B+0x90, `AI2rTargeting_*`) works for its owner through callbacks (0x53ebf8): the fire, the
+aiming speed, the shooter's place (its pelvis), and the movement's looks (along a direction, at a point,
+at a character). Its class block is ONCC+0x138: +0 and +4 the first shots' error (by the distance, at
+most), +8 how much of the target's motion is led, +0xc the lead's delay, +0x10, +0x14 and +0x18 the
+motion's windows and the memory of places (60), +0x1c 13 shooting skills of 0x18 bytes (+4 the error
+close up, +0x14..+0x16 the delay's range). A weapon's two AI firing modes (ONWC+0xd0, +0x150, 0x80
+bytes): +0 flags, +4 a matrix to the barrel's space, +0x34 the barrel, +0x40 the muzzle, +0x4c the shots'
+speed, +0x50 and +0x54 the tolerances, +0x5c the closest it fires at, +0x60 the farthest, +0x66 the
+skill, +0x6c and +0x70 a ballistic shot's speed and gravity.
+
+- **The prediction** (0x4bacc0): the target's pelvis kept in a ring; its motion over the short and the
+  long windows (per second); with both steady (their agreement over 0.5) the point is led by the shots'
+  travel time and the delay.
+- **The aim** (0x4bb370): within 25 the muzzle draws back along the barrel (up to 8, fully within 10);
+  the vector from the muzzle to the point (a ballistic weapon's arc solved for) is what the movement aims
+  along.
+- **The fire decision** (0x4ba830): the vector in the barrel's space; not even toward it (the ratio
+  ahead/across under 0.5 + 1.5 × closeness), faster aiming and no shot. Else the tolerance (the firing
+  mode's, the wide one after the first shots; grown by the grouping, the first shots' error, a tenth per
+  tick over 30 off target; close up the skill's; else up to 4 times at range): within it, fire; outside
+  it, a delay from the skill's range, and far off (5 times), faster aiming. Under 10 away for 10 ticks it
+  fires point blank.
+
+### The executor's aim
+
+The movement's look (`AI2iMovementState_Calculate_Movement` 0x4aa250; +0x1584: 1 a point, 2 a
+direction, 3 a character) sets the executor's aim (0x498dc0, 0x498e10; stop 0x498da0) and, without a
+path's facing, the facing. `AI2rExecutor_UpdateAim` 0x498f50 turns the aim point (A+0x2198), from 15 over
+the feet, toward it at the aiming speed (A+0x1ab4 × 6° a tick, by the weapon's +0x7c in the combat
+states, 0x52a4d8); more than 130° off the facing it aims ahead. `DoCharacterFrame` turns the point into
+the character's aim (A+0x21bc, 0x21c0) for an AI's character not under a film.
+
+Not ported yet: the bosses' behaviours, the gun pickup, the alarm, the getting up, the attack of
+opportunity (0x49f2e0), the melee wait of an empty weapon (B+0x64), the objects in the line of fire,
+the arc's steps; the local paths of the advance and the retreat are the port's stand-ins.
 
 ## Melee
 

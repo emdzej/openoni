@@ -4,6 +4,7 @@
    by its profile's chance and the difficulty. */
 #include "akev.h"
 #include "chars.h"
+#include "ui.h"
 #include "chr_anim.h"
 #include "exe.h"
 #include "melee.h"
@@ -74,6 +75,7 @@ int main(void)
     uint16_t last = 0;
     const void *last_tech = NULL;
     for (int k = 0; k < 900; k++) {
+        ui_update();    /* the game time: the combat state thinks every fifth tick of it */
         chars_update(&(CharacterInput){ 0 }, env);
         if (combat_at < 0 && t->ai.state == AI_STATE_COMBAT) combat_at = k;
         if (t->c.anim && tr_is_attack(t->c.anim) && t->c.type != last) attacks++;

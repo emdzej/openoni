@@ -9,12 +9,14 @@
 #include "cinematic.h"
 #include "character.h"
 #include "chars.h"
+#include "combat.h"
 #include "knowledge.h"
 #include "char_draw.h"
 #include "action.h"
 #include "console.h"
 #include "door.h"
 #include "chr_anim.h"
+#include "chr_hit.h"
 #include "weapon.h"
 #include "env.h"
 #include "env_draw.h"
@@ -346,9 +348,11 @@ static void start_scripts(void)
     snprintf(dir, sizeof dir, "GameDataFolder/IGMD/%.63s", name ? name : "");
     if (name && !sl_load_folder(dir, err, sizeof err)) plat_log(err);
     if (!sl_call("main", 0, NULL)) plat_log("OpenOni: the level has no main script");
-    /* a debug aid: --param call=<function> runs one of the level's functions at the start */
-    char fn[64];
-    if (plat_param("call", fn, sizeof fn) && !sl_call(fn, 0, NULL)) plat_log("OpenOni: no such function");
+    /* a debug aid: --param call=<function>[,<function>...] runs the level's functions at the start */
+    char fn[192];
+    if (plat_param("call", fn, sizeof fn))
+        for (char *f = strtok(fn, ","); f; f = strtok(NULL, ","))
+            if (!sl_call(f, 0, NULL)) plat_log("OpenOni: no such function");
 }
 
 /* ---- a debug aid: --param route=<steps> drives the player, for unattended runs through a level.
@@ -360,7 +364,39 @@ static void start_scripts(void)
    b back, l/r step left/right, c crouch, j jump, p punch, k kick, w walk, a action, q swap, g fire).
    "R" as a mode runs from up to 1.3 rad off. "T<name>,N[,L]" aims at the character for N frames (where it
    will be in L frames) and taps fire every 20 frames; the shots leave at about 1.13 times the aim's angle
-   from the facing (measured), which the aim allows for. ---- */
+   from the facing (measured), which the aim allows for. "M<message>,F" waits for a script's message and
+   shifts the later "@" frames by when it came against F (when the route was made). "Gfrom,to,N" shoots
+   the unbroken glass targets of those script ids, aiming the weapon's barrel at each. ---- */
+
+/* The level's environment, for the route's glass targets. */
+static const void *route_env;
+
+/* The centre of the unbroken glass (quad flag 0x200000 without 0x40000) of the script id, false if none. */
+static bool glass_centre(uint32_t id, float out[3])
+{
+    const void *env = route_env;
+    if (!env) return false;
+    uint32_t np, quad, qid, n = 0;
+    const uint8_t *pts = akev_points(env, &np);
+    float sum[3] = { 0 };
+    for (uint32_t i = 0; i < akev_script_count(env); i++) {
+        AkevQuad q;
+        if (!akev_script_entry(env, i, &quad, &qid) || qid != id || !akev_quad(env, quad, &q)) continue;
+        if (!(q.flags & 0x200000) || (q.flags & 0x40000)) continue;
+        for (uint32_t k = 0; k < q.corners && k < 4; k++) {
+            if (q.point[k] >= np) continue;
+            for (int j = 0; j < 3; j++) {
+                float f;
+                memcpy(&f, pts + 12 * q.point[k] + 4 * j, 4);
+                sum[j] += f;
+            }
+            n++;
+        }
+    }
+    if (!n) return false;
+    for (int j = 0; j < 3; j++) out[j] = sum[j] / (float)n;
+    return true;
+}
 
 typedef struct {
     char buf[4096];
@@ -368,6 +404,7 @@ typedef struct {
     uint32_t until;         /* for waits: the frame */
     int phase;              /* within a step */
     bool crouch;
+    int32_t shift;          /* added to the "@N" frames after an "M" step */
 } Route;
 static Route route;
 
@@ -395,7 +432,20 @@ static void route_input(const Character *c, CharacterInput *in)
         char *s = route.step;
         uint32_t now = plat_frames();
         if (*s == '@') {
-            if (now < (uint32_t)atoi(s + 1)) return;
+            if ((int64_t)now < (int64_t)atoi(s + 1) + route.shift) return;
+            route_next();
+            continue;
+        }
+        if (*s == 'M') {
+            char id[32];
+            const char *comma = strchr(s, ',');
+            size_t n = comma ? (size_t)(comma - s - 1) : 0;
+            if (!comma || n >= sizeof id) { route_next(); continue; }
+            memcpy(id, s + 1, n);
+            id[n] = 0;
+            uint32_t at = ui_message_time(id);
+            if (!at) return;
+            route.shift = (int32_t)at - atoi(comma + 1);
             route_next();
             continue;
         }
@@ -465,6 +515,39 @@ static void route_input(const Character *c, CharacterInput *in)
             float err = wrap_pi(want - c->desired_facing);
             in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
             in->fire = (now - route.until + (uint32_t)n) % 20 == 0;
+            return;
+        }
+        if (*s == 'G') {
+            /* "Gfrom,to,N": for up to N frames, the weapon's barrel (its AI firing mode's, ONWC+0xd0)
+               turned onto each unbroken glass target of the script ids in turn, a shot when on it */
+            unsigned from = 0, to = 0, n = 0;
+            sscanf(s + 1, "%u,%u,%u", &from, &to, &n);
+            if (!route.phase) route.until = now + n, route.phase = 1;
+            float at[3];
+            unsigned id = from;
+            while (id <= to && !glass_centre(id, at)) id++;
+            float m[12];
+            if (now >= route.until || id > to || !c->weapon || !chr_weapon_matrix(c, m)) { route_next(); continue; }
+            if (route.phase > 1) { route.phase--; return; }    /* after a shot */
+            const uint8_t *p = c->weapon->cls + 0xd0;
+            float b[3], mz[3], w[3];
+            for (int j = 0; j < 3; j++) {
+                float x, y, z;
+                memcpy(&x, p + 0x34, 4), memcpy(&y, p + 0x38, 4), memcpy(&z, p + 0x3c, 4);
+                b[j] = m[j] * x + m[3 + j] * y + m[6 + j] * z;
+                memcpy(&x, p + 0x40, 4), memcpy(&y, p + 0x44, 4), memcpy(&z, p + 0x48, 4);
+                mz[j] = m[j] * x + m[3 + j] * y + m[6 + j] * z + m[9 + j];
+                w[j] = at[j] - mz[j];
+            }
+            float ey = wrap_pi(atan2f(w[0], w[2]) - atan2f(b[0], b[2]));
+            float ep = atan2f(w[1], sqrtf(w[0] * w[0] + w[2] * w[2])) - atan2f(b[1], sqrtf(b[0] * b[0] + b[2] * b[2]));
+            if (fabsf(ey) < 0.004f && fabsf(ep) < 0.004f) {
+                in->fire = true;
+                route.phase = 41;
+                return;
+            }
+            in->turn = ey * 0.5f > 0.05f ? 0.05f : ey * 0.5f < -0.05f ? -0.05f : ey * 0.5f;
+            in->pitch = ep * 0.5f > 0.05f ? 0.05f : ep * 0.5f < -0.05f ? -0.05f : ep * 0.5f;
             return;
         }
         if (*s == 'c') {
@@ -547,7 +630,7 @@ static void particles_update(uint32_t tick, bool gameplay)
 
 static int play(int level)
 {
-    char err[256], m[300];
+    char err[256], m[300], at_dummy[8];
     trac_set_level((uint16_t)level);
     if (!tm_level_load(level, err, sizeof err)) {
         snprintf(m, sizeof m, "OpenOni: level %d: %s", level, err);
@@ -562,6 +645,7 @@ static int play(int level)
         return 1;
     }
     chars_load();
+    if (plat_param("ailog", at_dummy, sizeof at_dummy)) combat_log = plat_log;
     Chr *player = chars_player();
     if (!player) {
         plat_log("OpenOni: no player character");
@@ -583,9 +667,11 @@ static int play(int level)
     p3_set_environment(env);
     weapons_reset();
     powerups_reset();
+    chars_arm();
     console_load();
     action_install();
     env_set((void *)env);
+    route_env = env;
     /* the camera behind the player (CArInitialize's state, reset to follow) */
     CameraTarget ct = { .active = true };
     camera_init();

@@ -42,12 +42,14 @@ Steps 4 (renderer), 6 (character) and 7 (scripts) have begun:
 - `src/trac.c`: the animation collections.
 - `src/chars.c`: the level's characters (from `CHAR` objects and `ai2_spawn`), their scripts (die,
   defeated, hurt) and the `chr_*`/`ai2_*` commands. `src/ai.c` (the AI's executor, a stand-in mover), `src/patrol.c` (patrol paths and jobs),
-  `src/knowledge.c` (sight, hurts, the alert) and `src/melee.c` (the melee profiles and techniques;
-  both in [docs/re/ai.md](docs/re/ai.md)) move the others.
-  `--param call=<function>` runs a level function at the start (e.g. `spawn_top` on level 1).
+  `src/knowledge.c` (sight, hurts, the alert), `src/combat.c` (the combat settings, behaviours,
+  maneuvers, targeting and the executor's aim) and `src/melee.c` (the melee profiles and techniques; all
+  in [docs/re/ai.md](docs/re/ai.md)) move the others; `--param ailog=1` logs each fighter once a second.
+  `--param call=<function>[,...]` runs level functions at the start (e.g. `spawn_top,final_striker_attack` on level 1).
 - `src/character.c`: a first playable. `--param play=1 --param level=1` runs Konoko through level 1
   (`--param at=x,y,z,deg` starts her elsewhere); `--param viewer=level` flies through a level.
-  `--param route=<steps>` drives her headless (the steps are described in `app.c`; `--param trace=N`
+  `--param route=<steps>` drives her headless (the steps are described in `app.c`, among them `M`, a
+  wait for a script's message that shifts the later frames, and `G`, the glass targets shot; `--param trace=N`
   logs the characters and the doors near Konoko every N frames; `--param sltrace=1` the scripts).
 - `src/throw.c`: throws (the player's; the victim's part and its own damage), in
   [docs/re/character.md](docs/re/character.md) "Throws".

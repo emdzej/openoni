@@ -45,6 +45,11 @@ uint16_t objc_char_job_path(const ObjcObject *o);
 /* The melee profile's id (the u16 at +0x1b0: 0x27 THUG_Wh for the warehouse thugs, inferred from the
    data; 0xffff none). */
 uint16_t objc_char_melee(const ObjcObject *o);
+/* The combat settings' id (the u16 at +0x1ae: a Combat object's, AI2rInitializeCharacter 0x48a6b0). */
+uint16_t objc_char_combat(const ObjcObject *o);
+/* The weapon's ammo, a percentage (+0x1d0, D+0x1c4 in memory: ONrGameState_NewCharacter 0x4dac50
+   passes it to 0x519b30; 100 for most, 10 for one of level 1's strikers). */
+uint32_t objc_char_ammo(const ObjcObject *o);
 /* The initial alert level (+0x1d4, C+0xf94: 1 for the thugs, 0 for Konoko). */
 uint32_t objc_char_alert(const ObjcObject *o);
 /* The alert at or above which the AI goes back to its job (+0x1dc, C+0xf9c: AI2rInitializeCharacter

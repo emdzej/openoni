@@ -943,6 +943,35 @@ static bool cmd_has_empty(SlThread *t, int c, const SlValue *v, SlValue *r, void
     return true;
 }
 
+/* 0x519b30: the ammo set to a percentage of the class's shots (at most all of them); owned, the
+   background events stop at none and start at some. */
+void weapon_set_ammo_percent(Weapon *w, unsigned percent)
+{
+    unsigned full = rd16(w->cls + ONWC_SHOTS), n = (percent & 0xffff) * full / 100;
+    w->ammo = (uint16_t)(n <= full ? n : full);
+    if (!w->owner || !(w->flags & WEAPON_OWNED)) return;
+    if (w->ammo == 0) {
+        if (w->flags & WEAPON_BACKGROUND) {
+            w->flags &= (uint16_t)~WEAPON_BACKGROUND;
+            every_shooter(w, EV_BG_STOP);
+        }
+    } else if (!(w->flags & WEAPON_BACKGROUND)) {
+        w->flags |= WEAPON_BACKGROUND;
+        every_shooter(w, EV_BG_START);
+    }
+}
+
+bool weapon_give_class(Character *c, const char *name, unsigned percent)
+{
+    const void *cls = name && *name ? tm_instance_get(TM_TAG("ONWC"), name) : NULL;
+    if (!cls) return false;     /* "can't find weapon class" (but for "none" and the empty name) */
+    Weapon *w = weapon_new(cls, c->pos, 0.0f);   /* 0x518690 */
+    if (!w) return false;
+    chr_set_weapon(c, w);
+    weapon_set_ammo_percent(w, percent);
+    return true;
+}
+
 /* chr_giveweapon char class (AI2iScript_GiveWeapon 0x4b56c0): a new weapon of the class in the hand. */
 static bool cmd_give(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {

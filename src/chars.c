@@ -1,5 +1,6 @@
 /* The level's characters: see chars.h. */
 #include "chars.h"
+#include "combat.h"
 #include "film.h"
 
 #include "chr_anim.h"
@@ -42,6 +43,25 @@ static bool add_object(const ObjcObject *o, void *user)
     return true;
 }
 
+/* The weapons are set up after the characters at the level's start (chars_arm). */
+static bool armed;
+
+/* ONrGameState_NewCharacter 0x4dac50's weapon: the CHAR's class in the hand, its ammo at the object's
+   percentage ("none" and "" have none). */
+static void arm(Chr *c)
+{
+    const ObjcObject *o = &objects[c->object];
+    const char *w = objc_char_weapon(o);
+    if (*w && strcmp(w, "none")) weapon_give_class(&c->c, w, objc_char_ammo(o));
+}
+
+void chars_arm(void)
+{
+    armed = true;
+    for (int i = 0; i < CHARS_MAX; i++)
+        if (used[i]) arm(&slots[i]);
+}
+
 /* ONrGameState_NewCharacter 0x4dac50 from a CHAR object: the first free slot; its class, place and
    facing (the rotation's y, degrees), name and team; AI2rInitializeCharacter's script id. */
 static Chr *create(int object)
@@ -74,6 +94,7 @@ static Chr *create(int object)
         c->ai.alert = (int)objc_char_alert(o);
         c->ai.state = AI_STATE_IDLE;
         melee_start(&c->ai.melee, melee_find(objc_char_melee(o)), oncc);
+        combat_settings(&c->ai, objc_char_combat(o));
         if (objc_char_job(o) == OBJC_JOB_PATROL) {
             int path = patrol_find_id(objc_char_job_path(o));
             if (path >= 0) {
@@ -86,6 +107,7 @@ static Chr *create(int object)
     c->ai.job_patrol = c->ai.patrol;
     c->ai.job_alert = (int)objc_char_job_alert(o);
     chr_hit_init(&c->c, objc_char_extra_health(o));
+    if (armed) arm(c);
     return c;
 }
 
@@ -95,6 +117,8 @@ int chars_load(void)
     patrol_load();      /* the paths first: the patrol jobs start with their characters */
     melee_initialize();
     melee_load();
+    combat_load();
+    armed = false;
     objc_each("Character", add_object, NULL);
     int n = 0;
     for (int i = 0; i < n_objects; i++)
@@ -427,6 +451,19 @@ static bool cmd_make_ignore_player(SlThread *t, int c, const SlValue *v, SlValue
     return true;
 }
 
+/* ai2_attack char target (AI2iScript_Attack 0x4b4fd0): an AI character told of the target, seen and
+   hostile (AI2rKnowledge_CreateMagicAwareness 0x49ac00: a pending contact of type 6, strength 4, at
+   its place, made hostile). */
+static bool cmd_attack(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 2) return true;
+    Chr *ch = arg_char(&v[0]), *target = arg_char(&v[1]);
+    if (!ch || ch->player || !target) return true;     /* "ai2_attack", "ai2_attack: target" */
+    knowledge_post(ch, KNOW_SEEN_CENTRAL, KNOW_DEFINITE, target->c.pos, target, 0, false, true);
+    return true;
+}
+
 /* chr_delete char (AI2iScript_ChrDelete 0x4b7860) */
 static bool cmd_delete(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
@@ -689,6 +726,7 @@ void chars_register_commands(void)
     sl_register("chr_unkillable", cmd_unkillable, NULL);
     sl_register("chr_invincible", cmd_invincible, NULL);
     sl_register("ai2_makeignoreplayer", cmd_make_ignore_player, NULL);
+    sl_register("ai2_attack", cmd_attack, NULL);
     sl_register("chr_teleport", cmd_teleport, NULL);
     sl_register("playback", cmd_playback, NULL);
     sl_register("chr_full_health", cmd_full_health, NULL);

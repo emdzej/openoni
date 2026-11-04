@@ -44,6 +44,98 @@ typedef struct {
     uint64_t override_held, override_down;  /* A+0x1ad8, A+0x1ae0 */
 } MeleeState;
 
+/* The combat settings (C+0x1028..0x1050, AI2rInitializeCharacter 0x48a6b0 copies them from the
+   Combat object of the CHAR's id, else the defaults). */
+typedef struct {
+    uint16_t id;                /* C+0x1028 */
+    float medium;               /* C+0x102c: the medium range */
+    float near;                 /* C+0x1030: the short range */
+    int behaviour[5];           /* C+0x1034: for the ranges 1..5 (COMBAT_RANGE_*) */
+    int no_gun;                 /* C+0x104c: when the unarmed fight (COMBAT_NO_GUN_*) */
+    int no_gun_else;            /* C+0x1050: what they do otherwise (0 melee, 1 retreat, 2 the alarm) */
+} CombatSettings;
+
+/* The targeting (AI2rTargeting, the combat state's +0x90): where the target will be, the aim toward
+   it from the weapon, and when to fire. */
+enum { TARGETING_MEMORY = 64 };
+typedef struct {
+    int axis;                   /* +0x00: the barrel's axis (0 x) */
+    const Character *target;    /* +0x08 */
+    const uint8_t *cls;         /* +0x0c: the class's AI block (ONCC+0x138) */
+    bool active;                /* +0x14: aiming a weapon */
+    float speed;                /* +0x18: the target's */
+    float predict;              /* +0x1c: how much of its motion is led */
+    unsigned head, count;       /* +0x20, +0x24: the target's places, a ring of cls+0x18 */
+    float ring[TARGETING_MEMORY][3];    /* +0x28 */
+    float vel_short[3], vel_long[3];    /* +0x2c, +0x38 */
+    float point[3];             /* +0x44: where it is aimed at (the target, led) */
+    bool has_point;             /* +0x50 */
+    bool inaccurate;            /* +0x51: the first shots' error on */
+    float inaccuracy;           /* +0x54 */
+    float grouping;             /* +0x58 */
+    float offset[3];            /* +0x5c */
+    bool first;                 /* +0x68: not on target since the last delay */
+    uint32_t off_ticks;         /* +0x6c */
+    uint32_t delay;             /* +0x70: ticks before it may fire */
+    uint32_t close_ticks;       /* +0x74 */
+    int mode;                   /* +0x78: 1 aiming the weapon, 2 looking */
+    float aim[3];               /* +0x7c */
+    float from[3];              /* +0x88: the shooter's place (its pelvis) */
+    float muzzle[3];            /* +0x94 */
+    float barrel[3];            /* +0xa0 */
+    float vector[3];            /* +0xac: from the muzzle to the aim */
+    float dist, aim_dist;       /* +0xb8, +0xbc */
+    float close;                /* +0xc0: 1 within 10, 0 beyond 25 */
+    bool stopped, on_target, fire;      /* +0xc4, +0xc5, +0xc6 */
+    float error, tolerance;     /* +0xc8, +0xcc */
+    const uint8_t *params;      /* +0xd0: the weapon's AI firing mode (ONWC+0xd0, +0x150 the alternate) */
+    const uint8_t *skill;       /* +0xd4: the class's shooting skill for it */
+    float matrix[12];           /* +0xdc: the weapon's (the body's node 19) */
+    bool ballistic;             /* +0xe0: a ballistic solution (or none needed) */
+    float bal_h, bal_v, bal_angle;      /* +0xe4, +0xe8, +0xec */
+} AiTargeting;
+
+/* The combat state's block (C+0x8b8, its +8 on: what the behaviours get). */
+enum { COMBAT_MANEUVERS = 7 };
+typedef struct {
+    float dist;                 /* +0x18: to the target's point */
+    int range;                  /* +0x1c: COMBAT_RANGE_* */
+    int behaviour;              /* +0x20 */
+    bool check_env, check_friends, aim, fire;   /* +0x5c..+0x5f (behaviour message 5) */
+    bool alt;                   /* +0x60: the alternate fire */
+    uint32_t melee_wait;        /* +0x64 */
+    uint32_t backed, backed2;   /* +0x68, +0x6c */
+    uint32_t hurt_time;         /* +0x88: of the last hit (message 10) */
+    bool targeting;             /* +0x8c */
+    AiTargeting t;              /* +0x90 */
+    const void *weapon;         /* +0x180: the weapon the targeting has */
+    bool weapon_alt;            /* +0x184 */
+    bool firing, firing_alt;    /* +0x185, +0x186 */
+    bool lof, lof2;             /* +0x187, +0x188: a clear line of fire */
+    int maneuver;               /* +0x18c: COMBAT_MANEUVER_* */
+    float weight[COMBAT_MANEUVERS];     /* +0x194 */
+    float adv_near, adv_far;    /* +0x1b8, +0x1bc: the advance's */
+    float ret_near, ret_far;    /* +0x1c4, +0x1c8: the retreat's */
+    int getup;                  /* +0x1f8 */
+    bool melee_ok;              /* +0x454: may fight hand to hand */
+} CombatState;
+
+/* The executor's aim (A+0x1a88..A+0x1ab8, A+0x2195..A+0x21c8). */
+typedef struct {
+    bool on, stop, at_point, weapon_speed;  /* A+0x1a88..0x1a8b */
+    float at[3];                /* A+0x1a8c: a point, or a direction */
+    float speed;                /* A+0x1ab4 */
+    bool done;                  /* A+0x1ab8 */
+    float last_facing;          /* A+0x1aac, 1000 none */
+    bool aiming;                /* A+0x2195 */
+    float point[3];             /* A+0x2198 */
+    float yaw, pitch;           /* A+0x21c4, 0x21c8 */
+    int look;                   /* the movement's (+0x1584): 0 none, 1 a point, 2 a direction, 3 a character */
+    float look_at[3];           /* +0x1588 */
+    const Character *look_char;
+    bool fire, fire_alt;        /* A+0x21e0, 0x21e1: the trigger held */
+} AiAim;
+
 /* The AI's states (C+0x1f8). */
 enum { AI_STATE_NONE = 0, AI_STATE_IDLE = 1, AI_STATE_PATROL = 3, AI_STATE_COMBAT = 5, AI_STATE_PURSUIT = 6,
        AI_STATE_ALARM = 7, AI_STATE_NEUTRAL = 8, AI_STATE_PANIC = 9 };
@@ -84,6 +176,9 @@ typedef struct {
     struct Chr *target;     /* C+0x8c0: the state's target (combat, pursuit) */
     struct KnowEntry *target_entry;  /* C+0x8c8 (combat), C+0x8c0 (pursuit) */
     MeleeState melee;
+    CombatSettings combat_set;
+    CombatState combat;
+    AiAim aim;
     uint64_t held;          /* A+0x2188: last tick's keys */
     const char *name;       /* the character's (C+0x14), for the scripts it runs */
     /* the patrol (AI2rPatrol, C+0xf70's patrol state) */

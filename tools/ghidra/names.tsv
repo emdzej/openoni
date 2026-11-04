@@ -1252,3 +1252,20 @@
 004edd20	ONrCharacter_Holster	ON	med	read: the weapon overlay (lookup 7) into slot 1; the Mac build's name
 0051c8f0	WPiCommand_GivePowerup	WP	med	read: give_powerup type [amount [player]]; the Mac build's name
 004bcbb0	AIiScript_EndCutScene	AI	med	end_cutscene; the Mac build's name
+00490290	AI2iCombat_ChangeBehavior	AI2	low	the range's behaviour: the old one's exit message, the new one's enter
+00490a50	AI2iCombat_Fire	AI2	low	the trigger (A+0x21e0, 0x21e1) held or released; behaviour message 8
+00490c50	AI2iCombat_LineClear	AI2	low	a line of fire clear of the environment (0x242000), the objects and the non-enemies
+004ba6d0	AI2rTargeting_Initialize	AI2	low	the targeting's owner, class block and callbacks (0x53ebf8)
+004ba830	AI2iTargeting_FireDecision	AI2	low	the aim against the barrel within the tolerance, the delays, point blank
+004bb700	AI2rTargeting_SetWeapon	AI2	low	the weapon's AI firing mode and the class's shooting skill for it
+0049dbc0	AI2iManeuver_ClearWeights	AI2	low	the seven maneuvers' weights zeroed
+0049dbf0	AI2iManeuver_Select	AI2	low	the heaviest maneuver that can be done (hold, advance, retreat, gun, alarm, melee, getup)
+0049e910	AI2iManeuver_CheckMelee	AI2	low	melee within 80 of the target, else an advance to 15..20
+00491060	AI2iBehavior_NoGun	AI2	low	a gun behaviour without a usable gun: by C+0x104c and C+0x1050
+004e37b0	ONrCharacter_IsKnockedDown	ON	low	the knockdown, getup, victim and stun animation types
+004e3ff0	ONrCharacter_InSpecialAnimation	ON	low	an animation of the types 0xc0..0xc3 (now or queued)
+00519b30	WPrSetAmmoPercentage	WP	low	the ammo at a percentage of the class's shots; the background events
+00518690	WPrNew	WP	low	a new weapon of a class (a free slot, else the oldest unowned)
+00498da0	AI2rExecutor_StopAiming	AI2	low	the aim asked to stop (A+0x1a89)
+00498dc0	AI2rExecutor_AimAtPoint	AI2	low	the executor's aim at a point (A+0x1a88..0x1a94)
+00498e10	AI2rExecutor_AimDirection	AI2	low	the executor's aim along a direction

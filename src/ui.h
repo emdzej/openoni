@@ -37,6 +37,8 @@ void ui_set_cutscene(bool on, bool sync);
 int ui_area_count(int area);
 /* Line i of the area, oldest first; alpha in 0..1 (lines fade out over their last 64 ticks). */
 const UiLine *ui_area_line(int area, int i, float *alpha);
+/* When the message (by its name) was last asked for by a script, 0 not lately (the port's). */
+uint32_t ui_message_time(const char *id);
 /* Adds a line (the oldest goes when the area is full). */
 void ui_print(int area, const char *text, const char *id, int32_t timer, uint32_t colour);
 

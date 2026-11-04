@@ -4,6 +4,7 @@
 #include "sl.h"
 #include "text.h"
 
+#include <stdio.h>
 #include <string.h>
 
 static uint32_t now;
@@ -16,9 +17,22 @@ static bool input_on = true;
 static bool cutscene, cutscene_sync;
 static struct { UiLine lines[UI_AREA_LINES]; int n; } areas[UI_AREAS];
 
+/* The messages lately asked for (a debug aid for the routes: ui_message_time). */
+enum { SEEN_MAX = 32 };
+static struct { char id[32]; uint32_t time; } seen[SEEN_MAX];
+static int n_seen;
+
+uint32_t ui_message_time(const char *id)
+{
+    for (int i = n_seen - 1; i >= 0; i--)
+        if (!strcmp(seen[i % SEEN_MAX].id, id) && n_seen - i <= SEEN_MAX) return seen[i % SEEN_MAX].time;
+    return 0;
+}
+
 void ui_reset(void)
 {
     now = 0;
+    n_seen = 0;
     memset(&fade, 0, sizeof fade);
     memset(&box, 0, sizeof box);
     memset(areas, 0, sizeof areas);
@@ -194,6 +208,8 @@ static bool cmd_message(SlThread *t, int c, const SlValue *v, SlValue *r, void *
     (void)t, (void)r, (void)u;
     if (c < 1 || v[0].type != SL_STRING) return true;
     int32_t timer = c >= 2 ? num(&v[1]) : 0;
+    snprintf(seen[n_seen % SEEN_MAX].id, sizeof seen[0].id, "%s", v[0].s);
+    seen[n_seen++ % SEEN_MAX].time = now ? now : 1;
     const char *s = text_message(v[0].s);
     if (s) ui_print(UI_AREA_MESSAGE, s, v[0].s, timer, 0xffffffffu);
     else if ((s = text_subtitle(v[0].s))) ui_print(UI_AREA_SUBTITLE, s, v[0].s, timer, 0xffffffffu);

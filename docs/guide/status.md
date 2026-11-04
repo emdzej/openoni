@@ -24,7 +24,11 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   engine. She can also pick up, carry, aim, fire and reload weapons, and pick up ammo and other
   power-ups.
 - **The other characters**: they spawn from the level's objects and scripts, follow their patrol paths,
-  and see, hear and react to the player. Their combat is still a stand-in.
+  and see, hear and react to the player. In combat they pick a behaviour for the range to their target
+  from the level's combat settings, hold, advance or back off, fight hand to hand, and with a gun lead
+  their target, aim from the weapon's muzzle and fire within their class's shooting skill. They start
+  with the weapons the level gives them. The bosses' behaviours, the gun pickup and the alarms are
+  still missing, and the paths they take in a fight are stand-ins.
 - **The scripts**: the BSL engine runs the level's own scripts, with their trigger volumes, doors,
   consoles, animated objects and the first of the game's script commands.
 - **The cutscenes**: the films (a character's input recorded tick by tick and played back), the
@@ -39,7 +43,8 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 ## Not yet
 
 - The particles' contrails, vectors, lens flares and decals (bullet holes), homing, and their sounds.
-- The AI's guns, laser triggers and alarms. The power-ups' physics and glow, and the HUD.
+- The AI's alarms, the gun pickups and the bosses' fighting; laser triggers. The power-ups' physics and
+  glow, and the HUD.
 - The front end (the menus), saving and loading, and the Bink movies.
 - The other 13 levels as a playthrough.
 

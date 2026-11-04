@@ -51,12 +51,12 @@ Each object:
 | 0x1a4 | Extra health, added to the class's |
 | 0x1a8 | Job (3 patrol) |
 | 0x1ac | The job's patrol path id (u16) |
-| 0x1ae | Combat settings id (u16) |
+| 0x1ae | Combat settings id (u16): a `Combat` object's |
 | 0x1b0 | Melee profile id (u16) |
 | 0x1b2 | Neutral settings id (u16) |
 | 0x1b4 | Six pairs of u16 (the ammunition and the like, not used by the port) |
 | 0x1cc | Team: an index into the exe's eight names (0x54b38c: Konoko, TCTF, Syndicate, Neutral, SecurityGuard, RogueKonoko, Switzerland, SyndicateAccessory) |
-| 0x1d0 | (u32, not used by the port) |
+| 0x1d0 | The weapon's ammo, a percentage of its shots (u32; `ONrGameState_NewCharacter` 0x4dac50 passes it to 0x519b30) |
 | 0x1d4 | Alert levels, four u32: initial, minimal, job start, investigate (C+0xf94..C+0xfa0) |
 | 0x1e4 | Alarm groups (C+0xfd8) |
 

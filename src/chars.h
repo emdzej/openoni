@@ -33,6 +33,9 @@ enum { CHR_SCRIPTED_DIED = 0x04, CHR_SCRIPTED_HURT = 0x10, CHR_SCRIPTED_DEFEATED
    player among them. Returns how many characters there are. */
 int chars_load(void);
 void chars_unload(void);
+/* The characters' weapons (the CHAR objects'), once the weapons are set up; the ones spawned later
+   get theirs at once. */
+void chars_arm(void);
 /* The slots: chars_get is NULL for an empty one. The player is chars_player(). */
 int chars_slots(void);
 Chr *chars_get(int i);

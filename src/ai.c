@@ -1,6 +1,7 @@
 /* The AI: see ai.h. */
 #include "ai.h"
 #include "chars.h"
+#include "combat.h"
 #include "graph.h"
 #include "localpath.h"
 #include "knowledge.h"
@@ -32,6 +33,8 @@ void ai_init(AiState *a)
     a->patrol = -1;
     a->job_patrol = -1;
     a->local_seg = -1;
+    a->aim.speed = 1.0f;
+    a->aim.last_facing = 1000.0f;
 }
 
 void ai_executor_move(AiState *a, float facing, int mode, int kind, bool full_turn)
@@ -63,6 +66,9 @@ static void executor_update(AiState *a, Character *c, ChrInput *in)
     case AI_MOVE_RIGHT: held = CHR_KEY_STEP_RIGHT; break;
     default: break;
     }
+    /* the trigger (A+0x21e0, 0x21e1: the weapon's input reads them as the fire keys) */
+    if (a->aim.fire) held |= CHR_KEY_FIRE;
+    if (a->aim.fire_alt) held |= CHR_KEY_ALT_FIRE;
     if (mode == AI_MODE_CROUCH) held |= CHR_KEY_CROUCH;
     else if (mode == AI_MODE_WALK || mode == AI_MODE_WALK_AIMING) held |= CHR_KEY_WALK;
     /* the attack override: in melee its keys join the tick's (held, and pressed), and with no attack
@@ -100,7 +106,8 @@ static void executor_update(AiState *a, Character *c, ChrInput *in)
     memset(in, 0, sizeof *in);
     in->held = held;
     in->not_held = ~held;
-    in->down = pressed | (held & (CHR_KEY_JUMP | CHR_KEY_CROUCH | CHR_KEY_ACTION));
+    in->down = pressed | (held & (CHR_KEY_JUMP | CHR_KEY_CROUCH | CHR_KEY_ACTION)) |
+               (held & ~a->held & (CHR_KEY_FIRE | CHR_KEY_ALT_FIRE));
     in->up = a->held & ~held;
     a->held = held;
 }
@@ -222,6 +229,8 @@ void ai_exit_state(AiState *a)
     if (a->state == a->job && a->patrol >= 0) a->job_patrol = a->patrol, a->job_point = a->point;
     a->patrol = -1;
     a->moving = false;
+    a->aim.look = 0;
+    a->aim.fire = a->aim.fire_alt = false;
 }
 
 void ai_combat_set_target(AiState *a, KnowEntry *e)
@@ -232,8 +241,8 @@ void ai_combat_set_target(AiState *a, KnowEntry *e)
     a->combat_last_strength = e ? e->strength : 0;
     a->combat_taunt_ready = a->combat_taunted = false;
     a->combat_wait_reload = a->combat_wait = a->combat_pursue_delay = 0;
-    /* (+0x7c, +0x80 from a hurt's or a hit's post time; the target's facing, the range
-       (AI2rCombat_GetRange 0x4901f0) and the behaviour (0x490290): with the combat state's port) */
+    /* the targeting, the range and its behaviour (combat.c) */
+    if (e && e->owner) combat_new_target(a, &e->owner->c, a->target ? &a->target->c : NULL);
 }
 
 void ai_return_to_job(AiState *a)
@@ -347,19 +356,13 @@ static bool combat_update(AiState *a, Character *c)
     return false;
 }
 
-/* Stand-ins for the rest of the combat (AI2rCombat_Update) and pursuit (AI2rPursuit_Update) states
-   until their ports: combat closes on the target and faces it; pursuit goes to where the contact was. */
-static void state_stand_in(AiState *a, Character *c)
+/* The combat state (AI2rCombat_Update 0x48f3e0: the lost target here, the rest in combat.c), and a
+   stand-in for the pursuit (AI2rPursuit_Update) until its port: it goes to where the contact was. */
+static void state_stand_in(AiState *a, Character *c, const void *env)
 {
-    if (a->state == AI_STATE_COMBAT && !combat_update(a, c)) return;
-    if (a->state == AI_STATE_COMBAT && a->target && !(a->target->c.flags & 1)) {
-        /* close in: melee (the combat state's melee range, its combat profile's, not ported: 40) */
-        const float *t = a->target->c.pos;
-        float ddx = t[0] - c->pos[0], ddz = t[2] - c->pos[2];
-        if (a->melee.profile && ddx * ddx + ddz * ddz < 40.0f * 40.0f && melee_update(a, c, &a->target->c))
-            return;
-        float dx = t[0] - c->pos[0], dz = t[2] - c->pos[2];
-        ai_move_near(a, t, 12.0f, true, wrap_2pi(atan2f(dx, dz)));
+    if (a->state == AI_STATE_COMBAT) {
+        bool has_target = combat_update(a, c);
+        if (a->state == AI_STATE_COMBAT) combat_tick(a, c, env, has_target);
     } else if (a->state == AI_STATE_PURSUIT && a->target_entry && !a->point_started) {
         const float *p = a->target_entry->pos;
         ai_move_near(a, p, 8.0f, true, wrap_2pi(atan2f(p[0] - c->pos[0], p[2] - c->pos[2])));
@@ -371,9 +374,10 @@ void ai_update(AiState *a, Character *c, const void *env)
 {
     if (a->flags & AI_FLAG_PASSIVE) a->moving = false;     /* AI2rPassive 0x48b160: the state left, the path halted */
     else if (a->patrol >= 0 && !(c->flags & 1)) patrol_update(a, c->pos, c->facing, a->name);
-    else if (!(c->flags & 1)) state_stand_in(a, c);
+    else if (!(c->flags & 1)) state_stand_in(a, c, env);
     a->ticks++;
     mover(a, c, env);
+    combat_aim(a, c);
     ChrInput in;
     executor_update(a, c, &in);
     character_update_input(c, &in, env);

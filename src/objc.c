@@ -57,6 +57,8 @@ uint32_t objc_char_job(const ObjcObject *o) { return o->size >= 0x1ac ? rd32(o->
 uint16_t objc_char_job_path(const ObjcObject *o) { return o->size >= 0x1b0 ? (uint16_t)rd32(o->data + 0x1ac) : 0; }
 
 uint16_t objc_char_melee(const ObjcObject *o) { return o->size >= 0x1b2 ? (uint16_t)(o->data[0x1b0] | o->data[0x1b1] << 8) : 0xffff; }
+uint16_t objc_char_combat(const ObjcObject *o) { return o->size >= 0x1b0 ? (uint16_t)(o->data[0x1ae] | o->data[0x1af] << 8) : 0; }
+uint32_t objc_char_ammo(const ObjcObject *o) { return o->size >= 0x1d4 ? rd32(o->data + 0x1d0) : 100; }
 uint32_t objc_char_alert(const ObjcObject *o) { return o->size >= 0x1d8 ? rd32(o->data + 0x1d4) : 0; }
 uint32_t objc_char_job_alert(const ObjcObject *o) { return o->size >= 0x1e0 ? rd32(o->data + 0x1dc) : 0; }
 
