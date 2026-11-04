@@ -6,6 +6,7 @@
 #include "console.h"
 #include "door.h"
 #include "laser.h"
+#include "turret.h"
 #include "trigger.h"
 
 #include <string.h>
@@ -60,8 +61,9 @@ void event_list_run(const uint8_t *p, const char *who)
         case EVENT_UNLOCK_DOOR: door_lock_id(id, false); break; /* 0x4f3df0 -> OBJrDoor_Unlock_ID */
         case EVENT_ALARM_ON: alarm_notify(id, who ? chars_find(who) : NULL); break;   /* 0x49ac30 */
         case EVENT_ALARM_OFF: break;                            /* 0x4cae10: nothing */
+        case EVENT_TURRET_ON: turret_activate(id); break;      /* 0x4cd990 */
+        case EVENT_TURRET_OFF: turret_deactivate(id); break;   /* 0x4cda80 */
         default:
-            /* turrets (0x4cd990, 0x4cda80) aren't ported */
             break;
         }
         at += 2 + s;

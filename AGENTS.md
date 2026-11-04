@@ -62,6 +62,9 @@ Steps 4 (renderer), 6 (character) and 7 (scripts) have begun:
   [docs/re/character.md](docs/re/character.md) maps the character records for the
   engine's port.
 
+`src/turret.c`: the turrets, on the AI's targeting (`src/targeting.c`, shared with `src/combat.c`)
+([docs/re/turret.md](docs/re/turret.md)).
+
 `src/physics.c` gives the characters the original's floor and walls ([docs/re/physics.md](docs/re/physics.md)).
 `src/graph.c` (the rooms' graph) and `src/localpath.c` (paths through a room's grid) find the AI's way
 ([docs/re/pathfinding.md](docs/re/pathfinding.md)). `src/door.c`: the level's doors open for the characters

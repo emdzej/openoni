@@ -62,6 +62,10 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - **The cutscenes**: the films (a character's input recorded tick by tick and played back), the
   characters carried by object animations (Konoko's motorbike ride into the airport), the camera's
   moves, the letterbox, and the AI held still while they play.
+- **The turrets** (seven levels have them): switched on by the event lists and the scripts, they take
+  the nearest character of their target teams, turn their heads and barrels within their limits, aim
+  with the AI's targeting and fire their shooters' particles; their time over, they turn back to rest.
+  Their humming sound is not there yet.
 - **The laser triggers**: the beams sweep, blink and set off their alarms and scripts when the player
   crosses them.
 - **The particle system**, the engine under every shot, spark and shard of glass. It covers the particle

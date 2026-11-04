@@ -21,6 +21,7 @@
 #include "env.h"
 #include "envparticle.h"
 #include "laser.h"
+#include "turret.h"
 #include "persist.h"
 #include "save.h"
 #include "laser_draw.h"
@@ -200,6 +201,13 @@ static void draw_objects(void)
         powerup_matrix(p, m);
         if (p->geometry) geom_draw(p->geometry, m, NULL);
     }
+    /* the turrets' heads and barrels (0x4ce300) */
+    for (int i = 0; i < turret_count(); i++)
+        for (int k = 0; k < 2; k++) {
+            float m[12];
+            const void *g = turret_geometry(i, k, m);
+            if (g) geom_draw(g, m, NULL);
+        }
     /* the doors' panels, while a door is open or moving */
     for (int i = 0; i < door_count(); i++)
         for (int k = 0; k < 2; k++) {
@@ -350,6 +358,7 @@ static void start_scripts(void)
     sound_register_commands();
     envparticle_register_commands();
     laser_register_commands();
+    turret_register_commands();
     cinematic_register_commands();
     chars_register_commands();
     save_register_commands();   /* save_point, save_game, restore_game */
@@ -844,6 +853,7 @@ static int play(int level, int *next)
     console_load();
     laser_set_environment(env);
     laser_load();
+    turret_load();      /* the mechanics: the Turret objects (OBJrTurret_Initialize 0x4cdf70's type) */
     action_install();
     env_set((void *)env);
     route_env = env;
@@ -949,6 +959,7 @@ static int play(int level, int *next)
         weapons_update(env);    /* WPrUpdate, after the characters */
         door_update();      /* the objects' update 0x507880, after the characters */
         laser_update();     /* the triggers' (0x4cb100), the same mechanics update */
+        turret_update(env); /* OBJiTurretCombat_Update 0x4cf140, the mechanics' update too */
         particles_update(ticks + 1, true);     /* P3rUpdate(time + 1) after the physics */
         /* a script may delete the player: the camera keeps the last place */
         if ((player = chars_player())) fill_target(&ct, &player->c);
