@@ -83,6 +83,20 @@ bool wm_button_pressed(const WmWindow *w);
 void wm_set_font(WmWindow *w, const WmFont *f);
 WmWindow *wm_item(WmWindow *dialog, uint16_t id);
 
+/* The check box (class 5): its state (0x46b900, 0x46b920). */
+void wm_check_set(WmWindow *w, bool on);
+bool wm_check_get(WmWindow *w);
+/* The slider (class 17): its range (0x472650, the value its least) and value (0x4723a0, 0x4723b0). */
+void wm_slider_set_range(WmWindow *w, int32_t min, int32_t max);
+int32_t wm_slider_value(const WmWindow *w);
+void wm_slider_set_value(WmWindow *w, int32_t v);
+/* The popup (class 12): its items (0x470c70 cleared, 0x4704d0 one added) and the one selected
+   (0x470d00: the parent told, 0x19). A choice is sent to the parent as 0x19: p1 the item's id (its flags
+   in the high word), p2 the popup. */
+void wm_popup_clear(WmWindow *w);
+void wm_popup_append(WmWindow *w, uint16_t id, const char *title);
+void wm_popup_select(WmWindow *w, uint16_t id);
+
 /* The frame's parts: the windows drawn (WMrDisplay 0x476140), the input taken (WMrUpdate 0x477070). The
    input: the mouse in the desktop's pixels, and the keys pressed as the LI's codes. */
 void wm_display(void);

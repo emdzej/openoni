@@ -428,7 +428,7 @@
 0046e830	WMrMenu_Locate	WM	med	name from the Intel Mac build (neighbours:1.00)
 0046ea40	WMrMenu_Create	WM	med	name from the Intel Mac build (neighbours:1.00)
 0046eb90	WMrMenu_GetItemText	WM	med	name from the Intel Mac build (neighbours:1.00)
-0046ecd0	WMiMenu_Create	WM	med	name from the Intel Mac build (neighbours:1.00)
+0046ecd0	WMiMenu_Callback	WM	low	class 10's procedure (registered by 0x46ec40); the Mac build's neighbour name WMiMenu_Create was off
 0046f060	WMiMenu_GetItemUnderPoint	WM	med	name from the Intel Mac build (neighbours:0.75)
 0046f1d0	WMiMenu_Layout	WM	med	name from the Intel Mac build (neighbours:1.00)
 0046f660	WMrMenu_InsertItem	WM	med	name from the Intel Mac build (neighbours:1.00)
@@ -439,7 +439,7 @@
 00470c30	WMiPopupMenu_HandleFontInfoChanged	WM	med	name from the Intel Mac build (neighbours:0.75)
 00470e10	WMiProgressBar_Paint	WM	med	name from the Intel Mac build (neighbours:0.83)
 00471b10	WMiScrollbar_Create	WM	med	name from the Intel Mac build (neighbours:1.00)
-004724c0	WMiListBox_NC_CalcClientSize	WM	med	name from the Intel Mac build (neighbours:1.00)
+004724c0	WMiSlider_GetPartRect	WM	low	the slider's track (1), sides (2, 3) and thumb (4); the Mac build's neighbour name was off
 004731f0	WMiText_Callback	WM	low	class 20: owner drawn (0x36 to the parent) or its title
 00473350	WMrWindow_DefaultCallback	WM	low	the messages a class leaves: hit test, frame paint, frame mouse, client rect
 004738e0	WMiSlider_GetTrackBounds	WM	med	name from the Intel Mac build (neighbours:1.00)
@@ -1361,3 +1361,35 @@
 0050f030	ONrPersist_LevelReached	ON	low	level 1 always, the bit of persist +0x08 (name made up)
 0050efd0	ONrPersist_SetLevelReached	ON	low	the bit set and the block saved (name made up)
 004fdaa0	ONrGameState_SetContinue	ON	low	(again) a persisted continue made the game's, with its save point
+0046a980	PSrPartSpec_GetSize	PS	low	1, 4, 0x40, 0x100: a corner's column width and row height
+0046b5e0	WMiCheckBox_Callback	WM	low	class 5: the check part, a release toggles it (0x3b set, 0x2d get)
+0046b900	WMrCheckBox_SetCheck	WM	low	0x3b
+0046b920	WMrCheckBox_GetCheck	WM	low	0x2d
+0046ea80	WMrMenu_GetItemFlags	WM	low	the flags of the item of that id
+0046eb30	WMrMenu_GetItemID	WM	low	the id of the item at that index
+0046f330	WMiMenu_Paint	WM	low	the columns' backgrounds, the lit item, separators, checks, titles
+0046f8d0	WMrMenu_RemoveAllItems	WM	low	the items cleared, the layout dirty
+004704d0	WMrPopupMenu_AppendItem	WM	low	an enabled item of the id given
+004705c0	WMiPopupMenu_Callback	WM	low	class 12: its menu opened by a press, a quick release keeps it open
+00470bd0	WMiPopupMenu_HandleMenuSelection	WM	low	0x19 from its menu: closed, selected, passed to the parent
+00470c70	WMrPopupMenu_Reset	WM	low	the menu's items removed
+00470d00	WMrPopupMenu_SetSelection	WM	low	the item selected and the parent told (0x19)
+004723a0	WMrSlider_GetPosition	WM	low	the long's +8
+004723b0	WMrSlider_SetPosition	WM	low	clamped to the range, the thumb placed
+00472650	WMrSlider_SetRange	WM	low	min, max, the value the min
+004727f0	WMiSlider_Callback	WM	low	class 17: track, thumb, its timer (1, 10 ticks)
+00472c40	WMiSlider_GetTrackRect	WM	low	the track less its end parts
+00472cc0	WMiSlider_PlaceThumb	WM	low	the thumb's x from the value, its y the track's middle
+00472db0	WMiSlider_HandleMouse	WM	low	drag the thumb, a press beside it steps a tenth
+00475060	WMrWindow_GlobalToLocal	WM	low	a desktop point in the window's pixels
+00475c40	WMrTimer_Stop	WM	low	the window's timer of that id removed
+004d2ad0	ONiOutGameUI_Options_SetValues	ON	low	the options' items from the persisted settings
+0050f0e0	ONrPersist_SetGraphicsQuality	ON	low	+0x3c, then the draw engine's (0x508ef0)
+0050f130	ONrPersist_SetOverallVolume	ON	low	+0x40, then SS2rVolume_Set
+0050f180	ONrPersist_IsInvertMouseOn	ON	low	+0x44 bit 1
+0050f190	ONrPersist_AreSubtitlesOn	ON	low	+0x44 bit 0
+0050f1a0	ONrPersist_SetInvertMouse	ON	low	+0x44 bit 1
+0050f1f0	ONrPersist_SetSubtitles	ON	low	+0x44 bit 0
+0050f3e0	ONrPersist_SetGamma	ON	low	+0x54 if 0..1, then the display's (0x407a60)
+0050f450	ONrPersist_GetGamma	ON	low	+0x54 clamped to 0..1
+005125c0	OSiDialog_Play	OS	low	a dialogue line started, its subtitle shown when on

@@ -3,10 +3,12 @@
 
 #include "exe.h"
 #include "persist.h"
+#include "sound.h"
 #include "tm.h"
 #include "vfs.h"
 #include "wm.h"
 
+#include <math.h>
 #include <stdio.h>
 
 /* The yes-or-no dialogs (0x4d2aa0): a button ends them with its id. */
@@ -79,6 +81,73 @@ static bool load_proc(WmWindow *d, uint32_t msg, uintptr_t p1, uintptr_t p2)
     return true;
 }
 
+/* 0x4d2ad0: the options' items set from the persisted ones. */
+static void options_show(WmWindow *d)
+{
+    wm_slider_set_value(wm_item(d, 100), persist_quality());
+    wm_slider_set_value(wm_item(d, 110), (int32_t)lrintf(persist_gamma() * 100.0f));   /* 0x434030 */
+    wm_slider_set_value(wm_item(d, 102), (int32_t)nearbyint((double)persist_volume() * 100.0));
+    wm_check_set(wm_item(d, 107), persist_subtitles());
+    wm_check_set(wm_item(d, 109), persist_invert_mouse());
+    wm_popup_select(wm_item(d, 108), (uint16_t)persist_difficulty());
+}
+
+/* The options dialog (0x4d25c0): the quality (0..4), the gamma and the overall volume (0..100, as
+   hundredths) by sliders, the resolution and the difficulty (the WMM_ pm_difficulty) by popups, the
+   subtitles and the inverted mouse by check boxes, each change persisted at once. The resolution's popup
+   lists the draw engine's modes ("%d x %d x %d bit", 0x54c8f0) with the active one selected; another
+   chosen is persisted and Oni exits ("You must restart Oni...", 0x54c8a4). The port has one mode, the
+   persisted one: there is no other to choose. */
+static bool options_proc(WmWindow *d, uint32_t msg, uintptr_t p1, uintptr_t p2)
+{
+    if (msg == WM_INITDIALOG) {
+        wm_slider_set_range(wm_item(d, 100), 0, 4);
+        wm_slider_set_range(wm_item(d, 110), 0, 100);
+        wm_slider_set_range(wm_item(d, 102), 0, 100);
+        WmWindow *res = wm_item(d, 101);
+        wm_popup_clear(res);
+        int w, h, depth;
+        persist_resolution(&w, &h, &depth);
+        char mode[64];
+        snprintf(mode, sizeof mode, exe_str(0x54c8f0), w, h, depth);
+        wm_popup_append(res, 0, mode);
+        wm_popup_select(res, 0);
+        options_show(d);
+        return true;
+    }
+    if (msg == 0x19) {      /* a popup's choice */
+        const WmWindow *from = (const WmWindow *)p2;
+        if (from && from->id == 0x6c) persist_set_difficulty((uint16_t)p1);
+        /* 0x65, the resolution: the one mode is the active one */
+        return true;
+    }
+    if (msg != WM_COMMAND) return false;
+    if ((p1 >> 16) != 1) return true;
+    WmWindow *item = (WmWindow *)p2;
+    switch ((uint16_t)p1) {
+    case 100:       /* 0x50f0e0 */
+        persist_set_quality(wm_slider_value(item));
+        break;
+    case 0x66:      /* 0x50f130, then SS2rVolume_Set */
+        persist_set_volume((float)((double)wm_slider_value(item) * (double)0.01f));
+        sound_set_volume(persist_volume());
+        break;
+    case 0x6b:      /* 0x50f1f0 */
+        persist_set_subtitles(wm_check_get(item));
+        break;
+    case 0x6d:      /* 0x50f1a0 */
+        persist_set_invert_mouse(wm_check_get(item));
+        break;
+    case 0x6e:      /* 0x50f3e0 */
+        persist_set_gamma((float)((double)wm_slider_value(item) * (double)0.01f));
+        break;
+    case 2:
+        wm_dialog_end(d, 0);
+        break;
+    }
+    return true;
+}
+
 /* A dialog of the menu's, in the game's look (the PSUI "psui_oniUI", 0x54c898). */
 static uint32_t sub_dialog(uint16_t id, WmDialogProc proc)
 {
@@ -114,8 +183,8 @@ static bool menu_proc(WmWindow *d, uint32_t msg, uintptr_t p1, uintptr_t p2)
         if (v) m->choice = OUTGAME_LOAD, m->start = v, wm_dialog_end(d, 0);
         break;
     }
-    case 102:       /* Options (0x4d25c0): not ported */
-        sub_dialog(0x98, NULL);
+    case 102:       /* Options */
+        sub_dialog(0x98, options_proc);
         break;
     case 103:       /* Quit: Yes (1) or No */
         if (sub_dialog(0x99, choice_proc) == 1) m->choice = OUTGAME_QUIT, wm_dialog_end(d, 0);

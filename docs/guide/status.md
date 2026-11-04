@@ -44,8 +44,13 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   session too.
 - **The pause screen** (F1): the objectives the level has set, the items and weapons the player has had,
   the diary's move pages with their key icons, and the controls' help, in the game's own dialog.
-- **The main menu**: the game starts on Oni's own menu (New Game, Quit; Escape in a level brings it
-  back over the level, with Resume), its dialogs built by the game's window manager from its data.
+- **The main menu**: the game starts on Oni's own menu (New Game, Load Game, Options, Quit; Escape in a
+  level brings it back over the level, with Resume), its dialogs built by the game's window manager from
+  its data.
+- **Options**: the volume, the difficulty, the subtitles (shown under the dialogue) and the inverted
+  mouse, with the game's own sliders, popup menus and check boxes, kept in `persist.dat`. The graphics
+  quality and the gamma are kept but not yet applied, and the resolution lists only the one screen mode
+  the port has.
 - **The text consoles**: the documents Konoko reads at the level's consoles, page by page, in the
   game's own window manager, its dialogs built from the game's data, over the level as the original
   draws them.
@@ -69,8 +74,7 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - The particles' contrails, vectors, lens flares and decals (bullet holes), homing, and their sounds.
 - The AI's alarms, the gun pickups and the bosses' fighting. The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
-- The main menu's Load Game and Options (the window manager's lists, sliders and check boxes), the
-  pause screen, saved games kept between sessions, and the Bink movies.
+- The Bink movies; the graphics quality and gamma settings applied.
 - The other 13 levels as a playthrough.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked

@@ -914,7 +914,9 @@ static int play(int level, int *next)
         }
         if (plat_mouse(&mouse) && mouse.captured) {
             in.turn -= mouse.dx * 0.004f;
-            in.pitch -= mouse.dy * 0.004f;
+            /* LIrUpdate 0x403220: the mouse's y axis is its move by -0.125 with the persisted "invert mouse"
+               (the default), else by 0.125 */
+            in.pitch -= mouse.dy * (persist_invert_mouse() ? 0.004f : -0.004f);
             in.punch |= (mouse.pressed & MOUSE_LEFT) != 0;
             in.fire = (mouse.buttons & MOUSE_LEFT) != 0;     /* "bind mousebutton1 to fire1", held */
             in.kick |= (mouse.pressed & MOUSE_RIGHT) != 0;

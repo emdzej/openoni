@@ -21,6 +21,23 @@ void persist_initialize(uint8_t *(*load)(const char *name, size_t *size), bool (
 int persist_difficulty(void);
 void persist_set_difficulty(int d);
 
+/* The options. ONrPersist_GetQuality 0x50f0d0, 0x50f0e0 (the draw engine's quality then set, 0x508ef0:
+   not ported); 0x50f120, 0x50f130 the overall volume (SS2rVolume_Set then); 0x50f190, 0x50f1f0 the
+   subtitles (flags bit 0); 0x50f180, 0x50f1a0 the mouse inverted (bit 1); 0x50f450, 0x50f3e0 the gamma,
+   0..1 (others refused; the display's gamma then set, 0x407a60: not ported); +0x4c, +0x50 the screen's
+   size and depth. */
+int persist_quality(void);
+void persist_set_quality(int q);
+float persist_volume(void);
+void persist_set_volume(float v);
+bool persist_subtitles(void);
+void persist_set_subtitles(bool on);
+bool persist_invert_mouse(void);
+void persist_set_invert_mouse(bool on);
+float persist_gamma(void);
+void persist_set_gamma(float g);
+void persist_resolution(int *w, int *h, int *depth);
+
 /* 0x50f4e0, 0x50f500: a weapon class (its index, ONWC+0x136) had, and its recording. */
 bool persist_weapon_seen(uint16_t index);
 void persist_set_weapon_seen(uint16_t index);

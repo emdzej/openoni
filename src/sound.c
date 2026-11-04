@@ -6,6 +6,9 @@
    of the original (SetVolume, SetPan, SetFrequency, Play, Stop) are kept as the ds_* functions below, in
    DirectSound's units, so the volume and pan curves are the original's. */
 #include "sound.h"
+#include "persist.h"
+#include "text.h"
+#include "ui.h"
 #include "sl.h"
 #include "sndd.h"
 #include "tm.h"
@@ -1117,7 +1120,13 @@ static bool dialog_start(const char *name, bool interrupt)
     if (len) dialog_end = ticks + len;
     else if (dialog_id == UINT32_MAX) dialog_end = ticks + 120;
     else dialog_end = 0;
-    /* Here the original shows the subtitle (SSrAmbient_GetSubtitle 0x481c70) for the length + 60 ticks. */
+    /* With the persisted subtitles on (0x50f190), the line's subtitle (SSrAmbient_GetSubtitle 0x481c70: the
+       SUBT's of the ambient's name) for its length (0x78 ticks without a sound) and 60 more, white. In the
+       letterbox the original prints it into the other console (0x5cb468, COrConsole_PrintIdentified
+       0x430480), else into the subtitles' (0x4304e0): the port has the one subtitle area. */
+    const char *sub;
+    if (persist_subtitles() && (sub = text_subtitle(name)))
+        ui_print(UI_AREA_SUBTITLE, sub, NULL, (int32_t)((len ? len : 0x78) + 0x3c), 0xffffffffu);
     return false;
 }
 
@@ -1280,6 +1289,7 @@ void sound_terminate(void)
 
 bool sound_level_load(int level)
 {
+    sound_set_volume(persist_volume());     /* ONrPersist_GetOverallVolume 0x50f120 */
     for (int s = 0; s < tm_file_slots(); s++) if (tm_file_at(s)) load_file(tm_file_at(s));
     resolve_sounds();
     if (level == 0) resolve_pointers();

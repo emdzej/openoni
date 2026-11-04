@@ -16,12 +16,12 @@ window, the size of the display.
 | 1 | desktop | 0x475ad0 | 0x476d70 |
 | 3 | box | 0x46ae90 | 0x46af20 |
 | 4 | button | 0x46b0c0 | 0x46b150 |
-| 5 | check box (inferred) | 0x46b550 | 0x46b5e0 |
+| 5 | check box | 0x46b550 | 0x46b5e0 |
 | 6 | dialog | 0x468c40 | 0x468cd0 (`WMiDialog_Create`) |
 | 7 | edit field | 0x46b930 | 0x46b9c0 |
 | 8 | list box | 0x46c690 | 0x46c720 |
 | 9 | menu bar | 0x46fa40 | 0x46fad0 |
-| 10 | menu | 0x46ec40 | 0x46ecd0 |
+| 10 | menu | 0x46ec40 | 0x46ecd0 (`WMiMenu_Callback`) |
 | 11 | picture | 0x4701d0 | 0x470260 |
 | 12 | popup menu | 0x470530 | 0x4705c0 |
 | 13 | progress bar | 0x470d80 | 0x470e10 |
@@ -130,7 +130,9 @@ window, message, p1, p2; read by 0x476010, dispatched by 0x475ca0). The numbers,
 The active window (0x5ea4c8) is a top-level window (not style 0x2000); activating (0x4746d0) sends the old
 one 0x28 and 0xf with 0, takes the mouse capture (0x5e9978) away with 0x30, brings the new one to the
 front (0x474830) and sends it 0xf and 0x28 with 1. A child given activation activates its top-level
-parent. `WMrWindow_SetCapture` 0x474900 sets the mouse capture (the old one gets 0x30; the Mac build's neighbours had
+parent. In front (`WMiWindow_BringToFront` 0x474830, the parents first): a window of flags 0x8000 (the
+menus) goes first of its siblings, one of 0x4000 after the leading ones of 0x8000, any other after the
+leading ones of either (0xc000). `WMrWindow_SetCapture` 0x474900 sets the mouse capture (the old one gets 0x30; the Mac build's neighbours had
 named it `WMrMessage_Send`).
 
 ## Drawing
@@ -152,7 +154,14 @@ clamped to the desktop, the window under it (0x475f50: the deepest visible one, 
 disabled 6) or the capture, its hit test, and the message from the client table (0x53cac0: 1 0x1e,
 2 0x1f, 3 0x20, 4 0x22, 5 0x23, 6 0x25, 7 0x26) or the frame's (0x53cb00: 5, 6, 7, 9, 10, 12, 13), a
 move with the capture being 0x1e; a second down soon after is followed by its double (0x477380). The
-keys go to 0x477510: the focused window (0x5e999c) gets 0x1c.
+message's p1 is the point (x in the high word); p2 the frame's part, or in the client the event's
+buttons (bit 0 the left one held: the drags test it). The keys go to 0x477510: the focused window
+(0x5e999c) gets 0x1c.
+
+The timers (`WMrTimer_Start` 0x475b70: the window, an id, a period in sixtieths; refused if the window
+has that id already; `WMrTimer_Stop` 0x475c40) are 16-byte entries of an array: the window, the id, the
+period, the next tick. Each one past due is set a period on from now and its window's procedure gets
+0x1b with the id; if the array changed meanwhile the walk starts again.
 
 ## The drawing context (DC)
 
@@ -223,6 +232,56 @@ formatting, with the context's font:
   item); else its title in its font (grey when disabled), style 0x20000 centred, 0x40000 right, 0x100000
   centred in the height.
 
+- The check box (5, 0x46b5e0): the `PSUI` check part (+0x3c checked, +0x40 not), its top left part's size,
+  at the left, centred in the height, faded (0x7f) when disabled; style 0x10000 its title 2 after it
+  (format 9; grey when disabled). A press takes the focus and the mouse (the long's bit 0); the release
+  over it turns the long's 0x10000 over and sends the parent 0x17 (the id, 1 high). 0x3b sets it
+  (`WMrCheckBox_SetCheck` 0x46b900), 0x2d tells it (0x46b920).
+- The slider (17, 0x4727f0; 0x18 bytes: min, max, value, +0xc the button held, +0xd dragging, +0xe the
+  thumb's x less the mouse's, +0x10 the thumb's x and its centre's y, +0x14 its size). Its parts
+  (0x4724c0): the track (1, the `PSUI`'s +0x9c, its top row's height, centred, the window's width), the
+  thumb (4, +0x98, its top left part's size), the sides of the thumb (2: the track's left to the thumb's
+  left + 1; 3: the thumb's right - 1 to the track's right; the window's height). The thumb's x
+  (0x472cc0) is the track's inside (less its left and right parts, 0x472c40) plus the round of the
+  inside less the thumb's width, over the range, times the value less the min; its y the track's
+  middle. `WMrSlider_SetRange` 0x472650 sets the min and max and the value to the min; 0x4723b0 the
+  value, clamped. Painted: the track's top row (mask 0x49) and the thumb (mask 1, faded when disabled).
+  A press (0x472db0) takes the focus and the mouse: on the thumb it starts the drag, on a side it steps
+  a tenth of the range down or up (at least 1); a move with the left button while dragging sets the
+  value to the min plus the round of the range over the inside's span times the mouse's x plus the
+  offset less the inside's left. Its timer (id 1, every 10 ticks, from its create) presses again where
+  the mouse is while the button is held. Keys (it takes 0x30, the arrows and the page keys): Home the
+  min, End the max, Page Up/Down a tenth, the left and right arrows 1. Each change sends the parent
+  0x17 (the id, 1 high). (Its create places the thumb over an empty range: the x87's 0 / 0 is its
+  integer indefinite, 0x80000000, of which the low half, 0, is kept.)
+- The menu (10, 0x46ecd0; 0x14 bytes: its size, +4 the layout to redo, +6 the widest of the columns ended
+  by the height, +8 the item lit, +0xc the items, +0x10 the columns). An item is 0x48 bytes: +0 flags (1 a
+  separator, 2 enabled, 4 checked), +2 the id, +4 the title (0x40), +0x44 the height, +0x46 the width (the
+  title's rectangle in the menu's font; a separator twice the top row of the `PSUI`'s +0x50). Made by
+  `WMrMenu_Create` 0x46ea40 (flags 0x8000, its owner the given window) from a `WMM_` (+0x12 its id, +0x14
+  its title, +0x54 the count, +0x58 the items, 0x44 bytes each: flags, id, title). The layout (0x46f1d0)
+  stacks the items in columns (8 bytes: the first, the count, the width, the height) from twice the
+  background's top row while they fit the menu's height; a column is as wide as its widest item plus
+  0x16 and twice the left column. `WMrMenu_Locate` 0x46e830 puts it at a point, as tall as all its
+  items and as wide as their columns at that height, moved up or left to fit the desktop with 3 to spare.
+  Painted (0x46f330): each column's background (`PSUI` +0x00), and in it from the top row down each item:
+  a separator's part (+0x50) at its middle, else the lit one's hilite (+0x4c, when it and the menu are
+  enabled), its check (+0x54, the centre part), and its title 0xc past the left column, grey when
+  disabled. A move lights the item under the mouse (0x46f060), a press or a release over an enabled one
+  sends the owner 0x19 (the id, the flags high, the menu). 0x2f (shown or hidden) unlights it.
+- The popup menu (12, 0x4705c0; 0x10 bytes: +0 a tick, +4 open and waiting, +8 its menu, +0xc the selected
+  id): its menu the `WMM_` its title names (none with style 0x20000; a missing one refuses the window),
+  in its font, the first item selected. Painted: the `PSUI` popup (+0x58) over it, the selected item's
+  title 2 past its left column (format 9). A press opens the menu at the popup's place (0x470a90; 0x1a to
+  the menu's parent first) and takes the mouse; a release within 15 ticks leaves it open for the next
+  press (which goes to the menu, or closes it when it is no longer shown), a later one is passed to the
+  menu; moves are passed while it is open or the button is held. The menu's choice (0x19, 0x470bd0) closes
+  it, selects the item, lets the mouse go and is passed to the parent (0x19, p2 the popup). The title
+  (0x470ae0) is the selected item's; without style 0x10000 the popup takes the menu's width (+6) and the
+  line height plus its top and bottom rows. `WMrPopupMenu_Reset` 0x470c70 removes the items,
+  `WMrPopupMenu_AppendItem` 0x4704d0 adds an enabled one of an id, `WMrPopupMenu_SetSelection` 0x470d00
+  selects one and tells the parent (0x19, the item's flags high).
+
 ## The text console
 
 `text_console` name (`ONrInGameUI_TextConsole_Display` 0x504c30): the `TxtC` of the name (its +0 the
@@ -273,6 +332,32 @@ Dialogs' keys: Return posts the command of the default button (a button of style
 dialog its id on its create, 0x3f; 0x3e asks), if enabled; Escape posts `WM_CLOSE` (0x14), which the
 dialog turns into the cancel's command (2).
 
+## The options
+
+Dialog 152 (`ONiOutGameUI_Options_Callback` 0x4d25c0): the quality (slider 100, 0..4), the gamma (110) and
+the overall volume (102, 0..100), the resolution (popup 101, style 0x20000) and the difficulty (108,
+`pm_difficulty`: Easy, Normal, Hard, ids 0 to 2), the subtitles (check box 107) and the inverted mouse
+(109), and Close (2).
+
+- 0x3d: the sliders' ranges; the resolution's popup filled with the active draw engine's modes of its
+  device ("%d x %d x %d bit", 0x54c8f0, the width, height and depth of each, the id its index) and the
+  active one selected; then 0x4d2ad0 sets the items: the quality, the round of the gamma and of the
+  volume times 100, the two checks, the difficulty selected.
+- 0x17 with notice 1: 100 the quality (`ONrPersist_SetGraphicsQuality` 0x50f0e0, then 0x508ef0), 0x66 the
+  volume (the value times 0.01, `ONrPersist_SetOverallVolume` 0x50f130 then `SS2rVolume_Set`), 0x6b the
+  subtitles (0x50f1f0), 0x6d the inverted mouse (0x50f1a0), 0x6e the gamma (0x50f3e0, times 0.01: refused
+  out of 0..1, else the display's gamma, 0x407a60), 2 ends it.
+- 0x19 from 0x6c sets the difficulty; from 0x65, another mode than the active one: persisted
+  (0x50f2b0), and unless it can be set at once out of a level, "You must restart Oni for your changes to
+  take effect; Oni will now exit." (dialog 156) and Oni exits.
+
+The settings are persist.dat's (+0x3c quality, +0x40 volume, +0x44 bit 0 subtitles and bit 1 the
+inverted mouse, +0x48 difficulty, +0x4c the resolution, +0x50 the depth, +0x54 gamma). The subtitles:
+a dialogue line (0x5125c0) with them on shows its `SUBT` line (`SSrAmbient_GetSubtitle` 0x481c70) for its
+length (0x78 ticks without a sound) and 60 more, white (0x533f70) on dark grey (0x533f74), in the
+letterbox's console when the letterbox is on. The inverted mouse: the input's y axis (0x403220) is the
+move times -0.125 with it (the default), 0.125 without.
+
 ## The port
 
 `src/wm.c` (the core, the DC, part specs, text, the classes), `src/igui.c` (the pages, the text
@@ -280,6 +365,8 @@ console), `src/outgame.c` (the main menu), `src/li.c` (the keys as the LI's code
 desktop is as tall as 480, scaled to the display (as the HUD). Unattended runs tap keys into the dialogs
 with `--param keys=27,32,...`, or click with `@x:y` in the desktop's pixels (one every 30 frames of a
 dialog). Not ported yet: the frames (title bars,
-their boxes and dragging), the timers, the caret, the click's sound, the menu's music, and the classes other than these
-five (check box, edit field, list box, menus, progress bar, radio button, scroll bar, slider), so Load
-Game and Options.
+their boxes and dragging), the caret, the click's sound, the menu's music, and the edit field, the menu
+bar, the progress bar, the radio button and the scroll bar. The options: the port has one screen mode,
+the persisted one, so the resolution's popup lists that alone; the quality and the gamma are persisted
+but not applied (the draw engine's quality and the display's gamma are not ported), and the subtitles go
+to the one subtitle area, in the letterbox too.

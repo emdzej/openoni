@@ -7,6 +7,7 @@
 #include "platform.h"
 #include "tm.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -67,20 +68,23 @@ static void class_register(uint16_t number, WmProc proc)   /* WMrWindowClass_Reg
     if (class_count < CLASSES) classes[class_count++] = (WmClass){ number, proc };
 }
 
-/* 0x474830: the window moved in front of its siblings (the desktop's children for a top-level one), unless
-   it stays behind (0x8000) or a sibling stays in front (0x4000). */
+/* WMiWindow_BringToFront 0x474830: the window moved in front of its siblings (the desktop's children for a
+   top-level one): one kept in front (0x8000, the menus) first of all, one of 0x4000 after those of 0x8000,
+   any other after the siblings of either. */
 static void bring_to_front(WmWindow *w)
 {
     if (!wm_window_valid(w) || w->cls->number == 1) return;
     if (w->parent) bring_to_front(w->parent);
     WmWindow *list = (w->flags & WM_STYLE_CHILD) ? w->parent : desktop;
-    if ((w->flags & 0x8000) || !list || list->child == w) return;
-    /* unlink, then in front (the first child), after the ones kept in front */
+    if (!list || list->child == w) return;
+    uint32_t ahead = (w->flags & 0x8000) ? 0 : (w->flags & 0x4000) ? 0x8000 : 0xc000;
+    /* unlink, then in front (the first child), after the ones kept ahead of it */
     if (w->prev) w->prev->next = w->next;
     if (w->next) w->next->prev = w->prev;
     if (list->child == w) list->child = w->next;
+    w->prev = w->next = NULL;
     WmWindow *after = NULL;
-    for (WmWindow *s = list->child; s && (s->flags & 0x4000); s = s->next) after = s;
+    for (WmWindow *s = ahead ? list->child : NULL; s && (s->flags & ahead); s = s->next) after = s;
     w->prev = after;
     w->next = after ? after->next : list->child;
     if (w->next) w->next->prev = w;
@@ -136,8 +140,9 @@ static void default_font(WmFont *f)
 
 static void text_extent(const WmFont *f, const char *s, int16_t *w, int16_t *h);
 
-WmWindow *wm_window_new(uint16_t cls, uint32_t flags, uint32_t style, uint16_t id, int16_t x, int16_t y,
-                        int16_t w, int16_t h, WmWindow *parent, uintptr_t param)   /* WMrWindow_New 0x475160 */
+/* WMrWindow_New 0x475160: the title is the window's before its class is told. */
+static WmWindow *window_new(uint16_t cls, const char *title, uint32_t flags, uint32_t style, uint16_t id, int16_t x,
+                            int16_t y, int16_t w, int16_t h, WmWindow *parent, uintptr_t param)
 {
     if (cls == 1 && desktop) return NULL;
     uint32_t slot = last_slot + 1;
@@ -155,6 +160,7 @@ WmWindow *wm_window_new(uint16_t cls, uint32_t flags, uint32_t style, uint16_t i
     slots[slot].used = true, slots[slot].w = win;
     win->cls = c, win->flags = flags, win->style = style, win->id = id, win->handle = slot;
     win->x = x, win->y = y, win->w = w, win->h = h;
+    if (title) snprintf(win->title, sizeof win->title, "%s", title);
     default_font(&win->font);
     text_extent(&win->font, win->title, &win->title_w, &win->title_h);
     if (flags & WM_STYLE_CHILD) {
@@ -187,6 +193,12 @@ WmWindow *wm_window_new(uint16_t cls, uint32_t flags, uint32_t style, uint16_t i
     if (win->parent) wm_send(win->parent, WM_PARENTNOTIFY, WM_CREATE, (uintptr_t)win);
     if (wm_window_valid(win) && c->number != 1) activate(win);
     return win;
+}
+
+WmWindow *wm_window_new(uint16_t cls, uint32_t flags, uint32_t style, uint16_t id, int16_t x, int16_t y,
+                        int16_t w, int16_t h, WmWindow *parent, uintptr_t param)
+{
+    return window_new(cls, NULL, flags, style, id, x, y, w, h, parent, param);
 }
 
 /* WMrWindow_Delete 0x474950: the activation passed on (to the next or the previous window, the owner or
@@ -715,8 +727,9 @@ void wm_key(uint8_t code)
     wm_post(to, WM_KEYDOWN, code, 0);
 }
 
-/* The mouse as LI events: the window under it (or the capture), its hit test, and the message. */
-static void mouse_event(int type, int16_t x, int16_t y)
+/* The mouse as LI events: the window under it (or the capture), its hit test, and the message: p2 the
+   frame's part, or in the client the buttons (1 the left one held). */
+static void mouse_event(int type, int16_t x, int16_t y, uint32_t buttons)
 {
     static const uint32_t client_msg[8] = { 0, 0x1e, 0x1f, 0x20, 0x22, 0x23, 0x25, 0x26 };  /* 0x53cac0 */
     static const uint32_t frame_msg[8] = { 0, 5, 6, 7, 9, 10, 12, 13 };                     /* 0x53cb00 */
@@ -731,31 +744,68 @@ static void mouse_event(int type, int16_t x, int16_t y)
     uintptr_t part = w ? wm_send(w, WM_HITTEST, point, 0) : WM_HIT_CLIENT;
     uint32_t msg = part == WM_HIT_CLIENT || !w ? client_msg[type] : frame_msg[type];
     if (capture && msg == 5) msg = 0x1e;
-    wm_post(w, msg, point, part);
+    wm_post(w, msg, point, part == WM_HIT_CLIENT || !w ? buttons : part);
 }
 
 void wm_click(int16_t x, int16_t y)
 {
-    mouse_event(1, x, y);
-    mouse_event(2, x, y);
-    mouse_event(3, x, y);
+    mouse_event(1, x, y, 0);
+    mouse_event(2, x, y, 1);
+    mouse_event(3, x, y, 0);
 }
 
 static uint8_t mouse_buttons;
+
+/* The timers (0x5e9998: a window, an id, the period and the next tick, in sixtieths of a second): each
+   due is sent its message (0x1b, the id) and set again a period on. */
+enum { WM_TIMER = 0x1b, TIMERS = 32 };
+typedef struct { WmWindow *w; uint32_t id, period, next; } Timer;
+static Timer timers[TIMERS];
+static uint32_t ntimers;
+
+static uint32_t ticks(void) { return plat_frames(); }     /* UUrMachineTime_Sixtieths 0x4263e0: a frame each */
+
+static bool timer_start(WmWindow *w, uint32_t id, uint32_t period)     /* WMrTimer_Start 0x475b70 */
+{
+    for (uint32_t i = 0; i < ntimers; i++)
+        if (timers[i].id == id && timers[i].w == w) return false;
+    if (ntimers == TIMERS) return false;
+    timers[ntimers++] = (Timer){ w, id, period, ticks() + period };
+    return true;
+}
+
+static void timer_stop(WmWindow *w, uint32_t id)     /* WMrTimer_Stop 0x475c40 */
+{
+    for (uint32_t i = 0; i < ntimers; i++)
+        if (timers[i].id == id && timers[i].w == w) {
+            memmove(timers + i, timers + i + 1, (ntimers - i - 1) * sizeof *timers);
+            ntimers--;
+            return;
+        }
+}
+
 void wm_take_input(bool on) { takes_input = on; }     /* WMrActivate 0x476110, WMrDeactivate 0x476410 */
 
-void wm_update(void)     /* WMrUpdate 0x477070: the timers (none yet), then the input's events */
+void wm_update(void)     /* WMrUpdate 0x477070: the timers, then the input's events */
 {
     if (!takes_input) return;
+    uint32_t now = ticks();
+again:
+    for (uint32_t i = 0, n = ntimers; i < n; i++) {
+        if (timers[i].next >= now) continue;
+        timers[i].next = timers[i].period + now;
+        if (wm_window_valid(timers[i].w)) timers[i].w->cls->proc(timers[i].w, WM_TIMER, timers[i].id, 0);
+        if (ntimers != n) goto again;   /* the list changed under it: from the start */
+    }
     PlatMouse m;
     if (plat_mouse(&m) && m.inside && desktop) {     /* the pointer over the game's window */
         int dw, dh;
         plat_display_size(&dw, &dh);
         float s = dh ? (float)desktop->h / (float)dh : 1.0f;
         int16_t x = (int16_t)(m.x * s), y = (int16_t)(m.y * s);
-        if (x != mouse_x || y != mouse_y) mouse_event(1, x, y);
         uint8_t now = (m.buttons & MOUSE_LEFT) != 0;
-        if (now != mouse_buttons) mouse_event(now ? 2 : 3, x, y);     /* the left button (the runners' one) */
+        if (x != mouse_x || y != mouse_y) mouse_event(1, x, y, mouse_buttons);
+        if (now != mouse_buttons) mouse_event(now ? 2 : 3, x, y, now);     /* the left button (the runners' one) */
         mouse_buttons = now;
     }
     uint8_t keys[16];
@@ -799,7 +849,7 @@ static uintptr_t dialog_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t 
         uint32_t n = rd32(dd + 0x114);
         for (uint32_t i = 0; i < n; i++) {
             const uint8_t *it = dd + 0x118 + i * 0x124;
-            WmWindow *c = wm_window_new(rd16(it + 0x100), rd32(it + 0x104) | WM_STYLE_CHILD, rd32(it + 0x108),
+            WmWindow *c = window_new(rd16(it + 0x100), (const char *)it, rd32(it + 0x104) | WM_STYLE_CHILD, rd32(it + 0x108),
                                         rd16(it + 0x102), (int16_t)rd16(it + 0x10c), (int16_t)rd16(it + 0x10e),
                                         (int16_t)rd16(it + 0x110), (int16_t)rd16(it + 0x112), w, 0);
             if (!c) return 1;
@@ -1201,6 +1251,732 @@ static uintptr_t list_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2
     return default_proc(w, msg, p1, p2);
 }
 
+/* ---- the check box, the menu, the popup and the slider ---- */
+
+/* 0x46a980: a size of the part spec's (PSrPartSpec's private data, 0x46ab70): 1 the left column's width
+   and the top row's height, 4 the left's and the bottom's, 0x40 the right's and the top's, 0x100 the
+   right's and the bottom's; others none. */
+static void part_size(const void *pspc, unsigned which, int16_t *w, int16_t *h)
+{
+    int16_t tl[2], br[2], cw = 0, rh = 0;
+    if (pspc && (which == 1 || which == 4 || which == 0x40 || which == 0x100)) {
+        part_corners(pspc, (which & 0x140) ? 6 : 0, tl, br);
+        cw = iabs(br[0] - tl[0]);
+        part_corners(pspc, (which & 0x104) ? 2 : 0, tl, br);
+        rh = iabs(br[1] - tl[1]);
+    }
+    if (w) *w = cw;
+    if (h) *h = rh;
+}
+
+/* 0x475060: a desktop point (x in the high word) in the window's own pixels. */
+static void local_point(const WmWindow *w, uintptr_t p, int16_t *x, int16_t *y)
+{
+    int16_t r[4];
+    screen_rect(w, r);
+    *x = (int16_t)((int16_t)(p >> 16) - r[0]), *y = (int16_t)((int16_t)p - r[1]);
+}
+
+static void set_title(WmWindow *w, const char *s)      /* WMrWindow_SetTitle 0x475990 */
+{
+    snprintf(w->title, sizeof w->title, "%s", s ? s : "");
+    text_extent(&w->font, w->title, &w->title_w, &w->title_h);
+}
+
+static void set_size(WmWindow *w, int16_t width, int16_t height)    /* WMrWindow_SetSize 0x475940 */
+{
+    w->w = width, w->h = height;
+    int16_t r[4] = { 0, 0, width, height };
+    w->cls->proc(w, WM_CLIENTRECT, (uintptr_t)r, 0);
+    memcpy(w->client, r, sizeof r);
+}
+
+static uint32_t parent_notice(const WmWindow *w, uint16_t notice) { return (uint32_t)w->id | (uint32_t)notice << 16; }
+
+/* The check box (class 5, 0x46b5e0): the PSUI's check box part (+0x3c checked, +0x40 not) centred on
+   the left, its title after it (style 0x10000), grey and faded when disabled. A press takes the focus
+   and the mouse; a release over it turns it over and sends its parent the command (notice 1). 0x3b
+   sets it, 0x2d tells it (the long's 0x10000). */
+static uintptr_t check_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
+{
+    switch (msg) {
+    case WM_HITTEST:
+        return WM_HIT_CLIENT;
+    case WM_CREATE:
+        w->data = 0;
+        return 0;
+    case WM_MOUSEMOVE:
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP: {
+        int16_t r[4];
+        screen_rect(w, r);
+        bool inside = in_rect(r, (int16_t)(p1 >> 16), (int16_t)p1), changed = false;
+        uintptr_t d = w->data;
+        if (msg == WM_LBUTTONDOWN) {
+            set_focus(w);
+            set_capture(w);
+            d |= 1;
+        } else if (msg == WM_LBUTTONUP) {
+            set_capture(NULL);
+            if (inside && (uint16_t)d == 1) d ^= 0x10000, changed = true;
+            d &= ~(uintptr_t)1;
+        }
+        w->data = d;
+        if (changed) wm_send(w->parent, WM_COMMAND, parent_notice(w, 1), (uintptr_t)w);
+        return 0;
+    }
+    case WM_PAINT: {
+        const uint8_t *ui = wm_psui_active();
+        if (!ui) return 0;
+        const void *part = tm_link(ui + ((w->data & 0x10000) ? 0x3c : 0x40));
+        int16_t pw, ph;
+        part_size(tm_link(ui + 0x3c), 1, &pw, &ph);
+        int16_t y = (int16_t)((w->client[3] - ph) >> 1);
+        WmDc *dc = wm_dc_begin(w);
+        bool on = enabled(w);
+        wm_dc_part(dc, part, 1, 0, y, pw, ph, on ? 0xff : 0x7f);
+        if (w->style & 0x10000) {
+            wm_dc_set_font(&w->font);
+            if (!on) wm_dc_set_colour(0xff808080u);
+            wm_dc_set_format(9);
+            int16_t pen[2] = { (int16_t)(pw + 2), y }, r[4] = { 0, 0, w->client[2], w->client[3] };
+            wm_dc_text(dc, r, pen, w->title, NULL);
+        }
+        wm_dc_end(dc);
+        return 0;
+    }
+    case 0x2d:
+        return (w->data >> 16) & 1;
+    case 0x3b:
+        w->data = p1 ? (w->data | 0x10000) : (w->data & ~(uintptr_t)0x10000);
+        return 0;
+    }
+    return default_proc(w, msg, p1, p2);
+}
+
+/* The menu (class 10, 0x46ecd0): its items (0x48 bytes: +0 flags, 1 a separator, 2 enabled, 4 checked;
+   +2 the id; +4 the title; +0x44, +0x46 the height and width) in columns as high as the menu (its
+   layout, 0x46f1d0), on the PSUI's background (+0x00): the item under the mouse lit (+0x4c), the
+   separators (+0x50) and the checks (+0x54). A press or a release over an enabled item sends its owner
+   0x19 (the item's id, its flags in the high word). Made from a WMM_ (+0x12 its id, +0x14 its title,
+   +0x54 the count, +0x58 the items, 0x44 bytes each). */
+typedef struct { uint16_t flags, id; char title[0x40]; int16_t h, w; } MenuItem;
+typedef struct { uint16_t first, count; int16_t w, h; } MenuColumn;
+typedef struct {
+    int16_t w, h;               /* +0x00: the size it was given (WMrMenu_Locate) */
+    bool dirty;                 /* +0x04: the layout to do again */
+    int16_t width;              /* +0x06 */
+    int32_t hilite;             /* +0x08 */
+    MenuItem *items;            /* +0x0c */
+    uint32_t n, cap;
+    MenuColumn *cols;           /* +0x10 */
+    uint32_t ncols, colcap;
+} Menu;
+
+static void menu_measure(WmWindow *w, MenuItem *it)
+{
+    it->w = it->h = 0;
+    if (it->flags & 1) {
+        int16_t th;
+        part_size(wm_psui_part(0x50), 1, NULL, &th);
+        it->h = (int16_t)(th * 2);
+    } else
+        text_extent(&w->font, it->title, &it->w, &it->h);   /* DCrText_GetStringRect 0x46a3f0 */
+}
+
+static bool menu_insert(WmWindow *w, const MenuItem *item, int at)    /* WMrMenu_InsertItem 0x46f660 */
+{
+    Menu *m = (Menu *)w->data;
+    if (!m || !wm_psui_active() || at < -1 || at > (int)m->n) return false;
+    if (m->n == m->cap) {
+        uint32_t cap = m->cap ? m->cap * 2 : 8;
+        MenuItem *v = realloc(m->items, cap * sizeof *v);
+        if (!v) return false;
+        m->items = v, m->cap = cap;
+    }
+    uint32_t i = at == -1 ? m->n : (uint32_t)at;
+    memmove(m->items + i + 1, m->items + i, (m->n - i) * sizeof *m->items);
+    m->items[i] = *item;
+    m->n++;
+    menu_measure(w, &m->items[i]);
+    m->dirty = true;
+    return true;
+}
+
+static void menu_layout(WmWindow *w)    /* WMiMenu_Layout 0x46f1d0 */
+{
+    Menu *m = (Menu *)w->data;
+    int16_t L, T;
+    part_size(wm_psui_part(0x00), 1, &L, &T);
+    m->ncols = 0;
+    m->width = 0;
+    uint32_t col = 0;
+    for (uint32_t i = 0; i < m->n;) {
+        if (m->ncols <= col) {
+            if (m->ncols == m->colcap) {
+                uint32_t cap = m->colcap ? m->colcap * 2 : 4;
+                MenuColumn *v = realloc(m->cols, cap * sizeof *v);
+                if (!v) return;
+                m->cols = v, m->colcap = cap;
+            }
+            m->cols[m->ncols++] = (MenuColumn){ (uint16_t)i, 0, 0, (int16_t)(T * 2) };
+        }
+        MenuColumn *c = &m->cols[col];
+        if (m->h < m->items[i].h + c->h && c->count > 0) {
+            /* the column full: the next (the widest kept only of the columns so ended) */
+            if (c->w > m->width) m->width = c->w;
+            col++;
+        } else {
+            c->h = (int16_t)(c->h + m->items[i].h);
+            int16_t iw = (int16_t)(m->items[i].w + 0x16 + L * 2);
+            if (iw > c->w) c->w = iw;
+            c->count++;
+            i++;
+        }
+    }
+    m->dirty = false;
+}
+
+static int32_t menu_item_at(WmWindow *w, int16_t x, int16_t y)    /* WMiMenu_GetItemUnderPoint 0x46f060 */
+{
+    Menu *m = (Menu *)w->data;
+    if (m->dirty) menu_layout(w);
+    int16_t T;
+    part_size(wm_psui_part(0x00), 1, NULL, &T);
+    int16_t cx = 0;
+    for (uint32_t k = 0; k < m->ncols; k++) {
+        const MenuColumn *c = &m->cols[k];
+        int16_t r[4] = { cx, T, (int16_t)(cx + c->w), (int16_t)(T + c->h) };
+        if (in_rect(r, x, y)) {
+            int16_t iy = T;
+            for (uint32_t i = c->first; i < (uint32_t)c->first + c->count; i++) {
+                int16_t ir[4] = { cx, iy, r[2], (int16_t)(iy + m->items[i].h) };
+                if (in_rect(ir, x, y)) return (int32_t)i;
+                iy = ir[3];
+            }
+        }
+        cx = r[2];
+    }
+    return -1;
+}
+
+/* WMrMenu_Locate 0x46e830: the menu at the desktop's point (made to fit: moved up or left, unless keep),
+   as high as all of its items and as wide as their columns there. */
+static void menu_locate(WmWindow *w, int16_t pt[2], bool keep)
+{
+    Menu *m = (Menu *)w->data;
+    if (m && desktop && wm_psui_active()) {
+        int16_t L, T, d[4];
+        part_size(wm_psui_part(0x00), 1, &L, &T);
+        screen_rect(desktop, d);
+        int16_t h = (int16_t)(T * 2);
+        for (uint32_t i = 0; i < m->n; i++) h = (int16_t)(h + m->items[i].h);
+        if (pt[1] + 3 + h < d[3]) m->h = h;
+        else if (!keep) {
+            if (d[3] - h - 3 < d[1] + 3) m->h = (int16_t)(d[3] - 3), pt[1] = 3;
+            else m->h = h, pt[1] = (int16_t)(d[3] - h - 3);
+        } else m->h = (int16_t)(d[3] - pt[1] - 3);
+        int16_t total = 0, cw = 0, ch = (int16_t)(T * 2);
+        for (uint32_t i = 0; i < m->n; i++) {
+            if (m->h < m->items[i].h + ch) total = (int16_t)(total + cw), cw = 0, ch = (int16_t)(T * 2);
+            ch = (int16_t)(ch + m->items[i].h);
+            int16_t iw = (int16_t)(m->items[i].w + L * 2 + 0x16);
+            if (iw > cw) cw = iw;
+        }
+        total = (int16_t)(total + cw);
+        if (pt[0] + total < d[2]) m->w = total;
+        else if (!keep) {
+            if (total > d[2]) total = d[2];
+            m->w = total, pt[0] = (int16_t)(d[2] - total);
+        } else m->w = (int16_t)(d[2] - pt[0]);
+    }
+    wm_set_location(w, pt[0], pt[1]);
+    if (m) set_size(w, m->w, m->h), m->dirty = true;
+}
+
+static void menu_paint(WmWindow *w)     /* 0x46f330 */
+{
+    Menu *m = (Menu *)w->data;
+    if (!m) return;
+    if (m->dirty) menu_layout(w);
+    const void *back = wm_psui_part(0x00);
+    if (!back) return;
+    int16_t L, T;
+    part_size(back, 1, &L, &T);
+    WmDc *dc = wm_dc_begin(w);
+    wm_dc_set_font(&w->font);
+    int16_t cx = 0;
+    for (uint32_t k = 0; k < m->ncols; k++) {
+        const MenuColumn *c = &m->cols[k];
+        wm_dc_part(dc, back, 0xffff, cx, 0, c->w, c->h, 0xff);
+        int16_t pen[2] = { (int16_t)(cx + 0xc + L), T };
+        for (uint32_t i = c->first; i < (uint32_t)c->first + c->count; i++) {
+            const MenuItem *it = &m->items[i];
+            if (it->flags & 1) {
+                pen[1] = (int16_t)(pen[1] + (it->h >> 1));
+                wm_dc_part(dc, wm_psui_part(0x50), 0xffff, (int16_t)(cx + L), pen[1], (int16_t)(c->w - L * 2), it->h, 0xff);
+                pen[1] = (int16_t)(pen[1] + (it->h >> 1));
+                continue;
+            }
+            bool on = enabled(w) && (it->flags & 2);
+            if (m->hilite == (int32_t)i && on)
+                wm_dc_part(dc, wm_psui_part(0x4c), 0xffff, (int16_t)(cx + L), pen[1], (int16_t)(c->w - L * 2), it->h, 0xff);
+            if (it->flags & 4) {
+                const void *check = wm_psui_part(0x54);
+                int16_t kw, kh;
+                part_size(check, 1, &kw, &kh);
+                if (kh > it->h) kh = it->h;
+                wm_dc_part(dc, check, 0x10, (int16_t)(cx + L), (int16_t)(pen[1] + ((it->h - kh) >> 1)), kw, kh, on ? 0xff : 0x7f);
+            }
+            pen[1] = (int16_t)(pen[1] + wm_dc_ascending());
+            wm_dc_set_colour(on ? w->font.colour : 0xff808080u);
+            wm_dc_set_format(1);
+            wm_dc_text(dc, NULL, pen, it->title, NULL);
+            pen[1] = (int16_t)(pen[1] - wm_dc_ascending() + it->h);
+        }
+        cx = (int16_t)(cx + c->w);
+    }
+    wm_dc_end(dc);
+}
+
+static uintptr_t menu_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
+{
+    Menu *m = (Menu *)w->data;
+    switch (msg) {
+    case WM_HITTEST:
+        return WM_HIT_CLIENT;
+    case WM_CREATE: {
+        m = calloc(1, sizeof *m);
+        if (!m) return 1;
+        m->dirty = true, m->hilite = -1;
+        w->data = (uintptr_t)m;
+        const uint8_t *wmm = (const uint8_t *)p1;
+        uint32_t n = wmm ? rd32(wmm + 0x54) : 0;
+        for (uint32_t i = 0; i < n; i++) {
+            const uint8_t *src = wmm + 0x58 + i * 0x44;
+            MenuItem it = { rd16(src), rd16(src + 2), { 0 }, 0, 0 };
+            memcpy(it.title, src + 4, sizeof it.title - 1);
+            if (!menu_insert(w, &it, -1)) return 1;
+        }
+        return 0;
+    }
+    case WM_DESTROY:
+        if (m) free(m->items), free(m->cols), free(m), w->data = 0;
+        return 0;
+    case WM_MOUSEMOVE:
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP: {
+        if (!m || !enabled(w)) return 0;
+        int16_t r[4];
+        screen_rect(w, r);
+        if (!in_rect(r, (int16_t)(p1 >> 16), (int16_t)p1)) return 0;     /* 0x475530 */
+        int16_t x, y;
+        local_point(w, p1, &x, &y);
+        if (msg == WM_MOUSEMOVE) {
+            m->hilite = menu_item_at(w, x, y);
+            return 0;
+        }
+        if (msg == WM_LBUTTONDOWN) set_focus(w);
+        int32_t i = menu_item_at(w, x, y);
+        if (i != -1 && (m->items[i].flags & 2))
+            wm_send(w->owner, 0x19, (uint32_t)m->items[i].flags << 16 | m->items[i].id, (uintptr_t)w);
+        return 0;
+    }
+    case WM_PAINT:
+        menu_paint(w);
+        return 0;
+    case 0x2f:      /* shown or hidden */
+        if (m) m->hilite = -1;
+        return 0;
+    case WM_FONTCHANGED:
+        if (m) {
+            for (uint32_t i = 0; i < m->n; i++) menu_measure(w, &m->items[i]);
+            m->dirty = true;
+        }
+        break;
+    }
+    return default_proc(w, msg, p1, p2);
+}
+
+static const MenuItem *menu_item_by_id(const WmWindow *menu, uint16_t id)
+{
+    const Menu *m = menu ? (const Menu *)menu->data : NULL;
+    for (uint32_t i = 0; m && i < m->n; i++)
+        if (m->items[i].id == id) return &m->items[i];
+    return NULL;
+}
+
+/* The popup (class 12, 0x4705c0): the PSUI's popup part (+0x58) with the selected item's title, and its
+   menu (the WMM_ of its title's name; none with style 0x20000) over it while open. A press opens the
+   menu; a release within a quarter of a second leaves it open for the next press; the menu's choice
+   selects the item and is passed to the parent (0x19). */
+typedef struct {
+    uint32_t until;             /* +0x00: the release till then keeps the menu open */
+    bool held;                  /* +0x04: open, waiting for the next press */
+    WmWindow *menu;             /* +0x08 */
+    uint16_t sel;               /* +0x0c: the selected item's id */
+} Popup;
+
+static void popup_update(WmWindow *w)   /* WMiPopupMenu_Update 0x470ae0 */
+{
+    Popup *p = (Popup *)w->data;
+    const void *part = wm_psui_part(0x58);
+    if (!p || !p->menu || !part) return;
+    int16_t T, B, lh;
+    part_size(part, 1, NULL, &T);
+    part_size(part, 0x100, NULL, &B);
+    int16_t tw;
+    text_extent(&w->font, "", &tw, &lh);       /* DCrText_GetLineHeight 0x46a3d0 */
+    int16_t h = (int16_t)(lh + T + B);
+    const MenuItem *it = menu_item_by_id(p->menu, p->sel);
+    set_title(w, it ? it->title : "");
+    const Menu *m = (const Menu *)p->menu->data;
+    if (!(w->style & 0x10000) && h > 0 && m && m->width > 0) set_size(w, m->width, h);   /* WMrMenu_GetWidth 0x46e810 */
+}
+
+static uintptr_t popup_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
+{
+    Popup *p = (Popup *)w->data;
+    switch (msg) {
+    case WM_HITTEST:
+        return WM_HIT_CLIENT;
+    case WM_CREATE: {
+        p = calloc(1, sizeof *p);
+        if (!p) return 1;
+        w->data = (uintptr_t)p;
+        const void *wmm = NULL;
+        if (!(w->style & 0x20000) && !(wmm = tm_instance_get(TM_TAG("WMM_"), w->title))) {
+            free(p), w->data = 0;
+            return 1;
+        }
+        p->menu = window_new(10, wmm ? (const char *)wmm + 0x14 : "", 0x8000, 0, wmm ? rd16((const uint8_t *)wmm + 0x12) : 0,
+                             0, 0, 0, 0, w, (uintptr_t)wmm);   /* WMrMenu_Create 0x46ea40 */
+        if (!p->menu) {
+            free(p), w->data = 0;
+            return 1;
+        }
+        wm_set_font(p->menu, &w->font);
+        const Menu *m = (const Menu *)p->menu->data;
+        p->sel = m && m->n ? m->items[0].id : 0;     /* 0x46eb30: the first item's id */
+        popup_update(w);
+        return 0;
+    }
+    case WM_DESTROY:
+        if (p) {
+            if (p->menu) wm_window_delete(p->menu);
+            free(p), w->data = 0;
+        }
+        return 0;
+    case WM_PAINT: {
+        const void *part = wm_psui_part(0x58);
+        if (!part || !p) return 0;
+        WmDc *dc = wm_dc_begin(w);
+        wm_dc_set_font(&w->font);
+        bool on = enabled(w);
+        wm_dc_part(dc, part, 0xffff, 0, 0, w->client[2], w->client[3], 0xff);
+        int16_t L;
+        part_size(part, 1, &L, NULL);
+        int16_t pen[2] = { (int16_t)(L + 2), 0 };
+        if (!on) wm_dc_set_colour(0xff808080u);
+        wm_dc_set_format(9);
+        wm_dc_text(dc, NULL, pen, w->title, NULL);
+        wm_dc_end(dc);
+        return 0;
+    }
+    case WM_MOUSEMOVE:
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP:
+        if (!enabled(w) || !p || !p->menu) return 0;
+        if (msg == WM_LBUTTONUP) {
+            if (p->until > ticks()) p->held = true;
+            else {
+                wm_send(p->menu, WM_LBUTTONUP, p1, p2);
+                set_capture(NULL);
+            }
+        } else if (msg == WM_LBUTTONDOWN) {
+            set_focus(w);
+            if (p->menu->flags & WM_STYLE_VISIBLE) wm_send(p->menu, WM_LBUTTONDOWN, p1, p2);
+            else if (p->held) {
+                p->held = false;
+                set_capture(NULL);
+                p->until = ticks() + 15;
+            } else {
+                set_capture(w);
+                int16_t r[4];
+                screen_rect(w, r);
+                menu_locate(p->menu, r, false);     /* WMiPopupMenu_SetMenuPosition 0x470a90 */
+                /* (0x1a, the menu about to open, to the menu's parent: a top-level window's, none) */
+                wm_set_visible(p->menu, true);
+                p->until = ticks() + 15;
+            }
+        } else if (p->held || (p2 & 1))
+            wm_send(p->menu, WM_MOUSEMOVE, p1, p2);
+        return 0;
+    case WM_CAPTURELOST:
+        if (p) {
+            if (p->menu) wm_set_visible(p->menu, false);
+            p->held = false;
+        }
+        return 0;
+    case WM_FONTCHANGED:        /* WMiPopupMenu_HandleFontInfoChanged 0x470c30 */
+        if (p && p->menu) wm_set_font(p->menu, &w->font), popup_update(w);
+        return 0;
+    case 0x19:      /* the menu's choice (0x470bd0) */
+        if (!p) return 1;
+        if (p->menu) wm_set_visible(p->menu, false);
+        p->held = false;
+        p->sel = (uint16_t)p1;
+        popup_update(w);
+        set_capture(NULL);
+        return wm_send(w->parent, 0x19, p1, (uintptr_t)w);
+    }
+    return default_proc(w, msg, p1, p2);
+}
+
+/* 0x4704d0: an item (enabled; its id given) added at the end. */
+void wm_popup_append(WmWindow *w, uint16_t id, const char *title)
+{
+    Popup *p = wm_window_valid(w) ? (Popup *)w->data : NULL;
+    if (!p || !p->menu) return;
+    MenuItem it = { 2, id, { 0 }, 0, 0 };
+    snprintf(it.title, sizeof it.title, "%s", title);
+    menu_insert(p->menu, &it, -1);
+}
+
+/* 0x470c70: the items gone. */
+void wm_popup_clear(WmWindow *w)
+{
+    Popup *p = wm_window_valid(w) ? (Popup *)w->data : NULL;
+    if (!p || !p->menu) return;
+    Menu *m = (Menu *)p->menu->data;
+    if (m) m->n = 0, m->dirty = true;      /* 0x46f8d0 */
+    popup_update(w);
+}
+
+/* 0x470d00: the item of that id selected, and the parent told (0x19, the item's flags in the high
+   word). */
+void wm_popup_select(WmWindow *w, uint16_t id)
+{
+    Popup *p = wm_window_valid(w) ? (Popup *)w->data : NULL;
+    if (!p || !p->menu) return;
+    p->sel = id;
+    const MenuItem *it = menu_item_by_id(p->menu, id);     /* 0x46ea80 */
+    uint32_t flags = it ? it->flags : 0;
+    popup_update(w);
+    wm_send(w->parent, 0x19, flags << 16 | id, (uintptr_t)w);
+}
+
+/* The slider (class 17, 0x4727f0): a value in a range, the PSUI's thumb (+0x98) over its track (+0x9c:
+   its top row, centred). Dragging the thumb, a press on either side of it (a tenth of the range, at
+   least 1, again each 10 ticks while held: its timer) or the keys (Home, End, the page keys a tenth, the
+   arrows 1) move it; each change is sent to the parent (command, notice 1). */
+typedef struct {
+    int32_t min, max, value;    /* +0x00 */
+    uint8_t flags;              /* +0x0c: 1 the button held */
+    bool dragging;              /* +0x0d */
+    int16_t drag;               /* +0x0e: the thumb's x less the mouse's */
+    int16_t tx, ty;             /* +0x10: the thumb's left and its centre's height */
+    int16_t tw, th;             /* +0x14 */
+} Slider;
+
+/* 0x4724c0: a part's rectangle: 1 the track, 2 and 3 the sides of the thumb, 4 the thumb. */
+static void slider_rect(const WmWindow *w, const Slider *s, int which, int16_t r[4])
+{
+    r[0] = r[1] = r[2] = r[3] = 0;
+    const uint8_t *ui = wm_psui_active();
+    if (!ui) return;
+    int16_t cw = w->client[2], ch = w->client[3], pw, ph, a[4], b[4];
+    switch (which) {
+    case 1:
+        part_size(tm_link(ui + 0x9c), 1, NULL, &ph);
+        r[1] = (int16_t)((ch - ph) >> 1), r[2] = cw, r[3] = (int16_t)(r[1] + ph);
+        break;
+    case 2:
+        slider_rect(w, s, 1, a), slider_rect(w, s, 4, b);
+        r[0] = a[0], r[2] = (int16_t)(b[0] + 1), r[3] = ch;
+        break;
+    case 3:
+        slider_rect(w, s, 1, a), slider_rect(w, s, 4, b);
+        r[0] = (int16_t)(b[2] - 1), r[2] = a[2], r[3] = ch;
+        break;
+    case 4:
+        part_size(tm_link(ui + 0x98), 1, &pw, &ph);
+        r[0] = s->tx, r[1] = (int16_t)(s->ty - (ph >> 1)), r[2] = (int16_t)(r[0] + pw), r[3] = (int16_t)(r[1] + ph);
+        break;
+    }
+}
+
+/* 0x472c40: the track inside its ends. */
+static void slider_inner(const WmWindow *w, const Slider *s, int16_t r[4])
+{
+    const uint8_t *ui = wm_psui_active();
+    r[0] = r[1] = r[2] = r[3] = 0;
+    if (!ui) return;
+    int16_t L, R;
+    part_size(tm_link(ui + 0x9c), 1, &L, NULL);
+    part_size(tm_link(ui + 0x9c), 0x40, &R, NULL);
+    slider_rect(w, s, 1, r);
+    r[0] = (int16_t)(r[0] + L), r[2] = (int16_t)(r[2] - R);
+}
+
+/* (0x4264e0: the x87's rounding; an empty range's 0 / 0 is its integer indefinite, 0x80000000, whose
+   low half is 0) */
+static int32_t round_x87(double v) { return v != v ? INT32_MIN : (int32_t)nearbyint(v); }
+
+static void slider_place(WmWindow *w, Slider *s)    /* 0x472cc0 */
+{
+    int16_t r[4];
+    slider_inner(w, s, r);
+    double span = (double)(r[2] - s->tw - r[0]), range = (double)(s->max - s->min);
+    s->tx = (int16_t)(round_x87(span / range * (double)(s->value - s->min)) + r[0]);
+    s->ty = (int16_t)(r[1] + ((int16_t)(r[3] - r[1]) >> 1));
+}
+
+static void slider_set(WmWindow *w, Slider *s, int32_t v)
+{
+    s->value = v;
+    if (v < s->min) s->value = s->min;
+    else if (v > s->max) s->value = s->max;
+    slider_place(w, s);
+}
+
+/* The page step: a tenth of the range (toward zero), at least 1. */
+static int32_t slider_page(const Slider *s, bool up)
+{
+    int32_t t = (s->max - s->min) / 10;
+    return up ? (t >= 1 ? t : 1) : (-t < -1 ? -t : -1);
+}
+
+static void slider_mouse(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)    /* 0x472db0 */
+{
+    Slider *s = (Slider *)w->data;
+    if (!enabled(w) || !s) return;
+    int16_t x, y;
+    local_point(w, p1, &x, &y);
+    int16_t pt_r[4];
+    int32_t d;
+    if (msg == WM_LBUTTONUP) {
+        s->flags &= (uint8_t)~1;
+        s->dragging = false;
+        set_capture(NULL);
+        return;
+    }
+    if (msg == WM_LBUTTONDOWN) {
+        s->flags |= 1;
+        set_focus(w);
+        set_capture(w);
+        slider_rect(w, s, 4, pt_r);
+        bool thumb = in_rect(pt_r, x, y);
+        slider_rect(w, s, 2, pt_r);
+        bool left = in_rect(pt_r, x, y);
+        slider_rect(w, s, 3, pt_r);
+        bool right = in_rect(pt_r, x, y);
+        if (thumb && !s->dragging) {
+            s->dragging = true;
+            s->drag = (int16_t)(s->tx - x);
+            return;
+        }
+        if (left) d = slider_page(s, false);
+        else if (right) d = slider_page(s, true);
+        else return;
+    } else {
+        if (!(p2 & 1) || !s->dragging) return;
+        int16_t r[4];
+        slider_inner(w, s, r);
+        float range = (float)(s->max - s->min);
+        int32_t v = round_x87((double)range / (double)(r[2] - s->tw - r[0]) * (double)(s->drag - r[0] + x)) + s->min;
+        if (v < s->min) v = s->min;
+        if (v > s->max) v = s->max;
+        d = v - s->value;
+        if (!d) return;
+    }
+    slider_set(w, s, s->value + d);
+    wm_send(w->parent, WM_COMMAND, parent_notice(w, 1), (uintptr_t)w);
+}
+
+static uintptr_t slider_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
+{
+    Slider *s = (Slider *)w->data;
+    switch (msg) {
+    case WM_HITTEST:
+        return WM_HIT_CLIENT;
+    case WM_CREATE: {
+        s = calloc(1, sizeof *s);
+        w->data = (uintptr_t)s;
+        if (!s) return 1;
+        int16_t r[4];
+        slider_rect(w, s, 4, r);
+        s->tw = (int16_t)(r[2] - r[0]), s->th = (int16_t)(r[3] - r[1]);
+        slider_place(w, s);
+        timer_start(w, 1, 10);
+        return 0;
+    }
+    case WM_DESTROY:
+        free(s);
+        w->data = 0;
+        timer_stop(w, 1);
+        return 0;
+    case WM_PAINT: {
+        const uint8_t *ui = wm_psui_active();
+        if (!s || !ui) return 0;
+        WmDc *dc = wm_dc_begin(w);
+        bool on = enabled(w);
+        int16_t r[4];
+        slider_rect(w, s, 1, r);
+        wm_dc_part(dc, tm_link(ui + 0x9c), 0x49, r[0], r[1], (int16_t)(r[2] - r[0]), (int16_t)(r[3] - r[1]), 0xff);
+        slider_rect(w, s, 4, r);
+        wm_dc_part(dc, tm_link(ui + 0x98), 1, r[0], r[1], s->tw, s->th, on ? 0xff : 0x7f);
+        wm_dc_end(dc);
+        return 0;
+    }
+    case WM_KEYDOWN: {
+        if (!enabled(w) || !s) break;
+        int32_t d;
+        switch (p1) {
+        case 0xab: d = s->min - s->value; break;       /* Home */
+        case 0xac: d = slider_page(s, false); break;
+        case 0xae: d = s->max - s->value; break;       /* End */
+        case 0xaf: d = slider_page(s, true); break;
+        case 0xb1: d = -1; break;
+        case 0xb3: d = 1; break;
+        default: d = 0; break;
+        }
+        if (!d) break;
+        slider_set(w, s, s->value + d);
+        wm_send(w->parent, WM_COMMAND, parent_notice(w, 1), (uintptr_t)w);
+        break;
+    }
+    case WM_MOUSEMOVE:
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP:
+        slider_mouse(w, msg, p1, p2);
+        break;
+    case WM_TIMER:      /* held on a side: pressed again */
+        if (p1 == 1 && s && (s->flags & 1))
+            slider_mouse(w, WM_LBUTTONDOWN, (uintptr_t)((uint32_t)(uint16_t)mouse_x << 16 | (uint16_t)mouse_y), 1);
+        return 0;
+    case WM_WANTKEYS:
+        return 0x30;
+    }
+    return default_proc(w, msg, p1, p2);
+}
+
+/* 0x472650: the range, the value its least. */
+void wm_slider_set_range(WmWindow *w, int32_t min, int32_t max)
+{
+    Slider *s = wm_window_valid(w) ? (Slider *)w->data : NULL;
+    if (!s) return;
+    s->min = min, s->max = max, s->value = min;
+    slider_place(w, s);
+}
+/* 0x4723a0, 0x4723b0: the value, set within the range. */
+int32_t wm_slider_value(const WmWindow *w) { const Slider *s = wm_window_valid(w) ? (const Slider *)w->data : NULL; return s ? s->value : 0; }
+void wm_slider_set_value(WmWindow *w, int32_t v) { Slider *s = wm_window_valid(w) ? (Slider *)w->data : NULL; if (s) slider_set(w, s, v); }
+
+/* 0x46b900, 0x46b920: a check box's state. */
+void wm_check_set(WmWindow *w, bool on) { if (wm_window_valid(w)) wm_send(w, 0x3b, on, 0); }
+bool wm_check_get(WmWindow *w) { return wm_window_valid(w) && wm_send(w, 0x2d, 0, 0); }
+
 /* The text (class 20, 0x4731f0): drawn by its dialog (style 0x800000: WM_DRAWITEM to the parent), else its
    title in its font. */
 static uintptr_t text_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
@@ -1243,8 +2019,12 @@ void wm_initialize(int w, int h)    /* WMrInitialize 0x475ad0 */
     class_register(3, box_proc);
     class_register(4, button_proc);
     class_register(6, dialog_proc);
+    class_register(5, check_proc);
     class_register(8, list_proc);
+    class_register(10, menu_proc);
     class_register(11, picture_proc);
+    class_register(12, popup_proc);
+    class_register(17, slider_proc);
     class_register(20, text_proc);
     desktop = wm_window_new(1, WM_STYLE_VISIBLE, 0, 0, 0, 0, (int16_t)w, (int16_t)h, NULL, 0);
     /* WMrCursor_Get (0x4687d0): type 1 in the cursor list ("cursor_list", 0x53c304: +0x14 the count, then

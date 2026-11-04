@@ -18,6 +18,7 @@ static const char FILE_NAME[] = "persist.dat";      /* 0x557194 */
 static uint32_t get32(unsigned off) { const uint8_t *p = block + off; return p[0] | p[1] << 8 | p[2] << 16 | (uint32_t)p[3] << 24; }
 static void put32(unsigned off, uint32_t v) { uint8_t *p = block + off; p[0] = (uint8_t)v, p[1] = (uint8_t)(v >> 8), p[2] = (uint8_t)(v >> 16), p[3] = (uint8_t)(v >> 24); }
 static void putf(unsigned off, float f) { uint32_t v; memcpy(&v, &f, 4); put32(off, v); }
+static float getf(unsigned off) { uint32_t v = get32(off); float f; memcpy(&f, &v, 4); return f; }
 
 static uint8_t *(*io_load)(const char *name, size_t *size);
 static bool (*io_save)(const char *name, const void *data, size_t size);
@@ -74,6 +75,44 @@ void persist_set_difficulty(int d)
     ensure();
     put32(DIFFICULTY, (uint32_t)(d < 0 ? 0 : d > 2 ? 2 : d));
     save();
+}
+
+int persist_quality(void) { ensure(); return (int)get32(QUALITY); }
+void persist_set_quality(int q) { ensure(); put32(QUALITY, (uint32_t)q); save(); }
+float persist_volume(void) { ensure(); return getf(VOLUME); }
+void persist_set_volume(float v) { ensure(); putf(VOLUME, v); save(); }
+bool persist_subtitles(void) { ensure(); return get32(FLAGS) & 1; }
+bool persist_invert_mouse(void) { ensure(); return (get32(FLAGS) >> 1) & 1; }
+
+static void set_flag(uint32_t bit, bool on)
+{
+    ensure();
+    put32(FLAGS, on ? get32(FLAGS) | bit : get32(FLAGS) & ~bit);
+    save();
+}
+void persist_set_subtitles(bool on) { set_flag(1, on); }
+void persist_set_invert_mouse(bool on) { set_flag(2, on); }
+
+float persist_gamma(void)
+{
+    ensure();
+    float g = getf(GAMMA);
+    return g < 0.0f ? 0.0f : g > 1.0f ? 1.0f : g;
+}
+
+void persist_set_gamma(float g)
+{
+    ensure();
+    if (!(g >= 0.0f && g <= 1.0f)) return;
+    putf(GAMMA, g);
+    save();
+}
+
+void persist_resolution(int *w, int *h, int *depth)
+{
+    ensure();
+    uint32_t r = get32(RESOLUTION);
+    *w = (int)(r & 0xffff), *h = (int)(r >> 16), *depth = (int)get32(DEPTH);
 }
 
 bool persist_weapon_seen(uint16_t index) { ensure(); return (get32(WEAPONS) >> (index & 0x1f)) & 1; }
