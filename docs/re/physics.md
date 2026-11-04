@@ -123,7 +123,8 @@ the next step 12.
 3. A sphere of radius 7.1 from 10 above the feet plus fh, moving down by the drop and that height
    (`AKrCollision_Sphere`, skipping the flags 0x148800, all the hits). The physics' height takes the
    drop, and so does the feet's; that height is the ground height for now.
-4. Each quad hit: its normal's y (turned for a two-sided quad, not "jello" 0x20, seen from behind) must
+4. Each quad hit: its normal's y (turned for a two-sided quad, not "jello" 0x20, seen from behind by the
+   sphere's start, 10 above the feet: *confirmed*, the dot product at 0x4ec39d takes ESP+0x7c) must
    be above 0.5. Its corners are clipped to the square 1.5 around the feet (x ≤ x+1.5, z ≥ z−1.5,
    x ≥ x−1.5, z ≤ z+1.5: 0x4ef020, 0x4ef270, 0x4ef0e0, 0x4ef1a0, one Sutherland–Hodgman step each).
    With 3 points or more, each edge whose lower end is under the limit offers its higher end; the best

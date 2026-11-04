@@ -100,6 +100,13 @@ void chr_cheats_clear(void)
 
 bool chr_is_unstoppable(const Character *c) { return (chr_cheat_unstoppable && !c->ai) || (c->flags & 0x100); }
 
+void chr_die(Character *c)
+{
+    c->flags |= 1;
+    if (chr_die_hook) chr_die_hook(c);
+    death_knockdown(c, 0);
+}
+
 void chr_take_damage(Character *c, uint32_t damage, float knockback, const float dir[3], uint16_t knockdown,
                      Character *from)
 {
@@ -128,9 +135,7 @@ void chr_take_damage(Character *c, uint32_t damage, float knockback, const float
             /* ONrCharacter_Die_1_Animating_Hook 0x4eb550: dead (no more animations asked), then
                ONiCharacter_RunDeathAnimation 0x4eb970. The scripts go through chr_die_hook; not
                ported: the weapons and powerups dropped, the living list, the particles, the sound. */
-            c->flags |= 1;
-            if (chr_die_hook) chr_die_hook(c);
-            death_knockdown(c, 0);
+            chr_die(c);
         }
     }
     if (!chr_is_unstoppable(c) && knockback != 0.0f && dir)

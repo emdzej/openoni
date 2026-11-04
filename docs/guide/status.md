@@ -14,6 +14,11 @@ brain's consoles and the outro, and level 3 begins. (The unattended run behind t
 invincible from the third save point on: its driver can't time the sweeping lasers that wake the
 corridor's turret, which a player jumps.)
 
+Level 3, the Syndicate's chemical plant, plays through too: Barabas beaten and his rocket escape, the
+three floors' locks, the roof and the tower, the bomber's fall, the three passage consoles, the vats
+and the end door, the last ambush and the outro, and level 4 begins. (Its unattended run uses the
+game's `invincible` and `omnipotent` switches: the driver fights badly.)
+
 It can be tried in the browser on the <a href="/play/" target="_self">play page</a>, with your own copy of the game.
 
 ## What works

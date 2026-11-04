@@ -17,6 +17,9 @@ void chr_hit_init(Character *c, int32_t extra);
 void chr_collide_all(Character **chars, int n);
 /* ONrCharacter_TakeDamage 0x4e65f0: damage hit points, knockback along dir (the world, may be NULL),
    knockdown the reaction when it kills (0: the one asked, A+0x1b06). */
+/* ONrCharacter_Die_1_Animating_Hook 0x4eb550: dead (no more animations asked), the die hook, then
+   ONiCharacter_RunDeathAnimation 0x4eb970. */
+void chr_die(Character *c);
 void chr_take_damage(Character *c, uint32_t damage, float knockback, const float dir[3], uint16_t knockdown,
                      Character *from);
 /* What TakeDamage tells the AI of a character it hurt and didn't kill (0x48b480, for the AI's

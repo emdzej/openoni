@@ -436,7 +436,6 @@
 0046b920	WMrCheckBox_GetCheck	WM	low	0x2d
 0046c5b0	WMiEditField_HandleSetMaxChars	WM	med	name from the Intel Mac build (neighbours:1.00)
 0046c720	WMiListBox_Create	WM	med	name from the Intel Mac build (strings:1)
-0046c720	WMiListBox_Proc	WM	low	the list box (class 8) procedure (the Mac name WMiListBox_Create is a neighbour's)
 0046d940	WMiListBox_GetText	WM	med	name from the Intel Mac build (neighbours:0.75)
 0046db60	WMiListBox_InsertString	WM	med	name from the Intel Mac build (neighbours:0.75)
 0046dcc0	WMiListBox_ReplaceString	WM	med	name from the Intel Mac build (neighbours:0.80)
@@ -893,6 +892,7 @@
 004b8b10	AI2iScript_ChangeTeam	AI2	med	name from the Intel Mac build (strings:2)
 004b8c10	AI2iScript_HasLSI	AI2	low	chr_has_lsi (name made up)
 004b8cb0	AI2iScript_HasEmptyWeapon	AI2	med	name from the Intel Mac build (strings:1)
+004b8db0	AI2iScript_IsPlayer	AI2	med	Mac name: chr_is_player, by index or name, the player (G+0xac) or not
 004b8e50	AI2iScript_NonCombatant	AI2	med	name from the Intel Mac build (strings:1)
 004b8f50	AI2iScript_Panic	AI2	med	name from the Intel Mac build (strings:1)
 004b9030	AI2iScript_MakeBlind	AI2	med	name from the Intel Mac build (strings:1)
@@ -1058,7 +1058,6 @@
 004d2aa0	ONiOutGameUI_Choice_Callback	ON	low	the yes or no dialogs: a button ends them with its id
 004d2ad0	ONiOutGameUI_Options_SetValues	ON	low	the options' items from the persisted settings
 004d2ba0	ONiOutGameUI_LoadGame_Callback	ON	low	the load game dialog (151): the levels reached
-004d2ba0	ONiOutGameUI_LoadGame_Callback	ON	low	(again) Load: the selected line's data to OWrGame_Start
 004d2c70	ONrOutGameUI_MainMenu_Display	ON	med	name from the Intel Mac build (neighbours:1.00)
 004d2cd0	ONiOutGameUI_MainMenu_Callback	ON	low	the main menu (150): New Game, Load Game, Options, Resume, Quit
 004d3100	ONiOGU_MainMenu_FadeMusic	ON	med	name from the Intel Mac build (neighbours:0.80)
@@ -1253,7 +1252,6 @@
 004fd8b0	ONrGameState_UseContinue	ON	med	name from the Intel Mac build (strings:2)
 004fda80	ONrGameState_ClearContinue	ON	low	the continue cleared, no save point (a won level)
 004fdaa0	ONrGameState_SetContinue	ON	low	the continue copied in with its save point
-004fdaa0	ONrGameState_SetContinue	ON	low	(again) a persisted continue made the game's, with its save point
 004fdac0	ONrGameState_EventSound_Play	ON	med	name from the Intel Mac build (neighbours:0.80)
 004fdcf0	ONiImpactEffect_MakeDirty	ON	med	name from the Intel Mac build (neighbours:1.00)
 004fe150	ONiImpactEffect_DeallocateEntry	ON	med	name from the Intel Mac build (strings:1)

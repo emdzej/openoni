@@ -288,8 +288,9 @@ static bool find_ground(Character *c, const void *env)
         float ny = hits[i].plane[1];
         AkevQuad q;
         if (!akev_quad(env, hits[i].quad, &q)) continue;
+        /* a two-sided quad seen from behind by the sphere's start (10 above the feet), not the feet */
         if ((q.flags & 0x2a0) && !(q.flags & 0x20) &&
-            hits[i].plane[0] * c->pos[0] + hits[i].plane[1] * c->pos[1] + hits[i].plane[2] * c->pos[2] + hits[i].plane[3] < 0.0f)
+            hits[i].plane[0] * sph[0] + hits[i].plane[1] * sph[1] + hits[i].plane[2] * sph[2] + hits[i].plane[3] < 0.0f)
             ny = -ny;
         if (!(-0.5f <= ny && 0.5f < ny)) continue;
         float a[8 * 3], b[8 * 3];

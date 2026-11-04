@@ -901,7 +901,8 @@ static bool cmd_kill(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 }
 
 /* chr_set_health char hp (AI2iScript_SetHealth 0x4b7a30, ONrCharacter_SetHitPoints 0x4eb220): 0 kills
-   a living character (the death hook); a dead one given hit points coming back isn't ported. */
+   a living character outright (Die_1_Animating_Hook: no damage, so invincibility doesn't stop it); a
+   dead one given hit points coming back isn't ported. */
 static bool cmd_set_health(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;
@@ -909,10 +910,24 @@ static bool cmd_set_health(SlThread *t, int c, const SlValue *v, SlValue *r, voi
     if (!ch) return true;       /* "chr_set_health" */
     int32_t hp = num(&v[1]);
     if (hp <= 0) {
-        if (!(ch->c.flags & 1)) chr_take_damage(&ch->c, ch->c.hit_points ? ch->c.hit_points : 1, 0.0f, NULL, 0, NULL);
+        if (!(ch->c.flags & 1)) {
+            ch->c.hit_points = 0;
+            chr_die(&ch->c);
+        }
         return true;
     }
     if (!(ch->c.flags & 1)) ch->c.hit_points = (uint32_t)hp;
+    return true;
+}
+
+/* chr_is_player char -> bool (AI2iScript_IsPlayer 0x4b8db0): whether it is the player (G+0xac); false
+   with no such character. */
+static bool cmd_is_player(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)u;
+    Chr *ch = c >= 1 ? arg_char(&v[0]) : NULL;
+    r->type = SL_BOOL;
+    r->i = ch && ch->player;     /* (none: "chr_is_player" reported) */
     return true;
 }
 
@@ -1288,6 +1303,7 @@ void chars_register_commands(void)
     sl_register("ai2_allpassive", cmd_all_passive, NULL);
     sl_register("ai2_setmovementmode", cmd_set_movement_mode, NULL);
     sl_register("chr_set_health", cmd_set_health, NULL);
+    sl_register("chr_is_player", cmd_is_player, NULL);
     sl_register("chr_unstoppable", cmd_unstoppable, NULL);
     sl_register("chr_weapon_immune", cmd_weapon_immune, NULL);
     sl_register("chr_teleport", cmd_teleport, NULL);

@@ -449,7 +449,7 @@ static void start_scripts(void)
    D degrees (the facing: 0 is +z); "vD" aims D degrees up; "p"/"k" a punch/kick tap; "j" a jump tap; "q"/"g"/"e"/"R" a swap (pick up),
    fire, drop or reload tap; "c" holds crouch for the next step; "H<keys>,N" holds keys for N frames (f forward,
    b back, l/r step left/right, c crouch, j jump, p punch, k kick, w walk, a action, q swap, g fire).
-   "R" as a mode runs from up to 1.3 rad off. "T<name>,N[,L]" aims at the character for N frames (where it
+   "R" as a mode runs from up to 1.3 rad off; "P" too, walking the last 10. "T<name>,N[,L]" aims at the character for N frames (where it
    will be in L frames) and taps fire every 20 frames; the shots leave at about 1.13 times the aim's angle
    from the facing (measured), which the aim allows for. "M<message>,F" waits for a script's message and
    shifts the later "@" frames by when it came against F (when the route was made). "P" presses the pause
@@ -457,7 +457,7 @@ static void start_scripts(void)
    the unbroken glass targets of those script ids, aiming the weapon's barrel at each. "F<name>,N" fights
    the character hand to hand for up to N frames, until it is down; "A<N>" the nearest one in combat
    with her, while there is one. "N<name>,N" talks with a neutral (the action key near it) until the
-   conversation is over. "Wx,y,z" runs to the point through the rooms, the way found from where she is (while there is none,
+   conversation is over. "K<id>" uses the console (its marker, the action key, again until it is used). "Wx,y,z" runs to the point through the rooms, the way found from where she is (while there is none,
    tried again each second). Knocked down, any step first gets
    up (forward). ---- */
 
@@ -549,28 +549,36 @@ static bool route_plan(const Character *c, const float b[3], char *out, size_t s
     for (int k = 0; k < n; k++) {
         float in[3], o[3];
         const GraphLink *l = k + 1 < n ? graph_link(path[k]) : NULL;
-        if (l) {
-            float w[3] = { l->mid[0], l->mid[1], l->mid[2] }, pl[4];
-            akev_quad_plane(env, l->quad, pl);
-            /* which way across: the side whose room is the link's next */
-            float q1[3] = { w[0] + pl[0] * 12, w[1] + 4, w[2] + pl[2] * 12 };
-            float q2[3] = { w[0] - pl[0] * 12, w[1] + 4, w[2] - pl[2] * 12 };
-            int r1 = graph_room_at(q1), r2 = graph_room_at(q2), sign;
-            if (r2 == l->to && r1 != l->to) sign = -1;
-            else if (r1 == l->to && r2 != l->to) sign = 1;
-            else {
-                /* (a stair's foot: both sides in the room under it) toward where the way goes next */
-                const float *next = k + 2 < n ? graph_link(path[k + 1])->mid : b;
-                sign = pl[0] * (next[0] - w[0]) + pl[2] * (next[2] - w[2]) > 0 ? 1 : -1;
-            }
-            for (int j = 0; j < 3; j++) in[j] = o[j] = w[j];
-            in[0] += pl[0] * 12 * sign, in[2] += pl[2] * 12 * sign;
-            o[0] -= pl[0] * 8 * sign, o[2] -= pl[2] * 8 * sign;
-        } else {
-            for (int j = 0; j < 3; j++) o[j] = b[j];
-        }
         static LocalPoint lp[LOCAL_PATH_MAX];
-        int m = local_path(env, room, seg, o, NULL, false, true, lp);
+        int m = 0;
+        /* the crossing point as the AI's (PHrWaypointFromGunk, the nearest of the edge), else the
+           link's middle if no local path gets to that */
+        for (int t = 0; t < 2; t++) {
+            if (l) {
+                float w[3], pl[4];
+                if (t == 0) graph_waypoint(l->quad, seg, w);
+                else w[0] = l->mid[0], w[1] = l->mid[1], w[2] = l->mid[2];
+                akev_quad_plane(env, l->quad, pl);
+                /* which way across: the side whose room is the link's next */
+                float q1[3] = { w[0] + pl[0] * 12, w[1] + 4, w[2] + pl[2] * 12 };
+                float q2[3] = { w[0] - pl[0] * 12, w[1] + 4, w[2] - pl[2] * 12 };
+                int r1 = graph_room_at(q1), r2 = graph_room_at(q2), sign;
+                if (r2 == l->to && r1 != l->to) sign = -1;
+                else if (r1 == l->to && r2 != l->to) sign = 1;
+                else {
+                    /* (a stair's foot: both sides in the room under it) toward where the way goes next */
+                    const float *next = k + 2 < n ? graph_link(path[k + 1])->mid : b;
+                    sign = pl[0] * (next[0] - w[0]) + pl[2] * (next[2] - w[2]) > 0 ? 1 : -1;
+                }
+                for (int j = 0; j < 3; j++) in[j] = o[j] = w[j];
+                in[0] += pl[0] * 12 * sign, in[2] += pl[2] * 12 * sign;
+                o[0] -= pl[0] * 8 * sign, o[2] -= pl[2] * 8 * sign;
+            } else {
+                for (int j = 0; j < 3; j++) o[j] = b[j];
+            }
+            m = local_path(env, room, seg, o, NULL, false, true, lp);
+            if (m || !l) break;
+        }
         for (int i = 1; i + 1 < m; i++) EMIT("%.0f,%.0f,R,4;", lp[i].p[0], lp[i].p[2]);
         if (!l) break;
         EMIT("%.0f,%.0f,R,6;", o[0], o[2]);
@@ -590,7 +598,7 @@ static bool route_plan(const Character *c, const float b[3], char *out, size_t s
 #undef EMIT
     for (int i = 0; i < nl; i++) ((GraphLink *)graph_link(i))->flags = saved[i];
     if (!n) return false;
-    if (len < size) len += (size_t)snprintf(out + len, size - len, "%.0f,%.0f,R,%s", b[0], b[2], "2");
+    if (len < size) len += (size_t)snprintf(out + len, size - len, "%.1f,%.1f,P,3", b[0], b[2]);
     return len < size;
 }
 
@@ -744,8 +752,11 @@ static void route_input(const Character *c, CharacterInput *in)
             if (route.phase && now < route.until) return;
             if (!route_plan(c, b, steps, sizeof steps)) {
                 if (!route.phase) {
-                    char m[96];
-                    snprintf(m, sizeof m, "OpenOni: route: no way yet to %.40s", s);
+                    char m[400];
+                    int n = snprintf(m, sizeof m, "OpenOni: route: no way yet to %.40s (locked:", s);
+                    for (int d = 0; d < door_count() && n < (int)sizeof m - 8; d++)
+                        if (door_flags(d) & DOOR_LOCKED) n += snprintf(m + n, sizeof m - (size_t)n, " %u", door_id(d));
+                    snprintf(m + n, sizeof m - (size_t)n, ")");
                     plat_log(m);
                 }
                 route.phase = 1;
@@ -753,6 +764,28 @@ static void route_input(const Character *c, CharacterInput *in)
                 return;
             }
             snprintf(route.buf, sizeof route.buf, "%s%s%s", steps, rest[0] ? ";" : "", rest);
+            route.step = route.buf;
+            route.phase = 0;
+            route.until = 0;
+            continue;
+        }
+        if (*s == 'K') {
+            /* "K<console id>[,tries]": uses the console: to its marker (as "W"), turned as it says, the
+               action key; again (up to 5 times in all) until the console is used */
+            int id = atoi(s + 1), tries = 5;
+            const char *comma = strchr(s, ',');
+            const char *semi = strchr(s, ';');
+            if (comma && (!semi || comma < semi)) tries = atoi(comma + 1);
+            int ci = -1;
+            for (int i = 0; i < console_count(); i++) if (console_id(i) == id) ci = i;
+            const ActionMarker *m = ci >= 0 ? console_marker(ci) : NULL;
+            if (!m || (console_flags(ci) & CONSOLE_USED) || tries <= 0) { route_next(); continue; }
+            if (c->console_marker >= 0) return;     /* using one */
+            static char rest[16384];
+            snprintf(rest, sizeof rest, "%s", semi ? semi + 1 : "");
+            float h = m->facing * 57.29578f;
+            snprintf(route.buf, sizeof route.buf, "W%.1f,%.1f,%.1f;h%.0f;w10;a;w40;K%d,%d%s%s", m->pos[0], m->floor,
+                     m->pos[2], h < 0 ? h + 360 : h, id, tries - 1, rest[0] ? ";" : "", rest);
             route.step = route.buf;
             route.phase = 0;
             route.until = 0;
@@ -876,7 +909,7 @@ static void route_input(const Character *c, CharacterInput *in)
            "r" but starts off up to 1.3 away: standing in fight mode the body turns on the spot only past
            70 degrees (HandleStandingTurn), and turns as it goes */
         float off = fabsf(wrap_pi(atan2f(dx, dz) - c->facing));
-        if (off > (mode == 'R' ? 1.3f : 0.6f)) return;
+        if (off > (mode == 'R' || mode == 'P' ? 1.3f : 0.6f)) return;
         if (mode == 's' && route.phase < 3) {
             /* the double tap: down, up, down (within 15 ticks), then held */
             in->forward = route.phase != 1;
@@ -884,18 +917,27 @@ static void route_input(const Character *c, CharacterInput *in)
             return;
         }
         in->forward = 1;
-        in->walk = mode == 'k';
+        in->walk = mode == 'k' || (mode == 'P' && dx * dx + dz * dz < 100.0f);
         /* no headway for a second (something the rooms' grids don't hold, at the body's height): a
            second of stepping to the side, one way then the other */
-        static float stuck_at[2];
-        static int stuck, side;
-        if (fabsf(c->pos[0] - stuck_at[0]) + fabsf(c->pos[2] - stuck_at[1]) > 2.0f) {
-            stuck_at[0] = c->pos[0], stuck_at[1] = c->pos[2];
+        static float stuck_best;
+        static const char *stuck_step;
+        static int stuck, side, tries;
+        float dist = sqrtf(dx * dx + dz * dz);
+        if (stuck_step != s || dist < stuck_best - 1.0f) {
+            /* headway: nearer the point by 1 (or a new point) */
+            if (stuck_step != s) tries = 0;
+            stuck_step = s, stuck_best = dist;
             if (stuck < 60) stuck = 0;
         }
         if (++stuck > 60) {
             in->strafe = side & 1 ? -1 : 1;
-            if (stuck > 120) stuck = 0, side++;
+            if (stuck > 120) stuck = 0, side++, tries++;
+        }
+        /* ten such tries: the point is passed over (the next one may be reached around it) */
+        if (tries >= 10) {
+            tries = stuck = 0;
+            route_next();
         }
         if (mode == 'J' || mode == 'j') {
             /* a running jump: 20 frames of run ("j": none), then jump held for 30 */
@@ -1211,10 +1253,11 @@ static int play(int level, int *next)
         if (plat_mouse(&mouse) && (mouse.pressed & MOUSE_LEFT) && !mouse.captured) plat_mouse_capture(true);
         /* "input 0" from a script (cutscenes): the player's keys do nothing (0x4bcc50's flag) */
         if (route.step && player) route_input(&player->c, &in);
-        /* a debug aid: --param invincible=1, the game's "invincible" (the cheat's switch) kept on, for
-           unattended runs of a level's scripts */
+        /* a debug aid: --param invincible=1 and omnipotent=1, the game's switches of those names (the
+           cheats') kept on, for unattended runs of a level's scripts */
         char inv[8];
         if (plat_param("invincible", inv, sizeof inv) && atoi(inv)) chr_cheat_invincible = true;
+        if (plat_param("omnipotent", inv, sizeof inv) && atoi(inv)) chr_cheat_omnipotent = true;
         chr_input_mask(&in, ui_keys_allowed());     /* lock_keys */
         if (route_pause && (ui_keys_allowed() & 4) && !ui_cutscene() && player && !(player->c.flags & 1)) {    /* held until allowed */
             route_pause = false;
