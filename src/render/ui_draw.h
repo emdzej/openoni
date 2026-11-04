@@ -15,3 +15,5 @@ void ui_draw_splash(int w, int h, const char *name, float blanket);
    the low-health pulse. */
 struct Character;
 void ui_draw_hud(int w, int h, const struct Character *c, uint32_t time);
+/* The WM's drawing (wm.h's operations) for a frame of w by h: its desktop as at 480 tall, scaled. */
+void ui_draw_wm_begin(int w, int h, int *desk_w, int *desk_h);

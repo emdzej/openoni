@@ -38,6 +38,9 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - **The HUD**: the health ring, and the left ring with the ballistic clips, the energy cells and the
   compass toward the objective's flag (`target_set`), its arrow up or down; the scripts show, hide and
   flash its elements.
+- **The text consoles**: the documents Konoko reads at the level's consoles, page by page, in the
+  game's own window manager, its dialogs built from the game's data, over the level as the original
+  draws them.
 - **The splash screens** between the parts of a level ("Chapter 00 . Combat Training"), faded in
   and out as the original does.
 - **The cutscenes**: the films (a character's input recorded tick by tick and played back), the
@@ -58,7 +61,9 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - The particles' contrails, vectors, lens flares and decals (bullet holes), homing, and their sounds.
 - The AI's alarms, the gun pickups and the bosses' fighting. The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
-- The front end (the menus), saved games kept between sessions, and the Bink movies.
+- The front end (the menus: the window manager they are built on is in, with its dialogs, boxes,
+  buttons and text; its lists, sliders and check boxes are not), saved games kept between sessions, and
+  the Bink movies.
 - The other 13 levels as a playthrough.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked

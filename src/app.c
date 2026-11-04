@@ -43,6 +43,9 @@
 #include "sl.h"
 #include "sound.h"
 #include "vfs.h"
+#include "igui.h"
+#include "wm.h"
+
 #include <GLES3/gl3.h>
 #include <math.h>
 #include <stdio.h>
@@ -333,6 +336,7 @@ static void start_scripts(void)
     sl_register("dprint", cmd_dprint, NULL);
     sl_register("gs_farclipplane_set", cmd_farclip, NULL);
     trigger_register_commands();
+    igui_register_commands();
     object_register_commands();
     door_register_commands();
     weapons_register_commands();
@@ -441,7 +445,7 @@ static float wrap_pi(float a)
 }
 
 /* The input the route asks for this frame (in is all zero on entry). */
-static uint32_t splash_frames;      /* the frames the splash screens took: the route's clock leaves them out */
+static uint32_t splash_frames;      /* the frames the splash screens and the dialogs took: the route's clock leaves them out */
 
 static void route_input(const Character *c, CharacterInput *in)
 {
@@ -702,6 +706,53 @@ static void splash_screen(const char *name)
 }
 
 /* One level, until it ends (*next: the level to load then, 0 none) or the player quits (Esc). */
+/* ONiGameState_Display_Reflectable 0x4fb480: the level, its characters, particles and lasers, the HUD and
+   the screen's layer; also the WM's dialogs' draw callback (WMrDialog_SetDrawCallback, set at the level's
+   start), so the level stays behind them. */
+static struct { const CameraTarget *ct; const Chr *player; uint32_t ticks; } display;
+
+static void game_display(void)
+{
+    int w, h;
+    plat_display_size(&w, &h);
+    float proj[16], view[16];
+    perspective(proj, 0.785398f, h ? (float)w / (float)h : 1.0f, 2.0f, far_clip);
+    if (!camera_view_matrix(view) && display.ct) {
+        float eye[3] = { display.ct->pos[0], display.ct->pos[1] + 20, display.ct->pos[2] };
+        view_matrix(view, eye, 3.14159265f - display.ct->facing, -0.3f);
+    }
+    gl_dev_begin(w, h, 0.0f, 0.0f, 0.0f);
+    gl_dev_matrices(proj, view);
+    env_draw();
+    draw_objects();
+    for (int i = 0; i < chars_slots(); i++)
+        if (chars_get(i)) char_draw_character(&chars_get(i)->c);   /* the blended pose */
+    particle_draw(view, p3_tick());     /* P3rDisplay */
+    laser_draw(view);
+    if (display.player) ui_draw_hud(w, h, &display.player->c, display.ticks);
+    ui_draw(w, h);
+    int dw, dh;
+    ui_draw_wm_begin(w, h, &dw, &dh);   /* the WM's windows over it, in its own pixels */
+}
+
+/* The modal dialogs' frame (in WMrUpdate's place for the port): the sound, and for unattended runs the
+   keys of --param keys=<n>[,<n>...], the LI codes (27 Escape, 32 space, 13 Return) tapped into the
+   dialogs, one every 30 of their frames. The dialogs' frames are not the route's: its clock leaves them
+   out. */
+static uint32_t modal_frames;
+static char modal_keys[128];
+static const char *modal_key;
+static void modal_frame(void)
+{
+    sound_update();     /* 0x483bd0, WMrUpdate's end */
+    splash_frames++;
+    if (++modal_frames % 30 == 0 && modal_key && *modal_key) {
+        wm_key((uint8_t)atoi(modal_key));
+        const char *c = strchr(modal_key, ',');
+        modal_key = c ? c + 1 : NULL;
+    }
+}
+
 static int play(int level, int *next)
 {
     *next = 0;
@@ -760,6 +811,16 @@ static int play(int level, int *next)
     uint32_t ticks = 0;     /* the game time (ONrGameState's +0x144), ticks since the level began */
     ui_reset();
     cinematic_reset();
+    {
+        int w, h, dw, dh;
+        plat_display_size(&w, &h);
+        dw = h ? w * 480 / h : 640, dh = 480;
+        wm_initialize(dw, dh);
+        wm_set_draw_callback(game_display);     /* ONrGameState_LevelBegin 0x4f5350 */
+        wm_set_frame_hook(modal_frame);
+    }
+    display.ct = &ct, display.player = player, display.ticks = 0;
+    if (first && plat_param("keys", modal_keys, sizeof modal_keys)) modal_key = modal_keys;
     start_scripts();
     memset(&route, 0, sizeof route);
     if (first && plat_param("route", route.buf, sizeof route.buf)) route.step = route.buf;
@@ -845,26 +906,10 @@ static int play(int level, int *next)
         bool splashing = ui_splash_take(splash);    /* ONiRunGame: G+0x118, the splash in the display's place */
         if (splashing) splash_screen(splash);
         if (!splashing && plat_frame_shown()) {
-            int w, h;
-            plat_display_size(&w, &h);
-            float proj[16], view[16];
             camera_update(0, 0, NULL, ticks);   /* the frame's part */
             particles_update(ticks, false);    /* the decorative particles (iComputeDeltaTicks 0x4fafb0) */
-            perspective(proj, 0.785398f, h ? (float)w / (float)h : 1.0f, 2.0f, far_clip);
-            if (!camera_view_matrix(view)) {
-                float eye[3] = { ct.pos[0], ct.pos[1] + 20, ct.pos[2] };
-                view_matrix(view, eye, 3.14159265f - ct.facing, -0.3f);
-            }
-            gl_dev_begin(w, h, 0.0f, 0.0f, 0.0f);
-            gl_dev_matrices(proj, view);
-            env_draw();
-            draw_objects();
-            for (int i = 0; i < chars_slots(); i++)
-                if (chars_get(i)) char_draw_character(&chars_get(i)->c);   /* the blended pose */
-            particle_draw(view, p3_tick());     /* P3rDisplay */
-            laser_draw(view);
-            if (player) ui_draw_hud(w, h, &player->c, ticks);
-            ui_draw(w, h);
+            display.ct = &ct, display.player = player, display.ticks = ticks;
+            game_display();
         }
         /* ONiRunGame 0x4d4640: won, the next level (after level 19, the outro: not yet); lost, this
            one again, from the save point (its scripts restore it) */

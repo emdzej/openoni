@@ -75,6 +75,9 @@ near them, and the `door_*` commands ([docs/re/door.md](docs/re/door.md)). `src/
   attractors, impact effects and particle sounds are stand-ins.
 - Aiming (the aiming screens in `src/chr_anim.c`, the recoil in `src/character.c`), reloading
   (`src/weapon.c`) and powerups (`src/powerup.c`): level 1's training plays through to its end.
+- `src/wm.c`: the window manager (windows, messages, the WMDD dialogs, the DC, part specs and text),
+  `src/igui.c` the in-game UI's pages and the text consoles (`text_console`), `src/li.c` the keys as the
+  input layer's codes ([docs/re/wm.md](docs/re/wm.md)). `--param keys=27,32` taps keys into the dialogs.
 - `src/film.c`: the films (FILM, the `playback` command), with `begin_cutscene`/`end_cutscene`
   (`src/chars.c`): the cutscene after the training plays and the warehouse mission starts.
 

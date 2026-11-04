@@ -9,6 +9,7 @@
 #include "tm.h"
 #include "txmp.h"
 #include "ui.h"
+#include "wm.h"
 
 #include <math.h>
 #include <stdbool.h>
@@ -371,4 +372,67 @@ void ui_draw_hud(int w, int h, const Character *c, uint32_t time)
         float over = (f < cap ? f : cap) - 1.0f;
         arc(cx, cy, -1.5707964f, over * -1.3962632f - 1.5707964f, 55.0f, 40.0f, 24, ring, scale, col, a);
     }
+}
+
+/* ---- the window manager's drawing ---- */
+
+/* The WM's desktop is as tall as 480 (as the HUD): its pixels scaled to the display's. */
+static float wm_scale = 1.0f;
+
+static void clip_quad(float x0, float y0, float x1, float y1, float u0, float v0, float u1, float v1,
+                      const float clip[4], const uint8_t c[4], unsigned tex)
+{
+    if (x0 >= clip[2] || x1 <= clip[0] || y0 >= clip[3] || y1 <= clip[1] || x1 <= x0 || y1 <= y0) return;
+    if (x0 < clip[0]) u0 += (u1 - u0) * (clip[0] - x0) / (x1 - x0), x0 = clip[0];
+    if (y0 < clip[1]) v0 += (v1 - v0) * (clip[1] - y0) / (y1 - y0), y0 = clip[1];
+    if (x1 > clip[2]) u1 -= (u1 - u0) * (x1 - clip[2]) / (x1 - x0), x1 = clip[2];
+    if (y1 > clip[3]) v1 -= (v1 - v0) * (y1 - clip[3]) / (y1 - y0), y1 = clip[3];
+    quad(x0, y0, x1, y1, u0, v0, u1, v1, c, tex);
+}
+
+static void argb_rgba(uint32_t argb, uint8_t c[4])
+{
+    c[0] = (uint8_t)(argb >> 16), c[1] = (uint8_t)(argb >> 8), c[2] = (uint8_t)argb, c[3] = (uint8_t)(argb >> 24);
+}
+
+static void wm_sprite(const void *txmp, const float r[4], const float uv[4], uint32_t argb)
+{
+    uint8_t c[4];
+    argb_rgba(argb, c);
+    float s = wm_scale;
+    quad(r[0] * s, r[1] * s, r[2] * s, r[3] * s, uv[0], uv[1], uv[2], uv[3], c, gl_dev_texture(txmp));
+}
+
+/* TSiContext_DrawLine 0x42d860 for a run of n bytes, clipped to the rectangle. */
+static void wm_glyphs(const void *font, float x, float y, const char *str, size_t n, uint32_t argb, const int16_t clip[4])
+{
+    uint8_t c[4];
+    argb_rgba(argb, c);
+    float s = wm_scale, cl[4] = { clip[0] * s, clip[1] * s, clip[2] * s, clip[3] * s };
+    const char *p = str, *end = str + n;
+    x *= s, y *= s;
+    while (p < end) {
+        uint16_t ch = font_next_char(&p);
+        if (!ch) break;
+        FontGlyph g;
+        if (!font_glyph(font, ch, &g)) continue;
+        if (g.width && g.height) {
+            const void *key = (const uint8_t *)font + 1 + ch;
+            unsigned t = glyph_texture(font, &g, key);
+            float gx = x + (float)(-g.x) * s, gy = y + (float)(-g.y) * s;
+            clip_quad(gx, gy, gx + g.width * s, gy + g.height * s, 0, 0, 1, 1, cl, c, t);
+        }
+        x += g.advance * s;
+    }
+}
+
+static const WmDrawOps wm_ops = { wm_sprite, wm_glyphs };
+
+void ui_draw_wm_begin(int w, int h, int *desk_w, int *desk_h)
+{
+    wm_scale = (float)h / 480.0f;
+    *desk_w = (int)((float)w / wm_scale);
+    *desk_h = 480;
+    wm_set_draw_ops(&wm_ops);
+    gl_dev_screen(w, h);
 }

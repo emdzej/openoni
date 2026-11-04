@@ -19,6 +19,7 @@
 004029b0	BFrFile_Read	BF	med	name from the Intel Mac build (neighbours:1.00)
 00402a80	BFrDirectory_FileIterator_Next	BF	med	name from the Intel Mac build (neighbours:0.80)
 00402c10	BFrDirectory_FileIterator_Delete	BF	med	name from the Intel Mac build (neighbours:1.00)
+00403730	LIiVirtualKey_Translate	LI	low	the virtual key's LI code, from the table at 0x5293b8
 00403c60	LIrBinding_Add	LI	med	name from the Intel Mac build (strings:1)
 00403dc0	LIrBindings_RemoveAll	LI	med	name from the Intel Mac build (neighbours:1.00)
 00403f60	LIrMode_Get	LI	med	name from the Intel Mac build (neighbours:1.00)
@@ -383,12 +384,21 @@
 00463ab0	P3iAttractorSelector_Distance	P3	med	name from the Intel Mac build (neighbours:0.75)
 00463be0	P3iAttractorSelector_Conical	P3	med	name from the Intel Mac build (neighbours:0.75)
 00468650	P3iAction_SuperParticle	P3	med	name from the Intel Mac build (neighbours:1.00)
+00468770	WMiCursor_Draw	WM	low	the cursor's part spec, 32 by 32 over the mouse, while the WM takes input
 004687d0	WMrCursor_Get	WM	med	name from the Intel Mac build (strings:1)
+00468830	WMiDialog_New	WM	low	the WMDD of the id among all, its window (class 6)
+004689a0	WMrDialog_GetItemByID	WM	low	the dialog's child of the id
+004689c0	WMrDialog_GetParam	WM	low	the parameter given to WMrDialog_ModalBegin
 004689d0	WMrDialog_ModalBegin	WM	med	name from the Intel Mac build (neighbours:0.80)
+00468b90	WMrDialog_ModalEnd	WM	low	the dialog done, with its result
 00468cd0	WMiDialog_Create	WM	med	name from the Intel Mac build (neighbours:1.00)
 00469180	WMiDialog_Center	WM	med	name from the Intel Mac build (neighbours:1.00)
 00469330	WMrDialog_SetDrawCallback	WM	med	name from the Intel Mac build (neighbours:1.00)
 00469340	WMrClipRect	WM	med	name from the Intel Mac build (neighbours:1.00)
+004694b0	DCrGetDC	DC	low	a DC of 3 for the window's client area, clipped by its parents
+00469650	DCrReleaseDC	DC	low	the DC slot freed
+00469720	DCrGetWindowDC	DC	low	a DC for the whole window (its frame)
+004698b0	DCrDraw_PartSpec	DC	low	a part spec's parts (a mask of 9, by columns) over a rectangle, clipped
 00469eb0	DCrDraw_String2	DC	med	name from the Intel Mac build (neighbours:1.00)
 00469fc0	DCrDraw_TextureRef	DC	med	name from the Intel Mac build (neighbours:1.00)
 0046a330	DCrText_DrawText	DC	med	name from the Intel Mac build (neighbours:1.00)
@@ -397,10 +407,16 @@
 0046a3d0	DCrText_GetLineHeight	DC	med	name from the Intel Mac build (neighbours:1.00)
 0046a3f0	DCrText_GetStringRect	DC	med	name from the Intel Mac build (neighbours:0.75)
 0046a410	DCrText_Initialize	DC	med	name from the Intel Mac build (strings:1)
+0046a570	DCrText_SetFontInfo	DC	low	the text context's family, size, style and colour from a window's font
 0046a5b0	DCrText_SetFormat	DC	med	name from the Intel Mac build (neighbours:0.75)
+0046a5c0	DCrText_SetShade	DC	low	the text context's colour
 0046a610	PSrPartSpec_Draw	PS	med	name from the Intel Mac build (neighbours:1.00)
 0046aa10	PSrPartSpec_LoadByType	PS	med	name from the Intel Mac build (strings:1)
 0046aa60	PSrPartSpecUI_GetActive	PS	med	name from the Intel Mac build (strings:1)
+0046aa80	PSrPartSpecUI_GetByName	PS	low	the PSUI of the name
+0046aa90	PSrPartSpecUI_SetActive	PS	low	the active PSUI
+0046ab70	PSiPartSpec_PrivateData	PS	low	a PSpc's parts' coordinates and its edges' sizes
+0046ac80	PSiPartSpec_PartUV	PS	low	a part's texture coordinates (its corners over the texture's size)
 0046af20	WMiBox_Paint	WM	med	name from the Intel Mac build (neighbours:0.83)
 0046b150	WMiButton_Create	WM	med	name from the Intel Mac build (strings:1)
 0046c5b0	WMiEditField_HandleSetMaxChars	WM	med	name from the Intel Mac build (neighbours:1.00)
@@ -424,20 +440,43 @@
 00470e10	WMiProgressBar_Paint	WM	med	name from the Intel Mac build (neighbours:0.83)
 00471b10	WMiScrollbar_Create	WM	med	name from the Intel Mac build (neighbours:1.00)
 004724c0	WMiListBox_NC_CalcClientSize	WM	med	name from the Intel Mac build (neighbours:1.00)
+004731f0	WMiText_Callback	WM	low	class 20: owner drawn (0x36 to the parent) or its title
+00473350	WMrWindow_DefaultCallback	WM	low	the messages a class leaves: hit test, frame paint, frame mouse, client rect
 004738e0	WMiSlider_GetTrackBounds	WM	med	name from the Intel Mac build (neighbours:1.00)
-00474900	WMrMessage_Send	WM	med	name from the Intel Mac build (neighbours:1.00)
+004746d0	WMrWindow_Activate	WM	low	the top-level window over it made active (0x28, 0xf)
+00474830	WMiWindow_BringToFront	WM	low	the window in front of its siblings, after the ones kept in front
+00474900	WMrWindow_SetCapture	WM	low	the mouse's window (0x30 to the old); the Mac build's neighbour name WMrMessage_Send was off
+00474950	WMrWindow_Delete	WM	low	the activation passed on, the window gone
+00474c30	WMrWindow_IsValid	WM	low	the window's handle in use
+00474d00	WMrWindow_IsEnabled	WM	low	flags bit 2 clear
 00474dc0	WMrWindow_GetLong	WM	med	name from the Intel Mac build (neighbours:0.75)
+00474e60	WMrWindow_GetScreenRect	WM	low	the window on the desktop: the parents' places and client origins added
 00474f40	WMrWindow_GetStyle	WM	med	name from the Intel Mac build (neighbours:1.00)
 00475160	WMrWindow_New	WM	med	name from the Intel Mac build (neighbours:1.00)
+004755c0	WMrWindow_SetFocus	WM	low	the keys' window (0x2a to the old, 0x29 to the new)
+00475630	WMrWindow_SetFont	WM	low	the window's font info (16 bytes at +0x148), then 0x35
 004756d0	WMrWindow_SetLocation	WM	med	name from the Intel Mac build (neighbours:0.75)
 00475720	WMrWindow_SetLong	WM	med	name from the Intel Mac build (neighbours:1.00)
 00475940	WMrWindow_SetSize	WM	med	name from the Intel Mac build (neighbours:1.00)
 00475990	WMrWindow_SetTitle	WM	med	name from the Intel Mac build (neighbours:1.00)
+00475a10	WMrWindow_SetVisible	WM	low	flags bit 1, then 0x2f
+00475a70	WMrWindowClass_Register	WM	low	a class number, its procedure and data size into the table at 0x5ea1b0
+00475ad0	WMrInitialize	WM	low	the desktop class and window (the display's size), the cursor
 00475b70	WMrTimer_Start	WM	med	name from the Intel Mac build (neighbours:1.00)
-004762d0	WMiCaret_Draw	WM	med	name from the Intel Mac build (neighbours:1.00)
+00475ca0	WMrMessage_Dispatch	WM	low	a queued message to its window; a press activates the window
+00475f50	WMiWindow_FindUnderPoint	WM	low	the deepest window with the flags under the point
+00476010	WMrMessage_Get	WM	low	the next of the 32 queued messages
+00476080	WMrMessage_Post	WM	low	a message queued (32)
+004760d0	WMrMessage_Send	WM	low	the window's procedure called at once
+00476110	WMrActivate	WM	low	the WM takes the input; its cursor shown
+00476140	WMrDisplay	WM	low	the desktop, its windows from the back, the cursor
+004762d0	WMiWindow_Draw	WM	low	a visible window: 4, 0x2b, its caret, its children from the last; the Mac name WMiCaret_Draw was off
+00476410	WMrDeactivate	WM	low	the WM takes no input
 00476450	WMrGetDesktop	WM	med	name from the Intel Mac build (neighbours:1.00)
 00476b00	WMrSetDesktopBackground	WM	med	name from the Intel Mac build (neighbours:1.00)
 00476b90	WMiDesktop_Create	WM	med	name from the Intel Mac build (strings:1)
+00477070	WMrUpdate	WM	low	the timers, then up to 10 input events as messages
+00477510	WMiKey_Event	WM	low	a key to the focused window, or its dialog for the kinds it does not take
 004777d0	SLrScript_CommandTable_Register_Void	SL	med	name from the Intel Mac build (strings:1)
 00477b40	SLrScript_Command_Register_Void	SL	med	name from the Intel Mac build (neighbours:0.89)
 00477bc0	SLrScript_ExecuteOnce	SL	med	name from the Intel Mac build (neighbours:1.00)
@@ -1103,6 +1142,7 @@
 00501440	ONiInGameUI_DisplayHelp	ON	med	name from the Intel Mac build (neighbours:1.00)
 005018c0	ONrPauseScreen_Display	ON	med	name from the Intel Mac build (strings:2)
 005024c0	ONiIGUI_Page_PaintOverlay	ON	med	name from the Intel Mac build (neighbours:1.00)
+005028d0	ONiIGUI_State_Push	ON	low	a text state over the top one, with an IGSt's or IGPG's set fields
 005029a0	ONiIGUI_Page_Paint	ON	med	name from the Intel Mac build (neighbours:1.00)
 00502bf0	ONiPS_Paint_Objective	ON	med	name from the Intel Mac build (neighbours:1.00)
 00502ef0	ONiPauseScreen_Paint	ON	med	name from the Intel Mac build (neighbours:1.00)
@@ -1113,6 +1153,7 @@
 00504270	ONrInGameUI_SetArcPoints	ON	med	name from the Intel Mac build (neighbours:1.00)
 005045a0	ONiInGameUI_NewArc	ON	low	allocates an arc (radii, segments + 1 points, centre, texture) and fills it
 00504780	ONrInGameUI_Update	ON	med	name from the Intel Mac build (strings:1)
+005049a0	ONiInGameUI_TextConsole_Callback	ON	low	the text console dialog: pages, Next and Close, space and Escape
 00504c30	ONrInGameUI_TextConsole_Display	ON	med	name from the Intel Mac build (neighbours:0.75)
 00504cf0	ONrInGameUI_EnableHelpDisplay	ON	med	name from the Intel Mac build (neighbours:1.00)
 00504d50	ONiInGameUI_ShowElement	ON	med	name from the Intel Mac build (strings:1)
@@ -1181,6 +1222,7 @@
 0050f320	ONrPersist_GetContinue	ON	med	name from the Intel Mac build (neighbours:1.00)
 0050f360	ONrPersist_SetContinue	ON	med	name from the Intel Mac build (strings:1)
 0050f4a0	ONrPersist_SetPlace	ON	med	name from the Intel Mac build (neighbours:1.00)
+0050f7a0	ONiPlatform_WindowProc	ON	low	the Windows window procedure: mouse and keys into the LI's queue
 0050fba0	ONrScript_Initialize	ON	med	name from the Intel Mac build (strings:3)
 00510160	ONrScript_Schedule	ON	med	name from the Intel Mac build (neighbours:0.75)
 00510220	ONrSky_Initialize	ON	med	name from the Intel Mac build (strings:3)
