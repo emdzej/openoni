@@ -332,9 +332,8 @@ void ai_combat_notify(AiState *a, const Character *c, KnowEntry *e, bool degrade
             return;
         }
         if (a->combat_last_strength != 4) return;
-        /* seen no more: pursue after the class's delay (C+0x1ba of the target, which skips it, isn't
-           kept by the port) */
-        a->combat_pursue_delay = oncc_u32(c, ONCC_COMBAT_PURSUE);
+        /* seen no more: pursue after the class's delay, at once if the target is invisible (C+0x1ba) */
+        a->combat_pursue_delay = a->target->c.invisibility ? 0 : oncc_u32(c, ONCC_COMBAT_PURSUE);
         if (a->combat_pursue_delay) return;
         ai_pursue(a, e);
         return;

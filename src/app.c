@@ -56,7 +56,7 @@
 #include <string.h>
 
 enum {
-    DIK_ESCAPE = 0x01, DIK_W = 0x11, DIK_S = 0x1f, DIK_A = 0x1e, DIK_D = 0x20, DIK_Q = 0x10, DIK_E = 0x12,
+    DIK_ESCAPE = 0x01, DIK_TAB = 0x0f, DIK_W = 0x11, DIK_S = 0x1f, DIK_A = 0x1e, DIK_D = 0x20, DIK_Q = 0x10, DIK_E = 0x12,
     DIK_F = 0x21, DIK_C = 0x2e, DIK_R = 0x13, DIK_CAPITAL = 0x3a, DIK_LSHIFT = 0x2a, DIK_RSHIFT = 0x36, DIK_LCONTROL = 0x1d, DIK_RCONTROL = 0x9d, DIK_SPACE = 0x39, DIK_UP = 0xc8, DIK_DOWN = 0xd0, DIK_LEFT = 0xcb, DIK_RIGHT = 0xcd, DIK_F1 = 0x3b,
 };
 
@@ -932,6 +932,7 @@ static int play(int level, int *next)
             if (presses[i] == DIK_Q) in.swap = true;
             if (presses[i] == DIK_E) in.drop = true;
             if (presses[i] == DIK_R) in.reload = true;
+            if (presses[i] == DIK_TAB) in.hypo = true;
         }
         if (plat_mouse(&mouse) && mouse.captured) {
             in.turn -= mouse.dx * 0.004f;

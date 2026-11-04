@@ -3,4 +3,8 @@
    engine's lighting is ported. */
 #pragma once
 
+#include <stdint.h>
+
 void geom_draw(const void *m3gm, const float m[12], const void *txmp);
+/* The same blended at alpha (of 255; 255 opaque, 0 nothing). */
+void geom_draw_alpha(const void *m3gm, const float m[12], const void *txmp, uint8_t alpha);

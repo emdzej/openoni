@@ -22,7 +22,8 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   original's fixed-function pipeline on gasm's GL.
 - **Konoko**, with her movement, jumps, melee moves, throws and being hit, ported from the character
   engine. She can also pick up, carry, aim, fire, reload, holster and draw weapons, and pick up ammo and other
-  power-ups.
+  power-ups. Hypos (Tab) heal her, past her maximum too, and invisibility fades her out of sight and out
+  of the enemies' view.
 - **The other characters**: they spawn from the level's objects and scripts, follow their patrol paths,
   and see, hear and react to the player. In combat they pick a behaviour for the range to their target
   from the level's combat settings, hold, advance or back off, fight hand to hand, and with a gun lead

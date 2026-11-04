@@ -3,6 +3,7 @@
 
 #include "body.h"
 #include "character.h"
+#include "exe.h"
 #include "geom_draw.h"
 #include "gl_dev.h"
 #include "m3gm.h"
@@ -63,6 +64,9 @@ void char_draw(const void *oncc, const float pos[3], float facing, const void *t
     char_draw_pose(oncc, pos, facing, h, bones ? q : NULL, bones);
 }
 
+/* ONiCharacter_Display_Body 0x4e1d70's alpha: the body at A+0x2818 while invisible or a teleport fades it
+   (C+4 0x40000; none drawn at 0), blended below 1 (255 times it); invisible, the INVIS texture (0x550e78)
+   over the body scaled 1.4 about each bone (TRrBody_DrawMagic 0x427770) at (1 - it) x 56.1 (0x52b300). */
 void char_draw_character(const Character *c)
 {
     const void *body = body_of_class(c->oncc, 4);
@@ -70,7 +74,24 @@ void char_draw_character(const Character *c)
         char_draw_pose(c->oncc, c->pos, c->facing, c->pelvis_height, c->aimed, CHR_BONES);
         return;
     }
-    BodyMatrix root;
+    BodyMatrix root, m[BODY_MAX_BONES];
     chr_root_matrix(c, root);   /* an environment animation's, if one plays */
-    draw_root(c->oncc, root, c->aimed);
+    if (!body_matrices(body, root, c->aimed, m)) return;
+    float a = (c->invisible_shown || (c->flags & 0x40000)) ? c->visibility : 1.0f;
+    if (a > 0.0f) {
+        uint8_t alpha = a < 1.0f ? (uint8_t)lrintf(a * 255.0f) : 255;
+        for (uint32_t b = 0; b < CHR_BONES; b++) geom_draw_alpha(body_geometry(body, b), m[b], body_texture(c->oncc, b), alpha);
+    }
+    if (c->invisible_shown) {
+        const void *tex = tm_instance_get(TM_TAG("TXMP"), exe_str(0x550e78));
+        uint8_t alpha = (uint8_t)lrintf((1.0f - c->visibility) * 56.099998474121094f);
+        if (tex && alpha) {
+            for (uint32_t b = 0; b < CHR_BONES; b++) {
+                BodyMatrix s;
+                memcpy(s, m[b], sizeof s);
+                for (int k = 0; k < 9; k++) s[k] *= 1.4f;
+                geom_draw_alpha(body_geometry(body, b), s, tex, alpha);
+            }
+        }
+    }
 }

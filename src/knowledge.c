@@ -443,7 +443,7 @@ static void pelvis_point(const Chr *c, float p[3])
    +0x404 the central cosines of full and no range, +0x408 and +0x40c the peripheral's), one already
    seen keeps being seen while within the peripheral angle and the central distance; then a line
    from the head to the pelvis, the head or the bottom of the other must be clear (quads with
-   flags 0x42080 let it through). */
+   flags 0x42080 let it through). The invisible past their first 90 ticks aren't looked at. */
 static void check_visible(Chr *looker, const void *env)
 {
     float eye[3], fwd[3] = { sinf(looker->c.facing), 0.0f, cosf(looker->c.facing) }, up[3] = { 0.0f, 1.0f, 0.0f };
@@ -454,6 +454,8 @@ static void check_visible(Chr *looker, const void *env)
     for (int i = 0; i < chars_slots(); i++) {
         Chr *t = chars_get(i);
         if (!t || t == looker || !alive(t) || (looker->ai.flags & AI_FLAG_PASSIVE)) continue;
+        /* the invisible unseen once their first 90 ticks are over (C+0x1ba, C+0x1bc) */
+        if (t->c.invisibility && t->c.invisible_ticks >= 90) continue;
         if (!is_ai(t)) {
             if (looker->ai.flags & AI_FLAG_IGNORE_PLAYER) continue;
         } else if (!ai_is_hostile(looker, t, true) && !ai_is_hostile(t, looker, true)) {

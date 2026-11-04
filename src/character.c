@@ -7,6 +7,7 @@
 #include "akev_collide.h"
 #include "body.h"
 #include "chr_anim.h"
+#include "inventory.h"
 #include "film.h"
 #include "chr_hit.h"
 #include "exe.h"
@@ -811,12 +812,16 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
     uint64_t held = in->held;
     /* the pickup animation's action frame (weapon.c) */
     if (character_frame_hook) character_frame_hook(c, CHR_FRAME_PICKUP);
+    inventory_update(c);                                /* WPrInventory_Update */
     if (character_action_frame_hook && c->ai && c->anim && (int)c->frame == (int16_t)rd16((const uint8_t *)c->anim + 0x174))
         character_action_frame_hook(c);
     chr_anim_particles_frame(c);
     sprint(c, in);
     chr_frame_countdowns(c);
-    if (c->flags & 2) return;   /* step 8, dying: the body as it is (its drift with the physics) */
+    if (c->flags & 2) {         /* step 8, dying: the body as it is (its drift with the physics) */
+        inventory_invis_update(c);  /* (ONrGameState_UpdateCharacters' for the dying) */
+        return;
+    }
     float v[3], before[3] = { c->pos[0], c->pos[1], c->pos[2] };
     jump_and_fall(c, env, held, v);
     /* 0x433010: the motion in the character's space (+z forward, +x left) turned by the facing */
@@ -842,6 +847,7 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
         if (character_frame_hook) character_frame_hook(c, CHR_FRAME_FIRE);
         chr_build_quaternions(c);
         if (c->anim_particles) chr_bone_matrices(c);
+        inventory_invis_update(c);
         return;
     }
     if (!c->has_physics) physics_start(c);
@@ -852,6 +858,7 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
     if (character_frame_hook) character_frame_hook(c, CHR_FRAME_FIRE);
     chr_build_quaternions(c);
     if (c->anim_particles) chr_bone_matrices(c);        /* where the animation's particles hang */
+    inventory_invis_update(c);                          /* ONrCharacter_Invis_Update, after the matrices */
     physics_body(c);                                    /* step 19 */
     /* OBiPhysics_Update runs after all the characters' frames; here right after each (physics.h) */
     physics_update(c, env);
@@ -874,6 +881,7 @@ uint64_t chr_input_bits(const CharacterInput *in)
     if (in->swap) k |= CHR_KEY_SWAP;
     if (in->drop) k |= CHR_KEY_DROP;
     if (in->reload) k |= CHR_KEY_RELOAD;
+    if (in->hypo) k |= CHR_KEY_HYPO;
     return k;
 }
 
@@ -891,6 +899,7 @@ void chr_input_mask(CharacterInput *in, uint64_t keys)
     in->swap &= (keys & CHR_KEY_SWAP) != 0;
     in->drop &= (keys & CHR_KEY_DROP) != 0;
     in->reload &= (keys & CHR_KEY_RELOAD) != 0;
+    in->hypo &= (keys & CHR_KEY_HYPO) != 0;
 }
 
 bool character_init(Character *c, const void *oncc, const float pos[3], float facing)

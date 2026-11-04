@@ -32,6 +32,7 @@ typedef struct {
     bool jump, crouch;
     bool action;        /* held (Ctrl: the exe's "bind leftcontrol to action") */
     bool fire, swap, drop, reload;  /* mouse 1, Q (pick up), E, R */
+    bool hypo;          /* Tab ("bind tab to hypo") */
 } CharacterInput;
 
 /* An overlay (ONrOverlay_Set 0x4d7b80): an animation over the pose, 12 bytes from A+0x1c58. */
@@ -119,6 +120,13 @@ typedef struct Character {
     /* the inventory (C+0x1a2..0x1ba, WPrInventory) */
     uint16_t ammo, hypos, cells;    /* C+0x1a2, 0x1a4, 0x1a6: ballistic clips, hypos, energy cells (6 at most) */
     uint16_t shield, invisibility;  /* C+0x1b8, 0x1ba: what is left of them */
+    uint16_t hypo_heal;             /* C+0x1ae: the hypo's healing still to come */
+    uint16_t heal_wait;             /* C+0x1b0: ticks to the next point healed (or lost over the maximum) */
+    uint32_t invisible_ticks;       /* C+0x1bc: ticks invisible since the last hit (the AI sees through
+                                       the first 90) */
+    bool invisible_shown;           /* A+0x2815: the invisibility's effect on */
+    float visibility;               /* A+0x2818: how much of the body shows (1 all), while it is on or a
+                                       teleport (0xde) fades it (C+4 0x40000) */
     bool lsi;                       /* C+0x1b4: carries the LSI */
     float aim_kick;                 /* C+0x1d0: the recoil's speed (class +0x80 a shot) */
     float recoil;                   /* C+0x1d4: the recoil, raising the aim (ONrCharacter_BuildQuaternions) */

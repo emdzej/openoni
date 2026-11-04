@@ -1,5 +1,6 @@
 /* Throws: see throw.h. */
 #include "throw.h"
+#include "inventory.h"
 
 #include "chars.h"
 #include "chr_anim.h"
@@ -190,7 +191,9 @@ static void throw_starts(Character *c)
     if (!t) return;     /* "throwtarget was NULL" */
     if ((t->flags & 1) || !chars_in_use((Chr *)t)) return;
     if (tr_varient(c->anim) & 0x200) chr_enter_fight_mode(t);
-    /* both characters' C+0x1bc cleared: not in the port yet */
+    /* both seen again if invisible, and shown to at least 0.6 */
+    inventory_reveal(c, true);
+    inventory_reveal(t, true);
     chr_set_animation_external(t, t->state, c->throw_victim_anim, 6);
     hold_victim(c, t);
     c->threw = t;

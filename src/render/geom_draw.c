@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-void geom_draw(const void *g, const float m[12], const void *tex)
+static void draw(const void *g, const float m[12], const void *tex, uint8_t alpha, int mode)
 {
     uint32_t np, nn, nuv;
     const uint8_t *pts = g ? m3gm_points(g, &np) : NULL, *vn = g ? m3gm_vertex_normals(g, &nn) : NULL;
@@ -31,11 +31,18 @@ void geom_draw(const void *g, const float m[12], const void *tex)
             memcpy(&v[i].u, uv + 8 * i, 8);
             float d = wn[0] * light[0] + wn[1] * light[1] + wn[2] * light[2];
             uint8_t k = (uint8_t)(110 + 145 * (d > 0 ? d : 0));
-            v[i].r = v[i].g = v[i].b = k, v[i].a = 255;
+            v[i].r = v[i].g = v[i].b = k, v[i].a = alpha;
         }
         for (int32_t t = 0; t < 3 * nt; t++) idx[t] = (uint16_t)tris[t];
         if (!tex) tex = tm_link((const uint8_t *)g + M3GM_TEXTURE);
-        gl_dev_draw(v, np, idx, (uint32_t)(3 * nt), gl_dev_texture(tex), GL_DEV_OPAQUE);
+        gl_dev_draw(v, np, idx, (uint32_t)(3 * nt), gl_dev_texture(tex), mode);
     }
     free(v), free(tris), free(idx);
+}
+
+void geom_draw(const void *g, const float m[12], const void *tex) { draw(g, m, tex, 255, GL_DEV_OPAQUE); }
+
+void geom_draw_alpha(const void *g, const float m[12], const void *tex, uint8_t alpha)
+{
+    if (alpha) draw(g, m, tex, alpha, alpha == 255 ? GL_DEV_OPAQUE : GL_DEV_BLEND);
 }

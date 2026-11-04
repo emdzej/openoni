@@ -1,5 +1,6 @@
 /* Hits between characters: see chr_hit.h. */
 #include "chr_hit.h"
+#include "inventory.h"
 
 #include "body.h"
 #include "chr_anim.h"
@@ -229,6 +230,9 @@ static void attack_lands(Character *x, Character *d, const uint8_t *e)
         if (blocked && (aflags & 4) && !high) blocked = false;
         if (blocked && d->ai && chr_block_hook) blocked = chr_block_hook(d);
     }
+    /* the attacker seen again if invisible (its ticks from 0), and both shown to at least 0.6 */
+    inventory_reveal(x, true);
+    inventory_reveal(d, false);
     if (blocked) {
         float a = angle_to(d, x);
         d->facing = wrap_2pi(d->facing + a);

@@ -606,6 +606,37 @@ name (64, +0x10), a u16 at +0x50 (0x8000: an impact effect, "snap"), the class a
 - `ONiCharacter_OldAnimationHook` 0x4ead30, last: each live one stopped (event 3) if in its frames, then
   killed (0x456c70); the count and the mask 0.
 
+## The inventory over time
+
+C+0x1ae is the hypo's healing still to come, C+0x1b0 the wait to the next point, C+0x1bc the ticks
+invisible since the last hit; A+0x2815 the invisibility's effect on, A+0x2818 how much of the body shows.
+The game settings (ONGS, 0x5ecbfc) give +0 the over-health cap (2, times the maximum), +4 a hypo's dose
+(0.25 of the maximum), +8 the over part (1). *Confirmed* by `tests/inventory_test.c`.
+
+- `WPrInventory_Update` 0x51bad0, each tick after the pickup: a wait counts down; else with healing to
+  come, below the cap a point of it (0x4e64a0, over the maximum allowed) and, still under the maximum,
+  the class's delay (ONCC +0x5c), or at the cap the health set to it and the healing dropped; without,
+  health over the maximum loses a point (the regeneration cheat 0x620134 instead gives the player one a
+  second). Either of the last two waits 10. Then the shield shown (C+0x1b6) moves toward what is left by 2,
+  and C+0x1bc counts while invisible (0 otherwise).
+- A hypo (0x51c770 kind 2, from `ONrCharacter_HandlePickupInput` 0x4eda40 on the hypo key, Tab, when no
+  weapon is dropped; event sound 4): only while health and healing to come don't pass the maximum. Under
+  it, the dose; past the maximum, the over part scaled by the dose's share that goes over. At it, the over
+  part. The healing becomes what that leaves above the health, the wait 0.
+- `ONrCharacter_Invis_Update` 0x4ef530, late in `DoCharacterFrame` (after the matrices; for the dying in
+  `ONrGameState_UpdateCharacters`): invisibility starting turns the effect on at 1; on, the body fades
+  toward 0 while more than 120 ticks are left (0.0085 a tick, 0x52b33c), back toward 1 after (0.02,
+  0x52b338); at 0 with none left it ends (only when the invisibility is taken away at once). The count
+  goes down unless 0xffff (for ever). In a teleport's first half (0xde) from its action frame the body
+  fades to none by its end (never above A+0x2818 as it was: 0 for one never invisible), with C+4 0x40000.
+- A hit (`HandleAttackMask` 0x4e7740) zeroes the attacker's C+0x1bc and shows both to at least 0.6; a
+  throw (`NewAnimationHook`) both, and both ticks.
+- The AI's sight (`AI2iKnowledge_CheckVisible` 0x49adf0) passes over a character invisible for 90 ticks
+  or more; a target lost from sight while invisible is pursued at once (0x490510).
+- `ONiCharacter_Display_Body` 0x4e1d70: the body at A+0x2818 (blended below 1, none at 0) while the effect
+  is on or C+4 0x40000; on, the INVIS texture (0x550e78) over the body scaled 1.4 (`TRrBody_DrawMagic`
+  0x427770, the body's lower detail) at (1 - A+0x2818) x 56.1 (0x52b300) of 255.
+
 ## Holstering
 
 A character has three weapon slots, C+0x194: slot 0 is the hand, slots 1 and 2 (C+0x198, C+0x19c)

@@ -1,5 +1,6 @@
 /* Weapons: see weapon.h. */
 #include "weapon.h"
+#include "inventory.h"
 
 #include "akev_collide.h"
 #include "chars.h"
@@ -868,7 +869,7 @@ static bool start_pickup(Character *c, const ChrInput *in)
    (0x4edc00: not yet, no clips); with no reload asked and no weapon overlay, fire gone down (0x4e8f80),
    else held (0x4e8fa0: sustained fire again, else the empty click), else released (0x4e9000); the
    alternate fire only when the first is neither down nor held. HandlePickupInput 0x4eda40: drop (not
-   yet), hypo (not yet). */
+   yet), hypo (weapon_input). */
 static void fire_input(Character *c, const ChrInput *in)
 {
     if (!c->weapon) {
@@ -896,7 +897,8 @@ static void fire_input(Character *c, const ChrInput *in)
 }
 
 /* ONrCharacter_HandlePickupInput 0x4eda40: with no weapon overlay, the drop key lets the weapon go
-   (0x51b590 then ONrCharacter_SetWeapon's clearing); else the hypo key uses a hypo (not yet). */
+   (0x51b590 then ONrCharacter_SetWeapon's clearing); else the hypo key uses a hypo (0x51c770), with
+   the event sound 4. */
 static void weapon_input(Character *c, const ChrInput *in)
 {
     fire_input(c, in);
@@ -908,6 +910,8 @@ static void weapon_input(Character *c, const ChrInput *in)
         release(w);
         c->varient &= 0x87ff;
         c->fire_down = c->fire2_down = c->fire_again = c->fire_empty = false;
+    } else if ((in->down & CHR_KEY_HYPO) && inventory_use_hypo(c)) {
+        sound_event_play(4);
     }
 }
 
