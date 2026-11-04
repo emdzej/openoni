@@ -3,8 +3,9 @@
 Under way, not yet playable from start to finish. Level 1's training plays through to its end, with
 the level's own scripts driving the lessons: movement, combat, the shooting range, the rifle and the
 two training drones. Then the cutscene after the training plays, its actors moved by the game's own
-recorded films, and the warehouse mission begins: its first consoles open the way, the thugs come at
-Konoko, she finds the LSI and the ambush after it starts.
+recorded films, and the warehouse mission plays through: the consoles open the way, the thugs come at
+Konoko, she finds the LSI, frees the hostage who opens the warehouse, beats the timer to the last
+console, and the outro plays before level 2 begins.
 
 It can be tried in the browser on the <a href="/play/" target="_self">play page</a>, with your own copy of the game.
 

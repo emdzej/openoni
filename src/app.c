@@ -438,7 +438,7 @@ static bool glass_centre(uint32_t id, float out[3])
 }
 
 typedef struct {
-    char buf[4096];
+    char buf[16384];
     char *step;             /* the current step, NULL when done */
     uint32_t until;         /* for waits: the frame */
     int phase;              /* within a step */

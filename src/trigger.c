@@ -366,8 +366,8 @@ static bool cmd_trigger(SlThread *t, int argc, const SlValue *argv, SlValue *r, 
     return true;
 }
 
-/* trigvolume_count id:int -> int (AI2iScript_TriggerVolume_Count, OBJrTriggerVolumeID_CountInside): the
-   living characters in the volume of that id. */
+/* trigvolume_count id:int -> int (AI2iScript_TriggerVolume_Count 0x4ba400, OBJrTriggerVolumeID_CountInside
+   0x4cd360): the living characters of the volume's teams in the volume of that id. */
 static bool cmd_count(SlThread *t, int argc, const SlValue *argv, SlValue *r, void *u)
 {
     (void)t, (void)u;
@@ -377,11 +377,8 @@ static bool cmd_count(SlThread *t, int argc, const SlValue *argv, SlValue *r, vo
     uint32_t id = (uint32_t)(argv[0].type == SL_FLOAT ? (int32_t)argv[0].f : argv[0].i);
     Volume *v = find_id(id);
     if (!v) return true;
-    for (int c = 0; c < last_count; c++) {
-        const TriggerActor *a = &last_actors[c];
-        float top[3] = { a->pos[0], a->pos[1] + BODY_HEIGHT, a->pos[2] };
-        if (a->alive && segment_hits(v, a->pos, top)) r->i++;
-    }
+    for (int c = 0; c < last_count; c++)
+        if (!last_actors[c].dead && intersects(v, &last_actors[c])) r->i++;  /* 0x4dcb70: the living, by the volume's teams */
     return true;
 }
 

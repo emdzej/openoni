@@ -14,6 +14,7 @@ typedef struct {
     uint32_t team;          /* bit in the volume's team mask */
     bool player;            /* the 0x80 flag (player only) passes just the player */
     bool alive;
+    bool dead;              /* C+0x04 bit 0: a body (out of the living list) */
     const char *name;       /* passed to the scripts */
     uint32_t inside[4];
 } TriggerActor;

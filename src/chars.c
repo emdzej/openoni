@@ -307,6 +307,7 @@ TriggerActor *chars_trigger_actors(void)
         a->player = slots[i].player;
         a->name = slots[i].name;
         a->team = slots[i].team;
+        a->dead = (slots[i].c.flags & 1) != 0;
         memcpy(a->pos, slots[i].c.pos, sizeof a->pos);
     }
     return actors;
