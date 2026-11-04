@@ -237,6 +237,27 @@ uint16_t door_id(int i) { return i >= 0 && i < ndoors ? doors[i].id : 0; }
 uint16_t door_flags(int i) { return i >= 0 && i < ndoors ? doors[i].flags : 0; }
 int door_state(int i) { return i >= 0 && i < ndoors ? doors[i].state : 0; }
 uint32_t door_object_id(int i) { return i >= 0 && i < ndoors ? doors[i].object_id : 0; }
+float door_half_width(int i)
+{
+    if (i < 0 || i >= ndoors || !door_env) return 0.0f;
+    const Door *d = &doors[i];
+    const uint8_t *a = tm_link((const uint8_t *)door_env + AKEV_DOOR_FRAMES);
+    uint32_t n = a ? rd32(a + 0x14) : 0;
+    for (uint32_t k = 0; k < n; k++) {
+        const uint8_t *e = a + 0x18 + 0x34 * k;
+        if (rdf(e + 0x1c) != d->centre[0] || rdf(e + 0x20) != d->centre[1] || rdf(e + 0x24) != d->centre[2]) continue;
+        float w = 0.0f, p[3];
+        for (unsigned c = 0; c < 4; c++) {
+            if (!akev_quad_corner(door_env, rd32(e), c, p)) continue;
+            float dx = p[0] - d->centre[0], dz = p[2] - d->centre[2], r = sqrtf(dx * dx + dz * dz);
+            if (r > w) w = r;
+        }
+        return w;
+    }
+    return 0.0f;
+}
+float door_facing(int i) { return i >= 0 && i < ndoors ? doors[i].rot[1] * 0.017453293f : 0.0f; }
+void door_centre(int i, float pos[3]) { if (i >= 0 && i < ndoors) memcpy(pos, doors[i].centre, sizeof doors[i].centre); }
 void door_position(int i, float pos[3]) { if (i >= 0 && i < ndoors) memcpy(pos, doors[i].pos, sizeof doors[i].pos); }
 
 int door_frame(int i)

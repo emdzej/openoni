@@ -544,11 +544,20 @@ static bool route_plan(const Character *c, const float b[3], char *out, size_t s
     for (int i = 0; i < nl; i++) saved[i] = graph_link(i)->flags;
     for (int d = 0; d < door_count(); d++) {
         if (!(door_flags(d) & DOOR_LOCKED)) continue;
-        float dp[3];
+        if ((door_flags(d) & DOOR_JAMMED) && door_state(d) != 0) continue;     /* jammed open */
+        /* in the door's plane and within its width (garage doors are wide) */
+        float dp[3], n[2] = { sinf(door_facing(d)), cosf(door_facing(d)) }, w = door_half_width(d);
         door_position(d, dp);
+        if (w > 12.0f) {    /* from the frame's middle, at the door's floor */
+            float y = dp[1];
+            door_centre(d, dp);
+            dp[1] = y;
+        }
         for (int i = 0; i < nl; i++) {
             GraphLink *l = (GraphLink *)graph_link(i);
-            if (fabsf(l->mid[0] - dp[0]) < 12 && fabsf(l->mid[2] - dp[2]) < 12 && fabsf(l->mid[1] - dp[1]) < 10) l->flags |= 1;
+            float dx = l->mid[0] - dp[0], dz = l->mid[2] - dp[2];
+            float across = fabsf(dx * n[0] + dz * n[1]), along = fabsf(dz * n[0] - dx * n[1]);
+            if (across < 12 && along < (w > 12.0f ? w : 12.0f) && fabsf(l->mid[1] - dp[1]) < 10) l->flags |= 1;
         }
     }
     float a[3] = { c->pos[0], c->pos[1], c->pos[2] };

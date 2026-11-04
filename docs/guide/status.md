@@ -23,6 +23,13 @@ Level 4, the airport, plays through as well: the motorbike ride in, the tarmac's
 mad bomber, the four consoles with their cutscenes, the final ambush, and level 6, the airport's
 hangars, begins. (Its unattended run adds the `unstoppable` switch.)
 
+Level 6, the airport's second part, plays through too: the two security locks and the tarmac, Muro's
+escape, the rat door, the hangar's three locks and the roof, the lowroad to the far compound, the
+lock that opens the office, the LSI on its crate, the ambush, the three strikers in the hangar and the
+rappel, and level 8 begins. The original's scripts are kept as they are, their bug too: the trigger
+past the hangar's door 20 turns off every console (`console_deactivate` without an id), so a player who
+goes that way can't open the office; the run takes the upper way.
+
 It can be tried in the browser on the <a href="/play/" target="_self">play page</a>, with your own copy of the game.
 
 ## What works
@@ -111,7 +118,7 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - The impact effects (the hit sparks' classes). The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.
-- The other 11 levels as a playthrough.
+- The other 10 levels as a playthrough.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked
 against the original.

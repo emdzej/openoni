@@ -27,6 +27,10 @@ uint16_t door_flags(int i);
 int door_state(int i);
 uint32_t door_object_id(int i);
 void door_position(int i, float pos[3]);
+void door_centre(int i, float pos[3]);
+/* (for the route driver) half its frame's width (0 unknown), its turn about y in radians */
+float door_half_width(int i);
+float door_facing(int i);     /* S+0xc0: the middle of its frame */
 /* The panels' animation frame (-1 none: closed, no panels). */
 int door_frame(int i);
 
