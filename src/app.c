@@ -884,7 +884,7 @@ static int play(int level, int *next)
         /* ... and its pause key (bit 4, F1 by default; not when dead) the pause screen, after the frame
            (ONiRunGame 0x4d4640, G+0x138) */
         for (int i = 0; i < n; i++)
-            if (presses[i] == DIK_F1 && !ui_cutscene() && player && !(player->c.flags & 1)) igui_pause_screen(pause_key);
+            if (presses[i] == DIK_F1 && (ui_keys_allowed() & 4) && !ui_cutscene() && player && !(player->c.flags & 1)) igui_pause_screen(pause_key);
         for (int i = 0; i < n; i++)
             if (presses[i] == DIK_ESCAPE) {
                 uint32_t start = 0;
@@ -931,7 +931,8 @@ static int play(int level, int *next)
         if (plat_mouse(&mouse) && (mouse.pressed & MOUSE_LEFT) && !mouse.captured) plat_mouse_capture(true);
         /* "input 0" from a script (cutscenes): the player's keys do nothing (0x4bcc50's flag) */
         if (route.step && player) route_input(&player->c, &in);
-        if (route_pause && !ui_cutscene() && player && !(player->c.flags & 1)) {    /* held until allowed */
+        chr_input_mask(&in, ui_keys_allowed());     /* lock_keys */
+        if (route_pause && (ui_keys_allowed() & 4) && !ui_cutscene() && player && !(player->c.flags & 1)) {    /* held until allowed */
             route_pause = false;
             igui_pause_screen(pause_key);
         }

@@ -28,6 +28,9 @@ float ui_letterbox(void);
 bool ui_input_enabled(void);
 /* G+0x1679ad, the player's input (the input command, begin_cutscene and end_cutscene). */
 void ui_set_input(bool on);
+/* The keys the scripts let through (lock_keys; all at the level's start), as the action bits
+   (CHR_KEY_*): ONiRunGame 0x4d4640 masks each input event's held bits with them before the frame. */
+uint64_t ui_keys_allowed(void);
 /* G+0x30: the letterbox going on (0x4fce70) or off (0x4fce90). */
 void ui_set_letterbox(bool on);
 /* G+0x3c: a cutscene is on (begin_cutscene to end_cutscene); G+0x48: its sync (cutscene_sync). */

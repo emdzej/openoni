@@ -4,6 +4,7 @@
 #include "sl.h"
 #include "text.h"
 #include "chars.h"
+#include "exe.h"
 #include "objc.h"
 
 #include <math.h>
@@ -18,6 +19,7 @@ static struct { float from[4], to[4]; uint32_t start, end; bool on; } fade;
 /* The letterbox: the last update's time, the bars' height, going on or off, moving. */
 static struct { uint32_t time; float height; bool on, moving; } box;
 static bool input_on = true;
+static uint64_t keys_allowed = ~(uint64_t)0;  /* G+0x1679b0 (low) and G+0x1679b4 (high) */
 static int level_end;            /* G+0x1679bc: 1 won, 2 lost */
 static bool cutscene, cutscene_sync;
 /* The HUD (ONrInGameUI): the left and right elements shown (0x5ed0dc, 0x5ed0a0), the elements flashing
@@ -53,6 +55,7 @@ void ui_reset(void)
     memset(&box, 0, sizeof box);
     memset(areas, 0, sizeof areas);
     input_on = true;
+    keys_allowed = ~(uint64_t)0;     /* ONrGameState_LevelBegin 0x4f5350 */
     level_end = 0;
     cutscene = cutscene_sync = false;
     memset(&timer, 0, sizeof timer);
@@ -386,6 +389,42 @@ static bool cmd_input(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
     return true;
 }
 
+uint64_t ui_keys_allowed(void) { return keys_allowed; }
+
+/* lock_keys [group] (AIiScript_LockKeys 0x4bd4e0): with no argument only the system keys (0x10003:
+   escape and the console's) stay; with a group's name its keys are let through again. The names are
+   the exe's (0x54afec..0x54b068), the bits the handler's operands. */
+static bool cmd_lock_keys(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    static const struct { uint32_t name; uint64_t keys; } groups[] = {
+        { 0x54b068, 0x6600000 },                                  /* keys_movement */
+        { 0x54b05c, 0x8000000 },                                  /* keys_jump */
+        { 0x54b050, 0x10000000 | (uint64_t)0x100 << 32 },         /* keys_crouch */
+        { 0x54b044, 0x60000000 | (uint64_t)0xc0 << 32 },          /* keys_attack: punch, kick, fire */
+        { 0x54b038, 4 },                                          /* keys_pause */
+        { 0x54b02c, (uint64_t)2 << 32 },                          /* keys_action */
+        { 0x54b01c, (uint64_t)0x30 << 32 },                       /* keys_inventory: swap, drop */
+        { 0x54b010, (uint64_t)1 << 32 },                          /* keys_walk */
+        { 0x54b004, (uint64_t)4 << 32 },                          /* keys_hypo */
+        { 0x54aff8, (uint64_t)8 << 32 },                          /* keys_reload */
+        { 0x54afec, ~(uint64_t)0 },                               /* keys_all */
+    };
+    if (c == 0) {
+        keys_allowed = 0x10003;
+        return true;
+    }
+    if (c != 1 || v[0].type != SL_STRING) return true;     /* the usage line */
+    for (size_t i = 0; i < sizeof groups / sizeof *groups; i++) {
+        const char *name = exe_str(groups[i].name);
+        if (name && !strcmp(name, v[0].s)) {
+            keys_allowed |= groups[i].keys;
+            return true;
+        }
+    }
+    return true;        /* "unknown key group" and the list of the names */
+}
+
 /* cutscene_sync on|off|mark (0x4bcbc0): the cutscene's sync (G+0x48) on or off; mark (G+0x44, the
    sync's mark) is with the sync's port. Not ported: the sync itself (the frames held back to keep the
    cutscene on the clock's time, G+0x50), which a headless run doesn't need. */
@@ -462,6 +501,7 @@ void ui_register_commands(void)
     sl_register("fade_in", cmd_fade_in, NULL);
     sl_register("letterbox", cmd_letterbox, NULL);
     sl_register("input", cmd_input, NULL);
+    sl_register("lock_keys", cmd_lock_keys, NULL);
     sl_register("win", cmd_win, NULL);
     sl_register("lose", cmd_lose, NULL);
     sl_register("timer_start", cmd_timer_start, NULL);

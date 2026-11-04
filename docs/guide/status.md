@@ -34,7 +34,8 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   fight are stand-ins.
 - **The scripts**: the BSL engine runs the level's own scripts, with their trigger volumes, doors,
   consoles, animated objects and a growing share of the game's script commands, among them those that
-  set the AI's awareness, health and movement modes.
+  set the AI's awareness, health and movement modes, and `lock_keys`, with which the training lets
+  the player's keys through one lesson at a time.
 - **The level chain**: a level's `win` loads the next level and its `lose` plays the same level again,
   as the original's game loop does, from the last save point the level's scripts made (`save_game`,
   `restore_game`: health, place, inventory and weapon put back). The mission timer counts down and runs its script at zero.

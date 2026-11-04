@@ -201,6 +201,9 @@ void character_update_input(Character *c, const ChrInput *in, const void *env);
 bool chr_holds_facing(const Character *c);
 /* The key state of a CharacterInput as the action bits held. */
 uint64_t chr_input_bits(const CharacterInput *in);
+/* The input with only the keys of those action bits (lock_keys). The mouse's turn and pitch are
+   not keys; the turn keys (not in any group) are the port's arrow keys, left as they are. */
+void chr_input_mask(CharacterInput *in, uint64_t keys);
 
 /* The body's root (FUN_004e5a30's start): T(position + the pelvis's height) R(facing about y); while an
    environment animation plays, its matrix at the frame and a quarter turn about x (none with no

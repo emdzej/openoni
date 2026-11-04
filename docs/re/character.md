@@ -246,7 +246,12 @@ objects by the movement the characters left in +0xc4, with the ground callbacks)
    movement handlers (*HandleStartRunning* 0x4f8ef0, *HandleStartSidestep* 0x4f83f0,
    *HandleStartTauntOrAction* 0x4f80d0, *HandleFallThrough* 0x4f9a70, *HandleStop* 0x4f9fa0, …), which
    call `ONrCharacter_DoAnimation` 0x4e4400 and `ONrCharacter_UpdateAnimationForVarient` 0x4eb1a0. AI
-   characters get their input from AI2 through the same block (+0x2158) (*inferred*).
+   characters get their input from AI2 through the same block (+0x2158) (*inferred*). Before the frame,
+   *ONiRunGame* 0x4d4640 masks each input event's held bits (+0 low, +4 high; events 0x30 apart) with
+   the allowed keys at G+0x1679b0/G+0x1679b4: all at *ONrGameState_LevelBegin* 0x4f5350, 0x10003/0 after
+   a bare `lock_keys` (*AIiScript_LockKeys* 0x4bd4e0), and a group's bits ORed in by `lock_keys <group>`
+   (*confirmed*): movement 0x6600000, jump 0x8000000, crouch 0x10000000 + high 0x100, attack 0x60000000 +
+   high 0xc0, pause 4, action high 2, inventory high 0x30, walk high 1, hypo high 4, reload high 8, all.
 6. Run the scripts queued meanwhile (the queue at 0x632540, `ONrScript_ExecuteSimple` 0x5100b0).
 7. **Present list, the frame.** Debug text for the watched character, then
    **`ONrGameState_DoCharacterFrame` 0x4ddba0**. Queued scripts again.

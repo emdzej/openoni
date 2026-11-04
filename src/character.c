@@ -846,6 +846,22 @@ uint64_t chr_input_bits(const CharacterInput *in)
     return k;
 }
 
+void chr_input_mask(CharacterInput *in, uint64_t keys)
+{
+    if ((in->forward > 0 && !(keys & FWD)) || (in->forward < 0 && !(keys & BACK))) in->forward = 0;
+    if ((in->strafe < 0 && !(keys & STEP_L)) || (in->strafe > 0 && !(keys & STEP_R))) in->strafe = 0;
+    in->walk &= (keys & WALK) != 0;
+    in->punch &= (keys & K(CHR_KEY_PUNCH)) != 0;
+    in->kick &= (keys & K(CHR_KEY_KICK)) != 0;
+    in->jump &= (keys & JUMP) != 0;
+    in->crouch &= (keys & CROUCH) != 0;
+    in->action &= (keys & CHR_KEY_ACTION) != 0;
+    in->fire &= (keys & CHR_KEY_FIRE) != 0;
+    in->swap &= (keys & CHR_KEY_SWAP) != 0;
+    in->drop &= (keys & CHR_KEY_DROP) != 0;
+    in->reload &= (keys & CHR_KEY_RELOAD) != 0;
+}
+
 bool character_init(Character *c, const void *oncc, const float pos[3], float facing)
 {
     memset(c, 0, sizeof *c);
