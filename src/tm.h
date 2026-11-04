@@ -73,6 +73,9 @@ const TmInstance *tm_file_instance(const TmFile *f, uint32_t index);
 /* TMrInstance_GetDataPtr 0x4232e0: the data of the named instance (name without the tag), first loaded
    file first; NULL if none has it with data. */
 void *tm_instance_get(uint32_t tag, const char *name);
+/* TMrInstance_GetDataPtr_List 0x423540: the data of every named instance of the tag (file by file, by
+   name), at most cap; the count. */
+int tm_instance_list(uint32_t tag, void **out, int cap);
 /* An instance's handle (what a link field holds) and back. */
 uint32_t tm_handle_of(const void *data);
 void *tm_handle_data(uint32_t handle);

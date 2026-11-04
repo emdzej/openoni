@@ -49,7 +49,18 @@ void plat_display_size(int *w, int *h)
     *w = (int)gasm_gl_width();
     *h = (int)gasm_gl_height();
 }
-bool plat_frame_shown(void) { return gasm_gl_frame_shown() != 0; }
+/* --param drawfrom=N (a debug aid): nothing drawn before frame N. A headless run with --screenshot
+   renders every frame on the GPU, and over a long route the runner's memory grows by gigabytes; only
+   the last frames need drawing. */
+bool plat_frame_shown(void)
+{
+    static int from = -1;
+    if (from < 0) {
+        char v[16];
+        from = plat_param("drawfrom", v, sizeof v) ? atoi(v) : 0;
+    }
+    return plat_frames() >= (uint32_t)from && gasm_gl_frame_shown() != 0;
+}
 
 static float lef32(const uint8_t *p)
 {

@@ -43,6 +43,10 @@ int ui_level_end(void);
 uint32_t ui_message_time(const char *id);
 /* Adds a line (the oldest goes when the area is full). */
 void ui_print(int area, const char *text, const char *id, int32_t timer, uint32_t colour);
+/* COrMessage_Remove 0x430640: the lines of that name (NULL: all) fade out; failing that, the subtitles'. */
+void ui_message_remove(const char *id);
+bool ui_message_shown(const char *id);
+bool ui_message_print(const char *id, int32_t timer);
 
 /* The HUD's elements: the left (0) or right (1) shown; an element's alpha (its ui_flash_element bit:
    1 health, 0x80 compass, ...) while flashing, else 255; the compass's target (its place, the radius

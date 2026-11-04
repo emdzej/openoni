@@ -77,6 +77,9 @@ uintptr_t wm_send(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2);
 void wm_post(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2);
 void wm_set_visible(WmWindow *w, bool on);
 void wm_set_location(WmWindow *w, int16_t x, int16_t y);
+void wm_set_enabled(WmWindow *w, bool on);
+void wm_check_radio(WmWindow *dialog, uint16_t first, uint16_t last, uint16_t checked);
+bool wm_button_pressed(const WmWindow *w);
 void wm_set_font(WmWindow *w, const WmFont *f);
 WmWindow *wm_item(WmWindow *dialog, uint16_t id);
 

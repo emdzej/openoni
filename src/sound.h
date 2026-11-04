@@ -54,6 +54,11 @@ void sound_music_start(const char *name, float volume);
 void sound_music_stop(const char *name);
 void sound_music_volume(const char *name, float volume, float seconds);
 void sound_impulse_play(const char *name, float volume);
+/* ONrGameState_EventSound_Play 0x4fdac0: the game's event sound of that index (the impulse named in
+   the game settings, ONGS+0x7d0, 32 bytes each, 18 of them; SSrImpulse_UpdateGroupPointers 0x4f49b0),
+   not placed. */
+void sound_event_play(int index);
+float sound_volume(void);       /* SS2rVolume_Get 0x483df0: the overall volume's target */
 
 /* What the databases hold, for tests. */
 typedef struct { uint32_t groups, ambients, impulses, permutations, unresolved; } SoundStats;

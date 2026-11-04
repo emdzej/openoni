@@ -223,6 +223,28 @@ void wm_set_visible(WmWindow *w, bool on)      /* WMrWindow_SetVisible 0x475a10 
     wm_send(w, 0x2f, on, 0);
 }
 
+void wm_set_enabled(WmWindow *w, bool on)      /* WMrWindow_SetEnabled 0x475580 */
+{
+    if (!wm_window_valid(w)) return;
+    if (on) w->flags &= ~(uint32_t)2;
+    else w->flags |= 2;
+}
+
+/* WMrDialog_CheckRadioButton 0x468bb0: the items first..last let go (WM_HILITE 0), then the one checked
+   held down. */
+void wm_check_radio(WmWindow *dialog, uint16_t first, uint16_t last, uint16_t checked)
+{
+    for (uint32_t id = first; id <= last; id++) {
+        WmWindow *b = wm_item(dialog, (uint16_t)id);
+        if (b) wm_send(b, WM_HILITE, 0, 0);
+    }
+    WmWindow *b = wm_item(dialog, checked);
+    if (b) wm_send(b, WM_HILITE, 1, 0);
+}
+
+/* 0x46b530: a button held down with the mouse on it. */
+bool wm_button_pressed(const WmWindow *w) { return wm_window_valid(w) && (w->data & 0x10000); }
+
 void wm_set_location(WmWindow *w, int16_t x, int16_t y)     /* WMrWindow_SetLocation 0x4756d0 */
 {
     if (wm_window_valid(w)) w->x = x, w->y = y;

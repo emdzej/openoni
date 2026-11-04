@@ -40,7 +40,10 @@ uint16_t powerup_default_amount(int type);
 Powerup *powerup_find(const Character *c, float y_lo, float y_hi, const Powerup *only, float r2, bool *full);
 /* 0x51ca30: up to amount of the type into c's inventory (clips, cells and hypos up to 6; the shield
    and invisibility up to amount; the LSI for the player only); force takes it all. Returns what went. */
-uint16_t powerup_give(Character *c, int type, uint16_t amount, bool force);
+uint16_t powerup_give(Character *c, int type, uint16_t amount, bool force, bool sound);
+/* A powerup type the player hadn't had (or the LSI): the pause screen's new item (0x5050a0, set by the
+   app to igui_new_item). */
+extern void (*powerup_new_hook)(int type);
 /* The powerup's type name ("ammo", "cell", ...: the exe's table at 0x5588f8), NULL for none. */
 const char *powerup_type_name(int type);
 int powerup_count(void);

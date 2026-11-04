@@ -55,7 +55,7 @@
 
 enum {
     DIK_ESCAPE = 0x01, DIK_W = 0x11, DIK_S = 0x1f, DIK_A = 0x1e, DIK_D = 0x20, DIK_Q = 0x10, DIK_E = 0x12,
-    DIK_F = 0x21, DIK_C = 0x2e, DIK_R = 0x13, DIK_CAPITAL = 0x3a, DIK_LSHIFT = 0x2a, DIK_RSHIFT = 0x36, DIK_LCONTROL = 0x1d, DIK_RCONTROL = 0x9d, DIK_SPACE = 0x39, DIK_UP = 0xc8, DIK_DOWN = 0xd0, DIK_LEFT = 0xcb, DIK_RIGHT = 0xcd,
+    DIK_F = 0x21, DIK_C = 0x2e, DIK_R = 0x13, DIK_CAPITAL = 0x3a, DIK_LSHIFT = 0x2a, DIK_RSHIFT = 0x36, DIK_LCONTROL = 0x1d, DIK_RCONTROL = 0x9d, DIK_SPACE = 0x39, DIK_UP = 0xc8, DIK_DOWN = 0xd0, DIK_LEFT = 0xcb, DIK_RIGHT = 0xcd, DIK_F1 = 0x3b,
 };
 
 /* The levels the CD installs, in the order of the level numbers. */
@@ -385,7 +385,8 @@ static void start_scripts(void)
    "R" as a mode runs from up to 1.3 rad off. "T<name>,N[,L]" aims at the character for N frames (where it
    will be in L frames) and taps fire every 20 frames; the shots leave at about 1.13 times the aim's angle
    from the facing (measured), which the aim allows for. "M<message>,F" waits for a script's message and
-   shifts the later "@" frames by when it came against F (when the route was made). "Gfrom,to,N" shoots
+   shifts the later "@" frames by when it came against F (when the route was made). "P" presses the pause
+   key (the pause screen). "Gfrom,to,N" shoots
    the unbroken glass targets of those script ids, aiming the weapon's barrel at each. ---- */
 
 /* The level's environment, for the route's glass targets. */
@@ -448,6 +449,8 @@ static float wrap_pi(float a)
 /* The input the route asks for this frame (in is all zero on entry). */
 static uint32_t splash_frames;      /* the frames the splash screens and the dialogs took: the route's clock leaves them out */
 
+static bool route_pause;     /* the route's "P": the pause key */
+
 static void route_input(const Character *c, CharacterInput *in)
 {
     for (int guard = 0; route.step && guard < 8; guard++) {
@@ -470,6 +473,12 @@ static void route_input(const Character *c, CharacterInput *in)
             route.shift = (int32_t)at - atoi(comma + 1);
             route_next();
             continue;
+        }
+        if (*s == 'P') {
+            route_pause = true;
+            plat_log("OpenOni: route: the pause key");
+            route_next();
+            return;
         }
         if (*s == 'w') {
             if (!route.phase) route.until = now + (uint32_t)atoi(s + 1), route.phase = 1;
@@ -757,6 +766,18 @@ static void modal_frame(void)
     }
 }
 
+/* The pause key gone down this frame (the LI's action 0x81, F1). */
+static bool pause_key(void)
+{
+    uint8_t p[64];
+    int n = plat_key_presses(p, (int)sizeof p);
+    for (int i = 0; i < n; i++)
+        if (p[i] == DIK_F1) return true;
+    return false;
+}
+
+static void restored(void) { igui_notify_restore(ui_time()); }
+
 static int play(int level, int *next)
 {
     *next = 0;
@@ -814,6 +835,10 @@ static int play(int level, int *next)
     camera_reset();
     uint32_t ticks = 0;     /* the game time (ONrGameState's +0x144), ticks since the level began */
     ui_reset();
+    igui_level_load(level);     /* ONiInGameUI_LevelLoad 0x503eb0 */
+    weapon_new_hook = igui_new_weapon;
+    powerup_new_hook = igui_new_item;
+    save_restore_hook = restored;
     cinematic_reset();
     {
         int w, h, dw, dh;
@@ -834,6 +859,10 @@ static int play(int level, int *next)
         int n = plat_key_presses(presses, (int)sizeof presses);
         /* 0x4faec0: the player's escape (its input's bit 1, at most once in 15 ticks, not in a cutscene)
            opens the main menu over the level (0x4bec00); New Game starts again at level 1 (0x4beb40) */
+        /* ... and its pause key (bit 4, F1 by default; not when dead) the pause screen, after the frame
+           (ONiRunGame 0x4d4640, G+0x138) */
+        for (int i = 0; i < n; i++)
+            if (presses[i] == DIK_F1 && !ui_cutscene() && player && !(player->c.flags & 1)) igui_pause_screen(pause_key);
         for (int i = 0; i < n; i++)
             if (presses[i] == DIK_ESCAPE) {
                 int choice = outgame_main_menu(true);
@@ -873,6 +902,10 @@ static int play(int level, int *next)
         if (plat_mouse(&mouse) && (mouse.pressed & MOUSE_LEFT) && !mouse.captured) plat_mouse_capture(true);
         /* "input 0" from a script (cutscenes): the player's keys do nothing (0x4bcc50's flag) */
         if (route.step && player) route_input(&player->c, &in);
+        if (route_pause && !ui_cutscene() && player && !(player->c.flags & 1)) {    /* held until allowed */
+            route_pause = false;
+            igui_pause_screen(pause_key);
+        }
         if (!ui_input_enabled()) memset(&in, 0, sizeof in);
         sl_update();
         /* ONrGameState_UpdateCharacters 0x4dccf0: the volumes first, then the characters */
@@ -880,6 +913,7 @@ static int play(int level, int *next)
         object_update(++ticks);
         door_physics(ticks);
         ui_update();
+        igui_update(ui_time());
         cinematic_update();
         chars_update(&in, env);
         weapons_update(env);    /* WPrUpdate, after the characters */

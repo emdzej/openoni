@@ -15,3 +15,6 @@
 void save_clear(void);
 int32_t save_point(void);
 void save_register_commands(void);
+/* What restore_game tells the in-game UI (ONrInGameUI_NotifyRestoreGame 0x5050b0), restored or not.
+   Set by the app. */
+extern void (*save_restore_hook)(void);

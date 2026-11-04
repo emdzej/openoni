@@ -84,11 +84,16 @@ static bool cmd_save(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 
 /* restore_game (0x4bd360 -> ONrGameState_UseContinue): with a save point, the player's health (scaled if
    the maximum changed), place, facing, inventory, the weapons gone and the saved one in the hand. */
+void (*save_restore_hook)(void);
+
 static bool cmd_restore(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)c, (void)v, (void)r, (void)u;
     Chr *p = chars_player();
-    if (!p || !point || !cont.valid) return true;   /* "failed to continue, invalid save point" */
+    if (!p || !point || !cont.valid) {      /* "failed to continue, invalid save point" */
+        if (save_restore_hook) save_restore_hook();
+        return true;
+    }
     if (p->c.max_hit_points == cont.max_hp) p->c.hit_points = cont.hp;
     else if (cont.max_hp) p->c.hit_points = (uint32_t)((uint64_t)p->c.max_hit_points * cont.hp / cont.max_hp);
     physics_place(&p->c, cont.pos);
@@ -112,6 +117,7 @@ static bool cmd_restore(SlThread *t, int c, const SlValue *v, SlValue *r, void *
             w->ammo = cont.weapon_ammo;
         }
     }
+    if (save_restore_hook) save_restore_hook();     /* ONrInGameUI_NotifyRestoreGame 0x5050b0 */
     return true;
 }
 

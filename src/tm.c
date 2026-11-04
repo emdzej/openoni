@@ -335,6 +335,23 @@ static TmInstance *find_by_name(const char *full, int *slot)
     return NULL;
 }
 
+/* TMrInstance_GetDataPtr_List 0x423540 (0x4235a0's walk): file by file in load order, each file's
+   named instances of the tag with data, in its name directory's order (by name). */
+int tm_instance_list(uint32_t tag, void **out, int cap)
+{
+    char t[4] = { (char)(tag >> 24), (char)(tag >> 16), (char)(tag >> 8), (char)tag };
+    int n = 0;
+    for (int s = FIRST_LEVEL_SLOT; s < n_slots && n < cap; s++) {
+        TmFile *f = slots[s];
+        if (!f) continue;
+        for (uint32_t i = 0; i < f->n_names && n < cap; i++) {
+            TmInstance *in = &f->inst[rd32(f->names + i * DAT_NAME)];
+            if (in->name && !memcmp(in->name, t, 4) && in->data) out[n++] = in->data;
+        }
+    }
+    return n;
+}
+
 /* ---- the layout walk ---- */
 
 typedef struct Walk Walk;

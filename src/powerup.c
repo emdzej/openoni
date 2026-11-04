@@ -5,7 +5,9 @@
 #include "exe.h"
 #include "m3gm.h"
 #include "objc.h"
+#include "persist.h"
 #include "sl.h"
+#include "sound.h"
 #include "tm.h"
 
 #include <math.h>
@@ -141,21 +143,34 @@ Powerup *powerup_find(const Character *c, float y_lo, float y_hi, const Powerup 
     return best;
 }
 
-uint16_t powerup_give(Character *c, int type, uint16_t amount, bool force)
+void (*powerup_new_hook)(int type);
+
+uint16_t powerup_give(Character *c, int type, uint16_t amount, bool force, bool sound)
 {
     if (!force) amount = takes(c, type, amount);
     if (!amount) return 0;
+    const Chr *pl = chars_player();
+    bool player = pl && c == &pl->c;
+    sound = sound && player;
+    /* the receiving sounds (ONrGameState_EventSound_Play): 7 ammo, 8 a cell, 9 a hypo, 10 the LSI */
     switch (type) {
-    case POWERUP_AMMO: c->ammo = (uint16_t)(c->ammo + amount); break;
-    case POWERUP_CELL: c->cells = (uint16_t)(c->cells + amount); break;
-    case POWERUP_HYPO: c->hypos = (uint16_t)(c->hypos + amount); break;
+    case POWERUP_AMMO: c->ammo = (uint16_t)(c->ammo + amount); if (sound) sound_event_play(7); break;
+    case POWERUP_CELL: c->cells = (uint16_t)(c->cells + amount); if (sound) sound_event_play(8); break;
+    case POWERUP_HYPO: c->hypos = (uint16_t)(c->hypos + amount); if (sound) sound_event_play(9); break;
     case POWERUP_SHIELD: c->shield = (uint16_t)(c->shield + amount); break;
     case POWERUP_INVISIBILITY: c->invisibility = (uint16_t)(c->invisibility + amount); break;
-    case POWERUP_LSI: c->lsi = true; break;
+    case POWERUP_LSI: c->lsi = true; if (sound) sound_event_play(10); break;
     default: break;
     }
-    /* the player's: the pickup sound (ONrGameState_EventSound_Play) and the HUD's display (0x50f560,
-       0x50f580, 0x5050a0): with the HUD */
+    /* the player's: a type not had before (the LSI always) is the pause screen's new item (0x50f560,
+       0x50f580, 0x5050a0) */
+    if (player) {
+        if (type != POWERUP_LSI) {
+            if (persist_item_seen(type)) return amount;
+            persist_set_item_seen(type);
+        }
+        if (powerup_new_hook) powerup_new_hook(type);
+    }
     return amount;
 }
 
@@ -209,7 +224,7 @@ static bool cmd_give(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
         Chr *ch = chars_get(i);
         if (!ch || (ch->c.flags & 1)) continue;
         if (who >= 0 && who != i) continue;
-        powerup_give(&ch->c, type, amount, true);
+        powerup_give(&ch->c, type, amount, true, false);
     }
     return true;
 }

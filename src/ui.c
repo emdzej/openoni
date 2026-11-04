@@ -427,6 +427,27 @@ static bool remove_from(int area, const char *id)
     return any;
 }
 
+void ui_message_remove(const char *id)
+{
+    if (!remove_from(UI_AREA_MESSAGE, id) && id) remove_from(UI_AREA_SUBTITLE, id);
+}
+
+/* 0x4305c0: a line of the message area with that name. */
+bool ui_message_shown(const char *id)
+{
+    for (int i = 0; i < areas[UI_AREA_MESSAGE].n; i++)
+        if (!strcmp(areas[UI_AREA_MESSAGE].lines[i].id, id)) return true;
+    return false;
+}
+
+/* COrMessage_Print: the message of that name (SSrMessage_Find), for timer ticks. False if there is none. */
+bool ui_message_print(const char *id, int32_t timer)
+{
+    const char *s = text_message(id);
+    if (s) ui_print(UI_AREA_MESSAGE, s, id, timer, 0xffffffffu);
+    return s != NULL;
+}
+
 static bool cmd_message_remove(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;

@@ -180,6 +180,9 @@ imported into OPFS or read in place, run as `openoni.wasm` in gasm's Worker mode
 ## Unattended runs
 
 Always `--headless` for gasm-run; never open a window, never use macOS `screencapture`.
+With `--screenshot`, gasm-run renders every frame on the GPU and its memory grows by gigabytes over a
+long run (15 GB over level 1's route): pass `--param drawfrom=<N>` (nothing drawn before frame N) with
+N a few frames before the end, and don't take screenshots of long runs without it.
 
 ## Commits
 

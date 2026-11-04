@@ -39,6 +39,8 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - **The HUD**: the health ring, and the left ring with the ballistic clips, the energy cells and the
   compass toward the objective's flag (`target_set`), its arrow up or down; the scripts show, hide and
   flash its elements.
+- **The pause screen** (F1): the objectives the level has set, the items and weapons the player has had,
+  the diary's move pages with their key icons, and the controls' help, in the game's own dialog.
 - **The main menu**: the game starts on Oni's own menu (New Game, Quit; Escape in a level brings it
   back over the level, with Resume), its dialogs built by the game's window manager from its data.
 - **The text consoles**: the documents Konoko reads at the level's consoles, page by page, in the

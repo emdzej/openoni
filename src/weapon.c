@@ -8,6 +8,7 @@
 #include "m3gm.h"
 #include "objc.h"
 #include "particle.h"
+#include "persist.h"
 #include "powerup.h"
 #include "sl.h"
 #include "tm.h"
@@ -577,6 +578,8 @@ static Weapon *find_pickup(const float pos[3], const Weapon *only, float ymin, f
     return best;
 }
 
+void (*weapon_new_hook)(const void *onwc);
+
 void chr_set_weapon(Character *c, Weapon *w)
 {
     if (!w) {
@@ -599,7 +602,14 @@ void chr_set_weapon(Character *c, Weapon *w)
         c->varient |= rifle && left ? 0x4000 : rifle ? 0x2000 : left ? 0x1000 : 0x800;
     }
     set_owner(w, c);
-    /* the player's HUD (ONrInGameUI_NewWeapon): with the HUD's weapon display */
+    /* the player's first of its class: the pause screen's new weapon (ONrInGameUI_NewWeapon 0x505050),
+       recorded as had (0x50f500) */
+    const Chr *p = chars_player();
+    uint16_t index = (uint16_t)(w->cls[0x136] | w->cls[0x137] << 8);
+    if (p && c == &p->c && !persist_weapon_seen(index)) {
+        if (weapon_new_hook) weapon_new_hook(w->cls);
+        persist_set_weapon_seen(index);
+    }
 }
 
 /* ONrCharacter_PickupWeapon 0x4ed770, a weapon picked up: the one in the hand drops first. */
@@ -633,7 +643,7 @@ static bool start_pickup(Character *c, const ChrInput *in)
         if (tr_test_flag(c->anim, 20)) {
             /* an animation that picks up as it goes: at once */
             if (w) pickup_weapon(c, w);
-            else if (powerup_give(c, pu->type, pu->amount, false)) powerup_delete(pu);     /* 0x4eda10 */
+            else if (powerup_give(c, pu->type, pu->amount, false, true)) powerup_delete(pu);     /* 0x4eda10 */
         } else {
             uint16_t type;
             if (pu) {
@@ -740,7 +750,7 @@ static void frame(Character *c, int step)
                 /* the powerup still there (6 below, 24 above, 16 across) goes into the inventory; with the
                    target forgotten (as for 0xe3, which the test above doesn't keep), any in reach */
                 Powerup *p = powerup_find(c, c->pos[1] - 6.0f, c->pos[1] + 24.0f, c->pickup_powerup, 256.0f, NULL);
-                if (p && powerup_give(c, p->type, p->amount, false)) powerup_delete(p);
+                if (p && powerup_give(c, p->type, p->amount, false, true)) powerup_delete(p);
                 c->pickup = NULL, c->pickup_powerup = NULL;
             } else if (t == 0x9e || t == 0x9f || t == 0xe4 || t == 0xe5) {
                 Weapon *w = find_pickup(c->pos, c->pickup, c->pos[1] - 6.0f, c->pos[1] + 24.0f, 256.0f);
