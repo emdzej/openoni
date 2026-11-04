@@ -283,8 +283,8 @@ static void part_spheres(const Character *c, Spheres *out)
     const void *body = body_of_class(c->oncc, 4);
     uint32_t bones = body ? body_bones(body) : 0;
     if (!bones || bones > BODY_MAX_BONES || bones != CHR_BONES) return;
-    float co = cosf(c->facing), si = sinf(c->facing);
-    BodyMatrix root = { co, 0, -si, 0, 1, 0, si, 0, co, c->pos[0], c->pos[1] + c->pelvis_height, c->pos[2] }, m[BODY_MAX_BONES];
+    BodyMatrix root, m[BODY_MAX_BONES];
+    chr_root_matrix(c, root);
     if (!body_matrices(body, root, c->aimed, m)) return;
     for (uint32_t b = 0; b < bones; b++) {
         float box[6], sph[4] = { 0, 0, 0, 0 };
@@ -300,8 +300,8 @@ bool chr_part_point(const Character *c, unsigned part, float out[3])
     const void *body = body_of_class(c->oncc, 4);
     uint32_t bones = body ? body_bones(body) : 0;
     if (!bones || bones > BODY_MAX_BONES || bones != CHR_BONES || part >= bones) return false;
-    float co = cosf(c->facing), si = sinf(c->facing);
-    BodyMatrix root = { co, 0, -si, 0, 1, 0, si, 0, co, c->pos[0], c->pos[1] + c->pelvis_height, c->pos[2] }, m[BODY_MAX_BONES];
+    BodyMatrix root, m[BODY_MAX_BONES];
+    chr_root_matrix(c, root);
     if (!body_matrices(body, root, c->aimed, m)) return false;
     const float zero[3] = { 0, 0, 0 };
     body_transform(m[part], zero, out);
@@ -313,8 +313,8 @@ bool chr_weapon_matrix(const Character *c, float out[12])
     const void *body = body_of_class(c->oncc, 4);
     uint32_t bones = body ? body_bones(body) : 0;
     if (!bones || bones > BODY_MAX_BONES || bones != CHR_BONES) return false;
-    float co = cosf(c->facing), si = sinf(c->facing);
-    BodyMatrix root = { co, 0, -si, 0, 1, 0, si, 0, co, c->pos[0], c->pos[1] + c->pelvis_height, c->pos[2] }, m[BODY_MAX_BONES];
+    BodyMatrix root, m[BODY_MAX_BONES];
+    chr_root_matrix(c, root);
     if (!body_matrices(body, root, c->aimed, m)) return false;
     /* ONrCharacter_SetCharacterClass 0x4d7c30: the weapon node hangs from the right fist (18), or the
        left (14) for a class with +0xc8c; the left hand's half turn about x (ONrCharacter_SetHand 0x4332b0) */

@@ -272,3 +272,53 @@ before the characters move:
 
 Inferred, not yet confirmed: the character's segment. The port uses a vertical segment from the feet
 up 18 units until the active character's points are ported.
+
+## TRIG
+
+The laser trigger type's data ("Trigger", 0xdc bytes an object), read by `OBJiTrigger_Read` 0x4cbf30
+and set up by `OBJiTrigger_SetOSD` 0x4cc1f0 (registered by `OBJrTrigger_Initialize` 0x4cb420). The
+port: `src/laser.c`.
+
+| Offset | Size | What |
+|---|---|---|
+| 0x00 | 63 | Class: a `TRIG` instance (the level's first when not found) |
+| 0x3f | 2 | Id (`trig_*` commands and event types 8 and 9 take it) |
+| 0x41 | 2 | Flags: only 0x38 is kept. 0x08 active at the start, 0x10 the emitters run backwards, 0x20 ping-pong |
+| 0x43 | 4 | The beams' colour, ARGB |
+| 0x47 | 4 | Start: where along the animation the emitters begin, clamped to 0..1 |
+| 0x4b | 4 | Speed: frames a tick, clamped to 0..100 |
+| 0x4f | 2 | Emitters, clamped to 1..32 |
+| 0x51 | 2 | Ticks on (D+0x8c) |
+| 0x53 | 2 | Ticks off (D+0x8a) |
+| 0x55 | | Event list (see CONS) |
+
+The class (`TRIG`, instance data): +0x10 the base geometry (`M3GM`, its bounding sphere the object's),
++0x1c the emitter (`TRGE`), +0x20 the emitters' animation (`OBAN`), +0x24 the active sound (32, an
+ambient), +0x44 the hit sound (32, an impulse). `TRGE`: +0x00 the beam's start and +0x0c its direction
+in the emitter's space, +0x18 the emitter's geometry.
+
+The object at run time (D): +0x2c id, +0x2e flags (0x02 set off, 0x04 active, 0x40 hidden, 0x80 the
+active sound playing), +0x74 the class, +0x78 colour, +0x7c start, +0x80 speed, +0x84 the speed now
+(`trig_speed` sets it to its factor times +0x80), +0x88 emitters, +0x9c the emitters (0x4c bytes each:
+the frame as a float, the animation's context, the matrix at +0x18), +0xa0 the countdown, +0xa2 on,
++0xc0 the rotation, +0x104 the beams' hit points by the animation's frame (12 bytes each).
+
+- `OBJrTrigger_Reset` 0x4cae40: on, the countdown the on time (when either time is set); the emitters
+  spread evenly: emitter *k* at fmod(*k* × frames / emitters + (frames − 1) × start, frames − 1), or
+  all at frames − 1 when the start is exactly 1. Not set off; active as 0x08 says. Then the update and,
+  while active, one more step. `SetOSD` steps once more after it.
+- The step (0x4cafc0): each emitter's frame moves by its direction times the speed now. Past the end
+  it goes back to 0 (ping-pong: to the last frame, turned round); below 0 to the last frame (ping-pong:
+  0, turned round). Then the animation's matrix at the frame truncated.
+- The update (0x4cb100, every tick): the step while active, then the countdown. At 0 the beams go on
+  for the on time when off, or off for the off time when on.
+- The draw (`OBJrTrigger_OnTrigger` 0x4cb6f0, every drawn frame, every trigger: the type has no
+  visibility test) also tests the beams. Unless hidden, for each emitter it draws the emitter's
+  geometry under T(position)·R·the emitter's matrix. Active and on, it casts the beam: the start and
+  the start plus the unit direction through that matrix, the line between them set to 500 long. The
+  level hit (`AKrCollision_Point` 0x441c80, skipping 0x44800) is found once for each animation frame
+  and kept; with none the end is the origin. If the player (G+0xac, when G+0xb0) is hit nearer
+  (`ONrCharacter_Collide_Ray` 0x4f1630), the trigger is set off: flag 0x02, the hit sound, the event
+  list. That happens once, until an emitter misses, which clears 0x02. With more than one emitter one
+  held crossing can set it off again on each frame. The beam drawn (`FXrDrawLaser` 0x4f4720, a
+  contrail 0.2 wide) stops 2 short of its end.

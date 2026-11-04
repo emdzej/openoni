@@ -123,8 +123,8 @@ void chr_intersect_setup(const Character *a, const Character *t, bool melee, Chr
     BodyMatrix pm[BODY_MAX_BONES];
     bool have = false;
     if (bones && bones <= BODY_MAX_BONES && bones == CHR_BONES) {
-        float co = cosf(t->facing), si = sinf(t->facing);
-        BodyMatrix root = { co, 0, -si, 0, 1, 0, si, 0, co, t->pos[0], t->pos[1] + t->pelvis_height, t->pos[2] };
+        BodyMatrix root;
+        chr_root_matrix(t, root);
         have = body_matrices(body, root, t->quats, pm);
     }
     for (uint32_t va = 0x54e1e0;; va += 8) {

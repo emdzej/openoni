@@ -29,6 +29,15 @@ const void *char_find_animation(const void *oncc, unsigned type)
     return NULL;
 }
 
+/* The body under its root, posed (the rest pose without quats). */
+static void draw_root(const void *oncc, const BodyMatrix root, const float *quats)
+{
+    const void *body = body_of_class(oncc, 4);
+    BodyMatrix m[BODY_MAX_BONES];
+    if (!body || body_bones(body) > BODY_MAX_BONES || !body_matrices(body, root, quats, m)) return;
+    for (uint32_t b = 0; b < body_bones(body); b++) geom_draw(body_geometry(body, b), m[b], body_texture(oncc, b));
+}
+
 void char_draw_pose(const void *oncc, const float pos[3], float facing, float height, const float *quats, uint32_t bones_posed)
 {
     const void *body = body_of_class(oncc, 4);
@@ -37,12 +46,8 @@ void char_draw_pose(const void *oncc, const float pos[3], float facing, float he
     if (bones > BODY_MAX_BONES) return;
     if (quats && bones_posed != bones) quats = NULL, height = 0;
     float c = cosf(facing), s = sinf(facing);
-    BodyMatrix root = { c, 0, -s, 0, 1, 0, s, 0, c, pos[0], pos[1] + height, pos[2] }, m[BODY_MAX_BONES];
-    if (!body_matrices(body, root, quats, m)) return;
-    for (uint32_t b = 0; b < bones; b++) {
-        const void *g = body_geometry(body, b);
-        geom_draw(g, m[b], body_texture(oncc, b));
-    }
+    BodyMatrix root = { c, 0, -s, 0, 1, 0, s, 0, c, pos[0], pos[1] + height, pos[2] };
+    draw_root(oncc, root, quats);
 }
 
 void char_draw(const void *oncc, const float pos[3], float facing, const void *tram, uint32_t frame)
@@ -60,5 +65,12 @@ void char_draw(const void *oncc, const float pos[3], float facing, const void *t
 
 void char_draw_character(const Character *c)
 {
-    char_draw_pose(c->oncc, c->pos, c->facing, c->pelvis_height, c->aimed, CHR_BONES);
+    const void *body = body_of_class(c->oncc, 4);
+    if (!body || body_bones(body) != CHR_BONES) {
+        char_draw_pose(c->oncc, c->pos, c->facing, c->pelvis_height, c->aimed, CHR_BONES);
+        return;
+    }
+    BodyMatrix root;
+    chr_root_matrix(c, root);   /* an environment animation's, if one plays */
+    draw_root(c->oncc, root, c->aimed);
 }

@@ -33,22 +33,27 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   consoles, animated objects and a growing share of the game's script commands, among them those that
   set the AI's awareness, health and movement modes.
 - **The level chain**: a level's `win` loads the next level and its `lose` plays the same level again,
-  as the original's game loop does. The mission timer counts down and runs its script at zero.
+  as the original's game loop does, from the last save point the level's scripts made (`save_game`,
+  `restore_game`: health, place, inventory and weapon put back). The mission timer counts down and runs its script at zero.
 - **The cutscenes**: the films (a character's input recorded tick by tick and played back), the
-  camera's moves, the letterbox, and the AI held still while they play.
+  characters carried by object animations (Konoko's motorbike ride into the airport), the camera's
+  moves, the letterbox, and the AI held still while they play.
+- **The laser triggers**: the beams sweep, blink and set off their alarms and scripts when the player
+  crosses them.
 - **The particle system**, the engine under every shot, spark and shard of glass. It covers the particle
   classes, emitters, events and actions, plus collisions with the walls and characters, and damage.
   Projectiles fly and stop on what they hit, and break the glass made of breakable materials. The
   particles are drawn as the original draws them: sprites with their orientations, fades and animated
-  textures, and geometry such as the glass shards and the shell casings.
+  textures, and geometry such as the glass shards and the shell casings. The level's own emitters
+  (smoke, sparks, steam) run and answer the scripts' `particle` command.
 - **Sound** from the game's own sound groups.
 
 ## Not yet
 
 - The particles' contrails, vectors, lens flares and decals (bullet holes), homing, and their sounds.
-- The AI's alarms, the gun pickups and the bosses' fighting; laser triggers. The power-ups' physics and
-  glow, and the HUD.
-- The front end (the menus), saving and loading, and the Bink movies.
+- The AI's alarms, the gun pickups and the bosses' fighting. The power-ups' physics and glow, and the
+  HUD.
+- The front end (the menus), saved games kept between sessions, and the Bink movies.
 - The other 13 levels as a playthrough.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked

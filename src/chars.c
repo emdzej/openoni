@@ -716,6 +716,34 @@ static bool cmd_animate_block(SlThread *t, int c, const SlValue *v, SlValue *r, 
     return animate(c, v, true);
 }
 
+/* chr_envanim char anim [norotation] (AI2iScript_EnvAnimate_Internal 0x4b7010): the character moved by
+   the object animation (its physics context's), turned by it unless "norotation". The block form waits
+   while an earlier one plays; it doesn't wait for the one it starts. chr_envanim_stop char (0x4b7240). */
+static bool envanim(int c, const SlValue *v, bool block)
+{
+    if (c < 2 || v[1].type != SL_STRING) return true;
+    Chr *ch = arg_char(&v[0]);
+    if (!ch) return true;       /* "chr_envanim or chr_envanim_block: no such character" */
+    if (!ch->c.has_physics) return true;    /* "has no physics context" */
+    if (block && ch->c.envanim.oban && ch->c.envanim.frame + 1 < (int)(((const uint8_t *)ch->c.envanim.oban)[OBAN_FRAMES] | ((const uint8_t *)ch->c.envanim.oban)[OBAN_FRAMES + 1] << 8))
+        return false;
+    const void *oban = tm_instance_get(TM_TAG("OBAN"), v[1].s);
+    if (!oban) return true;     /* "failed to find animation" */
+    bool no_rot = c >= 3 && v[2].type == SL_STRING && v[2].s && !strcmp(v[2].s, "norotation");
+    chr_envanim_start(&ch->c, oban, no_rot);
+    return true;
+}
+
+static bool cmd_envanim(SlThread *t, int c, const SlValue *v, SlValue *r, void *u) { (void)t, (void)r, (void)u; return envanim(c, v, false); }
+static bool cmd_envanim_block(SlThread *t, int c, const SlValue *v, SlValue *r, void *u) { (void)t, (void)r, (void)u; return envanim(c, v, true); }
+static bool cmd_envanim_stop(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    Chr *ch = c >= 1 ? arg_char(&v[0]) : NULL;
+    if (ch && ch->c.envanim.oban) chr_envanim_start(&ch->c, NULL, false);
+    return true;
+}
+
 /* The animation types' names: the table at 0x54d7c0 in the exe, 8 bytes an entry (the type as a u16
    in a u32, a pointer to its name), ended by a null name. 0x4f0370 sorts it and searches it without
    case; the port searches it in place. */
@@ -846,6 +874,9 @@ void chars_register_commands(void)
     sl_register("end_cutscene", cmd_end_cutscene, NULL);
     sl_register("chr_animate", cmd_animate, NULL);
     sl_register("chr_animate_block", cmd_animate_block, NULL);
+    sl_register("chr_envanim", cmd_envanim, NULL);
+    sl_register("chr_envanim_block", cmd_envanim_block, NULL);
+    sl_register("chr_envanim_stop", cmd_envanim_stop, NULL);
     sl_register("chr_wait_animtype", cmd_wait_animtype, NULL);
     sl_register("chr_wait_animstate", cmd_wait_animstate, NULL);
 }

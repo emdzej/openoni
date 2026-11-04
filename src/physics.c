@@ -7,12 +7,14 @@
 #include "chr_anim.h"
 #include "chr_hit.h"
 #include "m3gm.h"
+#include "ui.h"
 
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
 static uint32_t rd32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
+static uint16_t rd16u(const void *p, unsigned off) { const uint8_t *b = (const uint8_t *)p + off; return (uint16_t)(b[0] | b[1] << 8); }
 static float rdf(const uint8_t *p) { uint32_t v = rd32(p); float f; memcpy(&f, &v, 4); return f; }
 static float oncc_float(const Character *c, unsigned off) { return rdf((const uint8_t *)c->oncc + off); }
 
@@ -29,8 +31,8 @@ void physics_body(Character *c)
     uint32_t bones = body ? body_bones(body) : 0;
     float lo = c->pos[1], hi = c->pos[1] + 12.0f;
     if (bones && bones <= BODY_MAX_BONES && bones == CHR_BONES) {
-        float co = cosf(c->facing), si = sinf(c->facing);
-        BodyMatrix root = { co, 0, -si, 0, 1, 0, si, 0, co, c->pos[0], c->pos[1] + c->pelvis_height, c->pos[2] }, m[BODY_MAX_BONES];
+        BodyMatrix root, m[BODY_MAX_BONES];
+    chr_root_matrix(c, root);
         if (body_matrices(body, root, c->quats, m)) {
             for (uint32_t b = 0; b <= 10 && b < bones; b++) {
                 float box[6], sph[4] = { 0, 0, 0, 0 }, w[3];
@@ -87,6 +89,17 @@ void physics_place(Character *c, const float pos[3])
 
 void physics_take(Character *c, const float w[3])
 {
+    /* DoCharacterFrame 0x4ddba0: an environment animation at its last frame ends (0x4ed080: the
+       context's flags as before); while it plays the context is at its matrix's translation, down by the
+       pelvis's height (C+0x18c). Its rotation (the quarter turn) is the body's, not the place's. */
+    if (c->envanim.oban && (int)rd16u(c->envanim.oban, OBAN_FRAMES) - 1 <= c->envanim.frame) chr_envanim_start(c, NULL, false);
+    if (c->envanim.oban && c->has_physics) {
+        float m[12];
+        if (oban_matrix(c->envanim.oban, c->envanim.frame, (c->envanim.state & 2) != 0, m)) {
+            memcpy(c->phys_pos, m + 9, sizeof c->phys_pos);
+            c->phys_pos[1] -= c->pelvis_height;
+        }
+    }
     memcpy(c->prev_pos, c->pos, sizeof c->pos);
     if (c->has_physics) memcpy(c->pos, c->phys_pos, sizeof c->pos);
     c->move[0] = w[0];
@@ -356,6 +369,12 @@ static void after_move(Character *c, const void *env)
 void physics_update(Character *c, const void *env)
 {
     if (!c->has_physics || !env) return;
+    if (c->envanim.oban) {
+        /* animated (flags 0x44): PHrPhysics_Update_Animation 0x43a620 plays it; no move, walls or floor */
+        oban_update(&c->envanim, ui_time());
+        memset(c->phys_accel, 0, sizeof c->phys_accel);
+        return;
+    }
     /* UpdateCharacters' step 10: the move into the acceleration */
     for (int k = 0; k < 3; k++) c->phys_accel[k] += c->move[k];
     /* OBiPhysics_Update: no gravity (the character's own), the acceleration into the move */

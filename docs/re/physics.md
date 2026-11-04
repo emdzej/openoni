@@ -133,3 +133,22 @@ the next step 12.
    the air velocity and time cleared, and the damage of the fall from A+0xf0: none below ONCC+0x18,
    all the hit points beyond ONCC+0x1c, between them the share of the most hit points (C+0x3c),
    rounded. With damage the landing is the hard one (A+0x21de).
+
+## Environment animations (chr_envanim)
+
+`AI2iScript_EnvAnimate_Internal` 0x4b7010 gives the active character's physics context (A+4) an object
+animation: P+0x130 the `OBAN`, +0x134 its state (2 with `norotation`), +0x136 the frame, +0x138 the
+step, +0x13c the time. It is started (`OBrAnim_Start` 0x439580, its random start if the animation has
+one) and moved a frame on. 0x4ed080 sets the context's flags 0x44 (no gravity, no walls) while it plays.
+The block form only waits (the command retried) while an earlier one plays: frame + 1 below the frames.
+
+- `PHrPhysics_Update_Animation` 0x43a620, in the physics update, plays it.
+- `ONrGameState_DoCharacterFrame` 0x4ddba0 ends it at frames − 1 (the flags back). While it plays, the
+  context's position is the animation matrix's translation (`OBrAnim_Matrix` 0x4395f0), down by
+  C+0x18c, just before step 12 takes the position. The quarter turn it multiplies in there
+  (0x434c30, 0x434cf0 π/2 about x, 0x434d70, 0x434df0, 0x434b80) is computed and left unused.
+- The body's root (0x4e5a30) is the animation matrix times that quarter turn instead of
+  T(position)·R(facing). With `norotation` it is the matrix alone, which is a translation only, so the
+  character's facing is dropped.
+
+The port: `chr_envanim_start`, `chr_root_matrix` (character.c), `physics_take` and `physics_update`.

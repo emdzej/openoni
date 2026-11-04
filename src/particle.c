@@ -1390,8 +1390,8 @@ static void make_parts(Parts *x, const Character *c)
     const void *body = body_of_class(c->oncc, 4);
     uint32_t bones = body ? body_bones(body) : 0;
     if (bones != CHR_BONES) return;
-    float co = cosf(c->facing), si = sinf(c->facing);
-    BodyMatrix root = { co, 0, -si, 0, 1, 0, si, 0, co, c->pos[0], c->pos[1] + c->pelvis_height, c->pos[2] }, m[BODY_MAX_BONES];
+    BodyMatrix root, m[BODY_MAX_BONES];
+    chr_root_matrix(c, root);
     if (!body_matrices(body, root, c->aimed, m)) return;
     for (int b = 0; b < CHR_BONES; b++) {
         memcpy(x->m[b], m[b], sizeof x->m[b]);
@@ -1459,6 +1459,14 @@ static bool char_ray(const Parts *x, const float *s, const float *d, float radiu
         point[0] = w[0] * l + cen[0], point[1] = w[1] * l + cen[1], point[2] = w[2] * l + cen[2];
     }
     return true;
+}
+
+bool p3_character_ray(const Character *c, const float s[3], const float d[3], float point[3])
+{
+    Parts x;
+    make_parts(&x, c);
+    float t, n[3];
+    return char_ray(&x, s, d, 0.0f, &t, point, n);
 }
 
 /* WPrParticleBelongsToSelf 0x51ce20: the owner is the character itself. */

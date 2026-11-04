@@ -1276,3 +1276,21 @@
 004fd370	ONrGameState_Timer_Start	ON	low	the timer on with its function and ticks
 004fd3a0	ONrGameState_Timer_Stop	ON	low	the timer off (a sound if it ran)
 004fd3d0	ONrGameState_Timer_Update	ON	low	the timer's tick: at 0 the function runs, then 300 ticks of 0:00.0
+004cafc0	OBJiTrigger_Step	OBJ	low	each emitter a step along the animation, then its matrix
+004cb100	OBJiTrigger_Update	OBJ	low	the mechanics update: the active sound, the step, the on and off countdown
+004cb230	OBJiTrigger_Activate_Callback	OBJ	low	trig_activate's: flag 4, the countdown restarted
+004cb2b0	OBJiTrigger_Deactivate_Callback	OBJ	low	trig_deactivate's
+004cb3f0	OBJiTrigger_Speed_Callback	OBJ	low	trig_speed's: the speed now the factor times the object's
+00453d50	EPiParticle_Create	EP	low	an environment particle made at its matrix, its create event
+00453fe0	EPiParticle_Kill	EP	low	not running; the live particle killed
+00454040	EPiParticle_Reset	EP	low	killed, then made again unless not initially created
+00454420	EPrEnumerateTag	EP	low	the callback on every environment particle of a tag
+00454f90	EPrLoadParticles	EP	low	an ENVP array listed and, once the level has begun, made
+00455500	EPrLevelBegin	EP	low	every listed environment particle made; the level begun
+004b6ff0	AI2iScript_EnvAnimate	AI2	low	chr_envanim: the internal without the block
+004b7220	AI2iScript_EnvAnimateBlock	AI2	low	chr_envanim_block: waits while an earlier one plays
+004b7240	AI2iScript_EnvAnimateStop	AI2	low	chr_envanim_stop: the physics context's animation cleared
+004ed080	ONiCharacter_SetPhysicsFlags	ON	low	the context's flags: 0x44 while animated, 0x8000 without a weapon, 0x10 by C+4 bit 2
+004bd360	AIiScript_RestoreGame	AI	low	restore_game: ONrGameState_UseContinue
+004fda80	ONrGameState_ClearContinue	ON	low	the continue cleared, no save point (a won level)
+004fdaa0	ONrGameState_SetContinue	ON	low	the continue copied in with its save point

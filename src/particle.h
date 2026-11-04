@@ -62,6 +62,9 @@ uint32_t p3_class_def_flags(const P3Class *c, int which);   /* the definition's 
 float *p3_position(P3Class *c, P3Particle *p);
 /* P3rGetRealPosition 0x45acc0: with its offset and attachment matrix. False if it died. */
 bool p3_real_position(P3Class *c, P3Particle *p, float out[3]);
+/* ONrCharacter_Collide_Ray 0x4f1630 for anyone: the segment from s along d against the character's
+   parts; the nearest point on them. */
+bool p3_character_ray(const Character *c, const float s[3], const float d[3], float point[3]);
 /* The particle's block of the kind (P3_X_*), NULL if its class has none. */
 void *p3_block(P3Class *c, P3Particle *p, int x);
 /* The matrices particles hang from (P3_X_ATTACH holds an id): a weapon's, for its shooters. */

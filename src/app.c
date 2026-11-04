@@ -19,6 +19,10 @@
 #include "chr_hit.h"
 #include "weapon.h"
 #include "env.h"
+#include "envparticle.h"
+#include "laser.h"
+#include "save.h"
+#include "laser_draw.h"
 #include "env_draw.h"
 #include "exe.h"
 #include "geom_draw.h"
@@ -171,6 +175,14 @@ static void draw_objects(void)
         const void *txmp = NULL, *g = console_screen(i, &txmp, m);
         if (g) geom_draw(g, m, txmp);
     }
+    /* the laser triggers (OBJrTrigger_OnTrigger 0x4cb6f0): the beams tested as drawn, the emitters */
+    laser_frame();
+    for (int i = 0; i < laser_count(); i++)
+        for (int k = 0; k < laser_emitters(i); k++) {
+            float m[12];
+            const void *g = laser_emitter(i, k, m);
+            if (g) geom_draw(g, m, NULL);
+        }
     /* the weapons (WPrDisplay 0x519710) */
     for (int i = 0; i < weapon_slots(); i++) {
         const Weapon *w = weapon_get(i);
@@ -299,7 +311,6 @@ static bool cmd_dprint(SlThread *t, int argc, const SlValue *argv, SlValue *r, v
     return true;
 }
 
-static int32_t save_point;          /* the save point the level is started from (0: the level's start) */
 static float fog_rgb[3], fog_start = 0.99f, fog_end = 1.0f, far_clip = 10000.0f;
 
 static bool cmd_farclip(SlThread *t, int argc, const SlValue *argv, SlValue *r, void *u)
@@ -331,9 +342,11 @@ static void start_scripts(void)
     ui_register_commands();
     camera_register_commands();
     sound_register_commands();
+    envparticle_register_commands();
+    laser_register_commands();
     cinematic_register_commands();
     chars_register_commands();
-    sl_register_int("save_point", &save_point);
+    save_register_commands();   /* save_point, save_game, restore_game */
     sl_register_float("gl_fog_red", &fog_rgb[0]);
     sl_register_float("gl_fog_green", &fog_rgb[1]);
     sl_register_float("gl_fog_blue", &fog_rgb[2]);
@@ -686,10 +699,13 @@ static int play(int level, int *next)
     material_mark_breakable((void *)env);   /* AKrLevel_Begin: the glass */
     p3_load();      /* the PAR3 classes of the loaded files (the binary data's loader), set up at the start */
     p3_set_environment(env);
+    envparticle_load();     /* ONrLevel_Load: the level's environment particles, after the particle system starts */
     weapons_reset();
     powerups_reset();
     chars_arm();
     console_load();
+    laser_set_environment(env);
+    laser_load();
     action_install();
     env_set((void *)env);
     route_env = env;
@@ -750,6 +766,7 @@ static int play(int level, int *next)
         chars_update(&in, env);
         weapons_update(env);    /* WPrUpdate, after the characters */
         door_update();      /* the objects' update 0x507880, after the characters */
+        laser_update();     /* the triggers' (0x4cb100), the same mechanics update */
         particles_update(ticks + 1, true);     /* P3rUpdate(time + 1) after the physics */
         /* a script may delete the player: the camera keeps the last place */
         if ((player = chars_player())) fill_target(&ct, &player->c);
@@ -801,13 +818,15 @@ static int play(int level, int *next)
             for (int i = 0; i < chars_slots(); i++)
                 if (chars_get(i)) char_draw_character(&chars_get(i)->c);   /* the blended pose */
             particle_draw(view, p3_tick());     /* P3rDisplay */
+            laser_draw(view);
             if (player) ui_draw_hud(w, h, player->c.hit_points, player->c.max_hit_points, ticks);
             ui_draw(w, h);
         }
         /* ONiRunGame 0x4d4640: won, the next level (after level 19, the outro: not yet); lost, this
-           one again (the save point's restore: with saving) */
+           one again, from the save point (its scripts restore it) */
         if (ui_level_end() == 1) {
             *next = next_level(level);
+            save_clear();       /* 0x4fda80 */
             return 0;
         }
         if (ui_level_end() == 2) {

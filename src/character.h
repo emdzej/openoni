@@ -12,6 +12,8 @@
    Stand-ins: the floor and walls (akev.h) instead of the physics, and the game time (a tick count per
    character). Not yet: AI, weapons, throws, damage, particles and sounds. */
 #pragma once
+#include "oban.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -164,6 +166,9 @@ typedef struct Character {
     float ground_point[3];          /* A+0xe4 */
     uint16_t wall_hits;             /* A+0xb0: walls met this tick */
     bool has_physics;               /* A+0x04 != 0 */
+    /* The physics context's animation (chr_envanim: P+0x130, its state +0x134 with 2 for no rotation,
+       the frame +0x136, the step +0x138, the time +0x13c): while it plays the character is where it is. */
+    ObanPlayer envanim;
     /* the console action (action.h) */
     int32_t console_marker;         /* C+0x1680: the action marker it goes to use, -1 none */
     uint32_t console_deadline;      /* C+0x1684: the time it has to reach it by, 0 not yet set */
@@ -195,3 +200,12 @@ void character_update_input(Character *c, const ChrInput *in, const void *env);
 bool chr_holds_facing(const Character *c);
 /* The key state of a CharacterInput as the action bits held. */
 uint64_t chr_input_bits(const CharacterInput *in);
+
+/* The body's root (FUN_004e5a30's start): T(position + the pelvis's height) R(facing about y); while an
+   environment animation plays, its matrix at the frame and a quarter turn about x (none with no
+   rotation: its translation alone, the character turned no way). */
+void chr_root_matrix(const Character *c, float out[12]);
+/* chr_envanim's start (AI2iScript_EnvAnimate_Internal 0x4b7010): the animation from its start, a frame
+   on; NULL stops it (chr_envanim_stop 0x4b7240). */
+void chr_envanim_start(Character *c, const void *oban, bool no_rotation);
+bool chr_envanim_playing(const Character *c);

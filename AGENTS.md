@@ -57,7 +57,9 @@ Steps 4 (renderer), 6 (character) and 7 (scripts) have begun:
   stand-ins), [docs/formats/onwc.md](docs/formats/onwc.md). Route keys `q` swap, `g` fire, `e` drop.
 - `src/sl.c`: the BSL engine, running the level's scripts. `src/trigger.c` (trigger volumes),
   `src/object.c` (the level's objects, `obj_*` and `env_*anim`) and `src/env.c` (`env_show`) are its
-  first commands. [docs/re/character.md](docs/re/character.md) maps the character records for the
+  first commands; `src/laser.c` the laser triggers (`trig_*`), `src/envparticle.c` the level's
+  particle emitters (`particle`), `src/save.c` the save points (`save_game`, `restore_game`).
+  [docs/re/character.md](docs/re/character.md) maps the character records for the
   engine's port.
 
 `src/physics.c` gives the characters the original's floor and walls ([docs/re/physics.md](docs/re/physics.md)).

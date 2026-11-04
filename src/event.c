@@ -3,6 +3,7 @@
 
 #include "console.h"
 #include "door.h"
+#include "laser.h"
 #include "trigger.h"
 
 #include <string.h>
@@ -51,11 +52,12 @@ void event_list_run(const uint8_t *p, const char *who)
         }
         case EVENT_CONSOLE_ON: console_activate(id); break;     /* 0x4f3d90 -> 0x4c09a0 */
         case EVENT_CONSOLE_OFF: console_deactivate(id); break;  /* 0x4f3da0 -> 0x4c09f0 */
+        case EVENT_TRIGGER_ON: laser_activate(id); break;       /* -> 0x4cb200 */
+        case EVENT_TRIGGER_OFF: laser_deactivate(id); break;    /* -> 0x4cb280 */
         case EVENT_LOCK_DOOR: door_lock_id(id, true); break;    /* 0x4f3de0 -> OBJrDoor_Lock_ID */
         case EVENT_UNLOCK_DOOR: door_lock_id(id, false); break; /* 0x4f3df0 -> OBJrDoor_Unlock_ID */
         default:
-            /* turrets (0x4cd990, 0x4cda80), alarms (0x49ac30, 0x4cae10) and the laser triggers (0x4cb200,
-               0x4cb280) aren't ported */
+            /* turrets (0x4cd990, 0x4cda80), alarms (0x49ac30, 0x4cae10) aren't ported */
             break;
         }
         at += 2 + s;

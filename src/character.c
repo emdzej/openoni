@@ -905,3 +905,47 @@ void character_update_input(Character *c, const ChrInput *in, const void *env)
     if (!(c->flags & 2)) heartbeat_input(c, &b);
     do_frame(c, env, &b);
 }
+
+/* ---- the environment animations (chr_envanim) ---- */
+
+enum { ENVANIM_NO_ROTATION = 0x02 };    /* P+0x134 */
+
+bool chr_envanim_playing(const Character *c) { return c->envanim.oban != NULL; }
+
+void chr_envanim_start(Character *c, const void *oban, bool no_rotation)
+{
+    oban_player_init(&c->envanim, oban);
+    if (!oban) return;      /* the stop: everything cleared */
+    c->envanim.frame = 1;
+    c->envanim.step = 1;
+    if (no_rotation) c->envanim.state = ENVANIM_NO_ROTATION;
+    oban_start(&c->envanim, 0);     /* OBrAnim_Start 0x439580 */
+    c->envanim.frame++;
+    /* (0x4ed080: the context's flags 0x44 while animated, no gravity nor walls: physics_update) */
+}
+
+void chr_root_matrix(const Character *c, float out[12])
+{
+    if (c->envanim.oban) {
+        bool no_rot = c->envanim.state & ENVANIM_NO_ROTATION;
+        float m[12];
+        if (oban_matrix(c->envanim.oban, c->envanim.frame, no_rot, m)) {
+            if (no_rot) {
+                memcpy(out, m, sizeof m);
+                return;
+            }
+            /* 0x434c30, 0x434cf0 (pi/2 about x), 0x434d70 and 0x434df0 (0 about y and z), behind the
+               animation's (0x434b80) */
+            float cx = cosf(1.5707964f), sx = sinf(1.5707964f);
+            const float r[9] = { 1, 0, 0, 0, cx, sx, 0, -sx, cx };
+            for (int col = 0; col < 3; col++)
+                for (int k = 0; k < 3; k++)
+                    out[3 * col + k] = m[k] * r[3 * col] + m[3 + k] * r[3 * col + 1] + m[6 + k] * r[3 * col + 2];
+            memcpy(out + 9, m + 9, 12);
+            return;
+        }
+    }
+    float co = cosf(c->facing), si = sinf(c->facing);
+    const float r[12] = { co, 0, -si, 0, 1, 0, si, 0, co, c->pos[0], c->pos[1] + c->pelvis_height, c->pos[2] };
+    memcpy(out, r, sizeof r);
+}
