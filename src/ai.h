@@ -53,6 +53,11 @@ typedef struct {
     int behaviour[5];           /* C+0x1034: for the ranges 1..5 (COMBAT_RANGE_*) */
     int no_gun;                 /* C+0x104c: when the unarmed fight (COMBAT_NO_GUN_*) */
     int no_gun_else;            /* C+0x1050: what they do otherwise (0 melee, 1 retreat, 2 the alarm) */
+    /* the alarm's (the object's +0x7c..+0x8c): how far a console is looked for, the enemy distance
+       beyond which it is ignored and within which it is fought, the damage that makes it fight, and
+       how long a fight lasts before the alarm again (ticks) */
+    float alarm_find, alarm_ignore, alarm_chase;    /* C+0xfec, 0xff0, 0xff4 */
+    uint32_t alarm_damage, alarm_fight;             /* C+0xff8, 0xffc */
 } CombatSettings;
 
 /* The targeting (AI2rTargeting, the combat state's +0x90): where the target will be, the aim toward
@@ -125,6 +130,7 @@ typedef struct {
     uint32_t gun_below;         /* +0x1e0: maneuvers next to it but not level with it */
     uint32_t gun_ignored_n;     /* +0x1e4 */
     const struct Weapon *gun_ignored[4];    /* +0x1e8: the ones found out of reach */
+    int alarm_marker;           /* +0x200: the alarm maneuver's console marker */
     bool dazed;                 /* +0x189: lying through the daze (behaviour message 6) */
     int getup;                  /* +0x1f8: 4 none, else the getting up's weight is given */
     bool melee_ok;              /* +0x454: may fight hand to hand */
@@ -166,6 +172,14 @@ typedef struct {
     bool daze_started;      /* C+0x101c: this fall's daze has begun */
     uint32_t daze_timer;    /* C+0x1020: ticks left lying */
     int alert;              /* C+0xf94: 0 lull .. 4 combat */
+    /* the alarm (alarm.c) */
+    uint32_t alarm_groups;  /* C+0xfd8: the alarm groups it answers (bits) */
+    int alarm_marker;       /* C+0xfdc: the console's action marker it runs to, -1 none */
+    int alarm_last;         /* C+0xfe0: the one its tries are counted for */
+    uint32_t alarm_tries;   /* C+0xfe4 */
+    uint32_t alarm_fight_timer;     /* C+0xfe8: ticks of fighting left before the alarm again */
+    float alarm_goal[3];    /* the alarm state's block +8: 5 back from the marker */
+    uint32_t alarm_wait;    /* +0x14: ticks to wait, not standing, before trying again */
     int state;              /* C+0x1f8: AI_STATE_* */
     int job;                /* C+0x1f4: the state it goes back to (ai2_setjobstate) */
     int job_patrol;         /* the job's patrol path (C+0x200's copy of the state block), -1 none */
@@ -242,3 +256,6 @@ void ai_update(AiState *a, Character *c, const void *env);
 void ai_move_to(AiState *a, const float p[3], bool face, float angle);
 /* The same, arriving within radius (and not stopping there when through). */
 void ai_move_near(AiState *a, const float p[3], float radius, bool face, float angle);
+/* The pursuit state (C+0x1f8 6, C+0x8c0 the contact), as the combat and alarm states enter it
+   (AI2rExitState, then AI2rEnterState on C+0x8b8's block). */
+void ai_pursue(AiState *a, struct KnowEntry *e);

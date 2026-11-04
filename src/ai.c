@@ -2,6 +2,7 @@
 #include "ai.h"
 #include "chars.h"
 #include "combat.h"
+#include "alarm.h"
 #include "graph.h"
 #include "localpath.h"
 #include "knowledge.h"
@@ -35,6 +36,7 @@ void ai_init(AiState *a)
     a->local_seg = -1;
     a->aim.speed = 1.0f;
     a->aim.last_facing = 1000.0f;
+    a->alarm_marker = a->alarm_last = -1;
 }
 
 void ai_executor_move(AiState *a, float facing, int mode, int kind, bool full_turn)
@@ -232,6 +234,7 @@ enum { ONCC_COMBAT_WAIT_RELOAD = 0x138 + 0x154, ONCC_COMBAT_WAIT = 0x138 + 0x158
 
 void ai_exit_state(AiState *a)
 {
+    if (a->state == AI_STATE_ALARM) a->movement_mode = 0;     /* 0x48e7f0: the default movement mode */
     /* the job's block (C+0x200) stays as it was: the port keeps its patrol */
     if (a->state == a->job && a->patrol >= 0) a->job_patrol = a->patrol, a->job_point = a->point;
     a->patrol = -1;
@@ -281,8 +284,7 @@ static void combat_lost(AiState *a, const Character *c)
     }
 }
 
-/* The pursuit state (C+0x8c0 the contact), as the combat state enters it. */
-static void combat_to_pursuit(AiState *a, KnowEntry *e)
+void ai_pursue(AiState *a, KnowEntry *e)
 {
     ai_exit_state(a);
     a->state = AI_STATE_PURSUIT;
@@ -309,7 +311,7 @@ void ai_combat_notify(AiState *a, const Character *c, KnowEntry *e, bool degrade
            kept by the port) */
         a->combat_pursue_delay = oncc_u32(c, ONCC_COMBAT_PURSUE);
         if (a->combat_pursue_delay) return;
-        combat_to_pursuit(a, e);
+        ai_pursue(a, e);
         return;
     }
     if (e == a->target_entry) {
@@ -341,7 +343,7 @@ static bool combat_update(AiState *a, Character *c)
             /* (as the exe does: any delay left pursues at once, counting it down by one) */
             a->combat_pursue_delay--;
             KnowEntry *e = knowledge_find((Chr *)c, a->target);
-            if (e) combat_to_pursuit(a, e);
+            if (e) ai_pursue(a, e);
             else ai_return_to_job(a);   /* "lost contact" */
             return false;
         }
@@ -370,6 +372,8 @@ static void state_stand_in(AiState *a, Character *c, const void *env)
     if (a->state == AI_STATE_COMBAT) {
         bool has_target = combat_update(a, c);
         if (a->state == AI_STATE_COMBAT) combat_tick(a, c, env, has_target);
+    } else if (a->state == AI_STATE_ALARM) {
+        alarm_update(a, c);
     } else if (a->state == AI_STATE_PURSUIT && a->target_entry && !a->point_started) {
         const float *p = a->target_entry->pos;
         ai_move_near(a, p, 8.0f, true, wrap_2pi(atan2f(p[0] - c->pos[0], p[2] - c->pos[2])));
@@ -383,7 +387,10 @@ void ai_update(AiState *a, Character *c, const void *env)
     if (a->daze_timer && (c->state == 0x12 || c->state == 0x32)) a->daze_timer--;
     if (a->flags & AI_FLAG_PASSIVE) a->moving = false;     /* AI2rPassive 0x48b160: the state left, the path halted */
     else if (a->patrol >= 0 && !(c->flags & 1)) patrol_update(a, c->pos, c->facing, a->name);
-    else if (!(c->flags & 1)) state_stand_in(a, c, env);
+    else if (!(c->flags & 1)) {
+        state_stand_in(a, c, env);
+        alarm_fight_tick(a, c);
+    }
     a->ticks++;
     mover(a, c, env);
     combat_aim(a, c);

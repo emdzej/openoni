@@ -1,5 +1,6 @@
 /* The level's characters: see chars.h. */
 #include "chars.h"
+#include "alarm.h"
 #include "combat.h"
 #include "film.h"
 
@@ -106,6 +107,7 @@ static Chr *create(int object)
     c->ai.job = c->ai.state;
     c->ai.job_patrol = c->ai.patrol;
     c->ai.job_alert = (int)objc_char_job_alert(o);
+    c->ai.alarm_groups = objc_char_alarm_groups(o);
     chr_hit_init(&c->c, objc_char_extra_health(o));
     if (armed) arm(c);
     return c;
@@ -414,6 +416,15 @@ static bool cmd_forceholster(SlThread *t, int c, const SlValue *v, SlValue *r, v
     if (!ch) return true;       /* "chr_forceholster" (0x54805c): no such character */
     if (c >= 2 && num(&v[1]) > 0) chr_force_holster(&ch->c);
     else chr_force_draw(&ch->c);
+    return true;
+}
+
+/* ai2_doalarm char [console] (alarm.c) */
+static bool cmd_doalarm(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 1) return true;
+    alarm_script(arg_char(&v[0]), c >= 2 ? (uint16_t)num(&v[1]) : 0);
     return true;
 }
 
@@ -882,6 +893,7 @@ void chars_register_commands(void)
     sl_register("ai2_dopath", cmd_dopath, NULL);
     sl_register("ai2_passive", cmd_passive, NULL);
     sl_register("ai2_setjobstate", cmd_setjobstate, NULL);
+    sl_register("ai2_doalarm", cmd_doalarm, NULL);
     sl_register("chr_changeteam", cmd_changeteam, NULL);
     sl_register("chr_nocollision", cmd_nocollision, NULL);
     sl_register("chr_forceholster", cmd_forceholster, NULL);

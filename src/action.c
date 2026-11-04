@@ -1,5 +1,6 @@
 /* The action key's objects: see action.h. */
 #include "action.h"
+#include "weapon.h"
 
 #include "chars.h"
 #include "chr_anim.h"
@@ -50,10 +51,10 @@ bool action_can_use(const Character *c, int marker, bool wide)
     return true;
 }
 
-/* 0x4ee1b0: the console action starts. */
-static void start(Character *c, int marker)
+void action_start(Character *c, int marker)
 {
     c->console_marker = marker;
+    if (c->weapon) chr_force_holster(c);    /* ONrCharacter_Holster(forced) */
     c->console_deadline = 0;
 }
 
@@ -141,7 +142,7 @@ static bool hook(Character *c, const ChrInput *in)
     pelvis(c, p);
     int marker = console_marker_nearest(p);
     if (marker >= 0 && action_can_use(c, marker, false)) {
-        start(c, marker);
+        action_start(c, marker);
         return true;
     }
     const Chr *who = (const Chr *)c;

@@ -457,9 +457,59 @@ the feet, toward it at the aiming speed (A+0x1ab4 × 6° a tick, by the weapon's
 states, 0x52a4d8); more than 130° off the facing it aims ahead. `DoCharacterFrame` turns the point into
 the character's aim (A+0x21bc, 0x21c0) for an AI's character not under a film.
 
-Not ported yet: the bosses' behaviours, the running gun pickup, the alarm, the getting up, the attack of
+Not ported yet: the bosses' behaviours, the running gun pickup, Run For Alarm, the getting up, the attack of
 opportunity (0x49f2e0), the melee wait of an empty weapon (B+0x64), the objects in the line of fire,
 the arc's steps; the local paths of the advance and the retreat are the port's stand-ins.
+
+## The alarm
+
+The alarm state (C+0x1f8 7; `src/alarm.c`, its test `tests/alarm_test.c`: level 1's Bay4_Comguy_1 runs
+upstairs to console 6 and uses it). Its settings are the Combat object's last five fields, copied by
+`AI2rInitializeCharacter` 0x48a6b0:
+
+| Object | Character | What | Default |
+|---|---|---|---|
+| +0x7c | C+0xfec | how far (by way) an alarm console is looked for | 300 |
+| +0x80 | C+0xff0 | enemies beyond this are ignored | 80 |
+| +0x84 | C+0xff4 | enemies within this are fought | 0 |
+| +0x88 | C+0xff8 | the damage from an enemy that makes it fight | 30 |
+| +0x8c | C+0xffc | the ticks a fight lasts before the alarm again | 360 |
+
+The run's own fields: C+0xfdc the console's action marker, C+0xfe0 the marker its tries count for,
+C+0xfe4 the tries, C+0xfe8 the fight time left. The CHAR object's +0x1e4 is C+0xfd8, the alarm groups.
+
+- **The console** (`AI2rAlarm_FindAlarmConsole` 0x48eb70, each console through 0x48ebc0): an alarm
+  console (flag 0x40), active, not used, with the shortest way to its marker within the find distance
+  (`PHrPathDistance`, bounded by the best so far).
+- **Setup** (`AI2rAlarm_Setup` 0x48e810, marker or none for the current one): another marker ends the
+  current run first (0x48e950); the fight time is cleared; a new marker restarts the tries; the
+  alarm state is entered. **Enter** (0x48e360): the calm states' knowledge handler, every contact's
+  damage (+0x3c) cleared, the goal 5 back from the marker along its facing, movement mode 6 (running),
+  no aim, glance or held facing, then `AI2rPath_GoToPoint` within 5 facing the marker's way.
+  **Exit** (0x48e7f0): the path halted, movement mode 0.
+- **The tick** (0x48e410). Using the console (C+0x1680): the path halted. No marker: the pursuit of
+  the best hostile contact (hostility and strength above 1; the list is by importance, the nearest of
+  the strongest), else back to the job. An enemy contact (strength above 3) within the ignore distance
+  and either within the chase distance or with the damage threshold done: the fight time, then the
+  pursuit of it (the original does so for each such contact and goes on; the port takes the last and
+  stops). On the way, lying, it gets up (forward). There: not standing still (0x4ed280), it waits 60
+  ticks; standing, if the marker can be used with the AI's wider limits (`ONrGameState_TryActionMarker`
+  0x4f5840) the console action starts (0x4ee1b0, which holsters the weapon in hand, for the player
+  too). Else, lying, the back key; after three tries the run ends (0x48e950: the pursuit of the best
+  contact, else the job); else the path again and a try counted.
+- **The fight on the way.** In combat with a run pending, a target within the chase distance renews
+  the fight time and one beyond the ignore distance sends it back (`AI2rAlarm_Setup`).
+  `AI2rUpdateAI` 0x489d40 counts the fight time down out of the alarm state and resumes the run at 0.
+- **Into the alarm**: the combat maneuver 4 (the no-gun behaviour's fallback 2; the console set
+  beforehand, B+0x1fc, is never written, so the nearest is looked for), then Setup after the
+  selection; `ai2_doalarm char [console]` (`AI2iScript_SetState_Alarm` 0x4b4db0: by id, active and
+  unused, else the nearest); the pursuit's lost mode with C+0xfc4 2 (0x4b1350; not ported with the
+  pursuit) and the knockdown (0x48ea40; not ported).
+- **The alarm event** (event type 6, its id the group: 0x49ac30): every AI not passive whose groups
+  have that bit, but the setter, gets a pending alarm contact (`AI2iKnowledge_AddPending`, type 9,
+  strength 3, the setter's place, value the group) and flag 0x10; a setter that is the player only if
+  the AI doesn't ignore it (0x2000), an AI setter only if one of the two is hostile to the other.
+  Event 7 (0x4cae10) does nothing.
 
 ## Melee
 

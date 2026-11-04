@@ -13,6 +13,7 @@ enum {
     CONSOLE_ACTIVE = 0x04,          /* run time */
     CONSOLE_ACTIVE_AT_START = 0x08, /* the OSD's: the level's start and console_reset copy it to 0x04 */
     CONSOLE_PUNCH = 0x20,           /* used with the punch (animation type 0xdd) instead of 0xc4 */
+    CONSOLE_ALARM = 0x40,           /* an alarm console: the AI runs to it (AI2rAlarm_FindAlarmConsole) */
 };
 
 /* Reads the level's consoles (objc.h) and does what OBJiConsole_LevelBegin 0x4c1c20 does: the marker,
@@ -38,6 +39,7 @@ typedef struct {
 /* 0x506f20: the marker nearest p (distance squared), -1 none. */
 int console_marker_nearest(const float p[3]);
 const ActionMarker *console_marker(int i);
+int console_marker_count(void);
 
 /* OBJrConsole_OnActivate 0x4c0880: the sound of the state; an active, unused console becomes used and
    runs its events (who: the character's name). */

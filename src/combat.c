@@ -1,5 +1,6 @@
 /* The AI's combat: see combat.h. */
 #include "combat.h"
+#include "alarm.h"
 #include "akev.h"
 #include "chars.h"
 #include "chr_anim.h"
@@ -30,7 +31,8 @@ static float len3(const float v[3]) { return sqrtf(v[0] * v[0] + v[1] * v[1] + v
 
 /* The Combat object (OBJcCombat, version 39): the name (64), the id (u16 at +0x40), the flags (+0x42),
    the behaviours of the five ranges (+0x44), the medium range (+0x58), the unarmed's (+0x5c, +0x60),
-   the short range (+0x64), the pursuit distance (+0x68), then the alarm's settings. */
+   the short range (+0x64), the pursuit's (+0x68..+0x78), then the alarm's (+0x7c..+0x8c: the find,
+   ignore and chase distances, the damage threshold, the fight time). */
 enum { COMBAT_PROFILES_MAX = 64 };
 static const uint8_t *profiles[COMBAT_PROFILES_MAX];
 static int n_profiles;
@@ -63,6 +65,11 @@ void combat_settings(AiState *a, uint16_t id)
         s->no_gun = 3;
         s->no_gun_else = 0;
         s->near = 40.0f;
+        s->alarm_find = 300.0f;
+        s->alarm_ignore = 80.0f;
+        s->alarm_chase = 0.0f;
+        s->alarm_damage = 30;
+        s->alarm_fight = 360;
         return;
     }
     s->id = id;
@@ -71,6 +78,11 @@ void combat_settings(AiState *a, uint16_t id)
     s->no_gun = (int)rd32(p + 0x5c);
     s->no_gun_else = (int)rd32(p + 0x60);
     s->near = rdf(p + 0x64);
+    s->alarm_find = rdf(p + 0x7c);
+    s->alarm_ignore = rdf(p + 0x80);
+    s->alarm_chase = rdf(p + 0x84);
+    s->alarm_damage = rd32(p + 0x88);
+    s->alarm_fight = rd32(p + 0x8c);
 }
 
 /* ---- the targeting ---- */
@@ -666,8 +678,6 @@ void combat_enter(AiState *a)
 {
     CombatState *s = &a->combat;
     s->maneuver = -1;
-    s->gun_far = 0.0f;
-    s->gun_running = false;
     s->gun = NULL;
     s->gun_thwarted = s->gun_below = s->gun_ignored_n = 0;
     memset(s->gun_ignored, 0, sizeof s->gun_ignored);
@@ -825,8 +835,7 @@ static bool try_gun_pickup(AiState *a, Character *c, const void *env, float seco
 
 /* 0x49dbf0: the heaviest maneuver that can be done (a failing one's weight goes, and the next is
    tried). The local paths' tests (AI2rTryLocalMovement, AI2rFindLocalPath, the blockage) are the
-   port's stand-ins: the advance runs to the target's point, the retreat backs straight away 15. The
-   alarm isn't ported (it fails). */
+   port's stand-ins: the advance runs to the target's point, the retreat backs straight away 15. */
 static void select_maneuver(AiState *a, Character *c, const void *env)
 {
     CombatState *s = &a->combat;
@@ -883,6 +892,11 @@ static void select_maneuver(AiState *a, Character *c, const void *env)
         case COMBAT_MANEUVER_GUN:
             ok = try_gun_pickup(a, c, env, w, arrived);
             break;
+        case COMBAT_MANEUVER_ALARM:
+            /* (a console set beforehand, B+0x1fc, is never set) the nearest alarm console by way */
+            s->alarm_marker = alarm_find_console(a, c);
+            ok = s->alarm_marker >= 0;
+            break;
         case COMBAT_MANEUVER_MELEE:         /* 0x49e910 */
             if (!a->melee.profile || !s->t.target) break;
             if (dist_to(c, s->t.target->pos) * dist_to(c, s->t.target->pos) < 6400.0f) {   /* 0x52a9a4 */
@@ -915,6 +929,7 @@ static void select_maneuver(AiState *a, Character *c, const void *env)
         }
         if (ok) {
             s->maneuver = best;
+            if (best == COMBAT_MANEUVER_ALARM) alarm_setup(a, c, s->alarm_marker);     /* AI2rAlarm_Setup */
             return;
         }
         s->weight[best] = 0.0f;
@@ -1099,6 +1114,15 @@ void combat_tick(AiState *a, Character *c, const void *env, bool has_target)
             /* (the port's: closing in when there is no technique to do) */
             float dx = target->pos[0] - c->pos[0], dz = target->pos[2] - c->pos[2];
             ai_move_near(a, target->pos, 12.0f, true, wrap_2pi(atan2f(dx, dz)));
+        }
+    }
+    /* an alarm run left for the fight: a target within the chase distance keeps it fighting for the
+       fight time; one beyond the ignore distance sends it back to the alarm (AI2rAlarm_Setup) */
+    if (a->alarm_marker >= 0) {
+        if (s->dist < a->combat_set.alarm_chase) a->alarm_fight_timer = a->combat_set.alarm_fight;
+        else if (s->dist > a->combat_set.alarm_ignore) {
+            alarm_setup(a, c, -1);
+            return;
         }
     }
     /* the trigger */

@@ -174,6 +174,8 @@ void console_reset(uint16_t id)
     }
 }
 
+int console_marker_count(void) { return nmarkers; }
+
 int console_marker_nearest(const float p[3])
 {
     int best = -1;

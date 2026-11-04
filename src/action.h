@@ -12,3 +12,5 @@
 void action_install(void);
 /* 0x4f5840: whether the character can use the marker from where it is (wide: the AI's wider limits). */
 bool action_can_use(const Character *c, int marker, bool wide);
+/* 0x4ee1b0: the console action starts (the weapon in hand holstered first). */
+void action_start(Character *c, int marker);
