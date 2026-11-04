@@ -933,10 +933,8 @@ uint32_t wm_dialog_modal(uint16_t id, WmDialogProc proc, uintptr_t param)
     if (proc) proc(w, WM_INITDIALOG, param, 0);
     DialogData *d = (DialogData *)w->data;
     while (d && !d->done) {
-        if (plat_frame_shown()) {
-            if (draw_callback) draw_callback();
-            wm_display();
-        }
+        if (draw_callback) draw_callback();     /* the game behind: its display runs, drawn or not */
+        if (plat_frame_shown()) wm_display();
         wm_update();
         WmWindow *t;
         uint32_t msg;

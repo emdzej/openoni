@@ -6,8 +6,7 @@
    the events of WPiDoEvent 0x519f70 go to them and they emit the projectiles. The port has no particle
    system yet: a shooter's particle is a stand-in that exists when its class does, takes the events and
    emits nothing. Not ported either: the physics of a weapon in the world (the port rests it on the
-   floor below), the stowed slots (C+0x198, 0x19c), reloading (WPrTryReload 0x51c560), powerups, the
-   AI's use, the noise of a shot (AI2rKnowledge_Sound), holstering and drawing (overlay slot 1). */
+   floor below), the AI's use, the noise of a shot (AI2rKnowledge_Sound). */
 #pragma once
 #include "character.h"
 
@@ -75,6 +74,15 @@ void weapons_update(const void *env);
 void weapons_install(void);
 /* ONrCharacter_SetWeapon 0x4e4c00: the weapon in the character's hand (NULL none). */
 void chr_set_weapon(Character *c, Weapon *w);
+/* The slots: 0 the hand (C+0x194), 1 and 2 the stowed ones (C+0x198, 0x19c). */
+Weapon *chr_slot(const Character *c, int i);
+/* 0x4eff60: the hand's weapon holstered (forced: stowed even with slot 1 taken, else dropped); 0x4effa0:
+   the stowed one drawn into the empty hand. Both by the overlay animations (Holster, Draw_*). */
+void chr_force_holster(Character *c);
+void chr_force_draw(Character *c);
+/* ONrCharacter_PickupWeapon 0x4ed770 without a weapon: at once, the hand's stowed (forced: into an empty
+   slot, dropped with none) or traded for the stowed one. */
+void chr_stow(Character *c, bool force);
 /* The player's first weapon of a class (ONrInGameUI_NewWeapon 0x505050, set by the app to
    igui_new_weapon). */
 extern void (*weapon_new_hook)(const void *onwc);

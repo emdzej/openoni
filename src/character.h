@@ -110,6 +110,7 @@ typedef struct Character {
     ChrOverlay overlay[CHR_OVERLAYS];       /* A+0x1c58 */
     /* weapons (weapon.h) */
     struct Weapon *weapon;          /* C+0x194: the one in the hand */
+    struct Weapon *stowed[2];       /* C+0x198, 0x19c: the ones put away (holstered) */
     struct Weapon *pickup;          /* C+0x1d8: the one a pickup animation goes for */
     struct Powerup *pickup_powerup; /* C+0x1d8 too: the powerup a pickup animation goes for */
     /* the inventory (C+0x1a2..0x1ba, WPrInventory) */

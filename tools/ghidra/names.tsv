@@ -1393,3 +1393,9 @@
 0050f3e0	ONrPersist_SetGamma	ON	low	+0x54 if 0..1, then the display's (0x407a60)
 0050f450	ONrPersist_GetGamma	ON	low	+0x54 clamped to 0..1
 005125c0	OSiDialog_Play	OS	low	a dialogue line started, its subtitle shown when on
+0051b5f0	WPrSlot_DeleteAll	WP	low	the three slots' weapons deleted (the character's deletion)
+0051bc20	WPrSlot_FindEmpty	WP	low	an empty slot: slot 1 first if asked, else the last but 1
+004edeb0	ONrCharacter_Draw	ON	low	a stowed weapon drawn by Draw_Pistol/Rifle (0xa1, 0xa2)
+004eff60	ONrCharacter_ForceHolster	ON	low	the hand's weapon holstered, forced (begin_cutscene, chr_forceholster)
+004effa0	ONrCharacter_ForceDraw	ON	low	the stowed weapon drawn into the empty hand (end_cutscene, chr_forceholster)
+004edbd0	ONrCharacter_HasWeapon	ON	low	one in the hand or stowed

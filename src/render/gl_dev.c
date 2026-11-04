@@ -68,6 +68,9 @@ static void attribs(void)
     glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(GlVertex), (void *)offsetof(GlVertex, r));
 }
 
+static bool dry;      /* a frame not shown: its drawing walked, nothing sent to GL */
+void gl_dev_set_dry(bool on) { dry = on; }
+
 bool gl_dev_init(void)
 {
     if (prog) return true;      /* once: the next levels keep it */
@@ -98,6 +101,7 @@ bool gl_dev_init(void)
 
 void gl_dev_begin(int w, int h, float r, float g, float b)
 {
+    if (dry) return;
     glViewport(0, 0, w, h);
     glDisable(GL_SCISSOR_TEST);
     glDepthMask(GL_TRUE);
@@ -116,6 +120,7 @@ void gl_dev_begin(int w, int h, float r, float g, float b)
 
 void gl_dev_matrices(const float proj[16], const float view[16])
 {
+    if (dry) return;
     glUseProgram(prog);
     glUniformMatrix4fv(u.proj, 1, GL_FALSE, proj);
     glUniformMatrix4fv(u.view, 1, GL_FALSE, view);
@@ -123,6 +128,7 @@ void gl_dev_matrices(const float proj[16], const float view[16])
 
 void gl_dev_fog(float start, float end, float r, float g, float b)
 {
+    if (dry) return;
     fog_start = start;
     fog_end = end;
     fog_rgb[0] = r, fog_rgb[1] = g, fog_rgb[2] = b;
@@ -133,6 +139,7 @@ void gl_dev_fog(float start, float end, float r, float g, float b)
 
 void gl_dev_cull(int mode)
 {
+    if (dry) return;
     if (!mode) {
         glDisable(GL_CULL_FACE);
         return;
@@ -214,6 +221,7 @@ unsigned gl_dev_texture_alpha(const void *key, int w, int h, const uint8_t *alph
 
 void gl_dev_screen(int w, int h)
 {
+    if (dry) return;
     float proj[16] = { 0 }, view[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
     proj[0] = 2.0f / (float)(w > 0 ? w : 1);
     proj[5] = -2.0f / (float)(h > 0 ? h : 1);
@@ -293,6 +301,7 @@ static void state(unsigned tex, int mode)
 
 void gl_dev_draw_mesh(unsigned m, uint32_t first, uint32_t count, unsigned tex, int mode)
 {
+    if (dry) return;
     if (!m || m >= MAX_MESHES || !meshes[m].vao || !count) return;
     state(tex, mode);
     glBindVertexArray(meshes[m].vao);
@@ -302,6 +311,7 @@ void gl_dev_draw_mesh(unsigned m, uint32_t first, uint32_t count, unsigned tex, 
 
 void gl_dev_draw(const GlVertex *v, uint32_t nv, const uint16_t *idx, uint32_t ni, unsigned tex, int mode)
 {
+    if (dry) return;
     if (!ni) return;
     state(tex, mode);
     glBindVertexArray(vao);

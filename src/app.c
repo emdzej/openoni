@@ -180,18 +180,18 @@ static void draw_objects(void)
         const void *txmp = NULL, *g = console_screen(i, &txmp, m);
         if (g) geom_draw(g, m, txmp);
     }
-    /* the laser triggers (OBJrTrigger_OnTrigger 0x4cb6f0): the beams tested as drawn, the emitters */
-    laser_frame();
+    /* the laser triggers' emitters (the beams tested by game_display) */
     for (int i = 0; i < laser_count(); i++)
         for (int k = 0; k < laser_emitters(i); k++) {
             float m[12];
             const void *g = laser_emitter(i, k, m);
             if (g) geom_draw(g, m, NULL);
         }
-    /* the weapons (WPrDisplay 0x519710) */
+    /* the weapons (WPrDisplay 0x519710: those in the world; the hands' with their characters; the
+       stowed ones not drawn) */
     for (int i = 0; i < weapon_slots(); i++) {
         const Weapon *w = weapon_get(i);
-        if (w) geom_draw(weapon_geometry(w), w->m, NULL);
+        if (w && (!w->owner || w->owner->weapon == w)) geom_draw(weapon_geometry(w), w->m, NULL);
     }
     /* the powerups (0x51c2b0: their geometry turned by their facing; the glow sprite with the sprites) */
     for (int i = 0; i < powerup_count(); i++) {
@@ -722,8 +722,14 @@ static void splash_screen(const char *name)
    start), so the level stays behind them. */
 static struct { const CameraTarget *ct; const Chr *player; uint32_t ticks; } display;
 
+/* ONrGameState_Display: run every frame, as the original's loop displays each of its passes; a frame the
+   platform doesn't show is walked without drawing (gl_dev_set_dry), so what the display changes (the
+   laser triggers, OBJrTrigger_OnTrigger 0x4cb6f0, test their beams as they are drawn; the textures'
+   random frames reseed the local random generator) doesn't depend on it. */
 static void game_display(void)
 {
+    laser_frame();
+    gl_dev_set_dry(!plat_frame_shown());
     int w, h;
     plat_display_size(&w, &h);
     float proj[16], view[16];
@@ -744,6 +750,7 @@ static void game_display(void)
     ui_draw(w, h);
     int dw, dh;
     ui_draw_wm_begin(w, h, &dw, &dh);   /* the WM's windows over it, in its own pixels */
+    gl_dev_set_dry(false);
 }
 
 /* The modal dialogs' frame (in WMrUpdate's place for the port): the sound, and for unattended runs the
@@ -951,10 +958,12 @@ static int play(int level, int *next)
         if (player && plat_param("trace", dbg, sizeof dbg) && plat_frames() % (uint32_t)(atoi(dbg) > 1 ? atoi(dbg) : 30) == 0) {
             const Character *konoko = &player->c;
             const TmInstance *ti = konoko->anim ? tm_handle_instance(tm_handle_of(konoko->anim)) : NULL;
-            snprintf(m, sizeof m, "OpenOni: frame %u: %.1f %.1f %.1f facing %.2f (%.2f) type %u state %u varient %04x %s%s%u ammo %d particles %d glass %d clips %u pu %d",
+            snprintf(m, sizeof m, "OpenOni: frame %u: %.1f %.1f %.1f facing %.2f (%.2f) type %u state %u varient %04x %s%s%u/%u ammo %d stowed %d%d particles %d glass %d clips %u pu %d",
                      (unsigned)plat_frames(), konoko->pos[0], konoko->pos[1], konoko->pos[2], konoko->facing, konoko->desired_facing, konoko->type,
                      konoko->state, konoko->varient, ti && ti->name ? ti->name : "", " overlay ",
-                     konoko->overlay[0].anim ? tr_type(konoko->overlay[0].anim) : 0u, konoko->weapon ? konoko->weapon->ammo : -1, p3_live_count(), env_glass_broken(), konoko->ammo, powerup_count());
+                     konoko->overlay[0].anim ? tr_type(konoko->overlay[0].anim) : 0u,
+                     konoko->overlay[1].anim ? tr_type(konoko->overlay[1].anim) : 0u, konoko->weapon ? konoko->weapon->ammo : -1,
+                     konoko->stowed[0] != NULL, konoko->stowed[1] != NULL, p3_live_count(), env_glass_broken(), konoko->ammo, powerup_count());
             plat_log(m);
             for (int i = 0; i < door_count(); i++) {
                 float d[3];
@@ -979,7 +988,7 @@ static int play(int level, int *next)
         char splash[32];
         bool splashing = ui_splash_take(splash);    /* ONiRunGame: G+0x118, the splash in the display's place */
         if (splashing) splash_screen(splash);
-        if (!splashing && plat_frame_shown()) {
+        if (!splashing) {
             camera_update(0, 0, NULL, ticks);   /* the frame's part */
             particles_update(ticks, false);    /* the decorative particles (iComputeDeltaTicks 0x4fafb0) */
             display.ct = &ct, display.player = player, display.ticks = ticks;
@@ -1018,6 +1027,7 @@ static int run_game(int level)
 /* Out of a game, the WM's frames over black. */
 static void blank_display(void)
 {
+    if (!plat_frame_shown()) return;
     int w, h, dw, dh;
     plat_display_size(&w, &h);
     gl_dev_begin(w, h, 0.0f, 0.0f, 0.0f);

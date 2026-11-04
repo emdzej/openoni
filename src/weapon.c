@@ -11,6 +11,7 @@
 #include "persist.h"
 #include "powerup.h"
 #include "sl.h"
+#include "sound.h"
 #include "tm.h"
 #include "trac.h"
 
@@ -39,7 +40,7 @@ enum {
     ONWC_PICKUP = 0x704,        /* the handle's offset (x, y, z) */
 };
 enum {
-    ONWC_RIFLE = 0x08, ONWC_SUSTAINED = 0x20, ONWC_ALT_FIRE = 0x400, ONWC_AUTO_RELEASE = 0x2000,
+    ONWC_NO_HOLSTER = 0x02, ONWC_RIFLE = 0x08, ONWC_SUSTAINED = 0x20, ONWC_ALT_FIRE = 0x400, ONWC_AUTO_RELEASE = 0x2000,
     ONWC_HAS_RELEASE_DELAY = 0x4000,
 };
 /* A shooter: +0x30 the particle class's name, +0x44 the ammo a shot takes (0 none: it only follows the
@@ -312,12 +313,178 @@ bool weapon_has_empty(Character *c)
     return !reloading(c);
 }
 
-/* DoCharacterFrame's weapon overlay at its action frame (slot 1, TRAM +0x174): a reload (0xa4..0xab)
-   ends; the holster and draw (0xa0..0xa2) with the stowed slots. */
+/* ---- the slots: the hand (C+0x194) and the two stowed (C+0x198, 0x19c) ---- */
+
+static void release(Weapon *w);
+static Weapon *slot_get(const Character *c, int i) { return i == 0 ? c->weapon : c->stowed[i - 1]; }
+static void slot_put(Character *c, int i, Weapon *w) { if (i == 0) c->weapon = w; else c->stowed[i - 1] = w; }
+
+/* WPrSlot_FindLastStowed 0x51bc70: the weapon of slot 1 (unless excluded), else of the last slot not
+   excluded; with none, idx an empty slot other than 1 (from the last). */
+static Weapon *find_last_stowed(const Character *c, int exclude, int *idx)
+{
+    if (exclude != 1 && slot_get(c, 1)) return *idx = 1, slot_get(c, 1);
+    for (int i = 2; i >= 0; i--)
+        if (i != exclude && slot_get(c, i)) return *idx = i, slot_get(c, i);
+    for (int i = 2; i >= 0; i--)
+        if (i != 1 && !slot_get(c, i)) return *idx = i, NULL;
+    return NULL;
+}
+
+/* 0x51bc20: an empty slot, slot 1 first if asked, else the last other than 1. */
+static bool find_empty(const Character *c, int *idx, bool first)
+{
+    if (first && !slot_get(c, 1)) return *idx = 1, true;
+    for (int i = 2; i >= 0; i--)
+        if (i != 1 && !slot_get(c, i)) return *idx = i, true;
+    return false;
+}
+
+/* WPrSlot_Swap 0x51bd00: the weapons of two slots swapped; the one leaving the hand is let go of
+   (0xc000: its firing and background events stop) and not owned, the one coming into it owned. */
+static void slot_swap(Character *c, int a, int b)
+{
+    Weapon *wa = slot_get(c, a), *wb = slot_get(c, b);
+    if (wa) {
+        if (a == 0) wa->flags = (uint16_t)((wa->flags | 0xc000) & 0xf7ff);
+        if (b == 0) wa->flags |= WEAPON_OWNED;
+    }
+    if (wb) {
+        if (b == 0) wb->flags = (uint16_t)((wb->flags | 0xc000) & 0xf7ff);
+        if (a == 0) wb->flags |= WEAPON_OWNED;
+    }
+    slot_put(c, a, wb);
+    slot_put(c, b, wa);
+}
+
+/* The animation types during which no holster or draw starts (0x4edd20's table). */
+static bool holster_blocked(uint16_t type)
+{
+    return (type >= 0x4c && type <= 0x5c) || (type >= 0x60 && type <= 0x65) || (type >= 0x72 && type <= 0x77) ||
+           (type >= 0x7e && type <= 0x84) || type == 0x8d || type == 0xc6 || (type >= 0xd4 && type <= 0xd7);
+}
+
+/* ONrCharacter_Holster 0x4edd20: a weapon in the hand that can be holstered (class 2 not set) is put
+   away by the Holster overlay (0xa0, in state 7; its flag 1, forced, to stow it even with slot 1
+   taken), not during an attack or the blocked types. */
+static bool holster(Character *c, bool force)
+{
+    bool attack = tr_is_attack(c->anim), blocked = holster_blocked(c->type);
+    if (!c->weapon || (options(c->weapon) & ONWC_NO_HOLSTER)) return false;
+    c->last_action = c->time;
+    if (attack || blocked) return false;
+    const void *t = chr_lookup_varient(c, 0xa0, 7, c->varient);
+    if (!t) return false;
+    chr_overlay_set(c, CHR_OVERLAY_WEAPON, t, force ? 1 : 0);
+    return true;
+}
+
+/* 0x4edeb0 and 0x4effa0: a stowed weapon (or the one given) drawn by Draw_Pistol (0xa1) or Draw_Rifle
+   (0xa2), not during an attack or the blocked types. */
+static void draw_weapon(Character *c, Weapon *w)
+{
+    bool attack = tr_is_attack(c->anim), blocked = holster_blocked(c->type);
+    int idx = 0;
+    if (!w) w = find_last_stowed(c, 0, &idx);
+    c->last_action = c->time;
+    if (!w || attack || blocked) return;
+    const void *t = chr_lookup_varient(c, (options(w) & ONWC_RIFLE) ? 0xa2 : 0xa1, 7, c->varient);
+    if (t) chr_overlay_set(c, CHR_OVERLAY_WEAPON, t, 0);
+}
+
+/* 0x4eff60: the weapon put away (forced), for the cutscenes and chr_forceholster. */
+void chr_force_holster(Character *c) { if (c->weapon) holster(c, true); }
+
+/* 0x4effa0: a stowed weapon drawn, with the hand empty. */
+void chr_force_draw(Character *c)
+{
+    if (c->stowed[0] && !c->weapon) draw_weapon(c, NULL);
+}
+
+Weapon *chr_slot(const Character *c, int i) { return i >= 0 && i < 3 ? slot_get(c, i) : NULL; }
+
+/* The varient of the hand from the weapon, as ONrCharacter_SetWeapon makes it (the holster's again). */
+static void hand_varient(Character *c)
+{
+    c->varient &= 0x87ff;
+    if (!c->weapon || (c->flags & 0x2000)) return;
+    bool rifle = (options(c->weapon) & ONWC_RIFLE) != 0, left = ((const uint8_t *)c->oncc)[0xc8c] != 0;
+    c->varient |= rifle && left ? 0x4000 : rifle ? 0x2000 : left ? 0x1000 : 0x800;
+}
+
+/* The hand's weapon dropped, as 0x4ed770 and the holster do (0x51b590, the hand's firing cleared). */
+static void drop_hand(Character *c)
+{
+    Weapon *old = c->weapon;
+    if (!old) return;
+    old->flags = (uint16_t)((old->flags & 0xf7ff) | 0xc000);
+    c->weapon = NULL;
+    release(old);
+    c->varient &= 0x87ff;
+    c->fire_down = c->fire2_down = c->fire_again = c->fire_empty = false;
+}
+
+/* ONrCharacter_PickupWeapon 0x4ed770 without a weapon: forced, the hand's goes to an empty slot (slot 1
+   first), dropped with none; else the stowed one trades places with the hand's. */
+void chr_stow(Character *c, bool force)
+{
+    int idx = 0;
+    if (force) {
+        if (find_empty(c, &idx, true)) {
+            slot_swap(c, idx, 0);
+            chr_set_weapon(c, NULL);
+        } else
+            drop_hand(c);
+        return;
+    }
+    Weapon *w = find_last_stowed(c, 0, &idx);
+    slot_swap(c, idx, 0);
+    chr_set_weapon(c, w);
+}
+
+/* DoCharacterFrame's weapon overlay at its action frame (slot 1, TRAM +0x174, 0x4dfb43): a reload
+   (0xa4..0xab) ends. The holster (0xa0): forced, the weapon goes to an empty slot (slot 1 first), or is
+   dropped with none; else it trades places with the stowed one (none: into an empty slot). With a weapon
+   in the hand after, its varient, and its draw played from its action frame. The draw (0xa1, 0xa2):
+   with the hand empty the stowed weapon comes into it. */
 static void overlay_action(Character *c, const void *anim)
 {
     uint16_t k = tr_type(anim);
-    if (k >= 0xa4 && k <= 0xab && c->weapon) reload_done(c->weapon);
+    int idx = 0;
+    if (k >= 0xa4 && k <= 0xab) {
+        if (c->weapon) reload_done(c->weapon);
+    } else if (k == 0xa0) {
+        if (!c->weapon) return;
+        if (c->overlay[CHR_OVERLAY_WEAPON].flags & 1) {
+            if (find_empty(c, &idx, true)) {
+                slot_swap(c, idx, 0);
+                chr_set_weapon(c, NULL);
+            } else
+                drop_hand(c);
+        } else {
+            Weapon *w = find_last_stowed(c, 0, &idx);
+            slot_swap(c, idx, 0);
+            chr_set_weapon(c, w);
+        }
+        if (!c->weapon) return;
+        hand_varient(c);
+        Weapon *w = c->weapon;
+        bool attack = tr_is_attack(c->anim), blocked = holster_blocked(c->type);
+        c->last_action = c->time;
+        if (!attack && !blocked) {
+            const void *t = chr_lookup_varient(c, (options(w) & ONWC_RIFLE) ? 0xa2 : 0xa1, 7, c->varient);
+            if (t) chr_overlay_set(c, CHR_OVERLAY_WEAPON, t, 0);
+        }
+        const void *now_anim = c->overlay[CHR_OVERLAY_WEAPON].anim;
+        int16_t action = now_anim ? (int16_t)rd16((const uint8_t *)now_anim + 0x174) : 0;
+        if (action > 0) c->overlay[CHR_OVERLAY_WEAPON].frame = (uint16_t)action;
+    } else if (k == 0xa1 || k == 0xa2) {
+        if (c->weapon) return;
+        Weapon *w = find_last_stowed(c, 0, &idx);
+        slot_swap(c, idx, 0);
+        chr_set_weapon(c, w);
+    }
+    /* (any other type: a line on the developers' console, 0x550d74) */
 }
 
 /* 0x518180: full of ammo; owned, the background events start. */
@@ -626,41 +793,43 @@ static void pickup_weapon(Character *c, Weapon *w)
 }
 
 /* HandleStartPickup (in HandleHeartbeatInput 0x4f6ad0), the swap key gone down and no weapon overlay:
-   the weapon at hand (0x4fa4b0: its handle within 3 below and 18 above the feet, 8 across), unless one
-   is stowed. An animation that allows it (TRAM flag 20) picks it up at once; else the pickup animation:
-   Pickup_Pistol (0x9e) or Pickup_Rifle (0x9f), the _Mid ones (0xe4, 0xe5) for a handle over 9 above the
-   feet. Without one: holstering or drawing (overlay slot 1, not yet). Powerups (0x51b3e0, 0x9d, 0xe3):
-   not yet. */
+   the powerup and the weapon at hand (0x4fa4b0: a handle within 3 below and 18 above the feet, 8
+   across), a weapon only with none stowed. With neither, the weapon in the hand is holstered, else the
+   stowed one drawn. An animation that allows it (TRAM flag 20) picks up at once (the weapon first);
+   else the pickup animation: Pickup_Object (0x9d) or Pickup_Pistol (0x9e) or Pickup_Rifle (0x9f), the
+   _Mid ones (0xe3, 0xe4, 0xe5) for one over 9 above the feet. A powerup the player can't carry more of
+   plays the event sound 6. */
 static bool start_pickup(Character *c, const ChrInput *in)
 {
     if (!(in->down & CHR_KEY_SWAP) || c->overlay[CHR_OVERLAY_WEAPON].anim) return false;
-    /* 0x4fa4b0: the powerup and the weapon in reach (3 below to 18 above, 8 across) */
     bool full = false;
     Powerup *pu = powerup_find(c, c->pos[1] - 3.0f, c->pos[1] + 18.0f, NULL, 64.0f, &full);
     Weapon *w = find_pickup(c->pos, NULL, c->pos[1] - 3.0f, c->pos[1] + 18.0f, 64.0f);
-    bool started = false;
-    if (pu || w) {
-        if (tr_test_flag(c->anim, 20)) {
-            /* an animation that picks up as it goes: at once */
-            if (w) pickup_weapon(c, w);
-            else if (powerup_give(c, pu->type, pu->amount, false, true)) powerup_delete(pu);     /* 0x4eda10 */
+    int idx = 0;
+    Weapon *stowed = find_last_stowed(c, 0, &idx);
+    bool want_weapon = w && !stowed, started = false;
+    if (!pu && !want_weapon) {
+        if (c->weapon) holster(c, false);
+        else if (stowed) draw_weapon(c, NULL);
+    } else if (tr_test_flag(c->anim, 20)) {
+        /* an animation that picks up as it goes: at once */
+        if (want_weapon) pickup_weapon(c, w);
+        else if (powerup_give(c, pu->type, pu->amount, false, true)) powerup_delete(pu);     /* 0x4eda10 */
+    } else {
+        uint16_t type;
+        if (pu) {
+            type = pu->pos[1] <= c->pos[1] + 9.0f ? 0x9d : 0xe3;
+            c->pickup_powerup = pu, c->pickup = NULL;
         } else {
-            uint16_t type;
-            if (pu) {
-                /* Pickup_Object (0x9d), or its middle height (0xe3) for one 9 above the feet */
-                type = pu->pos[1] <= c->pos[1] + 9.0f ? 0x9d : 0xe3;
-                c->pickup_powerup = pu, c->pickup = NULL;
-            } else {
-                bool mid = c->pos[1] + 9.0f < pickup_y(w);
-                type = (options(w) & ONWC_RIFLE) ? 0x9f : 0x9e;
-                if (mid) type = (uint16_t)(type + 0x46);
-                c->pickup = w, c->pickup_powerup = NULL;
-            }
-            started = chr_do_animation(c, CHR_ANIM_WHEN_CAN, type) != NULL;
+            bool mid = c->pos[1] + 9.0f < pickup_y(w);
+            type = (options(w) & ONWC_RIFLE) ? 0x9f : 0x9e;
+            if (mid) type = (uint16_t)(type + 0x46);
+            c->pickup = w, c->pickup_powerup = NULL;
         }
+        started = chr_do_animation(c, CHR_ANIM_WHEN_CAN, type) != NULL;
     }
-    /* "can't carry more" (ONrGameState_EventSound_Play, the player's): with the event sounds */
-    (void)full;
+    const Chr *p = chars_player();
+    if (full && p && c == &p->c) sound_event_play(6);     /* ONrGameState_EventSound_Play 0x4fdac0 */
     return started;
 }
 
@@ -909,7 +1078,8 @@ static bool cmd_spawn(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 }
 
 /* chr_inv_reset char (AI2iScript_Reset_Inventory 0x4ba280): the ammo, cells, hypos and keys gone, the
-   weapon in the hand deleted (0x4d7bb0 then ONrCharacter_SetWeapon). */
+   weapon in the hand deleted (ONrCharacter_UseNewWeapon 0x4d7bb0: then ONrCharacter_SetWeapon), then
+   every slot's (WPrDelete 0x518f90), the stowed ones too. */
 static Chr *char_arg(const SlValue *v)
 {
     if (v->type == SL_STRING) {
@@ -939,6 +1109,10 @@ static bool cmd_inv_reset(SlThread *t, int c, const SlValue *v, SlValue *r, void
         Weapon *w = ch->c.weapon;
         weapon_delete(w);
         chr_set_weapon(&ch->c, NULL);
+    }
+    for (int k = 0; k < 2; k++) {
+        if (ch->c.stowed[k]) weapon_delete(ch->c.stowed[k]);
+        ch->c.stowed[k] = NULL;
     }
     return true;
 }

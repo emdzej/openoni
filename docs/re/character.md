@@ -576,6 +576,37 @@ Ported in `src/throw.c` (`chars_test`: Konoko throws the throw dummy, Throw_Forw
 KONCOMthrow_fw_p_tgt, 20 damage at frame 42). Not yet: the AI's throws, the AI's notice, the noise, the
 overpowered boost, the physics move (the port places the target).
 
+## Holstering
+
+A character has three weapon slots, C+0x194: slot 0 is the hand, slots 1 and 2 (C+0x198, C+0x19c)
+are stowed. *WPrSlot_Swap* 0x51bd00 trades two slots. The weapon leaving the hand gets flags 0xc000
+and loses 0x0800 (owned), so its firing and background events stop; the one coming in is owned.
+
+- **The searches**: 0x51bc70 finds the last stowed weapon. It tries slot 1 first, then 2 down to 0,
+  skipping the excluded slot. With none, it gives no weapon but the last empty slot other than 1.
+  0x51bc20 finds an empty slot: slot 1 first if asked, else the last other than 1.
+- **The key** (*ONrCharacter_Holster* 0x4edd20, the swap key; also a pickup with nothing to take): a
+  weapon in hand that can be holstered (ONWC flag 0x02 clear) plays the holster overlay. That is
+  type 0xa0 in state 7 (the animation's varient table) on overlay slot 1, the flag 1 when forced. An
+  empty hand with a stowed weapon plays the draw instead (*ONrCharacter_Draw* 0x4edeb0): 0xa1, or
+  0xa2 for a rifle (ONWC +0xcc bit 3). Both are refused while attacking or in one of the blocked
+  animation types: 0x4c–0x5c, 0x60–0x65, 0x72–0x77, 0x7e–0x84, 0x8d, 0xc6, 0xd4–0xd7.
+- **At the overlay's action frame** (DoCharacterFrame 0x4dfb43, TRAM +0x174), for the holster:
+  - forced: the weapon goes to an empty slot (slot 1 first), or is dropped if there is none;
+  - unforced: it trades places with the last stowed weapon, or goes into the empty slot the search
+    gave.
+
+  With a weapon in hand after that, its varient is set and its draw plays from its own action frame.
+  For a draw, an empty hand takes the last stowed weapon.
+- **The scripts**: `chr_forceholster` (0x4b86f0) and the cutscenes. `begin_cutscene` holsters the
+  player's weapon unless its flag 2 ("weapon") is set (*ONrCharacter_ForceHolster* 0x4eff60), and
+  `end_cutscene` draws one into an empty hand (*ONrCharacter_ForceDraw* 0x4effa0).
+- **Saves** keep all three slots: each is put back (0x4d7bf0), slot 2 then 1 then 0, the stowed ones
+  stowed.
+
+Ported in `src/weapon.c`, `src/chars.c` and `src/save.c` (level 1: the cutscene after the training
+holsters the new pistol and draws it at its end; Q then holsters it to slot 2 and draws it again).
+
 ## The AI's executor
 
 How an AI character's wishes become its input (notes for step 1 of the AI's port, docs/re/port-plan.md):

@@ -53,7 +53,7 @@ Steps 4 (renderer), 6 (character) and 7 (scripts) have begun:
   logs the characters and the doors near Konoko every N frames; `--param sltrace=1` the scripts).
 - `src/throw.c`: throws (the player's; the victim's part and its own damage), in
   [docs/re/character.md](docs/re/character.md) "Throws".
-- `src/weapon.c`: weapons (spawn, pickup, the trigger and shots, drop; the shots' particles are
+- `src/weapon.c`: weapons (spawn, pickup, the trigger and shots, drop, the slots and holstering; the shots' particles are
   stand-ins), [docs/formats/onwc.md](docs/formats/onwc.md). Route keys `q` swap, `g` fire, `e` drop.
 - `src/sl.c`: the BSL engine, running the level's scripts. `src/trigger.c` (trigger volumes),
   `src/object.c` (the level's objects, `obj_*` and `env_*anim`) and `src/env.c` (`env_show`) are its
@@ -185,7 +185,8 @@ imported into OPFS or read in place, run as `openoni.wasm` in gasm's Worker mode
 Always `--headless` for gasm-run; never open a window, never use macOS `screencapture`.
 With `--screenshot`, gasm-run renders every frame on the GPU and its memory grows by gigabytes over a
 long run (15 GB over level 1's route): pass `--param drawfrom=<N>` (nothing drawn before frame N) with
-N a few frames before the end, and don't take screenshots of long runs without it.
+N a few frames before the end, and don't take screenshots of long runs without it. The frames before N
+still run the display's logic (`gl_dev_set_dry`), so the game plays the same with or without it.
 
 ## Commits
 

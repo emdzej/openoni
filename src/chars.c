@@ -175,10 +175,16 @@ Chr *chars_spawn(const char *name, bool force)
     return NULL;
 }
 
-/* ONrGameState_DeleteCharacter 0x4dc480: the slot is free. */
+/* ONrGameState_DeleteCharacter 0x4dc480: its weapons deleted (WPrSlot_DeleteAll 0x51b5f0: the hand's and
+   the stowed), the slot free. */
 void chars_delete(Chr *c)
 {
     if (!c) return;
+    for (int k = 0; k < 3; k++) {
+        Weapon *w = chr_slot(&c->c, k);
+        if (w) weapon_delete(w);
+    }
+    c->c.weapon = c->c.stowed[0] = c->c.stowed[1] = NULL;
     knowledge_forget(c);
     used[c - slots] = false;
     actors[c - slots].alive = false;
@@ -396,6 +402,18 @@ static bool cmd_nocollision(SlThread *t, int c, const SlValue *v, SlValue *r, vo
     if (!ch) return true;
     if (num(&v[1])) ch->c.flags |= 0x20000u;
     else ch->c.flags &= ~0x20000u;
+    return true;
+}
+
+/* chr_forceholster char holster [force] (AI2iScript_ForceHolster 0x4b86f0): holster above 0 puts the
+   character's weapon away (0x4eff60), else draws the stowed one (0x4effa0; the third parameter alike). */
+static bool cmd_forceholster(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    Chr *ch = c >= 1 ? arg_char(&v[0]) : NULL;
+    if (!ch) return true;       /* "chr_forceholster" (0x54805c): no such character */
+    if (c >= 2 && num(&v[1]) > 0) chr_force_holster(&ch->c);
+    else chr_force_draw(&ch->c);
     return true;
 }
 
@@ -634,7 +652,7 @@ static void all_passive(bool on)
 /* begin_cutscene [weapon | jello | ai | invis | nosync | keepparticles | animation | nojump]...
    (0x4bca90, ONrGameState_BeginCutscene 0x4fd070): the letterbox on; the player's sprint stopped
    (0x4eb130), stood (ForceStand) unless "animation", her jump's motion across stopped with "nojump"; her
-   weapon holstered unless "weapon" (0x4eff60: not ported, the holster); her invisibility gone unless
+   weapon holstered unless "weapon" (0x4eff60); her invisibility gone unless
    "invis"; the AI passive unless "ai"; the camera's jello off unless "jello"; the input off; the sync on
    unless "nosync". Not ported: the particles' cleanup (0x458310) unless "keepparticles", the sound's
    switch (OSrSetEnabled). */
@@ -656,6 +674,7 @@ static bool cmd_begin_cutscene(SlThread *t, int c, const SlValue *v, SlValue *r,
             /* A+0x1b14..0x1b1c set to a vector constant (0x5298b8): not mapped */
         }
         if ((flags & 0x80) && p->c.air_ticks) p->c.air_velocity[0] = p->c.air_velocity[2] = 0.0f;
+        if (!(flags & 2)) chr_force_holster(&p->c);
         if (!(flags & 4)) p->c.invisibility = 0;
     }
     if (!(flags & 8)) all_passive(true);
@@ -666,8 +685,9 @@ static bool cmd_begin_cutscene(SlThread *t, int c, const SlValue *v, SlValue *r,
 }
 
 /* end_cutscene (0x4bcbb0, ONrGameState_EndCutscene 0x4fd1a0): the input back, the jello on, the AI out
-   of passive, the letterbox off, the cutscene over. Not ported: the messages cleared (0x431d50), the
-   skip's fade (G+0x40), the sound's switch, and the holstered weapon drawn again (0x4effa0). */
+   of passive, the letterbox off, the cutscene over, the player's holstered weapon drawn again (0x4effa0)
+   if her hand is empty. Not ported: the messages cleared (0x431d50), the skip's fade (G+0x40), the
+   sound's switch. */
 static bool cmd_end_cutscene(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)c, (void)v, (void)r, (void)u;
@@ -676,6 +696,8 @@ static bool cmd_end_cutscene(SlThread *t, int c, const SlValue *v, SlValue *r, v
     all_passive(false);
     ui_set_letterbox(false);
     ui_set_cutscene(false, false);
+    Chr *p = chars_player();
+    if (p && !p->c.weapon) chr_force_draw(&p->c);
     return true;
 }
 
@@ -862,6 +884,7 @@ void chars_register_commands(void)
     sl_register("ai2_setjobstate", cmd_setjobstate, NULL);
     sl_register("chr_changeteam", cmd_changeteam, NULL);
     sl_register("chr_nocollision", cmd_nocollision, NULL);
+    sl_register("chr_forceholster", cmd_forceholster, NULL);
     sl_register("chr_lock_active", cmd_lock_active, NULL);
     sl_register("chr_death_lock", cmd_death_lock, NULL);
     sl_register("chr_unkillable", cmd_unkillable, NULL);

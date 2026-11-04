@@ -21,7 +21,7 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - **The renderer** draws the environment, the characters and the level's objects through a port of the
   original's fixed-function pipeline on gasm's GL.
 - **Konoko**, with her movement, jumps, melee moves, throws and being hit, ported from the character
-  engine. She can also pick up, carry, aim, fire and reload weapons, and pick up ammo and other
+  engine. She can also pick up, carry, aim, fire, reload, holster and draw weapons, and pick up ammo and other
   power-ups.
 - **The other characters**: they spawn from the level's objects and scripts, follow their patrol paths,
   and see, hear and react to the player. In combat they pick a behaviour for the range to their target

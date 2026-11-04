@@ -24,8 +24,8 @@ static struct {
     float pos[3], facing;           /* 0x5ecc5c, 0x5ecc68 */
     uint16_t ammo, cells, shield, invisibility, hypos;  /* 0x5ecc6c..0x5ecc7c */
     bool lsi;                       /* 0x5ecc84 */
-    char weapon[64];                /* 0x5ecc88: the hand's class, empty none */
-    uint16_t weapon_ammo;           /* 0x5ecd08 */
+    struct { char cls[64]; uint16_t ammo; } weapon[3];  /* 0x5ecc88, 0x84 bytes apart: the slots' classes
+                                                           (empty none; the hand, then the stowed) and ammo */
 } cont;
 static int32_t point;               /* 0x5ece88: the scripts' save_point */
 static int level;                   /* G+0x1679d8 */
@@ -38,7 +38,7 @@ static float getf(const uint8_t *p) { uint32_t v = get32(p); float f; memcpy(&f,
 /* The continue as the original keeps it (0x204 bytes, persist.dat's): +0 the name, +0x40 the flags,
    +0x44 the health, +0x48 its maximum, +0x4c the place, +0x58 the facing, +0x5c ammo, +0x60 cells,
    +0x64 shield, +0x68 invisibility, +0x6c hypos (C+0x1c0 at +0x70 not kept), +0x74 the LSI; three
-   weapons from +0x78, each a class name of 0x80 and the ammo (the port's one: the hand's, the first). */
+   weapons from +0x78 (the hand, then the stowed ones), each a class name of 0x80 and the ammo. */
 static void to_record(uint8_t r[PERSIST_CONTINUE_SIZE])
 {
     memset(r, 0, PERSIST_CONTINUE_SIZE);
@@ -54,8 +54,10 @@ static void to_record(uint8_t r[PERSIST_CONTINUE_SIZE])
     put32(r + 0x68, cont.invisibility);
     put32(r + 0x6c, cont.hypos);
     put32(r + 0x74, cont.lsi);
-    memcpy(r + 0x78, cont.weapon, sizeof cont.weapon - 1);
-    put32(r + 0xf8, cont.weapon_ammo);
+    for (int k = 0; k < 3; k++) {
+        memcpy(r + 0x78 + 0x84 * k, cont.weapon[k].cls, sizeof cont.weapon[k].cls - 1);
+        put32(r + 0xf8 + 0x84 * k, cont.weapon[k].ammo);
+    }
 }
 
 static void from_record(const uint8_t r[PERSIST_CONTINUE_SIZE])
@@ -74,8 +76,10 @@ static void from_record(const uint8_t r[PERSIST_CONTINUE_SIZE])
     cont.invisibility = (uint16_t)get32(r + 0x68);
     cont.hypos = (uint16_t)get32(r + 0x6c);
     cont.lsi = get32(r + 0x74) != 0;
-    memcpy(cont.weapon, r + 0x78, sizeof cont.weapon - 1);
-    cont.weapon_ammo = (uint16_t)get32(r + 0xf8);
+    for (int k = 0; k < 3; k++) {
+        memcpy(cont.weapon[k].cls, r + 0x78 + 0x84 * k, sizeof cont.weapon[k].cls - 1);
+        cont.weapon[k].ammo = (uint16_t)get32(r + 0xf8 + 0x84 * k);
+    }
 }
 
 void save_level_begin(int l)
@@ -150,12 +154,27 @@ static bool cmd_save(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
     cont.hypos = p->c.hypos;
     cont.lsi = p->c.lsi;
     cont.valid = true;
-    if (p->c.weapon && class_name(p->c.weapon->cls, cont.weapon)) cont.weapon_ammo = p->c.weapon->ammo;
+    for (int k = 0; k < 3; k++) {
+        const Weapon *w = chr_slot(&p->c, k);
+        if (w && class_name(w->cls, cont.weapon[k].cls)) cont.weapon[k].ammo = w->ammo;
+        else cont.weapon[k].cls[0] = 0, cont.weapon[k].ammo = 0;
+    }
     /* kept for the menu's Load Game (ONrPersist_SetContinue 0x50f360, ONrPersist_SetPlace) */
     uint8_t rec[PERSIST_CONTINUE_SIZE];
     to_record(rec);
     persist_set_continue(level, (int)n, rec);
     persist_set_place(level, (int)n);
+    return true;
+}
+
+/* ONrCharacter_UseWeapon_NameAmmo 0x4d7bf0: a weapon of the class made, its ammo set, in the hand. */
+static bool use_weapon(Character *c, const char *cls_name, uint16_t ammo)
+{
+    const void *cls = tm_instance_get(TM_TAG("ONWC"), cls_name);
+    Weapon *w = cls ? weapon_new(cls, c->pos, 0.0f) : NULL;
+    if (!w) return false;
+    w->ammo = ammo;     /* 0x519a90 */
+    chr_set_weapon(c, w);
     return true;
 }
 
@@ -182,18 +201,17 @@ static bool cmd_restore(SlThread *t, int c, const SlValue *v, SlValue *r, void *
     p->c.invisibility = cont.invisibility;
     p->c.hypos = cont.hypos;
     p->c.lsi = cont.lsi;
-    if (p->c.weapon) {
-        Weapon *w = p->c.weapon;
-        chr_set_weapon(&p->c, NULL);
-        weapon_delete(w);       /* 0x518f90 */
+    /* the slots' weapons gone (0x518f90), then the third's and the second's made and stowed (0x4ed770:
+       not forced, forced), the first's in the hand */
+    chr_set_weapon(&p->c, NULL);
+    for (int k = 0; k < 3; k++) {
+        Weapon *w = chr_slot(&p->c, k);
+        if (w) weapon_delete(w);
     }
-    if (cont.weapon[0]) {
-        const void *cls = tm_instance_get(TM_TAG("ONWC"), cont.weapon);
-        Weapon *w = cls ? weapon_new(cls, p->c.pos, 0.0f) : NULL;  /* ONrCharacter_UseWeapon_NameAmmo */
-        if (w) {
-            chr_set_weapon(&p->c, w);
-            w->ammo = cont.weapon_ammo;
-        }
+    p->c.weapon = p->c.stowed[0] = p->c.stowed[1] = NULL;
+    for (int k = 2; k >= 0; k--) {
+        if (!cont.weapon[k].cls[0] || !use_weapon(&p->c, cont.weapon[k].cls, cont.weapon[k].ammo) || !k) continue;
+        chr_stow(&p->c, k == 1);
     }
     if (save_restore_hook) save_restore_hook();     /* ONrInGameUI_NotifyRestoreGame 0x5050b0 */
     return true;

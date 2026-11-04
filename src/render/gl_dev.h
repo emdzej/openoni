@@ -22,6 +22,9 @@ enum {
 bool gl_dev_init(void);
 /* Starts a frame: the viewport over the drawable, cleared to the colour and the far depth. */
 void gl_dev_begin(int w, int h, float r, float g, float b);
+/* A frame the platform doesn't show: the drawing is walked (what it changes, as the textures' random
+   frames do, still happens) but nothing is drawn. Textures and meshes are still made. */
+void gl_dev_set_dry(bool on);
 void gl_dev_matrices(const float proj[16], const float view[16]);
 /* Linear fog from start to end (distances from the eye), off if end <= start. */
 void gl_dev_fog(float start, float end, float r, float g, float b);
