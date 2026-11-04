@@ -52,10 +52,11 @@ Steps 4 (renderer), 6 (character) and 7 (scripts) have begun:
   `--param route=<steps>` drives her headless (the steps are described in `app.c`, among them `M`, a
   wait for a script's message that shifts the later frames, `G`, the glass targets shot, `Wx,y,z`, a run
   to the point planned at run time through the rooms' graph (the locked doors kept out, the manual ones
-  opened), and `C`, a wait for a cutscene's end; `--param trace=N` logs the characters and the doors near
-  Konoko every N frames; `--param sltrace=1` the scripts; `--param invincible=1` keeps her alive and
-  `--param omnipotent=1` makes her blows fell anyone (the game's cheat switches), for runs of a level's
-  scripts).
+  opened), `C`, a wait for a cutscene's end, `K<id>`, a console used, `X<name>,N`, a character hunted
+  down, and `S<N>`, a wait until she stands; `--param trace=N` logs the characters and the doors near
+  Konoko every N frames; `--param sltrace=1` the scripts; `--param invincible=1` keeps her alive,
+  `--param omnipotent=1` makes her blows fell anyone and `--param unstoppable=1` keeps her on her feet
+  (the game's cheat switches), for runs of a level's scripts).
 - `src/throw.c`: throws (the player's; the victim's part and its own damage), in
   [docs/re/character.md](docs/re/character.md) "Throws".
 - `src/weapon.c`: weapons (spawn, pickup, the trigger and shots, drop, the slots and holstering; the shots' particles are

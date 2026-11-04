@@ -4,6 +4,7 @@
    do: draw, plat_wait_frame, until Esc. The bars are the level files' sizes, read through the file layer. */
 #include "app.h"
 #include "akev.h"
+#include "akev_collide.h"
 #include "body.h"
 #include "camera.h"
 #include "cinematic.h"
@@ -457,7 +458,8 @@ static void start_scripts(void)
    the unbroken glass targets of those script ids, aiming the weapon's barrel at each. "F<name>,N" fights
    the character hand to hand for up to N frames, until it is down; "A<N>" the nearest one in combat
    with her, while there is one. "N<name>,N" talks with a neutral (the action key near it) until the
-   conversation is over. "K<id>" uses the console (its marker, the action key, again until it is used). "Wx,y,z" runs to the point through the rooms, the way found from where she is (while there is none,
+   conversation is over. "X<name>,N" hunts the character (through the rooms, then "F"). "K<id>" uses the console (its marker, the action key, again until it is used; an inactive one is
+   waited by). "Wx,y,z" runs to the point through the rooms, the way found from where she is (while there is none,
    tried again each second). Knocked down, any step first gets
    up (forward). ---- */
 
@@ -518,6 +520,18 @@ static float wrap_pi(float a)
     return a;
 }
 
+/* Whether p is in an obstacle's cell of the room's grid (6, 8 or 9: walls, crates). */
+static bool route_blocked(int room, const float p[3])
+{
+    GraphGrid g;
+    if (!graph_grid(room, &g) || !g.cells) return false;
+    int16_t x, z;
+    graph_to_cell(&g, p, &x, &z);
+    if ((uint16_t)x >= g.w || (uint16_t)z >= g.h) return false;
+    uint8_t v = g.cells[(uint32_t)(uint16_t)z * g.w + (uint16_t)x];
+    return v == 6 || (v > 7 && v < 10);
+}
+
 /* "Wx,y,z": the steps to the point through the rooms' graph, planned from where the player is (the
    doors locked now kept out, the manual ones opened with the action key on the way), into out. */
 static bool route_plan(const Character *c, const float b[3], char *out, size_t size)
@@ -538,7 +552,11 @@ static bool route_plan(const Character *c, const float b[3], char *out, size_t s
         }
     }
     float a[3] = { c->pos[0], c->pos[1], c->pos[2] };
-    int ra = graph_room_at(a), rb = graph_room_at(b);
+    /* the target's room looked up from a little above it (a console marker's floor can be just under
+       the room's) */
+    float bu[3] = { b[0], b[1] + 3.0f, b[2] };
+    int ra = graph_room_at(a), rb = graph_room_at(bu);
+    if (rb < 0) rb = graph_room_at(b);
     static int path[GRAPH_PATH_MAX];
     int n = ra < 0 || rb < 0 ? 0 : graph_find_path(ra, a, rb, b, true, path);
     size_t len = 0;
@@ -570,9 +588,43 @@ static bool route_plan(const Character *c, const float b[3], char *out, size_t s
                     const float *next = k + 2 < n ? graph_link(path[k + 1])->mid : b;
                     sign = pl[0] * (next[0] - w[0]) + pl[2] * (next[2] - w[2]) > 0 ? 1 : -1;
                 }
-                for (int j = 0; j < 3; j++) in[j] = o[j] = w[j];
-                in[0] += pl[0] * 12 * sign, in[2] += pl[2] * 12 * sign;
-                o[0] -= pl[0] * 8 * sign, o[2] -= pl[2] * 8 * sign;
+                /* slid along the link's edge (4 at a time) while the way across meets an obstacle of
+                   the rooms' grids (a pillar on the crossing) */
+                float lo[3], lo2[3], e[3];
+                graph_quad_low_pair(l->quad, lo, lo2);
+                for (int j = 0; j < 3; j++) e[j] = lo2[j] - lo[j];
+                float elen = sqrtf(e[0] * e[0] + e[2] * e[2]);
+                if (elen > 0.0f) e[0] /= elen, e[2] /= elen;
+                float along = (w[0] - lo[0]) * e[0] + (w[2] - lo[2]) * e[2];
+                for (int k = 0; k < 21; k++) {
+                    float shift = (float)((k + 1) / 2) * 4.0f * (k & 1 ? 1.0f : -1.0f);
+                    if (along + shift < 4.0f || along + shift > elen - 4.0f) { if (k) continue; shift = 0.0f; }
+                    float ww[3] = { w[0] + e[0] * shift, w[1], w[2] + e[2] * shift };
+                    for (int j = 0; j < 3; j++) in[j] = o[j] = ww[j];
+                    in[0] += pl[0] * 12 * sign, in[2] += pl[2] * 12 * sign;
+                    o[0] -= pl[0] * 8 * sign, o[2] -= pl[2] * 8 * sign;
+                    bool clear = true;
+                    for (int f = 0; f <= 4 && clear; f++) {
+                        float q[3];
+                        for (int j = 0; j < 3; j++) q[j] = o[j] + (in[j] - o[j]) * (float)f / 4.0f;
+                        clear = !route_blocked(f < 2 ? room : l->to, q);
+                    }
+                    /* and (not on stairs, nor through a door, closed as it may be) a body's sphere
+                       (radius 6, 14 up) swept across meets no wall */
+                    bool door = false;
+                    for (int d = 0; d < door_count() && !door; d++) {
+                        float dp[3];
+                        door_position(d, dp);
+                        door = fabsf(l->mid[0] - dp[0]) < 12 && fabsf(l->mid[2] - dp[2]) < 12 && fabsf(l->mid[1] - dp[1]) < 10;
+                    }
+                    if (clear && !door && (l->flags & 0xe) != 0xe) {
+                        float sph[4] = { o[0], ww[1] + 14.0f, o[2], 6.0f }, mv[3] = { in[0] - o[0], 0.0f, in[2] - o[2] };
+                        static AkevHit hits[AKEV_HITS_MAX];
+                        unsigned nh = akev_collide_sphere(env, sph, mv, 0x48800, 0xff, hits);
+                        for (unsigned h = 0; h < nh && clear; h++) clear = fabsf(hits[h].plane[1]) > 0.5f;
+                    }
+                    if (clear) break;
+                }
             } else {
                 for (int j = 0; j < 3; j++) o[j] = b[j];
             }
@@ -637,6 +689,13 @@ static void route_input(const Character *c, CharacterInput *in)
         if (*s == 'C' && (s[1] == ';' || !s[1])) {
             /* "C": waits for the end of a cutscene and for the input on again */
             if (ui_cutscene() || !ui_input_enabled()) return;
+            route_next();
+            continue;
+        }
+        if (*s == 'S') {
+            /* "S<N>": waits (up to N frames) until the player stands */
+            if (!route.phase) route.until = now + (uint32_t)atoi(s + 1), route.phase = 1;
+            if (c->state != CHR_STATE_STANDING && now < route.until) return;
             route_next();
             continue;
         }
@@ -781,10 +840,12 @@ static void route_input(const Character *c, CharacterInput *in)
             const ActionMarker *m = ci >= 0 ? console_marker(ci) : NULL;
             if (!m || (console_flags(ci) & CONSOLE_USED) || tries <= 0) { route_next(); continue; }
             if (c->console_marker >= 0) return;     /* using one */
+            /* not active yet (a script or an alarm's runner turns it on): waits by it */
+            if (!(console_flags(ci) & CONSOLE_ACTIVE) && tries < 5) return;
             static char rest[16384];
             snprintf(rest, sizeof rest, "%s", semi ? semi + 1 : "");
             float h = m->facing * 57.29578f;
-            snprintf(route.buf, sizeof route.buf, "W%.1f,%.1f,%.1f;h%.0f;w10;a;w40;K%d,%d%s%s", m->pos[0], m->floor,
+            snprintf(route.buf, sizeof route.buf, "W%.1f,%.1f,%.1f;h%.0f;w10;S120;a;w40;K%d,%d%s%s", m->pos[0], m->floor,
                      m->pos[2], h < 0 ? h + 360 : h, id, tries - 1, rest[0] ? ";" : "", rest);
             route.step = route.buf;
             route.phase = 0;
@@ -816,6 +877,30 @@ static void route_input(const Character *c, CharacterInput *in)
             }
             in->action = fabsf(err) < 0.3f && (route.until - now) % 30 == 0;
             return;
+        }
+        if (*s == 'X') {
+            /* "X<name>,N": hunts the character: through the rooms to it (as "W") while it is more than
+               30 away or on another floor, then the fight (as "F", N frames) */
+            char name[64];
+            const char *comma = strchr(s, ','), *semi = strchr(s, ';');
+            size_t len = comma ? (size_t)(comma - s - 1) : 0;
+            if (len >= sizeof name) len = sizeof name - 1;
+            memcpy(name, s + 1, len), name[len] = 0;
+            int n = comma ? atoi(comma + 1) : 0;
+            const Chr *t = chars_find(name);
+            if (!t || !t->c.hit_points || !chars_in_use(t)) { route_next(); continue; }
+            float dx = t->c.pos[0] - c->pos[0], dy = t->c.pos[1] - c->pos[1], dz = t->c.pos[2] - c->pos[2];
+            static char rest[16384];
+            snprintf(rest, sizeof rest, "%s", semi ? semi + 1 : "");
+            if (dx * dx + dz * dz > 900.0f || fabsf(dy) > 15.0f)
+                snprintf(route.buf, sizeof route.buf, "W%.1f,%.1f,%.1f;X%s,%d%s%s", t->c.pos[0], t->c.pos[1], t->c.pos[2],
+                         name, n, rest[0] ? ";" : "", rest);
+            else
+                snprintf(route.buf, sizeof route.buf, "F%s,%d%s%s", name, n, rest[0] ? ";" : "", rest);
+            route.step = route.buf;
+            route.phase = 0;
+            route.until = 0;
+            continue;
         }
         if (*s == 'F') {
             /* "F<name>,N": a melee fight with the character for up to N frames, or until it is down
@@ -1253,11 +1338,12 @@ static int play(int level, int *next)
         if (plat_mouse(&mouse) && (mouse.pressed & MOUSE_LEFT) && !mouse.captured) plat_mouse_capture(true);
         /* "input 0" from a script (cutscenes): the player's keys do nothing (0x4bcc50's flag) */
         if (route.step && player) route_input(&player->c, &in);
-        /* a debug aid: --param invincible=1 and omnipotent=1, the game's switches of those names (the
-           cheats') kept on, for unattended runs of a level's scripts */
+        /* a debug aid: --param invincible=1, omnipotent=1 and unstoppable=1, the game's switches of
+           those names (the cheats') kept on, for unattended runs of a level's scripts */
         char inv[8];
         if (plat_param("invincible", inv, sizeof inv) && atoi(inv)) chr_cheat_invincible = true;
         if (plat_param("omnipotent", inv, sizeof inv) && atoi(inv)) chr_cheat_omnipotent = true;
+        if (plat_param("unstoppable", inv, sizeof inv) && atoi(inv)) chr_cheat_unstoppable = true;
         chr_input_mask(&in, ui_keys_allowed());     /* lock_keys */
         if (route_pause && (ui_keys_allowed() & 4) && !ui_cutscene() && player && !(player->c.flags & 1)) {    /* held until allowed */
             route_pause = false;

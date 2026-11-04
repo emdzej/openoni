@@ -920,6 +920,30 @@ static bool cmd_set_health(SlThread *t, int c, const SlValue *v, SlValue *r, voi
     return true;
 }
 
+/* ONrCharacter_Poison 0x4f21e0: a call within 30 ticks of the last counts on (else from 0); at initial
+   counted, the damage, then again every interval. */
+static void poison(Chr *ch, uint32_t damage, int32_t interval, int32_t initial)
+{
+    uint32_t now = knowledge_now();
+    if (ch->c.poison_last + 30 < now) ch->c.poison_count = 0;
+    ch->c.poison_last = now;
+    if (++ch->c.poison_count >= initial) {
+        chr_take_damage(&ch->c, damage, 0.0f, NULL, 0, NULL);
+        ch->c.poison_count = initial - interval;
+    }
+}
+
+/* chr_poison char damage interval [initial] (0x4ba480): the initial interval is the interval unless
+   given. */
+static bool cmd_poison(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    Chr *ch = c >= 3 ? arg_char(&v[0]) : NULL;
+    if (!ch) return true;       /* "chr_poison" */
+    poison(ch, (uint32_t)num(&v[1]), num(&v[2]), c >= 4 ? num(&v[3]) : num(&v[2]));
+    return true;
+}
+
 /* chr_is_player char -> bool (AI2iScript_IsPlayer 0x4b8db0): whether it is the player (G+0xac); false
    with no such character. */
 static bool cmd_is_player(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
@@ -1304,6 +1328,7 @@ void chars_register_commands(void)
     sl_register("ai2_setmovementmode", cmd_set_movement_mode, NULL);
     sl_register("chr_set_health", cmd_set_health, NULL);
     sl_register("chr_is_player", cmd_is_player, NULL);
+    sl_register("chr_poison", cmd_poison, NULL);
     sl_register("chr_unstoppable", cmd_unstoppable, NULL);
     sl_register("chr_weapon_immune", cmd_weapon_immune, NULL);
     sl_register("chr_teleport", cmd_teleport, NULL);

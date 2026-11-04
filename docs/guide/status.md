@@ -19,6 +19,10 @@ three floors' locks, the roof and the tower, the bomber's fall, the three passag
 and the end door, the last ambush and the outro, and level 4 begins. (Its unattended run uses the
 game's `invincible` and `omnipotent` switches: the driver fights badly.)
 
+Level 4, the airport, plays through as well: the motorbike ride in, the tarmac's strikers and the
+mad bomber, the four consoles with their cutscenes, the final ambush, and level 6, the airport's
+hangars, begins. (Its unattended run adds the `unstoppable` switch.)
+
 It can be tried in the browser on the <a href="/play/" target="_self">play page</a>, with your own copy of the game.
 
 ## What works
@@ -106,7 +110,7 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - The impact effects (the hit sparks' classes). The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.
-- The other 13 levels as a playthrough.
+- The other 11 levels as a playthrough.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked
 against the original.
