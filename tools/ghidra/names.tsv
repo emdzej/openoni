@@ -31,6 +31,9 @@
 00404ff0	gl_context_private_new	-	med	name from the Intel Mac build (strings:1)
 0040bbe0	opengl_available	-	med	name from the Intel Mac build (neighbours:1.00)
 0040bcc0	initialize_opengl	-	med	name from the Intel Mac build (strings:6)
+0040cb20	gl_fog_start_changeto_func	-	med	Mac name: gl_fog_start_changeto, the start to a value over frames
+0040cb90	gl_fog_end_changeto_func	-	med	Mac name: gl_fog_end_changeto (its step written to +0x5f0, the update reads +0x5e8)
+0040cc00	gl_fog_update	-	med	Mac name: the fog changes stepped by the ticks since the last frame (from 0x405898)
 0040de90	MSrEnv_Clip_Tri	MS	med	name from the Intel Mac build (neighbours:1.00)
 0040ea60	iInterpShade_NoAlpha	-	med	name from the Intel Mac build (neighbours:1.00)
 0040eb20	MSrEnv_Clip_Quad	MS	med	name from the Intel Mac build (neighbours:1.00)

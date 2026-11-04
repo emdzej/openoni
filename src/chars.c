@@ -215,6 +215,7 @@ static void level_graph(void)
 
 int chars_load(void)
 {
+    chr_cheats_clear();     /* ONrCharacter_LevelBegin 0x4d87b0 */
     chars_unload();
     level_graph();      /* for the AIs' ways (the pursuit's distances) before any of them moves */
     patrol_load();      /* the paths first: the patrol jobs start with their characters */

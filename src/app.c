@@ -328,7 +328,7 @@ static bool cmd_dprint(SlThread *t, int argc, const SlValue *argv, SlValue *r, v
 
 static float fog_rgb[3], fog_start = 0.99f, fog_end = 1.0f, far_clip = 10000.0f;
 
-/* The fog's smooth changes (gl_fog_start_changeto 0x40cb20, gl_fog_end_changeto 0x40cb90): to the value
+/* The fog's smooth changes (gl_fog_start_changeto_func 0x40cb20, gl_fog_end_changeto_func 0x40cb90): to the value
    over the frames (none, or not above 0: at once), by a step a tick. */
 static struct { bool on; float to, step; } fog_change[2];
 
@@ -356,7 +356,7 @@ static bool cmd_fog_end_to(SlThread *t, int argc, const SlValue *argv, SlValue *
     return fog_changeto(1, &fog_end, argc, argv);
 }
 
-/* 0x40cc00, from the draw's frame start (0x405898) with the ticks since the last: each change steps,
+/* gl_fog_update 0x40cc00, from the draw's frame start (0x405898) with the ticks since the last: each change steps,
    stopping at its value. As the original, the end's change moves by the start's step (+0x5e8). */
 static void fog_step(uint32_t ticks)
 {
@@ -414,6 +414,9 @@ static void start_scripts(void)
     sl_register_float("gl_fog_blue", &fog_rgb[2]);
     sl_register_float("gl_fog_start", &fog_start);
     sl_register_float("gl_fog_end", &fog_end);
+    sl_register_bool("unstoppable", &chr_cheat_unstoppable);   /* the game's variables (0x4fbf10) */
+    sl_register_bool("invincible", &chr_cheat_invincible);
+    sl_register_bool("omnipotent", &chr_cheat_omnipotent);
     sl_register("gl_fog_start_changeto", cmd_fog_start_to, NULL);
     sl_register("gl_fog_end_changeto", cmd_fog_end_to, NULL);
     memset(fog_change, 0, sizeof fog_change);
@@ -1208,10 +1211,10 @@ static int play(int level, int *next)
         if (plat_mouse(&mouse) && (mouse.pressed & MOUSE_LEFT) && !mouse.captured) plat_mouse_capture(true);
         /* "input 0" from a script (cutscenes): the player's keys do nothing (0x4bcc50's flag) */
         if (route.step && player) route_input(&player->c, &in);
-        /* a debug aid: --param invincible=1, the player as with chr_invincible (the "liveforever" cheat's
-           flag), for unattended runs of a level's scripts */
+        /* a debug aid: --param invincible=1, the game's "invincible" (the cheat's switch) kept on, for
+           unattended runs of a level's scripts */
         char inv[8];
-        if (player && plat_param("invincible", inv, sizeof inv) && atoi(inv)) player->c.flags |= 0x2000000u;
+        if (plat_param("invincible", inv, sizeof inv) && atoi(inv)) chr_cheat_invincible = true;
         chr_input_mask(&in, ui_keys_allowed());     /* lock_keys */
         if (route_pause && (ui_keys_allowed() & 4) && !ui_cutscene() && player && !(player->c.flags & 1)) {    /* held until allowed */
             route_pause = false;

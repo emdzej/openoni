@@ -53,8 +53,8 @@ Steps 4 (renderer), 6 (character) and 7 (scripts) have begun:
   wait for a script's message that shifts the later frames, `G`, the glass targets shot, `Wx,y,z`, a run
   to the point planned at run time through the rooms' graph (the locked doors kept out, the manual ones
   opened), and `C`, a wait for a cutscene's end; `--param trace=N` logs the characters and the doors near
-  Konoko every N frames; `--param sltrace=1` the scripts; `--param invincible=1` keeps her alive, as
-  `chr_invincible`, for runs of a level's scripts).
+  Konoko every N frames; `--param sltrace=1` the scripts; `--param invincible=1` keeps her alive (the
+  game's `invincible` cheat switch), for runs of a level's scripts).
 - `src/throw.c`: throws (the player's; the victim's part and its own damage), in
   [docs/re/character.md](docs/re/character.md) "Throws".
 - `src/weapon.c`: weapons (spawn, pickup, the trigger and shots, drop, the slots and holstering; the shots' particles are

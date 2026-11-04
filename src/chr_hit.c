@@ -91,6 +91,15 @@ bool (*chr_block_hook)(Character *c);
 void (*chr_die_hook)(Character *c);
 void (*chr_script_hook)(Character *c, int script);
 
+bool chr_cheat_unthrowable, chr_cheat_unstoppable, chr_cheat_invincible, chr_cheat_omnipotent;
+
+void chr_cheats_clear(void)
+{
+    chr_cheat_unthrowable = chr_cheat_invincible = chr_cheat_omnipotent = chr_cheat_unstoppable = false;
+}
+
+bool chr_is_unstoppable(const Character *c) { return (chr_cheat_unstoppable && !c->ai) || (c->flags & 0x100); }
+
 void chr_take_damage(Character *c, uint32_t damage, float knockback, const float dir[3], uint16_t knockdown,
                      Character *from)
 {
@@ -100,7 +109,7 @@ void chr_take_damage(Character *c, uint32_t damage, float knockback, const float
         return;
     }
     /* A+0xd4, the hit's direction for the body's fall: with the physics */
-    if (!(c->flags & 0x2000000)) {      /* not invincible */
+    if (!(chr_cheat_invincible && !c->ai) && !(c->flags & 0x2000000)) {      /* not invincible */
         if (chr_script_hook) chr_script_hook(c, CHR_SCRIPT_HURT);   /* once (C+0x44 bit 0x10) */
         if ((c->flags & 0x20) && c->hit_points <= damage) {
             /* unkillable (chr_unkillable): one hit point left and the defeated script, except for the
@@ -124,7 +133,7 @@ void chr_take_damage(Character *c, uint32_t damage, float knockback, const float
             death_knockdown(c, 0);
         }
     }
-    if (!(c->flags & 0x100) && knockback != 0.0f && dir)
+    if (!chr_is_unstoppable(c) && knockback != 0.0f && dir)
         for (int k = 0; k < 3; k++) c->knockback[k] += dir[k] * knockback;
     /* C+0x166c, the HUD's hit direction: with the HUD */
 }
@@ -209,8 +218,9 @@ static void attack_lands(Character *x, Character *d, const uint8_t *e)
         if (x->hit_list[slot] == d->id) return;
     if (slot == 8) return;
     x->hit_list[slot] = d->id;
-    bool unstoppable = (d->flags & 0x100) != 0;
+    bool unstoppable = chr_is_unstoppable(d);
     uint32_t damage = rd16(e + 0xc);
+    if (chr_cheat_omnipotent && !x->ai && damage <= d->hit_points) damage = d->hit_points;
     float knock = rdf(e + 4);
     uint8_t aflags = e[8];
     float dir[3] = { sinf(x->facing), 0.0f, cosf(x->facing) };

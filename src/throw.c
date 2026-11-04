@@ -20,10 +20,6 @@ static float rdf(const uint8_t *p) { float f; memcpy(&f, p, 4); return f; }
 
 static float wrap_2pi(float a) { return a < 0.0f ? a + TWO_PI : a >= TWO_PI ? a - TWO_PI : a; }
 
-/* The player's cheat switches the target finder and AttemptThrow read (0x5ece91, also the damage's: the
-   player invincible; 0x5ece90: the player can't be thrown). Cleared at the start (0x4d87b0); the port
-   has no way to set them. */
-static const bool player_invincible = false, player_unthrowable = false;
 
 /* The throw block (TRAM +0x1c, .raw): the victim's offset from the thrower (+0x00..+0x08), its turn
    from the thrower's facing (+0x0c), the reach (+0x10, TRrAnimation_GetThrowDistance 0x4291c0) and the
@@ -63,10 +59,10 @@ static Character *find_target(Character *c, float *angle, float offset, float ma
         if ((t->flags & 1) || t == c) continue;
         if (!ai_team_relation(((Chr *)c)->team, ch->team)) continue;
         if (throw_check) {
-            if (player_invincible && !t->ai) continue;
+            if (chr_cheat_unstoppable && !t->ai) continue;     /* 0x5ece91 */
             if (t->flags & 0x40100) continue;
             if (!can_be_thrown(t)) continue;
-            if (!t->ai && player_unthrowable) continue;
+            if (!t->ai && chr_cheat_unthrowable) continue;
             /* the original tests the animation of an active character only: the port's all are */
             if (t->anim && tr_test_flag(t->anim, 1)) continue;
         }
@@ -127,7 +123,7 @@ static const void *attempt_throw(Character *c, uint16_t front, uint16_t behind)
 {
     float angle;
     Character *t = find_target(c, &angle, 0.0f, 24.0f, 0.7853982f, true);
-    if (!t || !can_be_thrown(t) || (!t->ai && player_unthrowable)) return NULL;
+    if (!t || !can_be_thrown(t) || (!t->ai && chr_cheat_unthrowable)) return NULL;
     if (!t->anim || tr_test_flag(t->anim, 1) || invulnerable_frame(t->anim, t->frame)) return NULL;
     float diff = t->facing - c->facing;
     if (diff < 0.0f) diff += TWO_PI;
@@ -234,6 +230,7 @@ void throw_update(Character **chars, int n)
         if (!d) continue;
         /* a victim's is its thrower's (WPrOwner_MakeMeleeDamageFromCharacter 0x51ce00) */
         Character *from = tr_test_flag(c->anim, TRAM_FLAG_THROW_TARGET) ? c->thrown_by : NULL;
+        if (from && chr_cheat_omnipotent && !from->ai && d <= c->hit_points) d = c->hit_points;   /* 0x4dd862 */
         chr_take_damage(c, d, 0.0f, NULL, 0, from);
     }
 }

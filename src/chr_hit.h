@@ -34,6 +34,14 @@ extern void (*chr_script_hook)(Character *c, int script);
 /* What ONrCharacter_Knockdown tells the AI (0x48b530) of its character knocked down from not lying.
    Set by chars.c. */
 extern void (*chr_knockdown_hook)(Character *c);
+/* The player's cheat switches (ONrCheater 0x4f5c30, and the game's variables of 0x4fbf10): unstoppable
+   (G 0x5ece91), invincible (0x5ece92), omnipotent (0x5ece93: the player's blows and throws deal at least
+   the victim's hit points); unthrowable (0x5ece90) has no variable. All cleared at the level's start
+   (ONrCharacter_LevelBegin 0x4d87b0). */
+extern bool chr_cheat_unthrowable, chr_cheat_unstoppable, chr_cheat_invincible, chr_cheat_omnipotent;
+void chr_cheats_clear(void);
+/* Unstoppable: C+0x04 0x100 (chr_unstoppable), or the player with the cheat. */
+bool chr_is_unstoppable(const Character *c);
 /* The AI characters' block function (C+0x15ec): whether c blocks an attack it could block. */
 extern bool (*chr_block_hook)(Character *c);
 /* A part's place in the world (the translation of its matrix, A+0x2278 + 0x30 part + 0x24): 0 the
