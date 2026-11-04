@@ -66,3 +66,6 @@ KnowEntry *knowledge_find(const struct Chr *owner, const struct Chr *target);   
 int ai_team_relation(uint32_t a, uint32_t b);
 /* 0x48b1d0: whether a takes b for an enemy (known: also when made hostile by hits). */
 bool ai_is_hostile(const struct Chr *a, const struct Chr *b, bool known);
+
+/* ai2_boss_battle, the script variable (knowledge.c). */
+extern bool knowledge_boss_battle;

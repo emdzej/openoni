@@ -93,10 +93,12 @@ static Chr *create(int object)
     c->ai.name = c->name;
     /* AI2rInitializeCharacter 0x48a6b0: the AI's flags (knowledge on; CHAR flag 0x08 non-aggressive,
        0x100 never forgets), the alert level, and the job: a patrol starts its path (by the id) at once */
+    if (c->player) c->c.flags |= CHR_FLAG_BOSS;    /* no AI */
     if (!c->player) {
         uint32_t f = object_flags[object];
         c->ai.flags = AI_FLAG_KNOWLEDGE | (f & 0x08 ? AI_FLAG_NON_AGGRESSIVE : 0) | (f & 0x100 ? AI_FLAG_NO_DEGRADE : 0);
         c->c.flags |= CHR_FLAG_AI_MOVEMENT;     /* AI2rInitializeCharacter 0x48a6b0, an AI (C+0x1e8 2) */
+        if (f & 0x400) c->c.flags |= CHR_FLAG_BOSS;
         c->ai.alert = (int)objc_char_alert(o);
         c->ai.state = AI_STATE_IDLE;
         melee_start(&c->ai.melee, melee_find(objc_char_melee(o)), oncc);
@@ -177,6 +179,7 @@ static Chr *create_setup(const uint8_t *r, const ObjcObject *flag)
     ai_init(&c->ai);
     c->ai.name = c->name;
     uint32_t f = (uint32_t)(r[0x24] | r[0x25] << 8);
+    if ((f & 0x400) || !c->script_id || (f & 1)) c->c.flags |= CHR_FLAG_BOSS;
     if (c->script_id && !(f & 1)) {
         c->ai.flags = AI_FLAG_KNOWLEDGE;
         c->c.flags |= CHR_FLAG_AI_MOVEMENT;
@@ -1202,6 +1205,8 @@ void chars_register_commands(void)
     sl_register("ai2_movetoflag", cmd_movetoflag, NULL);
     sl_register("ai2_dopath", cmd_dopath, NULL);
     sl_register("ai2_passive", cmd_passive, NULL);
+    sl_register("chr_neutral", cmd_passive, NULL);     /* the same handler (0x4b4be0) */
+    sl_register_bool("ai2_boss_battle", &knowledge_boss_battle);
     sl_register("ai2_setjobstate", cmd_setjobstate, NULL);
     sl_register("ai2_doalarm", cmd_doalarm, NULL);
     sl_register("ai2_tripalarm", cmd_tripalarm, NULL);

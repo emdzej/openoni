@@ -209,6 +209,8 @@ void chr_input_mask(CharacterInput *in, uint64_t keys);
 void character_set_facing_offset(Character *c, float a);
 /* C+0x04 0x400000: the AI's movement drives the character (every AI's; the player's with ai2_takecontrol). */
 enum { CHR_FLAG_AI_MOVEMENT = 0x400000 };
+/* C+0x04 0x10000000: no AI or a boss (CHAR or setup flag 0x400; AI2rInitializeCharacter 0x48a6b0). */
+enum { CHR_FLAG_BOSS = 0x10000000 };
 
 /* The body's root (FUN_004e5a30's start): T(position + the pelvis's height) R(facing about y); while an
    environment animation plays, its matrix at the frame and a quarter turn about x (none with no

@@ -53,8 +53,13 @@ static float oncc_float(const Chr *c, unsigned off)
 static bool alive(const Chr *c) { return c && !(c->c.flags & 1); }
 static bool is_ai(const Chr *c) { return c && !c->player; }     /* C+0x1e8 2 */
 
+/* ai2_boss_battle (0x5ec0c3, false at the level's start, 0x48a250): the contacts' order goes by the
+   boss flag (C+4 0x10000000) too. */
+bool knowledge_boss_battle;
+
 void knowledge_reset(void)
 {
+    knowledge_boss_battle = false;
     memset(entries, 0, sizeof entries);
     entries_used = 0;
     free_list = NULL;
@@ -114,11 +119,24 @@ static uint32_t degrade_time(const Chr *owner, int strength)
 }
 
 /* 0x49ba10: which of two contacts matters more to owner: < 0 a, > 0 b, 0 neither (with exact; else
-   the highest strengths decide). Not ported: its debug ordering by the characters' flag 0x10000000. */
+   the highest strengths decide). In a boss battle the contact whose character has the owner's boss
+   flag (C+4 0x10000000: the player and the bosses) goes first, a weaker one counting from strength 2. */
 static int compare(const KnowEntry *a, const KnowEntry *b, bool exact, const Chr *owner)
 {
-    if (a->strength <= 2 && b->strength > 2) return 1;
-    if (b->strength <= 2 && a->strength > 2) return -1;
+    int side = 0;
+    if (knowledge_boss_battle && owner && a->target && b->target) {
+        bool fo = (owner->c.flags & CHR_FLAG_BOSS) != 0, fa = (a->target->c.flags & CHR_FLAG_BOSS) != 0,
+             fb = (b->target->c.flags & CHR_FLAG_BOSS) != 0;
+        if (fo == fa) {
+            if (fo != fb) side = -1;
+        } else if (fo == fb) {
+            side = 1;
+        }
+    }
+    int weak = side ? 1 : 2;
+    if (a->strength <= weak && b->strength > 2) return 1;
+    if (b->strength <= weak && a->strength > 2) return -1;
+    if (side) return side;
     if (b->hostility < a->hostility) return -1;
     if (a->hostility < b->hostility) return 1;
     if (owner) {
