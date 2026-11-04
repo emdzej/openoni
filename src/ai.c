@@ -2,6 +2,7 @@
 #include "ai.h"
 #include "chars.h"
 #include "combat.h"
+#include "door.h"
 #include "exe.h"
 #include "alarm.h"
 #include "graph.h"
@@ -220,6 +221,9 @@ static void make_local(AiState *a, const Character *c, const void *env, int seg)
     /* +0x1148: the next room is a stair one */
     bool stairs = seg + 1 < a->path_n && (graph_room_flags(graph_link(a->path[seg + 1])->to) & 1);
     a->local_n = local_path(env, room, start, end, c, stairs, true, a->local);
+    /* AI2iMovementState_SetupPath 0x4a9d70: a path made, the next waypoint is the second (+0x18ba = 1),
+       the first being the start's cell */
+    if (a->local_n > 0) a->local_k = 1;
 }
 
 /* The stand-in for the movement layer: forward, facing the local path's next waypoint (passed within
@@ -231,6 +235,14 @@ static void mover(AiState *a, const Character *c, const void *env)
     if (a->follow) memcpy(a->goal, a->follow->pos, sizeof a->goal);    /* AI2iPath_MakePath: type 2 */
     if (env && graph_for(env)) make_path(a, c);
     else a->path_n = 0;
+    /* AI2rPath_Update 0x4ae670: the door of the link out of the room (C+0x1144: the path's link, none in
+       the destination's room), opened as the action key opens it (OBJrDoor_CharacterOpen 0x4c2520) once
+       the character is within its activation distance */
+    if (a->path_k < a->path_n) {
+        int door = graph_link(a->path[a->path_k])->door;
+        const Chr *who = (const Chr *)((const char *)a - offsetof(Chr, ai));
+        if (door >= 0 && door_near(door, c->pos)) door_action_open(door, who);
+    }
     while (a->path_k < a->path_n) {
         const GraphLink *l = graph_link(a->path[a->path_k]);
         float lx = l->mid[0] - c->pos[0], lz = l->mid[2] - c->pos[2];

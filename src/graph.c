@@ -2,6 +2,7 @@
 #include "graph.h"
 
 #include "akev.h"
+#include "door.h"
 #include "tm.h"
 
 #include <float.h>
@@ -199,6 +200,7 @@ bool graph_build(const void *envp)
                 l->quad = quad;
                 l->from = r;
                 l->to = to;
+                l->door = -1;
             }
         }
     }
@@ -259,7 +261,65 @@ bool graph_build(const void *envp)
                 break;
             }
         }
+    graph_link_doors();
     return true;
+}
+
+static bool same_rooms(const GraphLink *a, const GraphLink *b) { return a->from == b->from && a->to == b->to; }
+static bool back_rooms(const GraphLink *a, const GraphLink *b) { return a->from == b->to && a->to == b->from; }
+
+/* OBJiDoor_MakeConnectionLink_Enum 0x4c1f90 through OBJrDoor_MakeConnectionLink 0x4c1f60, for each link
+   as PHrBuildGraph makes it: the first door (in the objects' order) within half the link's width of its
+   middle that keeps it in one of its two slots takes it. */
+void graph_link_doors(void)
+{
+    for (int i = 0; i < nlinks; i++) links[i].door = -1, links[i].door_side = 0;
+    int n = door_count();
+    if (!n || !nlinks) return;
+    /* each door's two links (+0x244, +0x248), their distances squared (+0x24c, +0x250) and widths
+       (+0x254, +0x258) */
+    struct { int link[2]; float d[2], w[2]; } *slot = calloc((size_t)n, sizeof *slot);
+    if (!slot) return;
+    for (int i = 0; i < n; i++) slot[i].link[0] = slot[i].link[1] = -1;
+    for (int li = 0; li < nlinks; li++) {
+        GraphLink *l = &links[li];
+        /* the enumeration of the doors, in order, until one takes the link */
+        for (int i = 0; i < n; i++) {
+            float p[3];
+            door_position(i, p);
+            float d = d2(p, l->mid), r = l->width * 0.5f;     /* 0x529560 */
+            if (d > r * r) continue;
+            const GraphLink *a0 = slot[i].link[0] >= 0 ? &links[slot[i].link[0]] : NULL;
+            const GraphLink *a1 = slot[i].link[1] >= 0 ? &links[slot[i].link[1]] : NULL;
+            bool same0 = a0 && same_rooms(l, a0), same1 = a1 && same_rooms(l, a1);
+            float d0 = slot[i].d[0], d1 = slot[i].d[1], w0 = slot[i].w[0], w1 = slot[i].w[1], w = l->width;
+            int k = -1;
+            if (!same1 && !a0) k = 0;
+            else if (!same0 && !a1) k = 1;
+            /* a nearer link (by a tenth: 0x5295a0, 0x5295a4), or a narrower one nearly as near, or the
+               way back of the other slot's link, takes a slot */
+            else if (!same1 && d * 1.1f < d0) k = 0;
+            else if (!same0 && d * 1.1f < d1) k = 1;
+            else if (!same1 && d * 0.9f < d0 && w0 > w) k = 0;
+            else if (!same0 && d * 0.9f < d1 && w1 > w) k = 1;
+            else if (!same1 && d * 0.9f < d0 && w * 0.9f < w0 && a1 && back_rooms(l, a1)) k = 0;
+            else if (!same0 && d * 0.9f < d1 && w * 0.9f < w1 && a0 && back_rooms(l, a0)) k = 1;
+            if (k < 0) continue;
+            /* (a link already taken: "OBJrDoor_MakeConnectionLink: door ... already", and the
+               enumeration stops) */
+            if (l->door < 0) {
+                float box[6];
+                graph_room_box(l->from, box);
+                /* the from room's middle (its BNV's box, PHrBuildGraph's context) */
+                float c[3] = { (box[0] + box[3]) * 0.5f, (box[1] + box[4]) * 0.5f, (box[2] + box[5]) * 0.5f };
+                l->door = i;
+                l->door_side = (int8_t)door_point_side(i, c);
+                slot[i].link[k] = li, slot[i].d[k] = d, slot[i].w[k] = w;
+            }
+            break;
+        }
+    }
+    free(slot);
 }
 
 int graph_room_count(void) { return nrooms; }
@@ -692,7 +752,9 @@ int graph_find_path_within(int a, const float pa[3], int b, const float pb[3], b
             if (l->to == c->parent || (by_character && (l->flags & 1))) continue;
             float step = c->via < 0 ? dist(pa, l->mid)
                                     : matrix[c->matrix + (uint32_t)(links[c->via].in_index * c->nout + l->out_index)];
-            /* the doors on the links (+0x2c) aren't ported: none, a cost of 1 */
+            /* a character's search passes a link's door by its lock (OBJrDoor_CharacterCanOpen); the others
+               (the doors' danger factors, +0x8c) aren't ported: a cost of 1 */
+            if (by_character && l->door >= 0 && !door_side_passes(l->door, l->door_side)) continue;
             float g = step * c->cost + c->g;
             float h = dist(l->mid, pb) * c->cost;
             float f = h + g;

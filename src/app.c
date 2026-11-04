@@ -538,11 +538,17 @@ static bool route_plan(const Character *c, const float b[3], char *out, size_t s
 {
     const void *env = route_env;
     if (!env || !graph_for(env)) return false;
-    /* the locked doors' links blocked while the path is found (the graph's own door links aren't kept) */
+    /* the locked doors' links blocked while the path is found; the graph's own doors on the links (the
+       AI's test, which keeps out a door jammed open too) set aside meanwhile */
     static uint32_t saved[4096];
+    static int saved_door[4096];
     int nl = graph_link_count() < 4096 ? graph_link_count() : 4096;
     static bool door_blocked[4096];
-    for (int i = 0; i < nl; i++) saved[i] = graph_link(i)->flags, door_blocked[i] = false;
+    for (int i = 0; i < nl; i++) {
+        GraphLink *l = (GraphLink *)graph_link(i);
+        saved[i] = l->flags, saved_door[i] = l->door, door_blocked[i] = false;
+        l->door = -1;
+    }
     for (int d = 0; d < door_count(); d++) {
         if (!(door_flags(d) & DOOR_LOCKED)) continue;
         if ((door_flags(d) & DOOR_JAMMED) && door_state(d) != 0) continue;     /* jammed open */
@@ -675,7 +681,7 @@ static bool route_plan(const Character *c, const float b[3], char *out, size_t s
         room = l->to;
     }
 #undef EMIT
-    for (int i = 0; i < nl; i++) ((GraphLink *)graph_link(i))->flags = saved[i];
+    for (int i = 0; i < nl; i++) ((GraphLink *)graph_link(i))->flags = saved[i], ((GraphLink *)graph_link(i))->door = saved_door[i];
     if (!n) return false;
     if (len < size) len += (size_t)snprintf(out + len, size - len, "%.1f,%.1f,P,3", b[0], b[2]);
     return len < size;

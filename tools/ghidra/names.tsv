@@ -804,6 +804,7 @@
 004ae480	AI2rPath_GoToPoint	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004ae580	AI2rPath_FollowCharacter	AI2	med	name from the Intel Mac build (called by AI2rDebug_FollowMe)
 004ae660	AI2rPath_Halt	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004ae670	AI2rPath_Update	AI2	med	name from the Intel Mac build (after AI2rPath_Halt): the path made, its link door opened when near (0x4c2a20, 0x4c2520), the path walked
 004aea30	AI2iPath_NextNode	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004aea60	AI2rPath_FindGhostWaypoint	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004aeb10	AI2iPath_MakePath	AI2	med	the global path: kept for the same nodes, point (20) and 90 ticks; else PHrFindPath
@@ -982,9 +983,13 @@
 004c1e80	OBJiDoor_UnlockDoors_Enum	OBJ	med	name from the Intel Mac build (strings:1)
 004c1ee0	OBJrDoor_Open_ID	OBJ	med	read: door_open's work: the first door of the id opens (name made up)
 004c1f20	OBJrDoor_Close_ID	OBJ	med	read: door_close's work (name made up)
+004c1f60	OBJrDoor_MakeConnectionLink	OBJ	med	name from the Intel Mac build (calls OBJiDoor_MakeConnectionLink_Enum)
 004c1f90	OBJiDoor_MakeConnectionLink_Enum	OBJ	med	name from the Intel Mac build (strings:1)
 004c2370	OBJiDoor_PointOnSide	OBJ	high	read: 1 if a point is behind the door's plane (its rotated x and y axes through its position) (name made up)
-004c2520	OBJrDoor_TryOpenByAction	OBJ	high	read: the action key opens the door if the character may pass (name made up)
+004c2490	OBJrDoor_IsOpen	OBJ	med	name from the Intel Mac build (neighbours: S+0xc == 1)
+004c24a0	OBJrDoor_OpensManually	OBJ	med	name from the Intel Mac build (neighbours: flag 0x10)
+004c24b0	OBJrDoor_CharacterCanOpen	OBJ	med	name from the Intel Mac build (neighbours): jammed, lock, one way by the side given, key
+004c2520	OBJrDoor_CharacterOpen	OBJ	med	name from the Intel Mac build (neighbours): opens the door if the character may pass (the action key, the AI path)
 004c2590	OBJrDoor_Close	OBJ	med	name from the Intel Mac build (neighbours:1.00)
 004c26c0	OBJrDoor_Open	OBJ	high	read: the panels made (or reversed), animating to the open frame, the gunk hidden, the sounds
 004c2940	OBJiDoor_HideShowGunk	OBJ	high	read: sets or clears 0x2800 on the door's gunk quads (name made up)

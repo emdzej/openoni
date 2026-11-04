@@ -58,7 +58,7 @@ void door_open(int i);
 void door_close(int i);
 
 /* The action key's door (OBJrDoor_TryDoorAction 0x4c2a50): the door the character faces, -1 none;
-   can: whether it may pass. door_action_open (0x4c2520) opens it if it may. */
+   can: whether it may pass. door_action_open (OBJrDoor_CharacterOpen 0x4c2520) opens it if it may. */
 struct Chr;
 int door_try_action(const struct Chr *c, const float pelvis[3], bool *can);
 bool door_action_open(int i, const struct Chr *c);
@@ -66,6 +66,14 @@ bool door_action_open(int i, const struct Chr *c);
 /* may_pass's lock test for a character at p, without keys: not jammed, and unlocked or one way with p
    on the side it lets through. */
 bool door_lock_passes(int i, const float p[3]);
+
+/* OBJiDoor_PointOnSide 0x4c2370: 1 behind the door's plane, else 0. door_side_passes
+   (OBJrDoor_CharacterCanOpen 0x4c24b0): the path search's test of a link's door, from the side of the
+   link's room (keys aren't ported). door_near (OBJrDoor_CharacterProximity 0x4c2a20): p within the
+   door's activation distance. */
+int door_point_side(int i, const float p[3]);
+bool door_side_passes(int i, int side);
+bool door_near(int i, const float p[3]);
 
 /* OBJrDoor_Lock_ID 0x4c1d80 (on) and OBJrDoor_Unlock_ID 0x4c1e30: every door of the id, 0xffff all. */
 void door_lock_id(uint16_t id, bool on);

@@ -4,8 +4,9 @@
    docs/re/pathfinding.md.
 
    The links' blockages come from the rooms' grids (PHiCheckForBlockages 0x50df80): a link blocked all
-   across gets flag 1, which characters don't take. Not yet: the doors on the links (+0x2c), the grids'
-   run-time obstacles (characters, objects, doors: PHrPrepareRoomForPath 0x50d660). */
+   across gets flag 1, which characters don't take. The doors on the links (+0x2c) come from the level's
+   doors (graph_link_doors). Not yet: the grids' run-time obstacles (characters, objects, doors:
+   PHrPrepareRoomForPath 0x50d660). */
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
@@ -20,6 +21,8 @@ typedef struct {
     uint32_t quad;          /* +0x10: the quad crossed */
     float mid[3];           /* +0x14: the middle of its bottom edge */
     float width;            /* +0x20: the bottom edge's length across */
+    int8_t door_side;       /* +0x24: the from room's side of the door (OBJiDoor_PointOnSide) */
+    int door;               /* +0x2c: the door (door.h index), -1 none */
     int16_t blocks;         /* +0x42: the blocked runs along the edge (both rooms' grids) */
     float block[16][2];     /* their fractions of the edge (the original keeps them rounded, +0x40) */
 } GraphLink;
@@ -29,6 +32,9 @@ bool graph_build(const void *env);
 void graph_free(void);
 /* The graph of env, built the first time it is asked for (the level's load, ONrLevel_Load). */
 bool graph_for(const void *env);
+/* The doors on the links (OBJiDoor_MakeConnectionLink_Enum 0x4c1f90, which PHrBuildGraph runs for
+   each new link): again whenever the graph or the doors are loaded. */
+void graph_link_doors(void);
 int graph_room_count(void);
 int graph_link_count(void);
 const GraphLink *graph_link(int i);

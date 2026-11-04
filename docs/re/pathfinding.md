@@ -68,6 +68,41 @@ rounded to nearest (0x434030, `fistp`); likewise z. A cell's middle (`PHrGridToW
    4/width to past 1 − 4/width blocks the link: flag 1. On level 1, 32 of the 528 links are blocked:
    the closed doors (their panels are in the grid).
 
+## The doors on the links
+
+`PHrBuildGraph` hands each new link to `OBJrDoor_MakeConnectionLink` 0x4c1f60, which enumerates the
+doors (`OBJiDoor_MakeConnectionLink_Enum` 0x4c1f90) until one takes it. A door takes a link whose
+middle is within half its width (0.5, 0x529560) of the door's position (D+0x0c, distance squared). The
+door keeps two links (D+0x244, D+0x248), their distances squared (+0x24c, +0x250) and widths (+0x254,
++0x258). A link joining the same two rooms as one slot's never takes the other slot. In order:
+
+1. An empty first slot, unless the link matches the second slot's rooms; then an empty second slot,
+   unless it matches the first's.
+2. A slot whose link is farther than 1.1 times this one's distance (0x5295a0); the first slot, then
+   the second (as in each step below).
+3. A slot whose link is farther than 0.9 times this one's distance (0x5295a4) and wider.
+4. A slot whose link is farther than 0.9 times this one's distance and wider than 0.9 times its width,
+   when the other slot holds this link's way back.
+5. Otherwise the door passes it on to the next door.
+
+Taken, the link gets the door (+0x2c), unless it already has one (a debugger message, and the
+enumeration stops either way). The link also gets the side of the door its from room's middle is on
+(+0x24: `OBJiDoor_PointOnSide` 0x4c2370 of the middle of the BNV's box, BNV+0x30..+0x44). A link
+pushed out of a slot keeps its door.
+
+The character's search (below) skips a link whose door `OBJrDoor_CharacterCanOpen` 0x4c24b0 refuses
+for that side. It refuses when the door is jammed, or locked and not one way with the side let through
+(−1 passes), and without the key. The cheat byte 0x5ec5f5 passes every door. A search without a
+character uses the door's danger factor (+0x8c) instead.
+
+`AI2rPath_Update` 0x4ae670 keeps the door of the path's current link in C+0x1144. It is set when the
+path is made (`AI2iPath_MakePath`) and as each link is passed, and is none in the destination's room.
+Each tick, a character within the door's activation distance (`OBJrDoor_CharacterProximity` 0x4c2a20:
+distance squared from C+0x148 below S+8) opens it as the action key does (`OBJrDoor_CharacterOpen`
+0x4c2520). That opens manual doors too: on level 10 the guards behind the manual blast doors 1 and 2
+come through before the script locks them. `AI2iMovementState_SetupPath` 0x4a9d70 starts the movement
+state's waypoints at the second (+0x18ba = 1); the first is the start's own cell.
+
 ## The room under a point
 
 `AKrNodeFromPoint` 0x440600 (`FUN_00440600`): the BNVs of the octree leaf holding the point. For each:
@@ -167,10 +202,11 @@ grids, and finds the room under a point and the path. The AI's mover (`src/ai.c`
 `AI2iPath_MakePath` does and walks it straight from link to link, then to the point; a link is passed
 in the room beyond, or within 2 of its middle. In each room it makes the local path (`src/localpath.c`:
 `ASrPath_SetParams`, `ASrPath_Generate`, `ASiList_CalcWaypoints`, `PHrWaypointFromGunk`) and heads for
-its waypoints, each passed within 2. Stand-ins: that steering (the movement state's
-`AI2iMovementState_Calculate_Movement` 0x4aa250 and its point hits are next); the ghost waypoint's look
-ahead; the character's node looked up from its position each time; the doors on the links and the
-grids' run-time obstacle layer (`PHrPrepareRoomForPath` 0x50d660: characters, objects, doors).
+its waypoints from the second, each passed within 2, opening the doors on its links. Stand-ins: that
+steering (the movement state's `AI2iMovementState_Calculate_Movement` 0x4aa250 and its point hits are
+next); the ghost waypoint's look ahead; the character's node looked up from its position each time;
+the doors' danger factors and keys; the grids' run-time obstacle layer (`PHrPrepareRoomForPath`
+0x50d660: characters, objects, doors).
 
 `tests/graph_test.c`: level 1's 240 rooms and 528 links, each with one back, 32 blocked; the training
 room apart from the warehouse; a 68-room path across the warehouse. `tests/ai_test.c` walks a thug

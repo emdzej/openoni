@@ -4,6 +4,7 @@
 #include "akev.h"
 #include "chars.h"
 #include "event.h"
+#include "graph.h"
 #include "oban.h"
 #include "objc.h"
 #include "object.h"
@@ -221,6 +222,7 @@ int door_load(void *env)
     objc_each("Door", count_door, &n);
     doors = n ? calloc((size_t)n, sizeof *doors) : NULL;
     if (doors) objc_each("Door", add_door, NULL);
+    graph_link_doors();     /* PHrBuildGraph's, if the graph came first */
     return ndoors;
 }
 
@@ -230,6 +232,7 @@ void door_unload(void)
     doors = NULL;
     ndoors = 0;
     door_env = NULL;
+    graph_link_doors();
 }
 
 int door_count(void) { return ndoors; }
@@ -333,6 +336,34 @@ bool door_lock_passes(int i, const float p[3])
     int side = point_on_side(d, p);
     if (d->flags & DOOR_ONE_WAY_REVERSED) side = !side;
     return side != 0;
+}
+
+int door_point_side(int i, const float p[3]) { return i >= 0 && i < ndoors ? point_on_side(&doors[i], p) : 0; }
+
+/* OBJrDoor_CharacterCanOpen 0x4c24b0: the path search's test of a link's door, by the side of the link's
+   room (the link's +0x24): not jammed; and unlocked, or one way with the side it lets through (-1, never
+   made, passes too), or a key (keys aren't ported). */
+bool door_side_passes(int i, int side)
+{
+    if (i < 0 || i >= ndoors) return true;
+    const Door *d = &doors[i];
+    if (d->flags & DOOR_JAMMED) return false;
+    if (!(d->flags & DOOR_LOCKED)) return true;
+    if (d->flags & DOOR_ONE_WAY) {
+        if (side == -1) return true;
+        if (d->flags & DOOR_ONE_WAY_REVERSED) side = !side;
+        if (side) return true;
+    }
+    return false;
+}
+
+/* OBJrDoor_CharacterProximity 0x4c2a20: the character (C+0x148) within the door's activation distance. */
+bool door_near(int i, const float p[3])
+{
+    if (i < 0 || i >= ndoors) return false;
+    const Door *d = &doors[i];
+    float dx = p[0] - d->pos[0], dy = p[1] - d->pos[1], dz = p[2] - d->pos[2];
+    return dx * dx + dy * dy + dz * dz < d->radius2;
 }
 
 static void play_sound(const Door *d, unsigned name_at)
@@ -518,7 +549,8 @@ int door_try_action(const Chr *c, const float pelvis[3], bool *can)
     return best;
 }
 
-/* 0x4c2520: the action key's open, if the character may pass. */
+/* OBJrDoor_CharacterOpen 0x4c2520: the door opens if the character may pass (the action key, the AI's
+   path). */
 bool door_action_open(int i, const Chr *c)
 {
     if (i < 0 || i >= ndoors || !may_pass(&doors[i], c)) return false;

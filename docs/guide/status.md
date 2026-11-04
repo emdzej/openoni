@@ -41,6 +41,11 @@ cutscene, the middle floor's locks and the second lift, the consoles that discha
 conduits and the runs through them before they recharge, the drop to the lowest floor, the last
 chambers' fight, and level 10 begins.
 
+Level 10, the power plant's second part, plays through as well: the guards who come through the blast
+doors before they lock (the AI opens the doors on its way, manual ones too), Shinatama's cutscene and the
+run from the bomb, the two pipes run while their discharge lasts, the vat room's walkways and the zaps,
+the control room and the elevator, the last pipe, the fan and the outro, and level 11 begins.
+
 It can be tried in the browser on the <a href="/play/" target="_self">play page</a>, with your own copy of the game.
 
 ## What works
@@ -129,7 +134,7 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - The impact effects (the hit sparks' classes). The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.
-- The other 8 levels as a playthrough.
+- The other 7 levels as a playthrough.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked
 against the original.

@@ -123,5 +123,4 @@ Not yet:
 - The panels' physics: characters walk through a moving panel, so the stuck logic never starts.
 - Keys, the door's events, the AI's sound, the pathfinding notice.
 - The sounds' place: they play as plain impulses.
-- The action key for manual doors (`OBJrDoor_TryDoorAction` 0x4c2a50).
 - `door_is_locked` and the lock lights.
