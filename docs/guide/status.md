@@ -30,7 +30,10 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   with the weapons the level gives them. The bosses' behaviours, the gun pickup and the alarms are
   still missing, and the paths they take in a fight are stand-ins.
 - **The scripts**: the BSL engine runs the level's own scripts, with their trigger volumes, doors,
-  consoles, animated objects and the first of the game's script commands.
+  consoles, animated objects and a growing share of the game's script commands, among them those that
+  set the AI's awareness, health and movement modes.
+- **The level chain**: a level's `win` loads the next level and its `lose` plays the same level again,
+  as the original's game loop does. The mission timer counts down and runs its script at zero.
 - **The cutscenes**: the films (a character's input recorded tick by tick and played back), the
   camera's moves, the letterbox, and the AI held still while they play.
 - **The particle system**, the engine under every shot, spark and shard of glass. It covers the particle

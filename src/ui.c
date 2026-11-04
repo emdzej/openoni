@@ -14,7 +14,11 @@ static struct { float from[4], to[4]; uint32_t start, end; bool on; } fade;
 /* The letterbox: the last update's time, the bars' height, going on or off, moving. */
 static struct { uint32_t time; float height; bool on, moving; } box;
 static bool input_on = true;
+static int level_end;            /* G+0x1679bc: 1 won, 2 lost */
 static bool cutscene, cutscene_sync;
+/* The timer (ONrGameState's, 0x5ece7c): 0 off, 1 counting down, 2 ended (its "0:00.0" shown for 300
+   ticks); the function run at 0 (32 bytes), the ticks left, the blink and its counter. */
+static struct { int state; char func[32]; uint32_t ticks; bool shown; uint32_t blink; } timer;
 static struct { UiLine lines[UI_AREA_LINES]; int n; } areas[UI_AREAS];
 
 /* The messages lately asked for (a debug aid for the routes: ui_message_time). */
@@ -37,7 +41,9 @@ void ui_reset(void)
     memset(&box, 0, sizeof box);
     memset(areas, 0, sizeof areas);
     input_on = true;
+    level_end = 0;
     cutscene = cutscene_sync = false;
+    memset(&timer, 0, sizeof timer);
 }
 
 uint32_t ui_time(void) { return now; }
@@ -55,6 +61,37 @@ void ui_update(void)
         }
         areas[a].n = k;
     }
+    /* the timer's tick (0x4fd3d0). Not ported: its sounds (a tick every second, the music under 600
+       ticks) until the sound's port plays them. */
+    if (timer.state == 1) {
+        timer.blink++;
+        if (--timer.ticks == 0) {
+            timer.state = 2;
+            timer.ticks = 300;
+            /* SLrScript_ExecuteOnce: the function's thread, as a trigger's */
+            if (timer.func[0]) sl_call(timer.func, 0, NULL);
+        }
+    } else if (timer.state == 2) {
+        timer.blink++;
+        if (--timer.ticks == 0) timer.state = 0;
+    }
+}
+
+/* ONrGameState_Timer_Display 0x4fd500's text: blinking under 1200 ticks left (every 15 ticks, 8 under
+   600, 4 under 300; and every 15 once ended), tenths under ten seconds. */
+bool ui_timer_text(char out[32])
+{
+    if (timer.state == 0) return false;
+    if (timer.state == 2 || timer.ticks < 1200) {
+        uint32_t period = timer.state == 1 && timer.ticks < 300 ? 4 : timer.state == 1 && timer.ticks < 600 ? 8 : 15;
+        if (period < timer.blink) { timer.blink = 0; timer.shown = !timer.shown; }
+        if (!timer.shown) return false;
+    }
+    if (timer.state == 2) { snprintf(out, 32, "0:00.0"); return true; }
+    uint32_t t = timer.ticks, sec = t / 60 % 60, min = t / 3600;
+    if (min == 0 && sec < 10) snprintf(out, 32, "%01u:%02u.%01u", 0u, sec, t / 6 % 10);
+    else snprintf(out, 32, "%01u:%02u", min, sec);
+    return true;
 }
 
 /* The draw's part (ONi_GameState_Display_All_UI_Elements 0x4fbaa0): t from the start to the end time,
@@ -182,6 +219,50 @@ static bool cmd_letterbox(SlThread *t, int c, const SlValue *v, SlValue *r, void
 }
 
 /* input on (0x4bcc50) */
+int ui_level_end(void) { return level_end; }
+
+/* win (0x4bd1f0) and lose (0x4bd210): the level ends, won or lost; ONiRunGame 0x4d4640 acts on it at
+   the end of the frame. */
+static bool cmd_win(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)c, (void)v, (void)r, (void)u;
+    level_end = 1;
+    return true;
+}
+
+static bool cmd_lose(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)c, (void)v, (void)r, (void)u;
+    level_end = 2;
+    return true;
+}
+
+/* timer_start seconds function (0x4bd270): the seconds as ticks, 0 to an hour, then 0x4fd370 starts
+   the timer. */
+static bool cmd_timer_start(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    float s = c >= 1 ? fnum(&v[0]) * 60.0f : 0.0f;
+    int32_t ticks = (int32_t)s;
+    if (ticks < 0) ticks = 0;
+    if (ticks > 216000) ticks = 216000;
+    timer.state = 1;
+    memset(timer.func, 0, sizeof timer.func);
+    if (c >= 2 && v[1].type == SL_STRING && v[1].s) strncpy(timer.func, v[1].s, sizeof timer.func - 1);
+    timer.ticks = (uint32_t)ticks;
+    timer.blink = 0;
+    timer.shown = true;
+    return true;
+}
+
+/* timer_stop (0x4bd2d0, 0x4fd3a0): off. Not ported: its sound when it was running. */
+static bool cmd_timer_stop(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)c, (void)v, (void)r, (void)u;
+    timer.state = 0;
+    return true;
+}
+
 static bool cmd_input(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;
@@ -244,6 +325,10 @@ void ui_register_commands(void)
     sl_register("fade_in", cmd_fade_in, NULL);
     sl_register("letterbox", cmd_letterbox, NULL);
     sl_register("input", cmd_input, NULL);
+    sl_register("win", cmd_win, NULL);
+    sl_register("lose", cmd_lose, NULL);
+    sl_register("timer_start", cmd_timer_start, NULL);
+    sl_register("timer_stop", cmd_timer_stop, NULL);
     sl_register("cutscene_sync", cmd_cutscene_sync, NULL);
     sl_register("message", cmd_message, NULL);
     sl_register("message_remove", cmd_message_remove, NULL);

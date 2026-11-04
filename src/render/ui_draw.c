@@ -133,6 +133,14 @@ void ui_draw(int w, int h)
                 ui_draw_text(font, x, y, scale, l->text, c);
             }
         }
+        /* the timer (ONrGameState_Timer_Display 0x4fd500): centred, near the top (its place inferred:
+           0x4264e0's offsets aren't decoded) */
+        char tt[32];
+        if (ui_timer_text(tt)) {
+            static const uint8_t white[4] = { 255, 255, 255, 255 };
+            float tw = walk(font, 0, 0, scale, tt, white, false);
+            ui_draw_text(font, ((float)w - tw) / 2, lb + lh * 2, scale, tt, white);
+        }
     }
     /* the fade over everything (ONrBlanketScreen) */
     float f[4];

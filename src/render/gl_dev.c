@@ -70,6 +70,7 @@ static void attribs(void)
 
 bool gl_dev_init(void)
 {
+    if (prog) return true;      /* once: the next levels keep it */
     prog = glCreateProgram();
     glAttachShader(prog, shader(GL_VERTEX_SHADER, VS));
     glAttachShader(prog, shader(GL_FRAGMENT_SHADER, FS));

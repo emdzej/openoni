@@ -145,6 +145,7 @@ enum { AI_FLAG_KNOWLEDGE = 0x01, AI_FLAG_PASSIVE = 0x02, AI_FLAG_NON_AGGRESSIVE 
 
 typedef struct {
     int mode;               /* A+0x1a98: 0 the default for the alert level */
+    int movement_mode;      /* the movement's (+0x14a4, ai2_setmovementmode): 0 by the alert level */
     int kind;               /* A+0x1a9c */
     float facing;           /* A+0x1aa4 */
     bool full_turn;         /* A+0x1ab0: walking turns at the full rate */

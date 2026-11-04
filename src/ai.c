@@ -57,7 +57,7 @@ static int default_mode(const AiState *a)
    (A+0x1acc) and the aim (AI2rExecutor_UpdateAim 0x498f50). */
 static void executor_update(AiState *a, Character *c, ChrInput *in)
 {
-    int mode = a->mode ? a->mode : default_mode(a);
+    int mode = a->mode ? a->mode : a->movement_mode ? a->movement_mode : default_mode(a);
     uint64_t held = 0;
     switch (a->kind) {
     case AI_MOVE_FORWARD: held = CHR_KEY_FORWARD; break;

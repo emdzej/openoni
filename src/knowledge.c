@@ -389,6 +389,22 @@ void knowledge_forget(Chr *c)
         else i++;
 }
 
+void knowledge_forget_contacts(Chr *owner, const Chr *target)
+{
+    /* from the last contact back (the list's tail, then +0x50) */
+    KnowEntry *e = owner->ai.know;
+    while (e && e->next) e = e->next;
+    while (e) {
+        KnowEntry *prev = e->prev;
+        if (!target || e->target == target) {
+            e->strength = KNOW_FORGOTTEN;
+            notify(owner, e, true);
+            if (e->owner) remove_entry(e);
+        }
+        e = prev;
+    }
+}
+
 /* The head (0x4e3460: A+0x247c, else the location 15 up), the pelvis (0x4e34f0) and the bottom
    (0x4e3590: the pelvis's x and z, the body's bottom + 1). */
 static void head_point(const Chr *c, float p[3])

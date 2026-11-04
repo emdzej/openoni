@@ -311,6 +311,8 @@ static bool cmd_farclip(SlThread *t, int argc, const SlValue *argv, SlValue *r, 
 
 /* ONrLevel_Load 0x5059d0 runs the level's scripts: the folder named by the level's ONLV, after the global
    ones, starting at main. */
+static bool first = true;       /* the debug params (route, at, call) are for the first level only */
+
 static void start_scripts(void)
 {
     sl_reset();
@@ -350,7 +352,7 @@ static void start_scripts(void)
     if (!sl_call("main", 0, NULL)) plat_log("OpenOni: the level has no main script");
     /* a debug aid: --param call=<function>[,<function>...] runs the level's functions at the start */
     char fn[192];
-    if (plat_param("call", fn, sizeof fn))
+    if (first && plat_param("call", fn, sizeof fn))
         for (char *f = strtok(fn, ","); f; f = strtok(NULL, ","))
             if (!sl_call(f, 0, NULL)) plat_log("OpenOni: no such function");
 }
@@ -628,8 +630,27 @@ static void particles_update(uint32_t tick, bool gameplay)
     p3_update(tick, gameplay, list, n);
 }
 
-static int play(int level)
+static TmFile *level_zero;
+
+/* ONrLevel_GetNextLevel 0x507000: the lowest level number above this one among the level descriptors
+   (ONLD, +0 the number) whose files are there; 0 none. */
+static int next_level(int level)
 {
+    TmFile *zero = level_zero;
+    int best = 0xffff;
+    for (uint32_t i = 0; zero && i < tm_file_instance_count(zero); i++) {
+        const TmInstance *t = tm_file_instance(zero, i);
+        if (!t->data || !t->name || strncmp(t->name, "ONLD", 4)) continue;
+        int n = t->data[0] | t->data[1] << 8;
+        if (n > level && tm_level_valid(n) && n <= best) best = n;
+    }
+    return best == 0xffff ? 0 : best;
+}
+
+/* One level, until it ends (*next: the level to load then, 0 none) or the player quits (Esc). */
+static int play(int level, int *next)
+{
+    *next = 0;
     char err[256], m[300], at_dummy[8];
     trac_set_level((uint16_t)level);
     if (!tm_level_load(level, err, sizeof err)) {
@@ -653,7 +674,7 @@ static int play(int level)
     }
     /* --param at=x,y,z[,degrees]: another start, for testing */
     char at[96];
-    if (plat_param("at", at, sizeof at)) {
+    if (first && plat_param("at", at, sizeof at)) {
         float deg = player->c.facing / 0.017453293f;
         if (sscanf(at, "%f,%f,%f,%f", &player->c.pos[0], &player->c.pos[1], &player->c.pos[2], &deg) >= 3)
             player->c.facing = deg * 0.017453293f;
@@ -684,7 +705,8 @@ static int play(int level)
     cinematic_reset();
     start_scripts();
     memset(&route, 0, sizeof route);
-    if (plat_param("route", route.buf, sizeof route.buf)) route.step = route.buf;
+    if (first && plat_param("route", route.buf, sizeof route.buf)) route.step = route.buf;
+    first = false;
     plat_log("OpenOni: playing");
     for (;;) {
         uint8_t keys[KEY_COUNT] = { 0 }, presses[64];
@@ -782,6 +804,16 @@ static int play(int level)
             if (player) ui_draw_hud(w, h, player->c.hit_points, player->c.max_hit_points, ticks);
             ui_draw(w, h);
         }
+        /* ONiRunGame 0x4d4640: won, the next level (after level 19, the outro: not yet); lost, this
+           one again (the save point's restore: with saving) */
+        if (ui_level_end() == 1) {
+            *next = next_level(level);
+            return 0;
+        }
+        if (ui_level_end() == 2) {
+            *next = level;
+            return 0;
+        }
         plat_wait_frame();
     }
 }
@@ -800,7 +832,7 @@ int app_main(void)
         plat_log(m);
         return 1;
     }
-    TmFile *zero = tm_file_at(tm_file_slots() - 1);
+    TmFile *zero = level_zero = tm_file_at(tm_file_slots() - 1);
     TmLoadStats st = tm_load_stats();
     snprintf(m, sizeof m, "OpenOni: level 0 loaded: %u instances, %u links", (unsigned)tm_file_instance_count(zero),
              (unsigned)st.links);
@@ -810,7 +842,13 @@ int app_main(void)
     sound_level_load(0);
     char viewer[32], lv[16];
     if (plat_param("play", viewer, sizeof viewer)) {
-        int r = play(plat_param("level", lv, sizeof lv) ? atoi(lv) : 1);
+        int level = plat_param("level", lv, sizeof lv) ? atoi(lv) : 1, next = 0, r;
+        while ((r = play(level, &next)) == 0 && next) {
+            tm_level_unload(level);
+            snprintf(m, sizeof m, "OpenOni: level %d ends, level %d next", level, next);
+            plat_log(m);
+            level = next;
+        }
         trac_forget();
         sound_terminate();
         tm_terminate();

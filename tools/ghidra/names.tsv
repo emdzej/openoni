@@ -1269,3 +1269,10 @@
 00498da0	AI2rExecutor_StopAiming	AI2	low	the aim asked to stop (A+0x1a89)
 00498dc0	AI2rExecutor_AimAtPoint	AI2	low	the executor's aim at a point (A+0x1a88..0x1a94)
 00498e10	AI2rExecutor_AimDirection	AI2	low	the executor's aim along a direction
+004bd1f0	SLiCmd_Win	SL	low	win: the level end at G+0x1679bc set to 1
+004bd210	SLiCmd_Lose	SL	low	lose: the level end set to 2
+004bd270	SLiCmd_TimerStart	SL	low	timer_start: seconds as ticks, clamped to an hour
+004bd2d0	SLiCmd_TimerStop	SL	low	timer_stop
+004fd370	ONrGameState_Timer_Start	ON	low	the timer on with its function and ticks
+004fd3a0	ONrGameState_Timer_Stop	ON	low	the timer off (a sound if it ran)
+004fd3d0	ONrGameState_Timer_Update	ON	low	the timer's tick: at 0 the function runs, then 300 ticks of 0:00.0

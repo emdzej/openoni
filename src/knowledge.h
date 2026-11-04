@@ -52,6 +52,9 @@ void knowledge_hurt_by(struct Chr *victim, struct Chr *attacker, uint32_t damage
 /* A character leaves (AI2rKnowledge_ThisCharacterWasDeleted, AI2rKnowledge_Delete 0x49b990): the
    contacts of it and its own go. */
 void knowledge_forget(struct Chr *c);
+/* AI2rKnowledgeState_Forget 0x49c480: owner's contacts of target (NULL: all of them) forgotten, the state
+   told of each (strength 1), then dropped. */
+void knowledge_forget_contacts(struct Chr *owner, const struct Chr *target);
 /* AI2rKnowledge_Update 0x499e80, once a tick before the characters. env: the AKEV for the sight lines. */
 void knowledge_update(const void *env);
 KnowEntry *knowledge_find(const struct Chr *owner, const struct Chr *target);   /* 0x49b8c0 */

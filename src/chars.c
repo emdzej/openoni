@@ -464,6 +464,101 @@ static bool cmd_attack(SlThread *t, int c, const SlValue *v, SlValue *r, void *u
     return true;
 }
 
+/* ai2_makeaware char target (AI2iScript_MakeAware 0x4b4ed0): as ai2_attack, without the hostility. */
+static bool cmd_make_aware(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 2) return true;
+    Chr *ch = arg_char(&v[0]), *target = arg_char(&v[1]);
+    if (!ch || ch->player || !target) return true;
+    knowledge_post(ch, KNOW_SEEN_CENTRAL, KNOW_DEFINITE, target->c.pos, target, 0, false, false);
+    return true;
+}
+
+/* ai2_forget [char [target]] (0x4b5fb0, 0x48be30): the AI's characters (one, or all), alive and in use,
+   forget their contacts (of the target, or all). */
+static bool cmd_forget(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    Chr *one = c >= 1 ? arg_char(&v[0]) : NULL, *target = c >= 2 ? arg_char(&v[1]) : NULL;
+    for (int i = 0; i < CHARS_MAX; i++) {
+        Chr *ch = used[i] ? &slots[i] : NULL;
+        if (!ch || ch->player || (ch->c.flags & 1) || (one && ch != one)) continue;
+        knowledge_forget_contacts(ch, target);
+    }
+    return true;
+}
+
+/* ai2_kill [except] [char] (AI2iScript_Debug_Smite 0x4b5e60, AI2rSmite 0x48bda0): the AI's living
+   characters killed (damage 0x6000000): all, all but the one named after "except", or the one. */
+static bool cmd_kill(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    bool except = c >= 1 && v[0].type == SL_STRING && !strcmp(v[0].s, "except");
+    Chr *one = except ? (c >= 2 ? arg_char(&v[1]) : NULL) : (c >= 1 ? arg_char(&v[0]) : NULL);
+    if (!except && c >= 1 && !one) return true;
+    for (int i = 0; i < CHARS_MAX; i++) {
+        Chr *ch = used[i] ? &slots[i] : NULL;
+        if (!ch || ch->player || (ch->c.flags & 1)) continue;
+        if (except ? ch == one : (one && ch != one)) continue;
+        chr_take_damage(&ch->c, 0x6000000, 0.0f, NULL, 0, NULL);
+    }
+    return true;
+}
+
+/* chr_set_health char hp (AI2iScript_SetHealth 0x4b7a30, ONrCharacter_SetHitPoints 0x4eb220): 0 kills
+   a living character (the death hook); a dead one given hit points coming back isn't ported. */
+static bool cmd_set_health(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    Chr *ch = c >= 2 ? arg_char(&v[0]) : NULL;
+    if (!ch) return true;       /* "chr_set_health" */
+    int32_t hp = num(&v[1]);
+    if (hp <= 0) {
+        if (!(ch->c.flags & 1)) chr_take_damage(&ch->c, ch->c.hit_points ? ch->c.hit_points : 1, 0.0f, NULL, 0, NULL);
+        return true;
+    }
+    if (!(ch->c.flags & 1)) ch->c.hit_points = (uint32_t)hp;
+    return true;
+}
+
+/* chr_unstoppable char on (AI2iScript_Unstoppable 0x4b95e0): C+0x04 bit 0x100 (no knockback, no
+   knockdown); chr_weapon_immune char (AI2iScript_WeaponImmune 0x4ba1f0): bit 0x80000000, set only. */
+static bool cmd_unstoppable(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    Chr *ch = c >= 1 ? arg_char(&v[0]) : NULL;
+    if (!ch) return true;
+    if (c >= 2 && num(&v[1]) > 0) ch->c.flags |= 0x100;
+    else ch->c.flags &= ~0x100u;
+    return true;
+}
+
+static bool cmd_weapon_immune(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    Chr *ch = c >= 1 ? arg_char(&v[0]) : NULL;
+    if (ch) ch->c.flags |= 0x80000000u;
+    return true;
+}
+
+/* ai2_allpassive on (0x4b4bc0): AI2rAllPassive. */
+static bool cmd_all_passive(SlThread *t, int c, const SlValue *v, SlValue *r, void *u);
+
+/* ai2_setmovementmode char mode (AI2iScript_Debug_SetMovementMode 0x4b52b0): the movement's mode
+   (AI2rMovement_ChangeMovementMode 0x4a8200, +0x14a4) by its name (0x52adf8, 16 bytes each). The
+   executor takes it where the alert level's default would be (the movement state's port: a stand-in). */
+static bool cmd_set_movement_mode(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    static const char *const names[] = { "by_alert_level", "stop", "crouch", "creep", "walk_noaim", "walk", "run_noaim", "run" };
+    Chr *ch = c >= 2 ? arg_char(&v[0]) : NULL;
+    if (!ch || ch->player || v[1].type != SL_STRING) return true;
+    for (int k = 0; k < 8; k++)
+        if (!strcmp(v[1].s, names[k])) ch->ai.movement_mode = k;   /* else "unknown movement mode" */
+    return true;
+}
+
 /* chr_delete char (AI2iScript_ChrDelete 0x4b7860) */
 static bool cmd_delete(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
@@ -507,6 +602,15 @@ static bool cmd_full_health(SlThread *t, int c, const SlValue *v, SlValue *r, vo
 
 /* AI2rAllPassive 0x48b0d0: every AI-run character (+0x1e8 2) made passive (+0x1f0 bit 2: its state left,
    its path halted) or not; going back, each one's last action (C+0x1e0) is now. */
+static void all_passive(bool on);
+
+static bool cmd_all_passive(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    all_passive(c >= 1 && num(&v[0]) != 0);
+    return true;
+}
+
 static void all_passive(bool on)
 {
     for (int i = 0; i < chars_slots(); i++) {
@@ -727,6 +831,14 @@ void chars_register_commands(void)
     sl_register("chr_invincible", cmd_invincible, NULL);
     sl_register("ai2_makeignoreplayer", cmd_make_ignore_player, NULL);
     sl_register("ai2_attack", cmd_attack, NULL);
+    sl_register("ai2_makeaware", cmd_make_aware, NULL);
+    sl_register("ai2_forget", cmd_forget, NULL);
+    sl_register("ai2_kill", cmd_kill, NULL);
+    sl_register("ai2_allpassive", cmd_all_passive, NULL);
+    sl_register("ai2_setmovementmode", cmd_set_movement_mode, NULL);
+    sl_register("chr_set_health", cmd_set_health, NULL);
+    sl_register("chr_unstoppable", cmd_unstoppable, NULL);
+    sl_register("chr_weapon_immune", cmd_weapon_immune, NULL);
     sl_register("chr_teleport", cmd_teleport, NULL);
     sl_register("playback", cmd_playback, NULL);
     sl_register("chr_full_health", cmd_full_health, NULL);

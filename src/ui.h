@@ -37,10 +37,14 @@ void ui_set_cutscene(bool on, bool sync);
 int ui_area_count(int area);
 /* Line i of the area, oldest first; alpha in 0..1 (lines fade out over their last 64 ticks). */
 const UiLine *ui_area_line(int area, int i, float *alpha);
+/* How the level ended (G+0x1679bc, the win and lose commands): 0 not yet, 1 won, 2 lost. */
+int ui_level_end(void);
 /* When the message (by its name) was last asked for by a script, 0 not lately (the port's). */
 uint32_t ui_message_time(const char *id);
 /* Adds a line (the oldest goes when the area is full). */
 void ui_print(int area, const char *text, const char *id, int32_t timer, uint32_t colour);
 
-/* fade_in, fade_out, letterbox, input, message, message_remove. */
+/* The timer's text now (timer_start), false when off or blinked out. */
+bool ui_timer_text(char out[32]);
+/* fade_in, fade_out, letterbox, input, message, message_remove, win, lose, timer_start, timer_stop. */
 void ui_register_commands(void);
