@@ -237,11 +237,49 @@ taking the input (`WMrActivate` 0x476110; `WMrDeactivate` 0x476410 after). Its p
 - 0x36 for the text (110): the text state's stack starts from the item's font, format 1, and the page
   (`ONiIGUI_Page_Paint`, [text.md](../formats/text.md)) is drawn.
 
+## The desktop and the picture
+
+The desktop (`WMiDesktop_Callback` 0x476d70) paints its background, set by 0x3c (`WMrSetDesktopBackground`
+0x476b00): a texture at its size or a part spec over the desktop. `PSrPartSpec_LoadByType` 0x46aa10
+finds a part spec by its type in "partspec_list" (`PSpL`, the string at 0x53c44c: +0x14 the count, then
+8 bytes an entry, the type and the `PSpc`); the menus set type 1 and put type 0 back.
+
+The picture (11, `WMiPicture_Paint` 0x470260) names its image in its title: a `TXMP`, else a `TXMB`
+(style 0x20000: none; 0x55 sets a part spec, 0x56 a texture). A part spec is drawn over the window, a
+texture at its size cut to the window, or stretched over it (style 0x10000). `DCrDraw_TextureRef`
+0x469fc0 draws a `TXMP` over a width and height at its texels' scale (the texture coordinates the size
+over the texture's) or stretched (0 to 0.999), and a `TXMB` as its tiles, 256 apart by rows, each cut to
+what is left.
+
+## The main menu
+
+`ONiMain` 0x4d3280, after its start-up and the Oni window (the WM and its desktop), runs
+`OWrOniWindow_Startup` 0x4bebd0: the WM's input on, the input mode 0, `ONrOutGameUI_MainMenu_Display`
+0x4d2c70; then, unless the player quit (0x630ffd), `ONiRunGame` 0x4d4640. In a level, the player's escape
+(`ONiGameState_PlayerEscape` 0x4faec0: the input's bit 1, at most once in 15 ticks, not in a cutscene)
+runs the same menu over the level (`OWrOniWindow_MainMenu` 0x4bec00).
+
+The menu: "psui_oniUI", the desktop's background of type 1, dialog 150 (640 by 480, centred: five
+buttons over the picture `pict_mainmenu`). Its procedure (`ONiOutGameUI_MainMenu_Callback` 0x4d2cd0):
+
+- 0x3d: Options (102) shown out of a level, Resume (104), in its place, in one; the menu's music.
+- 0x17: 2 (Escape) resumes in a level; 100 New Game runs dialog 154 ("Press Start to begin a new game.",
+  Start 1, Cancel 2), and Start ends the menu and starts level 1 (`OWrGame_Start` 0x4beb40: the current
+  level unloaded, the continue cleared, the level loaded); 101 Load Game, dialog 151 (the levels'
+  list); 102 Options, dialog 152; 103 Quit, dialog 153 (Yes 1, No 2), Yes sets the quit; 104 Resume.
+  The yes-or-no dialogs (`ONiOutGameUI_Choice_Callback` 0x4d2aa0) end with the button's id.
+
+Dialogs' keys: Return posts the command of the default button (a button of style 0x100000 tells its
+dialog its id on its create, 0x3f; 0x3e asks), if enabled; Escape posts `WM_CLOSE` (0x14), which the
+dialog turns into the cancel's command (2).
+
 ## The port
 
-`src/wm.c` (the core, the DC, part specs, text, the four classes), `src/igui.c` (the pages, the text
-console), `src/li.c` (the keys as the LI's codes), `src/render/ui_draw.c` (the sprites and glyphs). The
+`src/wm.c` (the core, the DC, part specs, text, the classes), `src/igui.c` (the pages, the text
+console), `src/outgame.c` (the main menu), `src/li.c` (the keys as the LI's codes), `src/render/ui_draw.c` (the sprites and glyphs). The
 desktop is as tall as 480, scaled to the display (as the HUD). Unattended runs tap keys into the dialogs
-with `--param keys=27,32,...` (one every 30 frames of a dialog). Not ported yet: the frames (title bars,
-their boxes and dragging), the timers, the caret, the click's sound, and the classes other than these
-four (check box, edit field, list box, menus, picture, progress bar, radio button, scroll bar, slider).
+with `--param keys=27,32,...`, or click with `@x:y` in the desktop's pixels (one every 30 frames of a
+dialog). Not ported yet: the frames (title bars,
+their boxes and dragging), the timers, the caret, the click's sound, the menu's music, and the classes other than these
+five (check box, edit field, list box, menus, progress bar, radio button, scroll bar, slider), so Load
+Game and Options.

@@ -305,10 +305,8 @@ static uintptr_t default_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t
 
 /* ---- the desktop (class 1, 0x476d70) ---- */
 
-static uintptr_t desktop_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
-{
-    return default_proc(w, msg, p1, p2);
-}
+static const void *background;      /* the desktop's: a PSpc or a texture (WMrSetDesktopBackground, 0x3c) */
+static uintptr_t desktop_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2);
 
 /* ---- the drawing context ---- */
 
@@ -611,13 +609,40 @@ void wm_dc_part(WmDc *dc, const void *pspc, uint16_t mask, int16_t x, int16_t y,
     }
 }
 
-/* DCrDraw_TextureRef 0x469fc0: the texture at its size. */
-void wm_dc_texture(WmDc *dc, const void *txmp, int16_t x, int16_t y, uint8_t alpha)
+static uint32_t instance_tag(const void *data)
 {
-    if (!dc || !txmp) return;
-    float tw = (float)rd16((const uint8_t *)txmp + 0x84), th = (float)rd16((const uint8_t *)txmp + 0x86);
+    const TmInstance *in = data ? tm_handle_instance(tm_handle_of(data)) : NULL;
+    return in && in->tmpl ? in->tmpl->tag : 0;
+}
+
+/* DCrDraw_TextureRef 0x469fc0: a TXMP over w by h (-1: its own size) at its texels' scale (the texture
+   coordinates the size over the texture's), or stretched over it; a TXMB (+0x08 width, +0x0a height,
+   +0x10 across, +0x12 down, +0x18 the tiles by rows) as its tiles, 256 apart, each cut to what is left. */
+void wm_dc_texture(WmDc *dc, const void *tex, int16_t x, int16_t y, int16_t w, int16_t h, bool stretch, uint8_t alpha)
+{
+    if (!dc || !tex) return;
+    const uint8_t *t = tex;
+    if (instance_tag(tex) == TM_TAG("TXMB")) {
+        if (w == -1) w = (int16_t)rd16(t + 0x08);
+        if (h == -1) h = (int16_t)rd16(t + 0x0a);
+        uint16_t across = rd16(t + 0x10), down = rd16(t + 0x12);
+        for (int r = 0; r < down; r++)
+            for (int c = 0; c < across; c++) {
+                int tw = w - c * 256, th = h - r * 256;
+                tw = tw < 0 ? 0 : tw > 255 ? 256 : tw;
+                th = th < 0 ? 0 : th > 255 ? 256 : th;
+                wm_dc_texture(dc, tm_link(t + 0x18 + 4 * (r * across + c)), (int16_t)(x + c * 256),
+                              (int16_t)(y + r * 256), (int16_t)tw, (int16_t)th, false, alpha);
+            }
+        return;
+    }
+    float tw = (float)rd16(t + 0x84), th = (float)rd16(t + 0x86);
+    if (w == -1) w = (int16_t)tw;
+    if (h == -1) h = (int16_t)th;
+    if (!w || !h || !tw || !th) return;
+    float u1 = stretch ? 0.999f : w / tw, v1 = stretch ? 0.999f : h / th;
     float x0 = dc->ox + x, y0 = dc->oy + y;
-    clipped_sprite(txmp, x0, y0, x0 + tw, y0 + th, 0, 0, 1, 1, dc->clip, (uint32_t)alpha << 24 | 0xffffff);
+    clipped_sprite(tex, x0, y0, x0 + w, y0 + h, 0, 0, u1, v1, dc->clip, (uint32_t)alpha << 24 | 0xffffff);
 }
 
 /* ---- the frame: drawing and input ---- */
@@ -687,6 +712,13 @@ static void mouse_event(int type, int16_t x, int16_t y)
     wm_post(w, msg, point, part);
 }
 
+void wm_click(int16_t x, int16_t y)
+{
+    mouse_event(1, x, y);
+    mouse_event(2, x, y);
+    mouse_event(3, x, y);
+}
+
 static uint8_t mouse_buttons;
 void wm_take_input(bool on) { takes_input = on; }     /* WMrActivate 0x476110, WMrDeactivate 0x476410 */
 
@@ -694,7 +726,7 @@ void wm_update(void)     /* WMrUpdate 0x477070: the timers (none yet), then the 
 {
     if (!takes_input) return;
     PlatMouse m;
-    if (plat_mouse(&m) && desktop) {
+    if (plat_mouse(&m) && m.inside && desktop) {     /* the pointer over the game's window */
         int dw, dh;
         plat_display_size(&dw, &dh);
         float s = dh ? (float)desktop->h / (float)dh : 1.0f;
@@ -715,6 +747,7 @@ typedef struct {
     WmDialogProc proc;              /* +0x00 */
     bool done;                      /* +0x04 */
     uint32_t result;                /* +0x08 */
+    uint16_t default_id;            /* +0x0c: the default button's (0x3f) */
     const uint8_t *wmdd;
     uintptr_t param;                /* +0x10 */
 } DialogData;
@@ -724,6 +757,9 @@ void wm_dialog_end(WmWindow *d, uint32_t result)       /* WMrDialog_ModalEnd 0x4
 {
     if (d && d->data) ((DialogData *)d->data)->result = result, ((DialogData *)d->data)->done = true;
 }
+
+static bool enabled(const WmWindow *w) { return !(w->flags & 2); }     /* 0x474d00 */
+static void picture_title(WmWindow *w);
 
 /* The dialog's procedure (WMiDialog_Create 0x468cd0, class 6). */
 static uintptr_t dialog_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
@@ -746,6 +782,7 @@ static uintptr_t dialog_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t 
                                         (int16_t)rd16(it + 0x110), (int16_t)rd16(it + 0x112), w, 0);
             if (!c) return 1;
             snprintf(c->title, sizeof c->title, "%s", (const char *)it);
+            picture_title(c);
             WmFont f = { tm_link(it + 0x114), rd32(it + 0x118), rd32(it + 0x11c), rd16(it + 0x120), rd16(it + 0x122) };
             wm_set_font(c, &f);
             text_extent(&c->font, c->title, &c->title_w, &c->title_h);
@@ -761,9 +798,13 @@ static uintptr_t dialog_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t 
         free(d);
         w->data = 0;
         return 0;
-    case WM_CLOSE:
-        if (d && d->proc && d->proc(w, msg, p1, p2)) return 0;
-        wm_dialog_end(w, 2);
+    case WM_CLOSE:     /* the cancel's command */
+        wm_send(w, WM_COMMAND, 0x10002, 0);
+        return 0;
+    case 0x3e:
+        return d ? d->default_id : 0;
+    case 0x3f:
+        if (d) d->default_id = (uint16_t)p1;
         return 0;
     case WM_COMMAND:
         if (!d) return 0;
@@ -772,9 +813,11 @@ static uintptr_t dialog_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t 
         return 0;
     case WM_KEYDOWN:
         if (d && d->proc && d->proc(w, msg, p1, p2)) return 0;
-        if (p1 == 0x0d || p1 == 0xba) {      /* Return: the focused child's command */
-            if (focus && focus->parent == w) wm_send(w, WM_COMMAND, (uintptr_t)focus->id | 0x10000, (uintptr_t)focus);
-        } else if (p1 == 0x1b || p1 == 0x2a) wm_dialog_end(w, 0);
+        if (p1 == 0x0d || p1 == 0xba) {      /* Return: the default button's command */
+            uint16_t id = (uint16_t)wm_send(w, 0x3e, 0, 0);
+            WmWindow *b = id ? wm_item(w, id) : NULL;
+            if (b && enabled(b)) wm_post(w, WM_COMMAND, (uintptr_t)id | 0x10000, (uintptr_t)b);
+        } else if (p1 == 0x1b || p1 == 0x2a) wm_post(w, WM_CLOSE, 0, 0);    /* Escape */
         return 0;
     case WM_HITTEST:
     case WM_CLIENTRECT:
@@ -809,7 +852,7 @@ uint32_t wm_dialog_modal(uint16_t id, WmDialogProc proc, uintptr_t param)
 {
     const uint8_t *dd = find_dialog(id);
     if (!dd || !desktop) return 0;
-    DialogData init = { proc, false, 0, dd, param };
+    DialogData init = { proc, false, 0, 0, dd, param };
     WmWindow *w = wm_window_new(6, rd32(dd + 0x104), rd32(dd + 0x108), id, (int16_t)rd16(dd + 0x10c),
                                 (int16_t)rd16(dd + 0x10e), (int16_t)rd16(dd + 0x110), (int16_t)rd16(dd + 0x112),
                                 NULL, (uintptr_t)&init);
@@ -822,7 +865,6 @@ uint32_t wm_dialog_modal(uint16_t id, WmDialogProc proc, uintptr_t param)
             if (draw_callback) draw_callback();
             wm_display();
         }
-        if (frame_hook) frame_hook();
         wm_update();
         WmWindow *t;
         uint32_t msg;
@@ -837,11 +879,40 @@ uint32_t wm_dialog_modal(uint16_t id, WmDialogProc proc, uintptr_t param)
             wm_send(t, msg, p1, p2);
         }
         if (d->done) break;
+        if (frame_hook) frame_hook();
         plat_wait_frame();
     }
     uint32_t result = d ? d->result : 0;
     wm_window_delete(w);
     return result;
+}
+
+/* The desktop: its background, a texture at its size or a part spec over it. */
+static uintptr_t desktop_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
+{
+    if (msg == 0x3c) {
+        background = (const void *)p1;
+        return 0;
+    }
+    if (msg != WM_PAINT) return default_proc(w, msg, p1, p2);
+    if (!background) return 0;
+    WmDc *dc = wm_dc_begin(w);
+    if (instance_tag(background) == TM_TAG("PSpc")) wm_dc_part(dc, background, 0xffff, 0, 0, w->w, w->h, 0xff);
+    else wm_dc_texture(dc, background, 0, 0, -1, -1, false, 0xff);
+    wm_dc_end(dc);
+    return 0;
+}
+
+void wm_set_desktop_background(const void *b) { wm_send(desktop, 0x3c, (uintptr_t)b, 0); }
+
+/* PSrPartSpec_LoadByType 0x46aa10: the part spec of the type in "partspec_list" (PSpL, the string at
+   0x53c44c: +0x14 the count, then the type and the PSpc, 8 bytes an entry). */
+const void *wm_partspec_by_type(uint32_t type)
+{
+    const uint8_t *l = tm_instance_get(TM_TAG("PSpL"), exe_str(0x53c44c));
+    for (uint32_t i = 0; l && i < rd32(l + 0x14); i++)
+        if (rd32(l + 0x18 + 8 * i) == (type & 0xffff)) return tm_link(l + 0x1c + 8 * i);
+    return NULL;
 }
 
 /* ---- the classes ---- */
@@ -850,7 +921,50 @@ static uintptr_t box_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
 static uintptr_t button_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2);
 static uintptr_t text_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2);
 
-static bool enabled(const WmWindow *w) { return !(w->flags & 2); }     /* 0x474d00 */
+
+/* The picture (class 11, WMiPicture_Paint 0x470260): its title names its image, a TXMP, else a TXMB
+   (style 0x20000: none, set by 0x55 a part spec or 0x56 a texture); a part spec over the window, a
+   texture at its size cut to the window (style 0x10000: stretched over it). */
+static uintptr_t picture_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
+{
+    switch (msg) {
+    case WM_CREATE:
+        w->data = 0;
+        return 0;
+    case WM_PAINT: {
+        const void *img = (const void *)w->data;
+        if (!img) return 0;
+        WmDc *dc = wm_dc_begin(w);
+        if (instance_tag(img) == TM_TAG("PSpc")) wm_dc_part(dc, img, 0xffff, 0, 0, w->w, w->h, 0xff);
+        else if (w->style & 0x10000) wm_dc_texture(dc, img, 0, 0, w->w, w->h, true, 0xff);
+        else {
+            const uint8_t *t = img;
+            bool big = instance_tag(img) == TM_TAG("TXMB");
+            int16_t tw = (int16_t)rd16(t + (big ? 0x08 : 0x84)), th = (int16_t)rd16(t + (big ? 0x0a : 0x86));
+            wm_dc_texture(dc, img, 0, 0, w->w < tw ? w->w : tw, w->h < th ? w->h : th, false, 0xff);
+        }
+        wm_dc_end(dc);
+        return 0;
+    }
+    case 0x55:
+        if (instance_tag((const void *)p1) == TM_TAG("PSpc")) w->data = p1;
+        return 0;
+    case 0x56:
+        if (instance_tag((const void *)p1) == TM_TAG("TXMP") || instance_tag((const void *)p1) == TM_TAG("TXMB")) w->data = p1;
+        return 0;
+    }
+    return default_proc(w, msg, p1, p2);
+}
+
+/* The picture's image from its title, once the dialog has set it (the original's create reads the title
+   WMrWindow_New copied in). */
+static void picture_title(WmWindow *w)
+{
+    if (w->cls->number != 11 || (w->style & 0x20000)) return;
+    const void *img = tm_instance_get(TM_TAG("TXMP"), w->title);
+    if (!img) img = tm_instance_get(TM_TAG("TXMB"), w->title);
+    w->data = (uintptr_t)img;
+}
 
 /* The box (class 3, WMiBox_Paint 0x46af20): the PSUI's outline (+0x2c) over it, dimmed when disabled. Not
    ported: the title (style 0x40000). */
@@ -874,6 +988,7 @@ static uintptr_t button_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t 
         return WM_HIT_CLIENT;
     case WM_CREATE:
         w->data = 0;
+        if (w->style & WM_BUTTON_DEFAULT) wm_send(w->parent, 0x3f, w->id, 0);
         return 0;
     case WM_PAINT: {
         WmDc *dc = wm_dc_begin(w);
@@ -965,6 +1080,7 @@ void wm_initialize(int w, int h)    /* WMrInitialize 0x475ad0 */
     class_register(3, box_proc);
     class_register(4, button_proc);
     class_register(6, dialog_proc);
+    class_register(11, picture_proc);
     class_register(20, text_proc);
     desktop = wm_window_new(1, WM_STYLE_VISIBLE, 0, 0, 0, 0, (int16_t)w, (int16_t)h, NULL, 0);
     /* WMrCursor_Get (0x4687d0): type 1 in the cursor list ("cursor_list", 0x53c304: +0x14 the count, then

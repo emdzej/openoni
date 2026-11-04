@@ -2,11 +2,13 @@
 #include "igui.h"
 
 #include "exe.h"
+#include "platform.h"
 #include "sl.h"
 #include "text.h"
 #include "tm.h"
 #include "wm.h"
 
+#include <stdio.h>
 #include <string.h>
 
 static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }
@@ -73,7 +75,7 @@ void igui_page_paint(const void *igpg, const WmDrawItem *item)
                 pen[1] = (int16_t)(pen[1] + h);
             } else if (tag == TM_TAG("TXMP")) {
                 int16_t tw = (int16_t)rd16((const uint8_t *)image + 0x84), th = (int16_t)rd16((const uint8_t *)image + 0x86);
-                wm_dc_texture(item->dc, image, (int16_t)((item->item->w - tw) >> 1), pen[1], 0xff);
+                wm_dc_texture(item->dc, image, (int16_t)((item->item->w - tw) >> 1), pen[1], -1, -1, false, 0xff);
                 pen[1] = (int16_t)(pen[1] + th);
             }
             pen[1] = (int16_t)(pen[1] + 10);
@@ -159,12 +161,18 @@ static bool cmd_text_console(SlThread *t, int c, const SlValue *v, SlValue *r, v
     if (c != 1 || v[0].type != SL_STRING || !v[0].s) return true;
     Console con = { tm_instance_get(TM_TAG("TxtC"), v[0].s), 0 };
     if (!con.txtc) return true;
+    char m[96];
+    snprintf(m, sizeof m, "OpenOni: text console %s", v[0].s);
+    plat_log(m);
     const void *old = wm_psui_active();
     const void *ui = wm_psui_get(exe_str(0x54c898));
     if (ui) wm_psui_set_active(ui);
     if (modal_begin) modal_begin();     /* LIrMode_Set(0) */
     wm_take_input(true);
+    uint32_t from = plat_frames();
     wm_dialog_modal(0x47, console_proc, (uintptr_t)&con);
+    snprintf(m, sizeof m, "OpenOni: text console closed after %u frames", (unsigned)(plat_frames() - from));
+    plat_log(m);
     wm_take_input(false);
     if (modal_end) modal_end();
     wm_psui_set_active(old);

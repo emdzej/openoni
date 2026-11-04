@@ -475,6 +475,7 @@
 00476450	WMrGetDesktop	WM	med	name from the Intel Mac build (neighbours:1.00)
 00476b00	WMrSetDesktopBackground	WM	med	name from the Intel Mac build (neighbours:1.00)
 00476b90	WMiDesktop_Create	WM	med	name from the Intel Mac build (strings:1)
+00476d70	WMiDesktop_Callback	WM	low	class 1: its background (0x3c), a texture or a part spec, painted
 00477070	WMrUpdate	WM	low	the timers, then up to 10 input events as messages
 00477510	WMiKey_Event	WM	low	a key to the focused window, or its dialog for the kinds it does not take
 004777d0	SLrScript_CommandTable_Register_Void	SL	med	name from the Intel Mac build (strings:1)
@@ -863,7 +864,9 @@
 004be960	ASiAstarHeap_CompareFunc	AS	med	1 when a's estimate is the lower, 0 equal, -1 higher
 004be9b0	ASiAstarHeap_NotifyLocation	AS	med	a node's place in the heap
 004be9d0	OWrLevelList_Initialize	OW	med	name from the Intel Mac build (neighbours:0.75)
+004beb40	OWrGame_Start	OW	low	a level started (the low byte; the high: from the continue): the current unloaded, the continue cleared
 004bebd0	OWrOniWindow_Startup	OW	med	name from the Intel Mac build (neighbours:1.00)
+004bec00	OWrOniWindow_MainMenu	OW	low	the main menu over a level: the WM's input on, the input mode 0
 004bee60	OBJrCharacter_Initialize	OBJ	med	name from the Intel Mac build (strings:2)
 004bf0f0	OBJiCharacter_GetUniqueOSD	OBJ	med	name from the Intel Mac build (neighbours:0.75)
 004bf290	OBJiCharacter_Read	OBJ	low	the Character type read method (name made up)
@@ -955,7 +958,11 @@
 004d1f00	OBJrObjectType_GetObjectList	OBJ	med	name from the Intel Mac build (neighbours:0.75)
 004d23a0	OBDrBinaryData_Load	OBD	med	name from the Intel Mac build (neighbours:1.00)
 004d24e0	OBDrLevel_Load	OBD	med	name from the Intel Mac build (neighbours:1.00)
+004d25c0	ONiOutGameUI_Options_Callback	ON	low	the options dialog (152)
+004d2aa0	ONiOutGameUI_Choice_Callback	ON	low	the yes or no dialogs: a button ends them with its id
+004d2ba0	ONiOutGameUI_LoadGame_Callback	ON	low	the load game dialog (151): the levels reached
 004d2c70	ONrOutGameUI_MainMenu_Display	ON	med	name from the Intel Mac build (neighbours:1.00)
+004d2cd0	ONiOutGameUI_MainMenu_Callback	ON	low	the main menu (150): New Game, Load Game, Options, Resume, Quit
 004d3100	ONiOGU_MainMenu_FadeMusic	ON	med	name from the Intel Mac build (neighbours:0.80)
 004d3180	OniExit	-	med	name from the Intel Mac build (strings:2)
 004d3280	ONiMain	ON	med	name from the Intel Mac build (strings:1)
@@ -1105,6 +1112,7 @@
 004f8ef0	HandleStartRunning	-	med	name from the Intel Mac build (strings:1)
 004f9a70	HandleFallThrough	-	med	name from the Intel Mac build (strings:1)
 004fa2f0	HandleStartJumping	-	high	Mac name (its layout match ONrInput_Update_Keys is wrong): the jump table, then 0x4fa1c0
+004faec0	ONiGameState_PlayerEscape	ON	low	the player's input bit 1 (escape): the main menu over the level, at most once in 15 ticks
 004fafb0	iComputeDeltaTicks	-	med	name from the Intel Mac build (strings:2)
 004fb2e0	ONrBlanketScreen	ON	med	name from the Intel Mac build (neighbours:0.80)
 004fb480	ONiGameState_Display_Reflectable	ON	med	name from the Intel Mac build (strings:1)

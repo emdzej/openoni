@@ -44,6 +44,7 @@
 #include "sound.h"
 #include "vfs.h"
 #include "igui.h"
+#include "outgame.h"
 #include "wm.h"
 
 #include <GLES3/gl3.h>
@@ -737,8 +738,8 @@ static void game_display(void)
 
 /* The modal dialogs' frame (in WMrUpdate's place for the port): the sound, and for unattended runs the
    keys of --param keys=<n>[,<n>...], the LI codes (27 Escape, 32 space, 13 Return) tapped into the
-   dialogs, one every 30 of their frames. The dialogs' frames are not the route's: its clock leaves them
-   out. */
+   dialogs, or "@x:y" a click at the desktop's point (it is as tall as 480), one every 30 of their frames.
+   The dialogs' frames are not the route's: its clock leaves them out. */
 static uint32_t modal_frames;
 static char modal_keys[128];
 static const char *modal_key;
@@ -747,7 +748,10 @@ static void modal_frame(void)
     sound_update();     /* 0x483bd0, WMrUpdate's end */
     splash_frames++;
     if (++modal_frames % 30 == 0 && modal_key && *modal_key) {
-        wm_key((uint8_t)atoi(modal_key));
+        if (*modal_key == '@') {
+            const char *c = strchr(modal_key, ':');
+            wm_click((int16_t)atoi(modal_key + 1), (int16_t)(c ? atoi(c + 1) : 0));
+        } else wm_key((uint8_t)atoi(modal_key));
         const char *c = strchr(modal_key, ',');
         modal_key = c ? c + 1 : NULL;
     }
@@ -820,7 +824,6 @@ static int play(int level, int *next)
         wm_set_frame_hook(modal_frame);
     }
     display.ct = &ct, display.player = player, display.ticks = 0;
-    if (first && plat_param("keys", modal_keys, sizeof modal_keys)) modal_key = modal_keys;
     start_scripts();
     memset(&route, 0, sizeof route);
     if (first && plat_param("route", route.buf, sizeof route.buf)) route.step = route.buf;
@@ -829,8 +832,21 @@ static int play(int level, int *next)
     for (;;) {
         uint8_t keys[KEY_COUNT] = { 0 }, presses[64];
         int n = plat_key_presses(presses, (int)sizeof presses);
+        /* 0x4faec0: the player's escape (its input's bit 1, at most once in 15 ticks, not in a cutscene)
+           opens the main menu over the level (0x4bec00); New Game starts again at level 1 (0x4beb40) */
         for (int i = 0; i < n; i++)
-            if (presses[i] == DIK_ESCAPE) return 0;
+            if (presses[i] == DIK_ESCAPE) {
+                int choice = outgame_main_menu(true);
+                if (choice == OUTGAME_QUIT) {
+                    *next = 0;
+                    return 0;
+                }
+                if (choice == OUTGAME_NEW_GAME) {
+                    *next = 1;
+                    save_clear();       /* 0x4fda80 */
+                    return 0;
+                }
+            }
         plat_keys(keys);
         PlatMouse mouse;
         CharacterInput in = {
@@ -926,6 +942,45 @@ static int play(int level, int *next)
     }
 }
 
+/* ONiRunGame 0x4d4640's levels, from the one given: each level's end loads the next (or plays it again);
+   0 when the game ends. */
+static int run_game(int level)
+{
+    int next = 0, r;
+    char m[96];
+    while ((r = play(level, &next)) == 0 && next) {
+        tm_level_unload(level);
+        snprintf(m, sizeof m, "OpenOni: level %d ends, level %d next", level, next);
+        plat_log(m);
+        level = next;
+    }
+    return r;
+}
+
+/* Out of a game, the WM's frames over black. */
+static void blank_display(void)
+{
+    int w, h, dw, dh;
+    plat_display_size(&w, &h);
+    gl_dev_begin(w, h, 0.0f, 0.0f, 0.0f);
+    ui_draw_wm_begin(w, h, &dw, &dh);
+}
+
+/* ONiMain 0x4d3280 after the start-up: the Oni window (WMrInitialize, the desktop), the main menu
+   (OWrOniWindow_Startup 0x4bebd0), then unless the player quit, the game from level 1. Not ported yet:
+   the intro's movies and splash screens before the menu. */
+static void front_end(void)
+{
+    int w, h;
+    plat_display_size(&w, &h);
+    if (!gl_dev_init()) return;
+    wm_initialize(h ? w * 480 / h : 640, 480);
+    wm_set_draw_callback(blank_display);
+    wm_set_frame_hook(modal_frame);
+    plat_log("OpenOni: main menu");
+    if (outgame_main_menu(false) == OUTGAME_NEW_GAME) run_game(1);
+}
+
 int app_main(void)
 {
     char err[256], m[300];
@@ -949,14 +1004,9 @@ int app_main(void)
     sound_initialize();
     sound_level_load(0);
     char viewer[32], lv[16];
+    if (plat_param("keys", modal_keys, sizeof modal_keys)) modal_key = modal_keys;
     if (plat_param("play", viewer, sizeof viewer)) {
-        int level = plat_param("level", lv, sizeof lv) ? atoi(lv) : 1, next = 0, r;
-        while ((r = play(level, &next)) == 0 && next) {
-            tm_level_unload(level);
-            snprintf(m, sizeof m, "OpenOni: level %d ends, level %d next", level, next);
-            plat_log(m);
-            level = next;
-        }
+        int r = run_game(plat_param("level", lv, sizeof lv) ? atoi(lv) : 1);
         trac_forget();
         sound_terminate();
         tm_terminate();
@@ -968,7 +1018,9 @@ int app_main(void)
         tm_terminate();
         return r;
     }
-    test_screen();
+    if (plat_param("test", viewer, sizeof viewer)) test_screen();
+    else front_end();
+    trac_forget();
     sound_terminate();
     tm_terminate();
     plat_log("OpenOni: quit");

@@ -85,12 +85,14 @@ WmWindow *wm_item(WmWindow *dialog, uint16_t id);
 void wm_display(void);
 void wm_update(void);
 void wm_key(uint8_t code);
+/* A left click at the desktop's point, as the mouse's events (for unattended runs). */
+void wm_click(int16_t x, int16_t y);
 /* WMrActivate 0x476110 / WMrDeactivate 0x476410: the WM takes the input, its cursor shown, or not. */
 void wm_take_input(bool on);
 
 /* WMrDialog_ModalBegin 0x4689d0: the dialog of that id run to its end; its result. The callback draws the
-   game behind it (WMrDialog_SetDrawCallback 0x469330); the frame hook is called once a frame (the port's
-   route). */
+   game behind it (WMrDialog_SetDrawCallback 0x469330); the frame hook is called before each frame's wait
+   (the port's sound and unattended keys). */
 typedef bool (*WmDialogProc)(WmWindow *dialog, uint32_t msg, uintptr_t p1, uintptr_t p2);
 uint32_t wm_dialog_modal(uint16_t id, WmDialogProc proc, uintptr_t param);
 void wm_dialog_end(WmWindow *dialog, uint32_t result);
@@ -110,7 +112,9 @@ int16_t wm_dc_ascending(void);
 void wm_dc_text(WmDc *dc, const int16_t rect[4], const int16_t pen[2], const char *s, int16_t out[4]);
 /* The part spec's parts (a mask of 9, column by column) over x, y, w, h (PSrPartSpec_Draw 0x4698b0). */
 void wm_dc_part(WmDc *dc, const void *pspc, uint16_t mask, int16_t x, int16_t y, int16_t w, int16_t h, uint8_t alpha);
-void wm_dc_texture(WmDc *dc, const void *txmp, int16_t x, int16_t y, uint8_t alpha);
+void wm_dc_texture(WmDc *dc, const void *tex, int16_t x, int16_t y, int16_t w, int16_t h, bool stretch, uint8_t alpha);
+void wm_set_desktop_background(const void *b);
+const void *wm_partspec_by_type(uint32_t type);
 const void *wm_psui_part(unsigned offset);
 const void *wm_psui_active(void);
 void wm_psui_set_active(const void *psui);

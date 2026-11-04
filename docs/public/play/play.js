@@ -195,8 +195,10 @@ async function play(source) {
   show('setup', HASH_FRAMES > 0);
   $('status').textContent = 'Starting...';
   const params = Object.fromEntries([...query].filter(([k]) => !PAGE_PARAMS.has(k)));
-  if (!params.play && !params.viewer) params.play = '1';
-  if (!params.level) params.level = $('level').value;
+  // the main menu unless a level is picked (or asked for in the address)
+  const pick = $('level').value;
+  if (!params.play && !params.viewer && pick !== 'menu') params.play = '1';
+  if (!params.level && pick !== 'menu') params.level = pick;
   const c = freshCanvas();
   try {
     await audioReady;
@@ -384,8 +386,8 @@ async function refreshImported() {
   return info;
 }
 
-$('level').value = localStorage.getItem('openoni.level') ?? '1';
-if ($('level').selectedIndex < 0) $('level').value = '1';
+$('level').value = localStorage.getItem('openoni.level') ?? 'menu';
+if ($('level').selectedIndex < 0) $('level').value = 'menu';
 $('level').onchange = () => localStorage.setItem('openoni.level', $('level').value);
 
 if (!hasOpfs) message('This browser has no private file storage (OPFS), so the game data can\'t be imported. Play without importing works.', 'warn');
