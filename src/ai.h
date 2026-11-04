@@ -252,6 +252,12 @@ void ai_executor_move(AiState *a, float facing, int mode, int kind, bool full_tu
 /* One tick of a character the AI moves: the stand-in mover, then the executor, then the character's
    update with the input it made. */
 void ai_update(AiState *a, Character *c, const void *env);
+/* The player under ai2_takecontrol: its AI's movement and executor only, no states (the player isn't
+   an AI, C+0x1e8 0). */
+void ai_control_update(AiState *a, Character *c, const void *env);
+/* ai2_takecontrol 1 (AI2iScript_TakeControl 0x4b8940): the run's turn undone, the movement flag, the
+   movement and path reset (AI2rExecutor_Initialize). */
+void ai_take_control(AiState *a, Character *c);
 /* The stand-in mover: walk to a point (then face angle when face). */
 void ai_move_to(AiState *a, const float p[3], bool face, float angle);
 /* The same, arriving within radius (and not stopping there when through). */

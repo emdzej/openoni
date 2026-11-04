@@ -59,6 +59,17 @@ static bool cmd_died(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
     return true;
 }
 
+typedef struct { float at[3]; int id; float best; } NearFlag;
+
+static bool near_flag(const ObjcObject *o, void *user)
+{
+    NearFlag *f = user;
+    float dx = o->pos[0] - f->at[0], dy = o->pos[1] - f->at[1], dz = o->pos[2] - f->at[2];
+    float d = sqrtf(dx * dx + dz * dz);
+    if (d > 20.0f && d < 60.0f && fabsf(dy) < 3.0f && d < f->best) f->best = d, f->id = (int)(o->data[6] | o->data[7] << 8);
+    return true;
+}
+
 int main(void)
 {
     if (!vfs_mount_default() || !vfs_exists(EXE_PATH)) { printf("chars_test: no game folder, skipped\n"); return 0; }
@@ -246,6 +257,32 @@ int main(void)
     printf("level1: reload: empty %d, clips %u (powerups %d), empty %d, refilled after %d ticks, clips %u\n", empty_before, clips,
            powerup_count(), empty_after, reloaded, p->c.ammo);
     if (!empty_before || clips != 1 || powerup_count() || empty_after || !reloaded || p->c.ammo) failed++;
+    /* ai2_takecontrol: the player's AI walks her to a flag 20 to 60 away (the nearest such), the keys
+       doing nothing meanwhile; ai2_takecontrol 0 gives them back */
+    {
+        NearFlag nf = { { p->c.pos[0], p->c.pos[1], p->c.pos[2] }, -1, 1e9f };
+        objc_each("Flag", near_flag, &nf);
+        snprintf(script, sizeof script, "func void ctl(void) {\n  ai2_takecontrol 1\n  ai2_movetoflag 0 %d\n}\n"
+                 "func void ctl_off(void) {\n  ai2_takecontrol 0\n}\n", nf.id);
+        if (!sl_load_text("chars_ctl", script, err, sizeof err) || !sl_call("ctl", 0, NULL)) failed++;
+        sl_update();
+        ObjcObject fl;
+        float d0 = 0.0f, d1 = 0.0f;
+        bool flag_on = (p->c.flags & CHR_FLAG_AI_MOVEMENT) != 0;
+        if (nf.id >= 0 && objc_flag_find((uint16_t)nf.id, &fl)) {
+            d0 = sqrtf((fl.pos[0] - p->c.pos[0]) * (fl.pos[0] - p->c.pos[0]) + (fl.pos[2] - p->c.pos[2]) * (fl.pos[2] - p->c.pos[2]));
+            for (int k = 0; k < 600; k++) {
+                CharacterInput in = { .forward = -1 };     /* back, held: ignored */
+                chars_update(&in, NULL);
+                sl_update();
+            }
+            d1 = sqrtf((fl.pos[0] - p->c.pos[0]) * (fl.pos[0] - p->c.pos[0]) + (fl.pos[2] - p->c.pos[2]) * (fl.pos[2] - p->c.pos[2]));
+        }
+        if (!sl_call("ctl_off", 0, NULL)) failed++;
+        sl_update();
+        printf("level1: takecontrol: flag %d, %.1f -> %.1f, on %d off %d\n", nf.id, d0, d1, flag_on, (p->c.flags & CHR_FLAG_AI_MOVEMENT) != 0);
+        if (nf.id < 0 || !flag_on || d1 > 5.0f || (p->c.flags & CHR_FLAG_AI_MOVEMENT)) failed++;
+    }
     snprintf(script, sizeof script, "func void del(void) {\n  chr_delete shinatama\n  chr_delete \"0\"\n}\n");
     if (!sl_load_text("chars_del", script, err, sizeof err) || !sl_call("del", 0, NULL)) failed++;
     sl_update();

@@ -204,6 +204,10 @@ uint64_t chr_input_bits(const CharacterInput *in);
 /* The input with only the keys of those action bits (lock_keys). The mouse's turn and pitch are
    not keys; the turn keys (not in any group) are the port's arrow keys, left as they are. */
 void chr_input_mask(CharacterInput *in, uint64_t keys);
+/* 0x4f5be0: the diagonal or sideways run's turn (C+0x174) set to a, the desired facing with it. */
+void character_set_facing_offset(Character *c, float a);
+/* C+0x04 0x400000: the AI's movement drives the character (every AI's; the player's with ai2_takecontrol). */
+enum { CHR_FLAG_AI_MOVEMENT = 0x400000 };
 
 /* The body's root (FUN_004e5a30's start): T(position + the pelvis's height) R(facing about y); while an
    environment animation plays, its matrix at the frame and a quarter turn about x (none with no

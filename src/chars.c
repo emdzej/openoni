@@ -366,7 +366,8 @@ void chars_update(const CharacterInput *player_in, const void *env)
             chars_delete(&slots[i]);
             continue;
         }
-        if (slots[i].player) character_update(&slots[i].c, player_in, env);
+        if (slots[i].player && (slots[i].c.flags & CHR_FLAG_AI_MOVEMENT)) ai_control_update(&slots[i].ai, &slots[i].c, env);
+        else if (slots[i].player) character_update(&slots[i].c, player_in, env);
         else ai_update(&slots[i].ai, &slots[i].c, env);
     }
     Character *list[CHARS_MAX];
@@ -415,6 +416,18 @@ static bool cmd_chr_create(SlThread *t, int c, const SlValue *v, SlValue *r, voi
     return true;
 }
 
+/* ai2_takecontrol 0|1 (AI2iScript_TakeControl 0x4b8940): the player moved by its AI (the movement
+   commands then take it) or by the keys again. */
+static bool cmd_takecontrol(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    Chr *p = chars_player();
+    if (!p || c < 1) return true;
+    if (num(&v[0])) ai_take_control(&p->ai, &p->c);
+    else p->c.flags &= ~(uint32_t)CHR_FLAG_AI_MOVEMENT;
+    return true;
+}
+
 /* ai2_spawn name [force] (AI2iScript_Spawn 0x4b4780) */
 static bool cmd_spawn(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
@@ -435,7 +448,7 @@ static bool cmd_movetoflag(SlThread *t, int c, const SlValue *v, SlValue *r, voi
     Chr *ch = arg_char(&v[0]);
     ObjcObject flag;
     if (!ch || !objc_flag_find((uint16_t)num(&v[1]), &flag)) return true;   /* "flag %d does not exist" */
-    if (ch->player) return true;    /* "cannot move player character without first using ai2_takecontrol" */
+    if (ch->player && !(ch->c.flags & CHR_FLAG_AI_MOVEMENT)) return true;   /* "cannot move player character without first using ai2_takecontrol" */
     bool face = c >= 3 && v[2].type == SL_STRING && !strcmp(v[2].s, "setfacing");
     ai_move_to(&ch->ai, flag.pos, face, flag.rot[1] * 0.017453293f);
     return true;
@@ -1072,6 +1085,7 @@ void chars_register_commands(void)
     sl_register("chr_wait_animation", cmd_wait_animation, NULL);
     sl_register("ai2_spawn", cmd_spawn, NULL);
     sl_register("chr_create", cmd_chr_create, NULL);
+    sl_register("ai2_takecontrol", cmd_takecontrol, NULL);
     sl_register("chr_delete", cmd_delete, NULL);
     sl_register("ai2_movetoflag", cmd_movetoflag, NULL);
     sl_register("ai2_dopath", cmd_dopath, NULL);

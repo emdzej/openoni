@@ -190,6 +190,8 @@ static void set_facing_offset(Character *c, float a)
     turn_desired(c, d);
 }
 
+void character_set_facing_offset(Character *c, float a) { set_facing_offset(c, a); }
+
 static float wrap_pi(float a)
 {
     if (a > PI) return a - TWO_PI;

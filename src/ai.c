@@ -381,6 +381,25 @@ static void state_stand_in(AiState *a, Character *c, const void *env)
     }
 }
 
+void ai_control_update(AiState *a, Character *c, const void *env)
+{
+    a->ticks++;
+    mover(a, c, env);
+    ChrInput in;
+    executor_update(a, c, &in);
+    character_update_input(c, &in, env);
+}
+
+void ai_take_control(AiState *a, Character *c)
+{
+    character_set_facing_offset(c, 0.0f);   /* 0x4f5be0 */
+    c->flags |= CHR_FLAG_AI_MOVEMENT;
+    /* 0x4ae360 and 0x4a7ff0: the movement's state and path cleared, the default movement mode */
+    a->moving = false;
+    a->movement_mode = 0;
+    a->aim.look = 0;
+}
+
 void ai_update(AiState *a, Character *c, const void *env)
 {
     /* AI2rUpdateAI 0x489d40: the daze runs out while lying */
