@@ -70,3 +70,6 @@ int graph_room_at(const float p[3]);
    path (at most GRAPH_PATH_MAX); returns their count + 1 (the rooms), or 0 without a path. A character
    (by_character) avoids the links with flag 1. */
 int graph_find_path(int a, const float pa[3], int b, const float pb[3], bool by_character, int *path);
+/* The same with the way's length (0x50bdb0's +0x20): *distance, if above 0, bounds the search (no room
+   reached beyond it is kept), and is set to the length found. path may be NULL. */
+int graph_find_path_within(int a, const float pa[3], int b, const float pb[3], bool by_character, int *path, float *distance);

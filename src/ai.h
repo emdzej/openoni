@@ -105,6 +105,8 @@ typedef struct {
     bool alt;                   /* +0x60: the alternate fire */
     uint32_t melee_wait;        /* +0x64 */
     uint32_t backed, backed2;   /* +0x68, +0x6c */
+    bool gun_rolled, gun_go;    /* +0x71, +0x72: the class's chance to go for a gun drawn, and its outcome */
+    bool run_rolled, run_go;    /* +0x73, +0x74: the chance to pick it up running */
     uint32_t hurt_time;         /* +0x88: of the last hit (message 10) */
     bool targeting;             /* +0x8c */
     AiTargeting t;              /* +0x90 */
@@ -116,6 +118,13 @@ typedef struct {
     float weight[COMBAT_MANEUVERS];     /* +0x194 */
     float adv_near, adv_far;    /* +0x1b8, +0x1bc: the advance's */
     float ret_near, ret_far;    /* +0x1c4, +0x1c8: the retreat's */
+    float gun_near, gun_far;    /* +0x1cc, +0x1d0: the gun's (the farthest looked for) */
+    bool gun_running;           /* +0x1d4: picked up running */
+    struct Weapon *gun;         /* +0x1d8: the one it goes for */
+    uint32_t gun_thwarted;      /* +0x1dc: maneuvers there (or stopped) without reaching it */
+    uint32_t gun_below;         /* +0x1e0: maneuvers next to it but not level with it */
+    uint32_t gun_ignored_n;     /* +0x1e4 */
+    const struct Weapon *gun_ignored[4];    /* +0x1e8: the ones found out of reach */
     bool dazed;                 /* +0x189: lying through the daze (behaviour message 6) */
     int getup;                  /* +0x1f8: 4 none, else the getting up's weight is given */
     bool melee_ok;              /* +0x454: may fight hand to hand */

@@ -28,6 +28,12 @@ enum {
     WEAPON_DROPPED = 0x8000,
 };
 
+/* The class's options (ONWC +0xcc; 0x800: no ammo to reload it with). */
+enum {
+    ONWC_NO_HOLSTER = 0x02, ONWC_RIFLE = 0x08, ONWC_SUSTAINED = 0x20, ONWC_ALT_FIRE = 0x400, ONWC_NO_AMMO = 0x800,
+    ONWC_AUTO_RELEASE = 0x2000, ONWC_HAS_RELEASE_DELAY = 0x4000,
+};
+
 typedef struct Weapon {
     uint16_t flags;                 /* +0x02: WEAPON_* */
     const uint8_t *cls;             /* +0x04: the ONWC */
@@ -92,6 +98,19 @@ void weapon_set_ammo_percent(Weapon *w, unsigned percent);
 /* ONrGameState_NewCharacter 0x4dac50's weapon: a new weapon of the class (an ONWC name) in c's hand,
    its ammo at percent (the CHAR object's). False without the class. */
 bool weapon_give_class(Character *c, const char *name, unsigned percent);
+
+/* The AI's gun pickup (AI2iManeuver_CheckGun 0x49e390). 0x51b240: in use, not owned and not
+   flag 4. WPrLocateNearbyWeapons 0x51b290: those within radius of p, nearest first (to out, at most
+   WEAPONS_MAX); their count. 0x518650: the handle's place (WPrGetPickupPosition). The class's options
+   (ONWC +0xcc). WPrHasAmmo 0x51a990. 0x51cce0 and 0x51c730: c has a clip (or cell) for it. */
+bool weapon_free(const Weapon *w);
+int weapons_nearby(const float p[3], float radius, Weapon **out);
+void weapon_pickup_position(const Weapon *w, float out[3]);
+uint32_t weapon_options(const Weapon *w);
+bool weapon_loaded(Weapon *w);
+bool chr_has_ammo_for(const Character *c, const Weapon *w);
+/* 0x4e4ab0 (c, 0, 0): the weapon in the hand dropped. */
+void chr_drop_weapon(Character *c);
 
 /* weapon_spawn, chr_inv_reset, chr_giveweapon, wp_disable_fade. */
 void weapons_register_commands(void);

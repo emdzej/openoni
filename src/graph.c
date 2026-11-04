@@ -642,7 +642,13 @@ static void propagate(int r, int depth, float delta)
 
 int graph_find_path(int a, const float pa[3], int b, const float pb[3], bool by_character, int *path)
 {
+    return graph_find_path_within(a, pa, b, pb, by_character, path, NULL);
+}
+
+int graph_find_path_within(int a, const float pa[3], int b, const float pb[3], bool by_character, int *path, float *distance)
+{
     if (a < 0 || a >= nrooms || b < 0 || b >= nrooms) return 0;
+    bool bounded = distance && *distance > 0.0f;
     for (int i = 0; i < nrooms; i++) {
         Room *r = &rooms[i];
         r->g = r->h = r->f = 0.0f, r->cost = 1.0f;
@@ -653,6 +659,7 @@ int graph_find_path(int a, const float pa[3], int b, const float pb[3], bool by_
     Room *s = &rooms[a];
     s->depth = 0, s->g = 0.0f, s->cost = 1.0f;
     s->h = s->f = dist(pa, pb);
+    if (bounded && s->f > *distance) return 0;
     list_append(&open_head, a);
     s->state = 1;
     while (open_head >= 0) {
@@ -667,12 +674,16 @@ int graph_find_path(int a, const float pa[3], int b, const float pb[3], bool by_
         c->state = 0;
         if (cur == b) {
             int n = c->depth;
-            if (n > GRAPH_PATH_MAX) return 0;
-            int r = cur;
-            for (int k = n - 1; k >= 0; k--) {
-                path[k] = rooms[r].via;
-                r = rooms[r].parent;
+            if (path) {
+                if (n > GRAPH_PATH_MAX) return 0;
+                int r = cur;
+                for (int k = n - 1; k >= 0; k--) {
+                    path[k] = rooms[r].via;
+                    r = rooms[r].parent;
+                }
             }
+            /* the way's length: to the last link's middle, then on to the point */
+            if (distance) *distance = c->via < 0 ? dist(pa, pb) * c->cost : dist(links[c->via].mid, pb) * c->cost + c->g;
             return n + 1;
         }
         for (int k = 0; k < c->nout; k++) {
@@ -686,6 +697,7 @@ int graph_find_path(int a, const float pa[3], int b, const float pb[3], bool by_
             float h = dist(l->mid, pb) * c->cost;
             float f = h + g;
             Room *t = &rooms[l->to];
+            if (bounded && f > *distance) continue;
             if (t->state != 0 && !(f < t->f)) continue;
             int depth0 = c->depth, depth1 = t->depth;
             float delta = f - t->f;

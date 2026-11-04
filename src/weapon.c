@@ -39,10 +39,6 @@ enum {
     ONWC_SHOOTER = 0x1d0,       /* 0x50 each */
     ONWC_PICKUP = 0x704,        /* the handle's offset (x, y, z) */
 };
-enum {
-    ONWC_NO_HOLSTER = 0x02, ONWC_RIFLE = 0x08, ONWC_SUSTAINED = 0x20, ONWC_ALT_FIRE = 0x400, ONWC_AUTO_RELEASE = 0x2000,
-    ONWC_HAS_RELEASE_DELAY = 0x4000,
-};
 /* A shooter: +0x30 the particle class's name, +0x44 the ammo a shot takes (0 none: it only follows the
    others), +0x46 the delay between shots, +0x48 the "roughjustice" one, +0x4a the ticks a shot fires
    at least, +0x4c its trigger (0, 1, -1 both), +0x4e its delay before it starts. */
@@ -744,6 +740,41 @@ static Weapon *find_pickup(const float pos[3], const Weapon *only, float ymin, f
     }
     return best;
 }
+
+bool weapon_free(const Weapon *w) { return (w->flags & WEAPON_IN_USE) && !w->owner && !(w->flags & 4); }
+
+int weapons_nearby(const float p[3], float radius, Weapon **out)
+{
+    /* the list kept by distance, a later one after those as near (WEAPON flag 0x40 marks the listed) */
+    float d2[WEAPONS_MAX];
+    int n = 0;
+    for (int i = 0; i < WEAPONS_MAX; i++) {
+        Weapon *w = &weapons[i];
+        if (!(w->flags & WEAPON_IN_USE)) continue;
+        w->flags &= (uint16_t)~0x40;
+        if (!weapon_free(w)) continue;
+        float h[3];
+        weapon_pickup_position(w, h);
+        float dx = h[0] - p[0], dy = h[1] - p[1], dz = h[2] - p[2];
+        float d = dx * dx + dy * dy + dz * dz;      /* MUrPoint_Distance_Squared, to the handle */
+        if (d > radius * radius) continue;
+        w->flags |= 0x40;
+        int k = n;
+        while (k > 0 && d2[k - 1] > d) out[k] = out[k - 1], d2[k] = d2[k - 1], k--;
+        out[k] = w, d2[k] = d, n++;
+    }
+    return n;
+}
+
+void weapon_pickup_position(const Weapon *w, float out[3])
+{
+    for (int k = 0; k < 3; k++) out[k] = w->m[9 + k] + rdf(w->cls + ONWC_PICKUP + 4 * k);
+}
+
+uint32_t weapon_options(const Weapon *w) { return options(w); }
+bool weapon_loaded(Weapon *w) { return has_ammo(w); }
+bool chr_has_ammo_for(const Character *c, const Weapon *w) { return inventory(c, ammo_type(w)) != 0; }
+void chr_drop_weapon(Character *c) { drop_hand(c); }
 
 void (*weapon_new_hook)(const void *onwc);
 

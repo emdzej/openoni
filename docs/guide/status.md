@@ -28,8 +28,9 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   from the level's combat settings, hold, advance or back off, fight hand to hand, and with a gun lead
   their target, aim from the weapon's muzzle and fire within their class's shooting skill. Knocked
   down, they lie dazed for their class's time and then get up. They start
-  with the weapons the level gives them. The bosses' behaviours, the gun pickup and the alarms are
-  still missing, and the paths they take in a fight are stand-ins.
+  with the weapons the level gives them, and without one they may go for a gun lying nearby, by their
+  class's chance. The bosses' behaviours and the alarms are still missing, and the paths they take in a
+  fight are stand-ins.
 - **The scripts**: the BSL engine runs the level's own scripts, with their trigger volumes, doors,
   consoles, animated objects and a growing share of the game's script commands, among them those that
   set the AI's awareness, health and movement modes.
@@ -72,7 +73,7 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 ## Not yet
 
 - The particles' contrails, vectors, lens flares and decals (bullet holes), homing, and their sounds.
-- The AI's alarms, the gun pickups and the bosses' fighting. The power-ups' physics and glow, and the
+- The AI's alarms and the bosses' fighting. The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.
 - The other 13 levels as a playthrough.

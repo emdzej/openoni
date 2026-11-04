@@ -362,13 +362,50 @@ After the lost-target part (above), `AI2rCombat_Update`:
    attack, with an attack override, or against a player whose input is off (`AI2rAllowedToAttack`
    0x48bc30), the fire decision; else the aim stops and the trigger is let go (0x490a50).
 
-**The maneuvers** (0x49dbf0, B+0x194, seven weights): the heaviest is tried; one that can't be done
+**The maneuvers** (0x49dbf0, B+0x194, seven weights): the heaviest is tried, with the next heaviest
+weight as the bar it must still clear once its own test has scaled it down; one that can't be done
 loses its weight and the next is tried. 0 hold (the path halted); 1 advance (`AI2iManeuver_CheckAdvance`
 0x49df80: by how far beyond the near distance, at least half, then a path to the point); 2 retreat (a
 local path away, 15 long, by the distance between the near and far ones and the path's quality,
 0x52a944); 3 a gun to pick up; 4 the alarm; 5 melee (0x49e910: within 80 of the target, else an advance
 to 15..20); 6 getting up (lying, the forward key for one tick, `AI2rExecutor_MoveOverride` 0x498b60;
 standing, it fails).
+
+**The gun** (`AI2iManeuver_CheckGun` 0x49e390; the no-gun behaviour 0x491060 gives it weight 1 with
+its distances, B+0x1cc 30 and B+0x1d0 200). The block's fields: B+0x71/0x72 the chance to look drawn
+and its outcome, B+0x73/0x74 the same for a running pickup, B+0x1d4 running, B+0x1d8 the gun, B+0x1dc
+and B+0x1e0 two counters, B+0x1e4 and B+0x1e8 a list of four guns out of reach. `AI2rCombat_Enter`
+clears them all (0x49db70); a range change from none or short, or farther from long or medium, or
+closer from the retreats, draws the chance again.
+
+- **Looking for one** (no gun, or it is gone, owned or flag 4: 0x51b240). Once, `UUrRandom` below the
+  class's percentage (ONCC+0x138 +0x164; level 1's thugs 30) times 0xffff over 100; failed, no gun.
+  Then `WPrLocateNearbyWeapons` 0x51b290 lists the free weapons whose handle (the place + ONWC+0x704)
+  is within the far distance, nearest first. Skipped: a class that can't be holstered (ONWC+0xcc 2);
+  one without ammo when the character has no clip or cell for it (0x51cce0, 0x51c730); with unlimited
+  ammo (C+0x04 0x40), any but those that take none (+0xcc 0x800); one in the list out of reach. For
+  each, `AI2iManeuver_TryPathToGun` 0x49e810: the rooms' A* from the character's room to the handle's
+  no longer than the best so far (`PHrPathDistance` 0x50edb0 into 0x50bdb0, which keeps no room past
+  the bound and gives the way's length: g plus the last link's middle to the point), then
+  `AI2rPath_GoToPoint` within 8. The weight is scaled by 1 − (length − near) / (far − near), never
+  above 1; under the bar the path halts. The last that passes is the gun.
+- **Going for it.** Lying, it gets up (the forward key, `AI2rExecutor_MoveOverride`). With a running
+  pickup and an animation with TRAM flag 20 but not 23, the path halts and it looks at the handle.
+  Within 3 of the handle (its feet, C+0x148): the pickup animation (0x9e, 0x9f for a rifle: +0xcc 8,
+  `ONrCharacter_DoAnimation` 1), the gun at C+0x1d8 for its action frame, and the hand's weapon
+  dropped (0x4e4ab0). Else, when the path has arrived (C+0x112c; or A+0x9f0, read here only) or it is
+  within 25 across but more than 0.8 of the distance up or down, B+0x1dc counts up, else it clears and
+  B+0x1e0 counts the maneuvers within 25 across (else clears). Under 40 and 180 the path to it is
+  made again; else the gun is out of reach: it goes to the front of the list, which is shifted with a
+  forward copy (every entry becomes the first; the original's), and the count is at least 4.
+- **After the maneuvers** (`AI2rCombat_Update`), going for a gun, once the class's other percentage
+  (+0x168) for a running pickup (`AI2rManeuver_TryRunningGunPickup` 0x49f020); with another
+  maneuver, that chance is forgotten and B+0x1dc cleared.
+
+The port (`src/combat.c`, its test `tests/gun_test.c`: a THUG_Wh 50 from a pistol picks it up)
+has no running pickup. Its movement layer is a stand-in that walks in combat (the default modes of
+0x52af2c) and stops at the path's 8, so an AI may stand 4 or 5 from the handle until another maneuver
+carries it closer, or give the gun up after 40 maneuvers.
 
 **The daze** (the default behaviour's message 6, 0x493120; the combat block's dazed flag at B+0x189,
 the character's C+0x101c, this fall's daze begun, and C+0x1020, the ticks left). Not dazed: with no
@@ -420,7 +457,7 @@ the feet, toward it at the aiming speed (A+0x1ab4 × 6° a tick, by the weapon's
 states, 0x52a4d8); more than 130° off the facing it aims ahead. `DoCharacterFrame` turns the point into
 the character's aim (A+0x21bc, 0x21c0) for an AI's character not under a film.
 
-Not ported yet: the bosses' behaviours, the gun pickup, the alarm, the getting up, the attack of
+Not ported yet: the bosses' behaviours, the running gun pickup, the alarm, the getting up, the attack of
 opportunity (0x49f2e0), the melee wait of an empty weapon (B+0x64), the objects in the line of fire,
 the arc's steps; the local paths of the advance and the retreat are the port's stand-ins.
 

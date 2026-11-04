@@ -1,6 +1,6 @@
 /* The AI's combat (AI2rCombat, the combat state of ai.h): the combat settings (the level's Combat
-   objects), the range to the target and the behaviour for it, the maneuvers (hold, advance, retreat,
-   melee), the targeting (AI2rTargeting: the target's motion led, the aim from the weapon, the fire
+   objects), the range to the target and the behaviour for it, the maneuvers (hold, advance, retreat, a gun
+   to pick up, melee), the targeting (AI2rTargeting: the target's motion led, the aim from the weapon, the fire
    decision) and the executor's aim, which turns the aim point into the character's aim angles.
    Notes: docs/re/ai.md, "Combat". */
 #pragma once
@@ -15,6 +15,9 @@ enum { COMBAT_MANEUVER_HOLD, COMBAT_MANEUVER_ADVANCE, COMBAT_MANEUVER_RETREAT, C
 void combat_load(void);
 /* AI2rInitializeCharacter 0x48a6b0's copy: the Combat object of that id, else the defaults. */
 void combat_settings(AiState *a, uint16_t id);
+/* AI2rCombat_Enter 0x48f290's resets: the maneuver (0x49db70: none, the gun's search and the guns out
+   of reach forgotten) and the gun's chances. */
+void combat_enter(AiState *a);
 /* AI2rCombat_SetNewTarget 0x4908e0's targeting part: the targeting's new target, the range to it and
    the behaviour for that range. */
 void combat_new_target(AiState *a, Character *c, const Character *target);

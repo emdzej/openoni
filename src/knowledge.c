@@ -1,5 +1,6 @@
 /* The AI's knowledge: see knowledge.h. */
 #include "knowledge.h"
+#include "combat.h"
 
 #include "akev.h"
 #include "chars.h"
@@ -194,6 +195,7 @@ static bool upgrade_alert(Chr *c, int level, KnowEntry *e)
         /* AI2rExitState, then the combat state (C+0x8c0 the target, C+0x8c8 the contact) */
         ai_exit_state(a);
         a->state = AI_STATE_COMBAT;
+        combat_enter(a);
         ai_combat_set_target(a, e);
     }
     return startled;

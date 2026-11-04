@@ -5,6 +5,7 @@
 #include "chr_anim.h"
 #include "chr_hit.h"
 #include "film.h"
+#include "graph.h"
 #include "knowledge.h"
 #include "melee.h"
 #include "objc.h"
@@ -465,7 +466,9 @@ static int no_gun(AiState *a, int msg, bool *handled)
             s->weight[COMBAT_MANEUVER_MELEE] = 1.0f;
             return 0;
         }
-        /* find a gun (the gun's distances 30 and 200: +0x1cc, +0x1d0), then the fallback */
+        /* find a gun (within 30 all of its weight, none at 200), then the fallback */
+        s->gun_near = 30.0f;
+        s->gun_far = 200.0f;
         s->weight[COMBAT_MANEUVER_GUN] = 1.0f;
         int e = a->combat_set.no_gun_else;
         if (e == 1) {
@@ -659,6 +662,18 @@ static void switch_behaviour(AiState *a, const Character *c)
     send(a, c, MSG_ENTER, NULL);
 }
 
+void combat_enter(AiState *a)
+{
+    CombatState *s = &a->combat;
+    s->maneuver = -1;
+    s->gun_far = 0.0f;
+    s->gun_running = false;
+    s->gun = NULL;
+    s->gun_thwarted = s->gun_below = s->gun_ignored_n = 0;
+    memset(s->gun_ignored, 0, sizeof s->gun_ignored);
+    s->gun_rolled = s->gun_go = s->run_rolled = s->run_go = false;
+}
+
 void combat_new_target(AiState *a, Character *c, const Character *target)
 {
     CombatState *s = &a->combat;
@@ -681,19 +696,150 @@ static float dist_to(const Character *c, const float p[3])
     return len3(d);
 }
 
+/* AI2iManeuver_TryPathToGun 0x49e810: a way through the rooms to the gun no longer than *best
+   (PHrPathDistance 0x50edb0), then the path there (AI2rPath_GoToPoint, within 8). Its weight falls
+   with the way's length, from all of it at the gun's near distance to none at the far one; under the
+   next maneuver's, the path halts and it fails. *best: the way's length. */
+static bool try_path_to_gun(AiState *a, const Character *c, const void *env, float second, const float to[3], float *best)
+{
+    CombatState *s = &a->combat;
+    if (!env || !graph_for(env)) return false;
+    int from = graph_room_at(c->pos), dest = graph_room_at(to);
+    if (from < 0 || dest < 0 || !graph_find_path_within(from, c->pos, dest, to, false, NULL, best)) return false;
+    ai_move_near(a, to, 8.0f, false, 0.0f);     /* (its failures, through 0x49e370, aren't the stand-in's) */
+    float f = (*best - s->gun_near) / (s->gun_far - s->gun_near);
+    if (f <= 0.0f) f = 0.0f;
+    s->weight[COMBAT_MANEUVER_GUN] *= 1.0f - f;
+    if (s->weight[COMBAT_MANEUVER_GUN] < second) {
+        a->moving = false;
+        return false;
+    }
+    return true;
+}
+
+static bool gun_ignored(const CombatState *s, const Weapon *w)
+{
+    for (uint32_t k = 0; k < s->gun_ignored_n; k++)
+        if (s->gun_ignored[k] == w) return true;
+    return false;
+}
+
+/* AI2iManeuver_CheckGun 0x49e390 (second: the next maneuver's weight; arrived: the path's C+0x112c,
+   from before the maneuvers' halt). Without a gun to go for: once a target (until the range changes,
+   AI2rCombat_Update), the class's chance (ONCC+0x138 +0x164, a percentage) to look for one at all;
+   then the weapons within the gun's far distance, nearest first: not one the AI can't holster (ONWC
+   +0xcc 2), with ammo or a clip for it (with unlimited ammo, C+0x04 0x40, only those needing none,
+   +0xcc 0x800), not one found out of reach; the one with the shortest way to it. With one: lying, it
+   gets up (the forward key); running to it with a pickup that runs (B+0x1d4, an animation with TRAM
+   flag 20 but not 23), it stops and looks at it; within 3 of its handle, the pickup animation
+   (Pickup_Pistol 0x9e, Pickup_Rifle 0x9f), the hand's weapon dropped. Else it goes on to it. Arrived
+   (or with A+0x9f0, which nothing writes directly: the port's false), or next to it (under 25 across)
+   but not level with it (more than 0.8 of the distance up or down), for 40 maneuvers, or next to it
+   and level for 180 without getting within 3, it is out of reach: it
+   goes first in the list of four ignored, which copies its first entry over the others as it shifts
+   (the original's), and counts at least four from then on. */
+static bool try_gun_pickup(AiState *a, Character *c, const void *env, float second, bool arrived)
+{
+    CombatState *s = &a->combat;
+    if (!s->gun || !weapon_free(s->gun)) {
+        if (!s->gun_rolled) {
+            uint32_t chance = rd32((const uint8_t *)c->oncc + ONCC_AI + 0x164);
+            s->gun_rolled = true;
+            s->gun_go = trac_random() < (uint16_t)((chance * 0xffffu) / 100u);     /* UUrRandom */
+        }
+        if (!s->gun_go) {
+            s->weight[COMBAT_MANEUVER_GUN] = 0.0f;
+            return false;
+        }
+        Weapon *near[64];
+        int n = weapons_nearby(c->pos, s->gun_far, near);
+        s->gun = NULL;
+        float best = s->gun_far;
+        for (int i = 0; i < n; i++) {
+            Weapon *w = near[i];
+            if (!(c->flags & 0x40)) {
+                if (weapon_options(w) & ONWC_NO_HOLSTER) continue;
+                if (!weapon_loaded(w) && !chr_has_ammo_for(c, w)) continue;
+            } else if (!(weapon_options(w) & ONWC_NO_AMMO))
+                continue;
+            if (gun_ignored(s, w)) continue;
+            float h[3];
+            weapon_pickup_position(w, h);
+            if (try_path_to_gun(a, c, env, second, h, &best)) s->gun = w;
+        }
+        if (!s->gun) s->weight[COMBAT_MANEUVER_GUN] = 0.0f;
+        if (second <= s->weight[COMBAT_MANEUVER_GUN]) return true;
+        a->moving = false;
+        return false;
+    }
+    if (lying(c)) {
+        a->key_override = true;     /* AI2rExecutor_MoveOverride(forward, 0) */
+        a->override_keys = CHR_KEY_FORWARD;
+        return true;
+    }
+    float h[3];
+    weapon_pickup_position(s->gun, h);
+    float d = dist_to(c, h);
+    if (s->gun_running && c->anim && tr_test_flag(c->anim, 20) && !tr_test_flag(c->anim, 23)) {
+        a->moving = false;
+        a->aim.look = 1;            /* AI2rMovement_LookAtPoint */
+        memcpy(a->aim.look_at, h, sizeof h);
+        return true;
+    }
+    if (d < 3.0f) {                 /* 0x52a9a0 */
+        if (c->pickup == s->gun) return true;
+        a->moving = false;
+        if (!chr_do_animation(c, CHR_ANIM_WHEN_CAN, (weapon_options(s->gun) & ONWC_RIFLE) ? 0x9f : 0x9e)) return true;
+        c->pickup = s->gun, c->pickup_powerup = NULL;
+        if (c->weapon) chr_drop_weapon(c);
+        return true;
+    }
+    if (!s->gun_running) c->pickup = NULL;
+    bool stopped = arrived;         /* (|| A+0x9f0) */
+    float dx = h[0] - c->pos[0], dz = h[2] - c->pos[2];
+    bool beside = dx * dx + dz * dz < 625.0f;       /* MUrPoint_Distance_SquaredXZ, 0x52a99c */
+    if (stopped || (beside && fabsf(h[1] - c->pos[1]) > d * 0.8f))     /* 0x5296d8 */
+        s->gun_thwarted++;
+    else {
+        s->gun_thwarted = 0;
+        s->gun_below = beside ? s->gun_below + 1 : 0;
+    }
+    if (s->gun_thwarted < 40 && s->gun_below < 180) {
+        float best = s->gun_far;
+        if (try_path_to_gun(a, c, env, second, h, &best)) return true;
+        s->weight[COMBAT_MANEUVER_GUN] = 0.0f;
+        s->gun = NULL;
+        return false;
+    }
+    /* thwarted: out of reach from now on */
+    if (!gun_ignored(s, s->gun)) {
+        for (uint32_t k = 0; k < s->gun_ignored_n; k++)
+            if (k < 3) s->gun_ignored[k + 1] = s->gun_ignored[k];
+        s->gun_ignored[0] = s->gun;
+        s->gun_ignored_n = s->gun_ignored_n + 1 < 5 ? 4 : s->gun_ignored_n + 1;
+    }
+    s->weight[COMBAT_MANEUVER_GUN] = 0.0f;
+    s->gun = NULL;
+    return false;
+}
+
 /* 0x49dbf0: the heaviest maneuver that can be done (a failing one's weight goes, and the next is
    tried). The local paths' tests (AI2rTryLocalMovement, AI2rFindLocalPath, the blockage) are the
    port's stand-ins: the advance runs to the target's point, the retreat backs straight away 15. The
-   gun and the alarm aren't ported (they fail). */
-static void select_maneuver(AiState *a, Character *c)
+   alarm isn't ported (it fails). */
+static void select_maneuver(AiState *a, Character *c, const void *env)
 {
     CombatState *s = &a->combat;
+    bool arrived = !a->moving;      /* the path's C+0x112c, from its last update */
     a->moving = false;      /* AI2rPath_Halt */
     for (;;) {
+        /* the heaviest, and w the next heaviest (what the tried one's weight must still reach) */
         int best = -1;
-        float w = 0.0f;
-        for (int k = 0; k < COMBAT_MANEUVERS; k++)
-            if (s->weight[k] > 0.0f && s->weight[k] > w) w = s->weight[k], best = k;
+        float top = 0.0f, w = 0.0f;
+        for (int k = 0; k < COMBAT_MANEUVERS; k++) {
+            if (s->weight[k] > top) w = top, top = s->weight[k], best = k;
+            else if (s->weight[k] > w) w = s->weight[k];
+        }
         if (best < 0) {
             best = COMBAT_MANEUVER_HOLD;
             s->weight[best] = 1.0f;
@@ -734,6 +880,9 @@ static void select_maneuver(AiState *a, Character *c)
             ok = true;
             break;
         }
+        case COMBAT_MANEUVER_GUN:
+            ok = try_gun_pickup(a, c, env, w, arrived);
+            break;
         case COMBAT_MANEUVER_MELEE:         /* 0x49e910 */
             if (!a->melee.profile || !s->t.target) break;
             if (dist_to(c, s->t.target->pos) * dist_to(c, s->t.target->pos) < 6400.0f) {   /* 0x52a9a4 */
@@ -858,6 +1007,10 @@ void combat_tick(AiState *a, Character *c, const void *env, bool has_target)
     if ((uint32_t)(c->id - 1) % 5 == ui_time() % 5) {
         int r = get_range(a, c, s->range);
         if (r != s->range) {
+            /* from none or short, or farther from long or medium, closer from the retreats: the gun's
+               chance is drawn again */
+            int old = s->range;
+            if (old == 0 || old == 3 || (old < 3 ? r < old : old < r)) s->gun_rolled = s->gun_go = false;
             s->range = r;
             switch_behaviour(a, c);
         }
@@ -917,9 +1070,21 @@ void combat_tick(AiState *a, Character *c, const void *env, bool has_target)
             s->weight[COMBAT_MANEUVER_HOLD] = 0.4f;
             if (s->dist < 18.0f) s->weight[COMBAT_MANEUVER_MELEE] = 0.7f;   /* 0x52a730 */
         }
-        select_maneuver(a, c);
+        select_maneuver(a, c, env);
         if (a->state != AI_STATE_COMBAT) return;
-        /* (the gun pickup, the class's chance at +0x168: with the maneuver) */
+        /* going for a gun: once, the class's chance (ONCC+0x138 +0x168) to pick it up running
+           (AI2rManeuver_TryRunningGunPickup 0x49f020, not ported: it fails) */
+        s->gun_running = false;
+        if (s->maneuver == COMBAT_MANEUVER_GUN && s->gun) {
+            if (!s->run_rolled) {
+                uint32_t chance = rd32((const uint8_t *)c->oncc + ONCC_AI + 0x168);
+                s->run_rolled = true;
+                s->run_go = trac_random() < (uint16_t)((chance * 0xffffu) / 100u);     /* UUrRandom */
+            }
+        } else {
+            s->run_rolled = s->run_go = false;
+            s->gun_thwarted = 0;
+        }
         send(a, c, MSG_MELEE, NULL);
         /* (an attack of opportunity, 0x49f2e0, with ONCC+0x120 bit 2: not yet) */
         send(a, c, MSG_FLAGS, NULL);
