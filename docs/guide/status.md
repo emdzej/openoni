@@ -7,6 +7,13 @@ recorded films, and the warehouse mission plays through: the consoles open the w
 Konoko, she finds the LSI, frees the hostage who opens the warehouse, beats the timer to the last
 console, and the outro plays before level 2 begins.
 
+Level 2, the TCTF's Manufacturing Plant, plays through as well: the consoles' chain of locks, the
+Chase after the hall's guards fall, the flyway, Griffin's call, the lasers and wall turrets, the
+hidden lock and Shinatama's talk, the guard room and the brain lock, then the four rounds at the
+brain's consoles and the outro, and level 3 begins. (The unattended run behind this check is made
+invincible from the third save point on: its driver can't time the sweeping lasers that wake the
+corridor's turret, which a player jumps.)
+
 It can be tried in the browser on the <a href="/play/" target="_self">play page</a>, with your own copy of the game.
 
 ## What works

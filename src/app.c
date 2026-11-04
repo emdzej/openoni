@@ -28,8 +28,10 @@
 #include "env_draw.h"
 #include "exe.h"
 #include "geom_draw.h"
+#include "graph.h"
 #include "gl_dev.h"
 #include "im.h"
+#include "localpath.h"
 #include "objc.h"
 #include "material.h"
 #include "particle.h"
@@ -326,6 +328,51 @@ static bool cmd_dprint(SlThread *t, int argc, const SlValue *argv, SlValue *r, v
 
 static float fog_rgb[3], fog_start = 0.99f, fog_end = 1.0f, far_clip = 10000.0f;
 
+/* The fog's smooth changes (gl_fog_start_changeto 0x40cb20, gl_fog_end_changeto 0x40cb90): to the value
+   over the frames (none, or not above 0: at once), by a step a tick. */
+static struct { bool on; float to, step; } fog_change[2];
+
+static bool fog_changeto(int k, float *v, int argc, const SlValue *argv)
+{
+    float to = argc >= 1 ? (argv[0].type == SL_FLOAT ? argv[0].f : (float)argv[0].i) : 0.0f;
+    int frames = argc >= 2 ? (argv[1].type == SL_FLOAT ? (int)argv[1].f : argv[1].i) : 0;
+    if (frames <= 0) {
+        *v = to;
+        return true;
+    }
+    fog_change[k].to = to;
+    fog_change[k].step = (to - *v) / (float)frames;
+    fog_change[k].on = true;
+    return true;
+}
+static bool cmd_fog_start_to(SlThread *t, int argc, const SlValue *argv, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    return fog_changeto(0, &fog_start, argc, argv);
+}
+static bool cmd_fog_end_to(SlThread *t, int argc, const SlValue *argv, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    return fog_changeto(1, &fog_end, argc, argv);
+}
+
+/* 0x40cc00, from the draw's frame start (0x405898) with the ticks since the last: each change steps,
+   stopping at its value. As the original, the end's change moves by the start's step (+0x5e8). */
+static void fog_step(uint32_t ticks)
+{
+    float *v[2] = { &fog_start, &fog_end };
+    for (int k = 0; k < 2; k++) {
+        if (!fog_change[k].on) continue;
+        float d = (float)ticks * fog_change[0].step;
+        if (d > 0.0f ? fog_change[k].to - d <= *v[k] : d < 0.0f ? fog_change[k].to - d >= *v[k] : false) {
+            *v[k] = fog_change[k].to;
+            fog_change[k].on = false;
+        } else if (d != 0.0f) {
+            *v[k] += d;
+        }
+    }
+}
+
 static bool cmd_farclip(SlThread *t, int argc, const SlValue *argv, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;
@@ -367,6 +414,9 @@ static void start_scripts(void)
     sl_register_float("gl_fog_blue", &fog_rgb[2]);
     sl_register_float("gl_fog_start", &fog_start);
     sl_register_float("gl_fog_end", &fog_end);
+    sl_register("gl_fog_start_changeto", cmd_fog_start_to, NULL);
+    sl_register("gl_fog_end_changeto", cmd_fog_end_to, NULL);
+    memset(fog_change, 0, sizeof fog_change);
     TmFile *f = tm_file_at(tm_file_slots() - 1);
     const char *name = NULL;
     for (uint32_t i = 0; f && i < tm_file_instance_count(f); i++) {
@@ -400,11 +450,12 @@ static void start_scripts(void)
    will be in L frames) and taps fire every 20 frames; the shots leave at about 1.13 times the aim's angle
    from the facing (measured), which the aim allows for. "M<message>,F" waits for a script's message and
    shifts the later "@" frames by when it came against F (when the route was made). "P" presses the pause
-   key (the pause screen). "Gfrom,to,N" shoots
+   key (the pause screen). "C" waits for the end of a cutscene (and of a script's "input 0"). "Gfrom,to,N" shoots
    the unbroken glass targets of those script ids, aiming the weapon's barrel at each. "F<name>,N" fights
    the character hand to hand for up to N frames, until it is down; "A<N>" the nearest one in combat
    with her, while there is one. "N<name>,N" talks with a neutral (the action key near it) until the
-   conversation is over. Knocked down, any step first gets
+   conversation is over. "Wx,y,z" runs to the point through the rooms, the way found from where she is (while there is none,
+   tried again each second). Knocked down, any step first gets
    up (forward). ---- */
 
 /* The level's environment, for the route's glass targets. */
@@ -464,6 +515,82 @@ static float wrap_pi(float a)
     return a;
 }
 
+/* "Wx,y,z": the steps to the point through the rooms' graph, planned from where the player is (the
+   doors locked now kept out, the manual ones opened with the action key on the way), into out. */
+static bool route_plan(const Character *c, const float b[3], char *out, size_t size)
+{
+    const void *env = route_env;
+    if (!env || !graph_for(env)) return false;
+    /* the locked doors' links blocked while the path is found (the graph's own door links aren't kept) */
+    static uint32_t saved[4096];
+    int nl = graph_link_count() < 4096 ? graph_link_count() : 4096;
+    for (int i = 0; i < nl; i++) saved[i] = graph_link(i)->flags;
+    for (int d = 0; d < door_count(); d++) {
+        if (!(door_flags(d) & DOOR_LOCKED)) continue;
+        float dp[3];
+        door_position(d, dp);
+        for (int i = 0; i < nl; i++) {
+            GraphLink *l = (GraphLink *)graph_link(i);
+            if (fabsf(l->mid[0] - dp[0]) < 12 && fabsf(l->mid[2] - dp[2]) < 12 && fabsf(l->mid[1] - dp[1]) < 10) l->flags |= 1;
+        }
+    }
+    float a[3] = { c->pos[0], c->pos[1], c->pos[2] };
+    int ra = graph_room_at(a), rb = graph_room_at(b);
+    static int path[GRAPH_PATH_MAX];
+    int n = ra < 0 || rb < 0 ? 0 : graph_find_path(ra, a, rb, b, true, path);
+    size_t len = 0;
+    out[0] = 0;
+#define EMIT(...) (len += (size_t)snprintf(out + len, len < size ? size - len : 0, __VA_ARGS__))
+    float seg[3] = { a[0], a[1], a[2] };
+    int room = ra;
+    for (int k = 0; k < n; k++) {
+        float in[3], o[3];
+        const GraphLink *l = k + 1 < n ? graph_link(path[k]) : NULL;
+        if (l) {
+            float w[3] = { l->mid[0], l->mid[1], l->mid[2] }, pl[4];
+            akev_quad_plane(env, l->quad, pl);
+            /* which way across: the side whose room is the link's next */
+            float q1[3] = { w[0] + pl[0] * 12, w[1] + 4, w[2] + pl[2] * 12 };
+            float q2[3] = { w[0] - pl[0] * 12, w[1] + 4, w[2] - pl[2] * 12 };
+            int r1 = graph_room_at(q1), r2 = graph_room_at(q2), sign;
+            if (r2 == l->to && r1 != l->to) sign = -1;
+            else if (r1 == l->to && r2 != l->to) sign = 1;
+            else {
+                /* (a stair's foot: both sides in the room under it) toward where the way goes next */
+                const float *next = k + 2 < n ? graph_link(path[k + 1])->mid : b;
+                sign = pl[0] * (next[0] - w[0]) + pl[2] * (next[2] - w[2]) > 0 ? 1 : -1;
+            }
+            for (int j = 0; j < 3; j++) in[j] = o[j] = w[j];
+            in[0] += pl[0] * 12 * sign, in[2] += pl[2] * 12 * sign;
+            o[0] -= pl[0] * 8 * sign, o[2] -= pl[2] * 8 * sign;
+        } else {
+            for (int j = 0; j < 3; j++) o[j] = b[j];
+        }
+        static LocalPoint lp[LOCAL_PATH_MAX];
+        int m = local_path(env, room, seg, o, NULL, false, true, lp);
+        for (int i = 1; i + 1 < m; i++) EMIT("%.0f,%.0f,R,4;", lp[i].p[0], lp[i].p[2]);
+        if (!l) break;
+        EMIT("%.0f,%.0f,R,6;", o[0], o[2]);
+        for (int d = 0; d < door_count(); d++) {
+            float dp[3];
+            door_position(d, dp);
+            if ((door_flags(d) & DOOR_MANUAL) && fabsf(l->mid[0] - dp[0]) < 12 && fabsf(l->mid[2] - dp[2]) < 12 &&
+                fabsf(l->mid[1] - dp[1]) < 10) {
+                float h = atan2f(in[0] - o[0], in[2] - o[2]) * 57.29578f;
+                EMIT("h%.0f;a;w50;", h < 0 ? h + 360 : h);
+            }
+        }
+        EMIT("%.0f,%.0f,R,6;", in[0], in[2]);
+        for (int j = 0; j < 3; j++) seg[j] = in[j];
+        room = l->to;
+    }
+#undef EMIT
+    for (int i = 0; i < nl; i++) ((GraphLink *)graph_link(i))->flags = saved[i];
+    if (!n) return false;
+    if (len < size) len += (size_t)snprintf(out + len, size - len, "%.0f,%.0f,R,%s", b[0], b[2], "2");
+    return len < size;
+}
+
 /* The input the route asks for this frame (in is all zero on entry). */
 static uint32_t splash_frames;      /* the frames the splash screens and the dialogs took: the route's clock leaves them out */
 
@@ -493,6 +620,12 @@ static void route_input(const Character *c, CharacterInput *in)
             uint32_t at = ui_message_time(id);
             if (!at) return;
             route.shift = (int32_t)at - atoi(comma + 1);
+            route_next();
+            continue;
+        }
+        if (*s == 'C' && (s[1] == ';' || !s[1])) {
+            /* "C": waits for the end of a cutscene and for the input on again */
+            if (ui_cutscene() || !ui_input_enabled()) return;
             route_next();
             continue;
         }
@@ -596,6 +729,31 @@ static void route_input(const Character *c, CharacterInput *in)
                 else in->punch = true;
             }
             return;
+        }
+        if (*s == 'W') {
+            /* "Wx,y,z": run there through the rooms (route_plan), the steps put in its place */
+            float b[3];
+            static char steps[16384], rest[16384];
+            char *e = strchr(s, ';');
+            snprintf(rest, sizeof rest, "%s", e ? e + 1 : "");
+            if (sscanf(s + 1, "%f,%f,%f", &b[0], &b[1], &b[2]) != 3) { route_next(); continue; }
+            /* no way yet (a door still locked): tried again every 60 frames */
+            if (route.phase && now < route.until) return;
+            if (!route_plan(c, b, steps, sizeof steps)) {
+                if (!route.phase) {
+                    char m[96];
+                    snprintf(m, sizeof m, "OpenOni: route: no way yet to %.40s", s);
+                    plat_log(m);
+                }
+                route.phase = 1;
+                route.until = now + 60;
+                return;
+            }
+            snprintf(route.buf, sizeof route.buf, "%s%s%s", steps, rest[0] ? ";" : "", rest);
+            route.step = route.buf;
+            route.phase = 0;
+            route.until = 0;
+            continue;
         }
         if (*s == 'N') {
             /* "N<name>,N": for up to N frames, a talk with the character (a neutral): walked up to
@@ -724,6 +882,18 @@ static void route_input(const Character *c, CharacterInput *in)
         }
         in->forward = 1;
         in->walk = mode == 'k';
+        /* no headway for a second (something the rooms' grids don't hold, at the body's height): a
+           second of stepping to the side, one way then the other */
+        static float stuck_at[2];
+        static int stuck, side;
+        if (fabsf(c->pos[0] - stuck_at[0]) + fabsf(c->pos[2] - stuck_at[1]) > 2.0f) {
+            stuck_at[0] = c->pos[0], stuck_at[1] = c->pos[2];
+            if (stuck < 60) stuck = 0;
+        }
+        if (++stuck > 60) {
+            in->strafe = side & 1 ? -1 : 1;
+            if (stuck > 120) stuck = 0, side++;
+        }
         if (mode == 'J' || mode == 'j') {
             /* a running jump: 20 frames of run ("j": none), then jump held for 30 */
             route.phase++;
@@ -840,6 +1010,7 @@ static void game_display(void)
         float eye[3] = { display.ct->pos[0], display.ct->pos[1] + 20, display.ct->pos[2] };
         view_matrix(view, eye, 3.14159265f - display.ct->facing, -0.3f);
     }
+    if (display.ticks) fog_step(display.ticks);
     gl_dev_begin(w, h, 0.0f, 0.0f, 0.0f);
     gl_dev_matrices(proj, view);
     env_draw();
@@ -1037,6 +1208,10 @@ static int play(int level, int *next)
         if (plat_mouse(&mouse) && (mouse.pressed & MOUSE_LEFT) && !mouse.captured) plat_mouse_capture(true);
         /* "input 0" from a script (cutscenes): the player's keys do nothing (0x4bcc50's flag) */
         if (route.step && player) route_input(&player->c, &in);
+        /* a debug aid: --param invincible=1, the player as with chr_invincible (the "liveforever" cheat's
+           flag), for unattended runs of a level's scripts */
+        char inv[8];
+        if (player && plat_param("invincible", inv, sizeof inv) && atoi(inv)) player->c.flags |= 0x2000000u;
         chr_input_mask(&in, ui_keys_allowed());     /* lock_keys */
         if (route_pause && (ui_keys_allowed() & 4) && !ui_cutscene() && player && !(player->c.flags & 1)) {    /* held until allowed */
             route_pause = false;
