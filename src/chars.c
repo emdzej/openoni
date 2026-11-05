@@ -415,7 +415,7 @@ static void new_animation(Character *c)
     }
     if (ch->ai.state != AI_STATE_COMBAT) return;
     combat_animation(&ch->ai, c);
-    melee_notify_animation(&ch->ai.melee, c->type, chr_is_victim_type(c->type));
+    melee_notify_animation(&ch->ai.melee, c->type, c->left_type, chr_is_victim_type(c->type));
 }
 
 static void action_frame(Character *c) { combat_action(&((Chr *)c)->ai, c); }

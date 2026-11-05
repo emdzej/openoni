@@ -72,5 +72,5 @@ bool melee_update(AiState *a, Character *c, const Character *target);
 void melee_stop(MeleeState *m);
 /* AI2rBlockFunction 0x48b870: whether the AI blocks an attack it could block. Draws a random number. */
 bool melee_block(const AiState *a);
-/* AI2rMelee_NotifyAnimation: a new animation of type for the character. */
-void melee_notify_animation(MeleeState *m, uint16_t type, bool victim);
+/* AI2rMelee_NotifyAnimation: a new animation of type for the character, after one of type left. */
+void melee_notify_animation(MeleeState *m, uint16_t type, uint16_t left, bool victim);

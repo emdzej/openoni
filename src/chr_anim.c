@@ -417,6 +417,7 @@ void chr_anim_particles_frame(Character *c)
 static void old_animation_hook(Character *c, const void *next)
 {
     (void)next;
+    c->left_type = c->type;
     if ((c->flags & 0x200000) && !c->hold) c->flags &= ~0x200000u;
     if (c->type == c->combo_type && c->combo_time == 0xffffffffu) c->combo_time = c->time;
     /* The animation's own turn (TRAM+0x48): the facings take it, and the pose turns back by it at the

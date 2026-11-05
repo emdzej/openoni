@@ -269,13 +269,23 @@ void melee_stop(MeleeState *m)
     if (m->tech) end_technique(m);
 }
 
-void melee_notify_animation(MeleeState *m, uint16_t type, bool victim)
+void melee_notify_animation(MeleeState *m, uint16_t type, uint16_t left, bool victim)
 {
+    /* hit (0x4e37b0): the technique stops */
     if (victim) {
         melee_stop(m);
         return;
     }
-    if (m->override && type == m->override_type) m->override = false;   /* the keys were taken */
+    /* the attack's keys pressed (AI2rExecutor_HasAttackOverride): its animation, the keys taken; still
+       the one they follow, on waiting; any other, "wrong animation" (AI2rError 0x4936b0) and the
+       override and the technique stop (a combo whose keys started the attack before again, say) */
+    if (!m->override) return;
+    if (type == m->override_type) {
+        m->override = false;
+        return;
+    }
+    if (left == m->override_type) return;
+    melee_stop(m);
 }
 
 /* AI2rFight_GetAttackCookie 0x499820: of the AIs fighting one target, at most two (0x545774) attack

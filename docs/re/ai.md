@@ -884,6 +884,14 @@ The combat state's hand-to-hand fighting. The port is `src/melee.c`, with its te
 | Blocking | `AI2rBlockFunction` 0x48b870, every AI's C+0x15ec | confirmed |
 | Weighting a technique | `AI2iMelee_WeightTechnique` 0x4a2580 | not ported: the base weight stays |
 
+**A new animation** in the melee maneuver (0x49fd10, after the behaviour's message 12): a hit
+reaction (0x4e37b0) stops the technique. With the attack's keys pressed and not yet taken
+(`AI2rExecutor_HasAttackOverride`, its animation type): the new animation of that type takes them; a
+new one after an animation of that type leaves them waiting; any other is "wrong" (`AI2rError`
+0x4936b0 with the types), and the override and the technique stop. (Only the first was ported before:
+a combo whose keys started its own first attack again waited for good.) The throw override's case
+(cleared by an attack or a throw-flagged animation) waits for the throws.
+
 ### A profile
 
 On disk: the id (u32), the name (64 bytes), the character class (64), four dodge chances at
