@@ -91,11 +91,11 @@ bool (*chr_block_hook)(Character *c);
 void (*chr_die_hook)(Character *c);
 void (*chr_script_hook)(Character *c, int script);
 
-bool chr_cheat_unthrowable, chr_cheat_unstoppable, chr_cheat_invincible, chr_cheat_omnipotent;
+bool chr_cheat_unthrowable, chr_cheat_unstoppable, chr_cheat_invincible, chr_cheat_omnipotent, chr_cheat_fists;
 
 void chr_cheats_clear(void)
 {
-    chr_cheat_unthrowable = chr_cheat_invincible = chr_cheat_omnipotent = chr_cheat_unstoppable = false;
+    chr_cheat_unthrowable = chr_cheat_invincible = chr_cheat_omnipotent = chr_cheat_unstoppable = chr_cheat_fists = false;
 }
 
 bool chr_is_unstoppable(const Character *c) { return (chr_cheat_unstoppable && !c->ai) || (c->flags & 0x100); }
@@ -266,7 +266,9 @@ static void attack_lands(Character *x, Character *d, const uint8_t *e)
     bool staggered = d->countdown_1c98 || d->countdown_1c9a;
     uint16_t stun = rd16(e + 0x14), react = rd16(e + 0x12);
     bool heavy = stun > 0x14;
-    if (staggered) {
+    if (chr_cheat_fists && !x->ai) {
+        react = 0xd6;       /* fists of legend: the player's blows, whatever they are */
+    } else if (staggered) {
         if (heavy) {
             heavy = false;
             switch (react) {

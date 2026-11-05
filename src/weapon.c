@@ -15,6 +15,7 @@
 #include "sl.h"
 #include "sound.h"
 #include "tm.h"
+#include "turret.h"
 #include "trac.h"
 
 #include <math.h>
@@ -44,7 +45,7 @@ enum {
 /* A shooter: +0x30 the particle class's name, +0x44 the ammo a shot takes (0 none: it only follows the
    others), +0x46 the delay between shots, +0x48 the "roughjustice" one, +0x4a the ticks a shot fires
    at least, +0x4c its trigger (0, 1, -1 both), +0x4e its delay before it starts. */
-enum { SH_NAME = 0x30, SH_AMMO = 0x44, SH_DELAY = 0x46, SH_ACTIVE = 0x4a, SH_TRIGGER = 0x4c, SH_START = 0x4e, SH_SIZE = 0x50 };
+enum { SH_NAME = 0x30, SH_AMMO = 0x44, SH_DELAY = 0x46, SH_DELAY_GATLING = 0x48, SH_ACTIVE = 0x4a, SH_TRIGGER = 0x4c, SH_START = 0x4e, SH_SIZE = 0x50 };
 
 /* The particle events (P3's, the names at 0x5583a0 "update", "pulse", ...). */
 enum { EV_PULSE = 1, EV_START = 2, EV_STOP = 3, EV_BG_START = 4, EV_BG_STOP = 5, EV_DELAY_START = 14, EV_DELAY_STOP = 15 };
@@ -135,12 +136,16 @@ static void pulse(Weapon *w, const uint8_t *sh)
         every_shooter(w, EV_DELAY_START);
         w->flags |= WEAPON_DELAYED;
     }
-    /* the "roughjustice" delay (+0x48) only with the switch at 0x620133 for the player: off */
-    w->delay = w->delay2 = rd16(sh + SH_DELAY);
+    /* the player's with the gatling guns cheat (0x620133): the "roughjustice" delay (+0x48), and the
+       kick by it over the delay's */
+    bool gatling = weapon_cheat_gatling && !c->ai;
+    w->delay = w->delay2 = rd16(sh + (gatling ? SH_DELAY_GATLING : SH_DELAY));
     const void *t = chr_lookup_varient(c, rd16(w->cls + ONWC_RECOIL_ANIM), 1, c->varient);
     if (t) chr_overlay_set(c, CHR_OVERLAY_RECOIL, t, 0);
     /* the AI's kick is less by its shooting skill (ONCC +0x154): with the AI's weapons */
-    c->aim_kick += rdf(w->cls + ONWC_RECOIL);
+    float kick = rdf(w->cls + ONWC_RECOIL);
+    if (gatling && rd16(sh + SH_DELAY)) kick = kick * (float)rd16(sh + SH_DELAY_GATLING) / (float)rd16(sh + SH_DELAY);
+    c->aim_kick += kick;
     /* the shot's noise (AI2rKnowledge_Sound, class +0x128) every 30 ticks: with the AI's hearing */
     if (!w->sound_wait) w->sound_wait = 30;
 }
@@ -1018,11 +1023,19 @@ static Character *owner_character(uint32_t owner)
 /* WPrParticleInaccuracy 0x51ced0: a character owner's (0x1000000 | id) inaccuracy, if it is alive and
    AI-controlled (C+0x1e8 2): in combat (state 5) its shooting skill's (the targeting's, the combat
    block +0x164, +0x10); for an enemy of the player (AI2rTeam_FriendOrFoe 2) times the difficulty's
-   factor (game settings +0xad4: 1.2 easy, 1 normal, 0.6 hard). Not ported: the patrol's targeting
-   (state 3: its skill's plus the block's +0x5bc) and a turret owner's (0x3000000: its class's +0x5f8,
-   always times the factor), which the port's turrets don't set. */
+   factor (game settings +0xad4: 1.2 easy, 1 normal, 0.6 hard). A turret owner's (0x3000000 | id): its
+   class's skill (+0x5f8), always times the factor. Not ported: the patrol's targeting (state 3: its
+   skill's plus the block's +0x5bc). */
+bool weapon_cheat_gatling;
+
 static float particle_inaccuracy(uint32_t owner)
 {
+    const uint8_t *gs = tm_instance_get(TM_TAG("ONGS"), "game_settings");
+    float aim = gs ? rdf(gs + 0xad4 + 4 * persist_difficulty()) : 1.0f;
+    if ((owner & 0xff000000u) == 0x3000000u) {
+        float v;
+        return turret_inaccuracy((uint16_t)owner, &v) ? v * aim : 0.0f;
+    }
     if ((owner & 0xff000000u) != 0x1000000u) return 0.0f;
     Chr *c = NULL;
     for (int i = 0; i < chars_slots() && !c; i++) {
@@ -1033,10 +1046,7 @@ static float particle_inaccuracy(uint32_t owner)
     float v = 0.0f;
     if (c->ai.state == AI_STATE_COMBAT && c->ai.combat.t.skill) v = rdf(c->ai.combat.t.skill + 0x10);
     const Chr *pl = chars_player();
-    if (pl && ai_team_relation(c->team, pl->team) == 2) {
-        const uint8_t *gs = tm_instance_get(TM_TAG("ONGS"), "game_settings");
-        if (gs) v *= rdf(gs + 0xad4 + 4 * persist_difficulty());
-    }
+    if (pl && ai_team_relation(c->team, pl->team) == 2) v *= aim;
     return v;
 }
 

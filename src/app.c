@@ -7,6 +7,7 @@
 #include "akev_collide.h"
 #include "body.h"
 #include "camera.h"
+#include "cheat.h"
 #include "cinematic.h"
 #include "character.h"
 #include "chars.h"
@@ -1498,24 +1499,30 @@ static int play(int level, int *next)
             igui_pause_screen(pause_key);
         }
         if (!ui_input_enabled()) memset(&in, 0, sizeof in);
-        sl_update();
-        /* ONrGameState_UpdateCharacters 0x4dccf0: the volumes first, then the characters */
-        trigger_update(chars_trigger_actors(), chars_slots());
-        object_update(++ticks);
-        door_physics(ticks);
-        ui_update();
-        igui_update(ui_time());
-        cinematic_update();
-        chars_update(&in, env);
-        weapons_update(env);    /* WPrUpdate, after the characters */
-        door_update();      /* the objects' update 0x507880, after the characters */
-        laser_update();     /* the triggers' (0x4cb100), the same mechanics update */
-        turret_update(env); /* OBJiTurretCombat_Update 0x4cf140, the mechanics' update too */
-        particles_update(ticks + 1, true);     /* P3rUpdate(time + 1) after the physics */
-        /* a script may delete the player: the camera keeps the last place */
-        if ((player = chars_player())) fill_target(&ct, &player->c);
-        camera_set_target(&ct);
-        camera_update(1, 0, NULL, ticks);   /* the tick's part (iComputeDeltaTicks 0x4fafb0) */
+        /* ONrGameState_UpdateServerTime 0x4fbeb0: in slow motion (G+0x104, the "carousel" cheat) the
+           game's clock takes two of the machine's 60ths a tick: a tick every other frame */
+        static bool slow_skip;
+        slow_skip = cheat_slow_motion && !slow_skip;
+        if (!slow_skip) {
+            sl_update();
+            /* ONrGameState_UpdateCharacters 0x4dccf0: the volumes first, then the characters */
+            trigger_update(chars_trigger_actors(), chars_slots());
+            object_update(++ticks);
+            door_physics(ticks);
+            ui_update();
+            igui_update(ui_time());
+            cinematic_update();
+            chars_update(&in, env);
+            weapons_update(env);    /* WPrUpdate, after the characters */
+            door_update();      /* the objects' update 0x507880, after the characters */
+            laser_update();     /* the triggers' (0x4cb100), the same mechanics update */
+            turret_update(env); /* OBJiTurretCombat_Update 0x4cf140, the mechanics' update too */
+            particles_update(ticks + 1, true);     /* P3rUpdate(time + 1) after the physics */
+            /* a script may delete the player: the camera keeps the last place */
+            if ((player = chars_player())) fill_target(&ct, &player->c);
+            camera_set_target(&ct);
+            camera_update(1, 0, NULL, ticks);   /* the tick's part (iComputeDeltaTicks 0x4fafb0) */
+        }
         sound_update();
         char dbg[32];
         if (player && plat_param("trace", dbg, sizeof dbg) && plat_frames() % (uint32_t)(atoi(dbg) > 1 ? atoi(dbg) : 30) == 0) {

@@ -98,6 +98,8 @@ void chr_stow(Character *c, bool force);
 /* The player's first weapon of a class (ONrInGameUI_NewWeapon 0x505050, set by the app to
    igui_new_weapon). */
 extern void (*weapon_new_hook)(const void *onwc);
+/* The gatling guns cheat ("roughjustice", 0x620133): the player's weapons fire at their second delay. */
+extern bool weapon_cheat_gatling;
 
 /* 0x519b30: the ammo at a percentage of the class's shots. */
 void weapon_set_ammo_percent(Weapon *w, unsigned percent);

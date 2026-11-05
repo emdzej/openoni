@@ -42,6 +42,8 @@ extern void (*chr_knockdown_hook)(Character *c);
    the victim's hit points); unthrowable (0x5ece90) has no variable. All cleared at the level's start
    (ONrCharacter_LevelBegin 0x4d87b0). */
 extern bool chr_cheat_unthrowable, chr_cheat_unstoppable, chr_cheat_invincible, chr_cheat_omnipotent;
+/* Fists of legend (0x5ece8f): the player's blows knock down (reaction 0xd6); cleared with the others. */
+extern bool chr_cheat_fists;
 void chr_cheats_clear(void);
 /* Unstoppable: C+0x04 0x100 (chr_unstoppable), or the player with the cheat. */
 bool chr_is_unstoppable(const Character *c);

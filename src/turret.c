@@ -95,8 +95,8 @@ static void matrices(Turret *t)
 /* ---- the shooters' particles ---- */
 
 /* OBJiTurret_CreateParticles 0x4cd5c0: each shooter's particle at its place on the barrel, its orientation
-   the shooter's, hanging from the barrel's matrix, still, unowned, its create (11) and background-stop
-   (5) events. */
+   the shooter's, hanging from the barrel's matrix, still, owned by the turret, its create (11) and
+   background-stop (5) events. */
 static void create_particles(Turret *t)
 {
     uint32_t now = ui_time();
@@ -126,7 +126,10 @@ static void create_particles(Turret *t)
             p3_set_flags(p, p3_flags(p) | 0x2000);
         }   /* else "particle class '%s' attached to turret but no dynamic matrix" */
         uint8_t *b;
-        if ((b = p3_block(pc, p, P3_X_OWNER))) memset(b, 0, 4);
+        if ((b = p3_block(pc, p, P3_X_OWNER))) {
+            uint32_t owner = 0x3000000u | t->id;       /* 0x51ce10: the turret's id as an owner */
+            memcpy(b, &owner, 4);
+        }
         if ((b = p3_block(pc, p, P3_X_TEX_INDEX))) { uint32_t r = trac_local_random(); memcpy(b, &r, 4); }
         if ((b = p3_block(pc, p, P3_X_TEX_TIME))) memcpy(b, &now, 4);
         if ((b = p3_block(pc, p, P3_X_PREV_POS))) memset(b, 0, 4);
@@ -308,6 +311,18 @@ void turret_activate(uint16_t id)
 {
     for (int i = 0; i < n_turrets; i++)
         if (id == 0xffff || turrets[i].id == id) activate(&turrets[i]);
+}
+
+bool turret_inaccuracy(uint16_t id, float *out)
+{
+    /* WPrParticleInaccuracy 0x51ced0 for a turret: the object by its id (0x5078c0), its class's skills'
+       inaccuracy (+0x5e8 +0x10) */
+    for (int i = 0; i < n_turrets; i++)
+        if (turrets[i].id == id) {
+            *out = turrets[i].cls ? rdf(turrets[i].cls + T_SKILLS + 0x10) : 0.0f;
+            return true;
+        }
+    return false;
 }
 
 void turret_deactivate(uint16_t id)

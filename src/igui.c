@@ -1,6 +1,7 @@
 /* The in-game UI's pages and text consoles: see igui.h. */
 #include "igui.h"
 
+#include "cheat.h"
 #include "chars.h"
 #include "exe.h"
 #include "persist.h"
@@ -245,6 +246,7 @@ bool igui_help_shown(void) { return help_on; }
 void igui_level_load(int level)
 {
     memset(&ps, 0, sizeof ps);
+    cheat_message_clear();      /* 0x5ed00c */
     objectives_shown = diary_unlocked = 0;
     help_on = objective_new = diary_new = prompt_now = suppress_prompt = false;
     restored_time = 0xffffffffu;
@@ -682,7 +684,12 @@ static bool pause_proc(WmWindow *d, uint32_t msg, uintptr_t p1, uintptr_t p2)
         states[0] = item->item->font;   /* 0x501ec0 */
         wm_dc_set_font(&states[0]);
         wm_dc_set_format(1);
-        /* (the sub area's hint string, 0x5ed00c: nothing sets it) */
+        /* the sub area shows a cheat's message instead (0x5ed00c), at the font's ascent */
+        if (item->id == ITEM_SUB && cheat_message()) {
+            int16_t pen[2] = { 0, wm_dc_ascending() };
+            wm_dc_text(item->dc, NULL, pen, cheat_message(), NULL);
+            return true;
+        }
         switch (ps.page) {
         case PAGE_OBJECTIVE: paint_objective(item); break;
         case PAGE_DIARY: paint_diary(item); break;
@@ -718,11 +725,14 @@ void igui_pause_screen(bool (*pause_key)(void))
     sound_set_volume(volume * 0.5f);
     pause_key_fn = pause_key;
     plat_log("OpenOni: pause screen");
+    wm_key_hook = cheat_key;    /* ONiRunGame 0x4d4640: the cheats' event hook while paused */
     wm_dialog_modal(0x46, pause_proc, 0);
+    wm_key_hook = NULL;
     pause_key_fn = NULL;
     sound_set_volume(volume);
     sound_impulse_play("pause_screen_close", 1.0f);
     wm_take_input(false);
     if (modal_end) modal_end();
     wm_psui_set_active(old);
+    cheat_message_clear();
 }

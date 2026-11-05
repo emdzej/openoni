@@ -20,6 +20,7 @@
 #include "physics.h"
 #include "sl.h"
 #include "tm.h"
+#include "trac.h"
 #include "throw.h"
 #include "weapon.h"
 #include "trigger.h"
@@ -95,6 +96,28 @@ static void difficulty_health(Chr *c)
     c->c.max_hit_points = (uint32_t)lrintf((float)c->c.max_hit_points * f);
 }
 
+/* 0x4dac50: a CHAR with the flags 0x802 takes a class at random among those of its class's variant
+   (ONCC +0x42c, the ONCV's name at +4); with 0x800 in a hard game (difficulty above 1) among those of
+   the variant's upgrade (ONCV +0x24, when it names one). None: "ERROR: character %s variant ..." and
+   the named class stays. */
+static const void *class_variant(const void *oncc, uint32_t flags)
+{
+    if (!(flags & 0x802)) return oncc;
+    const uint8_t *v = tm_link((const uint8_t *)oncc + 0x42c);
+    if (!v) return oncc;
+    const char *want = (const char *)v + 4;
+    if ((flags & 0x800) && persist_difficulty() > 1 && v[0x24]) want = (const char *)v + 0x24;
+    static void *all[512];
+    const void *pick[512];
+    int n = tm_instance_list(TM_TAG("ONCC"), all, 512), k = 0;
+    for (int i = 0; i < n; i++) {
+        const uint8_t *w = tm_link((const uint8_t *)all[i] + 0x42c);
+        if (w && !strncmp((const char *)w + 4, want, 32)) pick[k++] = all[i];
+    }
+    if (!k) return oncc;
+    return pick[(uint32_t)trac_local_random() * (uint32_t)k >> 16];
+}
+
 /* ONrGameState_NewCharacter 0x4dac50 from a CHAR object: the first free slot; its class, place and
    facing (the rotation's y, degrees), name and team; AI2rInitializeCharacter's script id. */
 static Chr *create(int object)
@@ -102,6 +125,7 @@ static Chr *create(int object)
     const ObjcObject *o = &objects[object];
     const void *oncc = tm_instance_get(TM_TAG("ONCC"), objc_char_class(o));
     if (!oncc) return NULL;
+    oncc = class_variant(oncc, objc_char_flags(o));
     int i = 0;
     while (i < CHARS_MAX && used[i]) i++;
     if (i == CHARS_MAX) return NULL;

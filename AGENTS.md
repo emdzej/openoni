@@ -92,6 +92,7 @@ near them, and the `door_*` commands ([docs/re/door.md](docs/re/door.md)). `src/
 - `src/persist.c`: persist.dat (levels reached, the continues, the pause screen's bits, the options);
   `src/outgame.c`'s Load Game lists them (the WM's list box, class 8) and its Options sets them (the
   check box, slider, popup and menu classes, the WM's timers).
+- `src/cheat.c`: the cheat codes typed on the pause screen once the game is won ([docs/re/cheat.md](docs/re/cheat.md)).
 - `src/film.c`: the films (FILM, the `playback` command), with `begin_cutscene`/`end_cutscene`
   (`src/chars.c`): the cutscene after the training plays and the warehouse mission starts.
 

@@ -102,6 +102,8 @@ void wm_popup_select(WmWindow *w, uint16_t id);
 void wm_display(void);
 void wm_update(void);
 void wm_key(uint8_t code);
+/* The input events' hook (0x55fd48, set by 0x404df0): each key event, before the WM takes it. */
+extern void (*wm_key_hook)(uint8_t code);
 /* A left click at the desktop's point, as the mouse's events (for unattended runs). */
 void wm_click(int16_t x, int16_t y);
 /* WMrActivate 0x476110 / WMrDeactivate 0x476410: the WM takes the input, its cursor shown, or not. */

@@ -42,6 +42,8 @@ int ui_area_count(int area);
 const UiLine *ui_area_line(int area, int i, float *alpha);
 /* How the level ended (G+0x1679bc, the win and lose commands): 0 not yet, 1 won, 2 lost. */
 int ui_level_end(void);
+/* The level ended, won (1) or lost (2), as win and lose do (the cheats' "winlevel", "loselevel"). */
+void ui_set_level_end(int end);
 /* When the message (by its name) was last asked for by a script, 0 not lately (the port's). */
 uint32_t ui_message_time(const char *id);
 /* Adds a line (the oldest goes when the area is full). */

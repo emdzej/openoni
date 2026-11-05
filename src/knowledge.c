@@ -71,8 +71,11 @@ void knowledge_reset(void)
     now = 0;
 }
 
+bool ai_last_man_standing;
+
 int ai_team_relation(uint32_t a, uint32_t b)
 {
+    if (ai_last_man_standing) return 2;
     if (a == b || a == 6 || b == 6) return 0;       /* 6: Switzerland */
     switch (a) {
     case 0: return b == 1 ? 0 : b == 2 ? 2 : 1;     /* Konoko */

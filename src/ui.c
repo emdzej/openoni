@@ -260,6 +260,7 @@ static bool cmd_letterbox(SlThread *t, int c, const SlValue *v, SlValue *r, void
 
 /* input on (0x4bcc50) */
 int ui_level_end(void) { return level_end; }
+void ui_set_level_end(int end) { level_end = end; }
 
 /* win (0x4bd1f0) and lose (0x4bd210): the level ends, won or lost; ONiRunGame 0x4d4640 acts on it at
    the end of the frame. */

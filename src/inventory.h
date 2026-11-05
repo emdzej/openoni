@@ -8,6 +8,8 @@
 
 /* WPrInventory_Update 0x51bad0, each tick in DoCharacterFrame after the pickup. */
 void inventory_update(Character *c);
+/* The regeneration cheat ("elderrune", 0x620134): the player heals a point a second. */
+extern bool inventory_cheat_regeneration;
 /* 0x51c770 for a hypo (the kind 2): one used if the health with the healing to come isn't over the
    maximum. True if used. */
 bool inventory_use_hypo(Character *c);

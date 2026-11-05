@@ -2,6 +2,7 @@
 #include "inventory.h"
 
 #include "tm.h"
+#include "ui.h"
 #include "tram.h"
 
 #include <math.h>
@@ -26,12 +27,14 @@ static void heal(Character *c, uint32_t n, bool over)
     if (!over && c->hit_points > c->max_hit_points) c->hit_points = c->max_hit_points;
 }
 
+bool inventory_cheat_regeneration;
+
 void inventory_update(Character *c)
 {
     /* the wait; then the healing to come, a point at a time up to the settings' cap (+0: the maximum
        times it), waiting the class's heal delay (ONCC +0x5c) while under the maximum; without it, health
-       over the maximum lost a point every 10 ticks (or, with the regeneration cheat 0x620134 for the
-       player, a point a second gained: not ported) */
+       over the maximum lost a point every 10 ticks, or with the regeneration cheat (0x620134) the
+       player's under it gains one on the game's ticks that are a second's (ONrGameState_GetGameTime) */
     if (c->heal_wait) {
         c->heal_wait--;
     } else {
@@ -50,6 +53,9 @@ void inventory_update(Character *c)
                 c->hit_points = cap;
                 c->hypo_heal = 0;
             }
+        } else if (inventory_cheat_regeneration && !c->ai) {
+            if (c->hit_points < c->max_hit_points && ui_time() % 60 == 0) c->hit_points++;
+            waited = true;
         } else if (c->hit_points > c->max_hit_points) {
             c->hit_points--;
         } else {

@@ -58,8 +58,11 @@ the retarget timer, +0x15c the active ticks, +0x160 the ticks unseen, +0x168 the
   is base × head × barrel (0x4341c0 twice). The original makes these as it draws, and its targeting
   reads the last drawn. The port makes them each tick, which is the same while the turret is drawn.
 - **The particles** (*OBJiTurret_CreateParticles* 0x4cd5c0). Each shooter gets one at its place,
-  oriented as the shooter, hanging from the barrel's world matrix. Each gets the create event (11), then
-  background-stop (5). The cooldown starts at 60.
+  oriented as the shooter, hanging from the barrel's world matrix. Its owner is the turret, 0x3000000 |
+  the id (0x51ce10). Each gets the create event (11), then background-stop (5). The cooldown starts at 60.
+  The owner widens the shots' cone (`WPrParticleInaccuracy` 0x51ced0): by the class's shooting skill's
+  inaccuracy (+0x5f8, the skills' +0x10) times the difficulty's aim factor (ONGS +0xad4: 1.2, 1, 0.6),
+  for every target team.
 - **On** (0x4cd990 → 0x4cd9c0: the event list's "activate turret", `turret_activate`). The active time
   restarts and the active sound starts. Every shooter gets background-start (4). The targeting is set
   up (0x4ba6d0) with the barrel's axis z, the callbacks at 0x54c348 and the class's three blocks.

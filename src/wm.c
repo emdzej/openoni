@@ -709,8 +709,11 @@ void wm_display(void)      /* WMrDisplay 0x476140 */
 
 /* 0x477510: a key to the focused window, or its dialog when the window doesn't take that kind (WM_WANTKEYS:
    1 letters, 2 digits, 4 punctuation, 0x10 the arrows, 0x20 the page keys, 8 Delete and Backspace). */
+void (*wm_key_hook)(uint8_t code);
+
 void wm_key(uint8_t code)
 {
+    if (wm_key_hook) wm_key_hook(code);     /* the LI's event loop (0x403eb0) calls it on each event */
     WmWindow *to = focus ? focus : active;
     if (!to) return;
     if (focus && (focus->flags & WM_STYLE_CHILD) && focus->parent && focus->parent->cls->number == 6) {

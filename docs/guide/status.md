@@ -130,6 +130,12 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   mouse, with the game's own sliders, popup menus and check boxes, kept in `persist.dat`. The graphics
   quality and the gamma are kept but not yet applied, and the resolution lists only the one screen mode
   the port has.
+- **The difficulty**: the characters' health, the enemies' aim (theirs and the turrets'), and on hard
+  the stronger classes the levels' characters are upgraded to; their costumes picked at random from
+  their class's variants.
+- **The cheat codes**: typed on the pause screen once the game is won, with the exe's own codes and
+  messages; most of them work (invincibility, fat loot, glass furniture, last man standing, gatling
+  guns, regeneration, the weapons locker, slow motion and the rest).
 - **The text consoles**: the documents Konoko reads at the level's consoles, page by page, in the
   game's own window manager, its dialogs built from the game's data, over the level as the original
   draws them.
@@ -160,9 +166,8 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - The impact effects (the hit sparks' classes). The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.
-- The intro and outro movies; the cheat codes the won game unlocks.
-- The hard game's other inventory (the difficulty's health and the AI's aim are in), the turrets' aim
-  spread, and the patrols' glances.
+- The intro and outro movies. Of the cheat codes: the shapeshifter's class change, the sizes of mini me
+  and behemoth, and the ultra mode's melee.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked
 against the original.

@@ -351,8 +351,11 @@ starting point (or 0) and a u16* for the slot.
 2. **From an object** (tag `CHAR`):
    - **Class**: `ONCC` by the name at OSD+4. With OSD flags 0x802 (random costume / upgrade) it
      collects every class with the same variant (`ONCV` name at ONCC+0x42c +4, or the upgrade at +0x24
-     with flag 0x800 above difficulty 1) and takes one at random (`UUrLocalRandom` 0x426e30). None:
-     console error, the named class stays.
+     with flag 0x800 above difficulty 1) and takes one at random (`UUrLocalRandom` 0x426e30, its 16 bits
+     times the count, over 65,536). None: console error, the named class stays. The upgrades in the data
+     go easy → med → hard (elite, ninja, red, striker, tanker) and lite → swat (BlackOps, TCTF): on hard a
+     flagged character comes one step up. Every level but 18 has such characters (level 8: 70). Ported
+     (`class_variant`, chars.c).
    - **Name** OSD+0x44 → C+0x14. Weapon slots cleared (0x51ba40).
    - **Weapon**: `ONWC` by OSD+0x64. Found: a new weapon (0x518690), into the hand (*ONrCharacter_UseWeapon*
      caller 0x4e4c00), then 0x519b30 with the u16 at OSD+0x1c4 (*inferred*: ammo). Not found and not "none": "can't find weapon class".
@@ -388,16 +391,15 @@ starting point (or 0) and a u16* for the slot.
 2 hard), rounded by 0x4340a0: +0xaec for the player (C+0x1e8 0); +0xae0 for a character whose team
 takes the player's for an enemy (`AI2rTeam_FriendOrFoe`, this team first, 2), none while there is no
 player. The data's factors: the player 1.3 on easy, the enemies 1.25 on hard, 1 otherwise. Confirmed.
-Ported (`difficulty_health`, chars.c); not yet: a hard game's other inventory for CHARs with flag
-0x800 (0x4dac50).
+Ported (`difficulty_health`, chars.c). The CHAR's flag 0x800 is the class's upgrade (above).
 
 **The shots' spread** (`P3iEmitParticle` 0x45d610, direction 5): the cone's angle is its base, widened
 when the emitting particle has an owner by the owner's inaccuracy times the second angle.
 `WPrParticleInaccuracy` 0x51ced0 gives it: for a living AI-controlled character in combat its shooting
 skill's (+0x10, a factor about 1: 0.5 to 3 in the classes), for an enemy of the player times the
 difficulty's factor (ONGS +0xad4: 1.2, 1, 0.6); for a turret (0x3000000) its class's +0x5f8 times the
-same. The player's own shots take the base alone. Ported (`particle_inaccuracy`, weapon.c), but for
-the patrol's targeting and the turrets, whose shots the port leaves without an owner.
+same. The player's own shots take the base alone. Ported (`particle_inaccuracy`, weapon.c, and the
+turrets' owner in turret.c), but for the patrol's targeting.
 
 **Becoming active**, 0x4db830: the first free of the 64 records, cleared; handles linked; A+0xe4 = the
 position; animation defaults (A+0x1ed8/0x1eda 0xffff, overlays cleared, A+0x2190 −1, A+0x2195 1,

@@ -92,6 +92,7 @@ static bool cmd_broken(SlThread *t, int argc, const SlValue *argv, SlValue *r, v
    of flag 0x1000000 too). */
 static bool shards_on = true, break_all, break_marked;
 int env_glass_broken(void) { return nbroken; }
+bool env_toggle_furniture_glass(void) { return break_marked = !break_marked; }
 
 /* 0x462bf0 then 0x508f10: a particle's damage at the quad: only breakable glass (flag 0x200000), once
    (it is marked broken, 0x40000, which the draw and the collisions leave out); its normal faces the side

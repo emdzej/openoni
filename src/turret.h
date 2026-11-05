@@ -46,6 +46,8 @@ void turret_update(const void *env);
    (0xffff every one) start; 0x4cda80 / 0x4cdab0 (turret_deactivate) stop. */
 void turret_activate(uint16_t id);
 void turret_deactivate(uint16_t id);
+/* The inaccuracy of the turret with the id (its class's shooting skill), false for none. */
+bool turret_inaccuracy(uint16_t id, float *out);
 /* The drawn turret's geometries (the draw 0x4ce300: the head under base x head, the barrel under base x
    head x barrel): k 0 the head, 1 the barrel; NULL none. Marks it drawn (TURRET_DRAWN). */
 const void *turret_geometry(int i, int k, float m[12]);

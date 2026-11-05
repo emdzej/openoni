@@ -67,6 +67,8 @@ void knowledge_downgrade_alert(struct Chr *c, int level, bool force);
 KnowEntry *knowledge_find(const struct Chr *owner, const struct Chr *target);   /* 0x49b8c0 */
 /* AI2rTeam_FriendOrFoe 0x48b2c0: 0 friends, 1 neutral, 2 enemies. */
 int ai_team_relation(uint32_t a, uint32_t b);
+/* The last man standing cheat ("reservoirdogs", 0x5eb848): every team the foe of every other. */
+extern bool ai_last_man_standing;
 /* 0x48b1d0: whether a takes b for an enemy (known: also when made hostile by hits). */
 bool ai_is_hostile(const struct Chr *a, const struct Chr *b, bool known);
 
