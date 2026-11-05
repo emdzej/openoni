@@ -449,7 +449,8 @@ static void start_scripts(void)
    frames, then jumps (held 30) on the way ("x,z,j[,R]" jumps at once); "a" taps the action key; "hD" turns to
    D degrees (the facing: 0 is +z); "vD" aims D degrees up; "p"/"k" a punch/kick tap; "j" a jump tap; "q"/"g"/"e"/"R" a swap (pick up),
    fire, drop or reload tap; "c" holds crouch for the next step; "H<keys>,N" holds keys for N frames (f forward,
-   b back, l/r step left/right, c crouch, j jump, p punch, k kick, w walk, a action, q swap, g fire).
+   b back, l/r step left/right, c crouch, j jump, p punch, k kick, w walk, a action, q swap, g fire);
+   "U<keys>,x,V" (or ",z,V") holds them until her x (z) passes V (a take-off point; "Hfjc" in the air flips).
    "R" as a mode runs from up to 1.3 rad off; "P" too, walking the last 10. "T<name>,N[,L]" aims at the character for N frames (where it
    will be in L frames) and taps fire every 20 frames; the shots leave at about 1.13 times the aim's angle
    from the facing (measured), which the aim allows for. "M<message>,F" waits for a script's message and
@@ -692,6 +693,27 @@ static uint32_t splash_frames;      /* the frames the splash screens and the dia
 
 static bool route_pause;     /* the route's "P": the pause key */
 
+/* The keys of "H" and "U", up to the comma. */
+static void hold_keys(const char *k, CharacterInput *in)
+{
+    for (; *k && *k != ',' && *k != ';'; k++) {
+        switch (*k) {
+        case 'f': in->forward = 1; break;
+        case 'b': in->forward = -1; break;
+        case 'l': in->strafe = -1; break;
+        case 'r': in->strafe = 1; break;
+        case 'c': in->crouch = true; break;
+        case 'j': in->jump = true; break;
+        case 'p': in->punch = true; break;
+        case 'k': in->kick = true; break;
+        case 'w': in->walk = true; break;
+        case 'a': in->action = true; break;
+        case 'q': in->swap = true; break;
+        case 'g': in->fire = true; break;
+        }
+    }
+}
+
 static void route_input(const Character *c, CharacterInput *in)
 {
     if (route.step && c->state == 0x32) {   /* knocked down, whatever the step: up again (forward, a getup move) */
@@ -765,22 +787,18 @@ static void route_input(const Character *c, CharacterInput *in)
             const char *comma = strchr(s, ',');
             if (!route.phase) route.until = now + (uint32_t)(comma ? atoi(comma + 1) : 1), route.phase = 1;
             if (now >= route.until) { route_next(); continue; }
-            for (const char *k = s + 1; *k && *k != ',' && *k != ';'; k++) {
-                switch (*k) {
-                case 'f': in->forward = 1; break;
-                case 'b': in->forward = -1; break;
-                case 'l': in->strafe = -1; break;
-                case 'r': in->strafe = 1; break;
-                case 'c': in->crouch = true; break;
-                case 'j': in->jump = true; break;
-                case 'p': in->punch = true; break;
-                case 'k': in->kick = true; break;
-                case 'w': in->walk = true; break;
-                case 'a': in->action = true; break;
-                case 'q': in->swap = true; break;
-                case 'g': in->fire = true; break;
-                }
-            }
+            hold_keys(s + 1, in);
+            return;
+        }
+        if (*s == 'U') {
+            /* "U<keys>,x|z,V": the keys held until the position's x (or z) passes V, from the side it
+               starts on */
+            const char *comma = strchr(s, ',');
+            if (!comma || (comma[1] != 'x' && comma[1] != 'z') || comma[2] != ',') { route_next(); continue; }
+            float v = (float)atof(comma + 3), p = c->pos[comma[1] == 'x' ? 0 : 2];
+            if (!route.phase) route.phase = p < v ? 1 : 2;
+            if (route.phase == 1 ? p >= v : p <= v) { route_next(); continue; }
+            hold_keys(s + 1, in);
             return;
         }
         if (*s == 'T') {

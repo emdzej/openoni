@@ -50,6 +50,11 @@ Level 11, the TCTF's secure building, plays through too: the floors' consoles an
 basement and the ramp, the ninja at the window, whose blast breaks the glass, the jump from the sill to
 the roof, the ninjas there, the outro, and level 12 begins.
 
+Level 12, the TCTF's roof, plays through as well: the gaps and the belt, the glass elevator and its
+door, the decks and the stairs, the flip (a crouch in the air tucks her up) from the vent onto the
+catwalk with the LSI, the zip line, the flips up the ledges, the guards by the elevator who keep its door
+locked, the boss in the elevator's room, the outro, and level 13 begins.
+
 It can be tried in the browser on the <a href="/play/" target="_self">play page</a>, with your own copy of the game.
 
 ## What works
@@ -138,7 +143,7 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - The impact effects (the hit sparks' classes). The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.
-- The other 6 levels as a playthrough.
+- The other 5 levels as a playthrough.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked
 against the original.
