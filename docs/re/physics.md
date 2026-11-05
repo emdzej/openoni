@@ -97,6 +97,11 @@ opposite plane.
 0x4ec040; on the ground with no floor found, A+0xe0 counts up (the first time noting the height, A+0xf0);
 otherwise it is 0. Past 11 the character starts falling (A+0x21dc).
 
+**No collision** (`chr_nocollision`, C+4 0x20000): 0x4ed080 sets the context's flags 0x44 for it, as for an
+environment animation. `PHrPhysics_Update` 0x43af50 skips the wall slide (0x43a710) and the other objects
+for flag 4, and the ground callback skips the floor for flag 0x40: the character walks through walls and
+floors at the height its animation gives it (level 13's Muro, walking out of his room). Confirmed.
+
 **On a hit** (0x4ecb20): a collision's second number (the plane's y) below 0 becomes 0. **Hit by another**
 (0x4ecab0): unless that object's kind is 5, its push goes into the knockback (A+0xb8).
 

@@ -382,7 +382,10 @@ void physics_update(Character *c, const void *env)
     float mv[3] = { c->phys_accel[0], c->phys_accel[1], c->phys_accel[2] };
     memset(c->phys_accel, 0, sizeof c->phys_accel);
     c->wall_hits = 0;
-    if (slide(c, env, mv)) respond(c, env, mv);
+    /* chr_nocollision (C+4 0x20000) sets the context's flags 0x44 (0x4ed080): PHrPhysics_Update 0x43af50
+       skips the walls (0x43a710) for flag 4, and 0x4eca00 the floor for flag 0x40 */
+    bool through = (c->flags & 0x20000u) != 0;
+    if (!through && slide(c, env, mv)) respond(c, env, mv);
     for (int k = 0; k < 3; k++) c->phys_pos[k] += mv[k];
-    after_move(c, env);
+    if (!through) after_move(c, env);
 }

@@ -200,11 +200,28 @@ cell's value (the table at 0x54b0c8: 0, 0, 0, 2, 1, 2, 2, 2, 3, 0).
 `src/graph.c` builds the graph once per environment (`graph_for`), with the blockages from the rooms'
 grids, and finds the room under a point and the path. The AI's mover (`src/ai.c`) makes the path as
 `AI2iPath_MakePath` does and walks it straight from link to link, then to the point; a link is passed
-in the room beyond, or within 2 of its middle. In each room it makes the local path (`src/localpath.c`:
+in the room beyond, or within 2 of its middle (a stand-in). In each room it makes the local path (`src/localpath.c`:
 `ASrPath_SetParams`, `ASrPath_Generate`, `ASiList_CalcWaypoints`, `PHrWaypointFromGunk`) and heads for
-its waypoints from the second, each passed within 2, opening the doors on its links. Stand-ins: that
-steering (the movement state's `AI2iMovementState_Calculate_Movement` 0x4aa250 and its point hits are
-next); the ghost waypoint's look ahead; the character's node looked up from its position each time;
+its waypoints from the second, opening the doors on its links.
+
+A waypoint counts as passed within a radius set by its kind (0x4a95d0, run by
+`AI2rMovement_Update` 0x4a8550): 12 for kind 0, 8 for kind 1, and 3 for the others. The movement
+state's flag +0x18c4 makes it 3 for every waypoint; the port doesn't keep that flag. The last waypoint
+of the last room uses the goal's radius when that is smaller, but never less than 3 (0x529808).
+
+The steering (`AI2iMovementState_Calculate_Movement` 0x4aa250) compares the facing with the way. If
+it is off by more than 80 degrees (0x52af5c), or 120 in the run modes 6 and 7 (0x52ade4), the
+character turns where it stands (move 4). With obstacles in the movement state's list (+0x14) the
+limit is 40 degrees (0x52a8a0).
+
+Within the limit, the original also tests the turning circle. The radius needed to reach the waypoint
+is (forward² + side²) / (2 × side), where side is the lateral distance less 12, 8 or 3 by the
+waypoint's kind. If the class's speed (`ONrCharacterClass_MovementSpeed` 0x4ee020) divided by its turn
+rate (0x498520) exceeds 0.9 of that radius, it stops and turns (+0x898) until it is within 5 degrees
+(0x52af50).
+
+The port has the 80/120-degree turn only. Stand-ins: the obstacle list and its 40 degrees; the
+turning-circle test; the ghost waypoint's look ahead; the character's node looked up from its position each time;
 the doors' danger factors and keys; the grids' run-time obstacle layer (`PHrPrepareRoomForPath`
 0x50d660: characters, objects, doors).
 

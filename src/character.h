@@ -271,6 +271,11 @@ enum { CHR_FLAG_BOSS = 0x10000000 };
    environment animation plays, its matrix at the frame and a quarter turn about x (none with no
    rotation: its translation alone, the character turned no way). */
 void chr_root_matrix(const Character *c, float out[12]);
+/* The parts' matrices of the pose (A+0x2278, built by 0x4e5a30): the aimed pose under the root, the
+   head grown with chr_big_head (0x5ecb98, the script variable "Draws everyone with a big head"). False
+   for a body that isn't the characters' 19 parts. */
+extern bool chr_big_head;
+bool chr_pose_matrices(const Character *c, float (*m)[12]);
 /* chr_envanim's start (AI2iScript_EnvAnimate_Internal 0x4b7010): the animation from its start, a frame
    on; NULL stops it (chr_envanim_stop 0x4b7240). */
 void chr_envanim_start(Character *c, const void *oban, bool no_rotation);

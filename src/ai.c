@@ -56,6 +56,7 @@ void ai_halt(AiState *a)
 {
     a->follow = NULL;
     a->moving = false;
+    a->goal_facing = false;
     a->kind = AI_MOVE_NONE;
 }
 
@@ -255,14 +256,22 @@ static void mover(AiState *a, const Character *c, const void *env)
     int seg = a->path_k;
     if (env && graph_for(env) && a->local_seg != seg && a->path_from >= 0 && a->path_to >= 0) make_local(a, c, env, seg);
     const float *at = a->path_k < a->path_n ? graph_link(a->path[a->path_k])->mid : a->goal;
+    /* 0x4a95d0: the path's point is passed within 12 of it (a cell of kind 0), 8 (kind 1) or 3; the last
+       point of the last room's path within the goal's radius, if less, and at least 3 (0x529808). Not
+       kept: its flag +0x18c4, which makes it 3 for any point. */
     while (a->local_k < a->local_n) {
-        const float *w = a->local[a->local_k].p;
-        float wx = w[0] - c->pos[0], wz = w[2] - c->pos[2];
-        if (wx * wx + wz * wz < 4.0f && a->local_k + 1 < a->local_n) {
+        const LocalPoint *w = &a->local[a->local_k];
+        float wx = w->p[0] - c->pos[0], wz = w->p[2] - c->pos[2];
+        float r = w->kind == 0 ? 12.0f : w->kind == 1 ? 8.0f : 3.0f;
+        if (a->local_k + 1 >= a->local_n && a->path_k >= a->path_n) {
+            if (a->goal_radius < r) r = a->goal_radius;
+            if (r <= 3.0f) r = 3.0f;
+        }
+        if (wx * wx + wz * wz <= r * r && a->local_k + 1 < a->local_n) {
             a->local_k++;
             continue;
         }
-        at = w;
+        at = w->p;
         break;
     }
     bool last = a->path_k >= a->path_n;
@@ -280,7 +289,14 @@ static void mover(AiState *a, const Character *c, const void *env)
         return;
     }
     dx = at[0] - c->pos[0], dz = at[2] - c->pos[2];
-    ai_executor_move(a, wrap_2pi(atan2f(dx, dz)), AI_MODE_DEFAULT, AI_MOVE_FORWARD, false);
+    /* AI2iMovementState_Calculate_Movement 0x4aa250's turn: more than 80 degrees off the way (0x52af5c;
+       120 in the run modes, 0x52ade4), the character turns where it stands (move 4). Not ported: its 40
+       with obstacles near (0x52a8a0) and its test of the turning circle at the class's speed. */
+    float way = wrap_2pi(atan2f(dx, dz)), off = wrap_2pi(way - c->facing);
+    if (off > PI) off = TWO_PI - off;
+    int mode = a->movement_mode ? a->movement_mode : default_mode(a);
+    float limit = mode > 5 ? 2.0943952f : 1.3962634f;
+    ai_executor_move(a, way, AI_MODE_DEFAULT, off > limit ? AI_MOVE_NONE : AI_MOVE_FORWARD, false);
 }
 
 static uint32_t oncc_u32(const Character *c, unsigned off)
@@ -482,6 +498,11 @@ void ai_update(AiState *a, Character *c, const void *env)
         a->job_pos_set = true;
         memcpy(a->job_pos, c->pos, sizeof a->job_pos);
     }
+    chars_ai_scripts((Chr *)c);
+    /* AI2rMovement_Update 0x4a8550 without a path, in the facing mode 0 (A+0x1578): the executor is
+       given the character's own facing; the states may set another after (combat's look at its
+       target), and the path's way does while moving */
+    if (!a->moving) a->facing = a->goal_facing ? a->goal_angle : c->facing;   /* (arrived with one: mode 2) */
     neutral_end_script((Chr *)c);   /* the conversation's end script, due from the last tick */
     /* before the states (not passive): a neutral may start a conversation by itself */
     if (!(a->flags & AI_FLAG_PASSIVE) && !(c->flags & 1)) neutral_check((Chr *)c);

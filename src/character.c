@@ -222,7 +222,14 @@ bool chr_holds_facing(const Character *c)
     bool b = false;
     switch (c->type) {
     case 6: case 0x11:
-        return true;    /* the player; AI only in some states */
+        /* standing: the player always; a character the AI's movement drives (C+4 0x400000) only in
+           the states 4, 0xc, 0x12, 0x1e, 0x1f and 0x32 (A+0x1afc) */
+        if (!(c->flags & CHR_FLAG_AI_MOVEMENT)) return true;
+        switch (c->state) {
+        case 4: case 0xc: case 0x12: case 0x1e: case 0x1f: case 0x32: b = true; break;
+        default: break;
+        }
+        break;
     case 0x17: case 0x4a:
         b = true;
         break;
@@ -1007,4 +1014,20 @@ void chr_root_matrix(const Character *c, float out[12])
     float co = cosf(c->facing), si = sinf(c->facing);
     const float r[12] = { co, 0, -si, 0, 1, 0, si, 0, co, c->pos[0], c->pos[1] + c->pelvis_height, c->pos[2] };
     memcpy(out, r, sizeof r);
+}
+
+bool chr_big_head;
+
+bool chr_pose_matrices(const Character *c, float (*m)[12])
+{
+    const void *body = body_of_class(c->oncc, 4);
+    if (!body || body_bones(body) != CHR_BONES) return false;
+    BodyMatrix root;
+    chr_root_matrix(c, root);
+    if (!body_matrices(body, root, c->aimed, m)) return false;
+    /* the end of 0x4e5a30: with chr_big_head (0x5ecb98) the head's matrix (part 10, A+0x2458) times a
+       scale of 4 (0x54e16c, MUrMatrix_Scale 0x434b90): its axes grown, its origin kept */
+    if (chr_big_head)
+        for (int k = 0; k < 9; k++) m[10][k] *= 4.0f;
+    return true;
 }

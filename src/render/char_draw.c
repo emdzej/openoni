@@ -74,9 +74,8 @@ void char_draw_character(const Character *c)
         char_draw_pose(c->oncc, c->pos, c->facing, c->pelvis_height, c->aimed, CHR_BONES);
         return;
     }
-    BodyMatrix root, m[BODY_MAX_BONES];
-    chr_root_matrix(c, root);   /* an environment animation's, if one plays */
-    if (!body_matrices(body, root, c->aimed, m)) return;
+    BodyMatrix m[BODY_MAX_BONES];
+    if (!chr_pose_matrices(c, m)) return;     /* an environment animation's root, if one plays */
     float a = (c->invisible_shown || (c->flags & 0x40000)) ? c->visibility : 1.0f;
     if (a > 0.0f) {
         uint8_t alpha = a < 1.0f ? (uint8_t)lrintf(a * 255.0f) : 255;

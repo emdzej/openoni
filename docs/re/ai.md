@@ -247,7 +247,7 @@ The pursuit's handler (0x4b1750) runs the calm handler first, then the pursuit's
 | Offset | What |
 |---|---|
 | C+0x1e8 | 2 for an AI, 0 for the player |
-| C+0x1f0 | AI flags: 1 knowledge on, 2 passive, 4 non-aggressive (CHAR flag 0x08), 0x400 never forgets (CHAR flag 0x100), 0x800 blind, 0x1000 deaf, 0x2000 ignores the player, 0x8000 vocalized |
+| C+0x1f0 | AI flags: 1 knowledge on, 2 passive, 4 non-aggressive (CHAR flag 0x08), 8 the combat script due, 0x10 the alarm script due, 0x20 the end script due, 0x40 the out-of-ammo script due, 0x80 the no-path script due, 0x400 never forgets (CHAR flag 0x100), 0x800 blind, 0x1000 deaf, 0x2000 ignores the player, 0x8000 vocalized |
 | C+0x1f4 | The job: the state it goes back to (`ai2_setjobstate`, `AI2iScript_MakeCurrentStateJob` 0x4b4b00, copies C+0x1f8 here and the state's block, C+0xf70, to C+0x200) |
 | C+0x1f8 | State: 1 idle, 3 patrol, 5 combat, 6 pursuit, 7 alarm, 8 neutral, 9 panic |
 | C+0xf70 | The state's block: C+0x200 for the job, else C+0x8b8 |
@@ -262,6 +262,23 @@ for CHAR flag 0x08 and bit 0x400 for CHAR flag 0x100. It reads the alert levels 
 initial, minimal, job start and investigating (C+0xf94, C+0xf98, C+0xf9c, C+0xfa0). In the data those
 are 1, 1, 1, 2 at +0x1d4..+0x1e0 for the thugs and 0, 0, 1, 2 for Konoko; the reader 0x4bf290 puts them
 at D+0x204..D+0x210 (confirmed: docs/formats/objc.md, CHAR).
+
+### The character's scripts
+
+`AI2rUpdateAI` 0x489d40 starts each live AI character's tick with its scripts. Each flag due is
+cleared and, if the character has the script and hasn't run it yet, the script is deferred (0x5100b0)
+with the character's name and its bit is set in C+0x44. The order is:
+
+| Flag | Script | C+0x44 bit | Who sets the flag |
+|---|---|---|---|
+| 0x10 | alarm (C+0xa8) | 8 | the event list's alarm, 0x49ac30 |
+| 8 | combat (C+0x68) | 2 | `AI2rCombat_Enter` 0x48f290, at its end |
+| 0x40 | out of ammo (C+0x108) | 0x40 | the trigger, 0x4e9040: an AI's empty weapon with nothing to reload |
+| 0x80 | no path (C+0x128) | 0x80 | none found |
+| 0x20 | the Neutral's end script (C+0x1018) | none | the conversation's end |
+
+So each of these scripts runs once in a character's life. Level 13 depends on this: the first
+tanker's combat script spawns the second tanker.
 
 ## Leaving combat
 

@@ -55,6 +55,11 @@ door, the decks and the stairs, the flip (a crouch in the air tucks her up) from
 catwalk with the LSI, the zip line, the flips up the ledges, the guards by the elevator who keep its door
 locked, the boss in the elevator's room, the outro, and level 13 begins.
 
+Level 13, the dream lab, plays through too. It has the ghosts, Muro's wall, the mini strikers who fall
+through the floor, the tankers (the first one's combat script brings the second), the red ninjas and
+Griffin's squad. Then come the acid, the laser corridor with its ninja, Shinatama floating, and the evil
+Konoko. Her death plays the outro, and level 14 begins.
+
 It can be tried in the browser on the <a href="/play/" target="_self">play page</a>, with your own copy of the game.
 
 ## What works
@@ -143,7 +148,7 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - The impact effects (the hit sparks' classes). The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.
-- The other 5 levels as a playthrough.
+- The other 4 levels as a playthrough.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked
 against the original.

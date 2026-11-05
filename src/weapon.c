@@ -953,6 +953,7 @@ static void trigger(Character *c, int mode)
         if ((mode != 1 && mode != 3) || c->ai) {
             bool none = false;
             weapon_try_reload(c, c->weapon, NULL, &none);
+            if (none && c->ai) ((Chr *)c)->ai.flags |= AI_FLAG_OUT_OF_AMMO;   /* its script, AI2rUpdateAI */
         }
     }
 }

@@ -26,11 +26,15 @@ typedef struct Chr {
     AiState ai;             /* for the AI's characters */
 } Chr;
 
-enum { CHR_SCRIPTED_DIED = 0x04, CHR_SCRIPTED_HURT = 0x10, CHR_SCRIPTED_DEFEATED = 0x20 };   /* C+0x44: the scripts run */
+enum { CHR_SCRIPTED_COMBAT = 0x02, CHR_SCRIPTED_DIED = 0x04, CHR_SCRIPTED_ALARM = 0x08, CHR_SCRIPTED_HURT = 0x10,
+       CHR_SCRIPTED_DEFEATED = 0x20, CHR_SCRIPTED_OUT_OF_AMMO = 0x40, CHR_SCRIPTED_NO_PATH = 0x80 };   /* C+0x44: the scripts run */
 
 /* Reads the level's CHAR objects and creates the ones there at the start (without flag 0x04): the
    player among them. Returns how many characters there are. */
 int chars_load(void);
+/* AI2rUpdateAI 0x489d40's first part for an AI character: the alarm, combat, out-of-ammo and no-path
+   scripts due (C+0x1f0 0x10, 8, 0x40, 0x80), each deferred once with its name (C+0x44). */
+void chars_ai_scripts(Chr *ch);
 void chars_unload(void);
 /* The characters' weapons (the CHAR objects'), once the weapons are set up; the ones spawned later
    get theirs at once. */

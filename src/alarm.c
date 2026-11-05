@@ -227,7 +227,7 @@ void alarm_notify(unsigned group, Chr *who)
         float p[3] = { 0.0f, 0.0f, 0.0f };
         if (who) memcpy(p, who->c.pos, sizeof p);
         knowledge_post(ch, KNOW_ALARM, 3, p, who, group, false, false);     /* AI2iKnowledge_AddPending */
-        ch->ai.flags |= 0x10;
+        ch->ai.flags |= AI_FLAG_ALARM_SCRIPT;
     }
 }
 

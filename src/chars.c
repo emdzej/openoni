@@ -406,6 +406,26 @@ static void died(Character *c)
     }
 }
 
+void chars_ai_scripts(Chr *ch)
+{
+    static const struct { uint32_t flag, done; int k; } due[] = {
+        { AI_FLAG_ALARM_SCRIPT, CHR_SCRIPTED_ALARM, OBJC_SCRIPT_ALARM },
+        { AI_FLAG_COMBAT_SCRIPT, CHR_SCRIPTED_COMBAT, OBJC_SCRIPT_COMBAT },
+        { AI_FLAG_OUT_OF_AMMO, CHR_SCRIPTED_OUT_OF_AMMO, OBJC_SCRIPT_OUT_OF_AMMO },
+        { AI_FLAG_NO_PATH, CHR_SCRIPTED_NO_PATH, OBJC_SCRIPT_NO_PATH },
+    };
+    if (ch->c.flags & 1) return;
+    for (unsigned i = 0; i < sizeof due / sizeof due[0]; i++) {
+        if (!(ch->ai.flags & due[i].flag)) continue;
+        ch->ai.flags &= ~due[i].flag;
+        const char *f = ch->object >= 0 ? objc_char_script(&objects[ch->object], due[i].k) : "";
+        if (f[0] && !(ch->script_flags & due[i].done)) {
+            trigger_defer(f, ch->name);     /* 0x5100b0 */
+            ch->script_flags |= due[i].done;
+        }
+    }
+}
+
 /* TakeDamage's hurt and defeated scripts (0x4e65f0), deferred once each with the character's name. */
 static void script(Character *c, int which)
 {
@@ -710,8 +730,8 @@ static bool cmd_changeteam(SlThread *t, int c, const SlValue *v, SlValue *r, voi
 }
 
 /* chr_nocollision char 0|1 (AI2iScript_NoCollision 0x4b6a90): C+0x04 flag 0x20000, then 0x4ed080 sets the
-   physics context's flags 0x44 from it. The port's physics has no character-to-character collision yet,
-   so only the flag is kept. */
+   physics context's flags 0x44 from it: no walls, no floor (physics.c), no characters (the port's physics
+   has no character-to-character collision yet). */
 static bool cmd_nocollision(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;

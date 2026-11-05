@@ -462,6 +462,7 @@ void combat_enter(AiState *a)
     s->gun_thwarted = s->gun_below = s->gun_ignored_n = 0;
     memset(s->gun_ignored, 0, sizeof s->gun_ignored);
     s->gun_rolled = s->gun_go = s->run_rolled = s->run_go = false;
+    a->flags |= AI_FLAG_COMBAT_SCRIPT;      /* the character's combat script, run by AI2rUpdateAI */
 }
 
 void combat_new_target(AiState *a, Character *c, const Character *target)

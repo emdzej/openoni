@@ -284,11 +284,8 @@ static uint32_t health_colour_of(const Character *c)
 
 void chr_bone_matrices(Character *c)
 {
-    const void *body = body_of_class(c->oncc, 4);
-    if (!body || body_bones(body) != CHR_BONES) return;
-    BodyMatrix root, m[BODY_MAX_BONES];
-    chr_root_matrix(c, root);
-    if (!body_matrices(body, root, c->aimed, m)) return;
+    BodyMatrix m[BODY_MAX_BONES];
+    if (!chr_pose_matrices(c, m)) return;
     for (int b = 0; b < CHR_BONES; b++) memcpy(c->bone_world[b], m[b], sizeof c->bone_world[b]);
 }
 

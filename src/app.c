@@ -418,6 +418,7 @@ static void start_scripts(void)
     sl_register_bool("unstoppable", &chr_cheat_unstoppable);   /* the game's variables (0x4fbf10) */
     sl_register_bool("invincible", &chr_cheat_invincible);
     sl_register_bool("omnipotent", &chr_cheat_omnipotent);
+    sl_register_bool("chr_big_head", &chr_big_head);     /* ONrGameState_InstallConsoleVariables 0x4d89b0 */
     sl_register("gl_fog_start_changeto", cmd_fog_start_to, NULL);
     sl_register("gl_fog_end_changeto", cmd_fog_end_to, NULL);
     memset(fog_change, 0, sizeof fog_change);
@@ -842,7 +843,9 @@ static void route_input(const Character *c, CharacterInput *in)
             float err = wrap_pi(atan2f(dx, dz) - c->desired_facing);
             in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
             if (dx * dx + dz * dz > 81.0f) {
-                in->forward = fabsf(wrap_pi(atan2f(dx, dz) - c->facing)) < 0.6f;
+                /* as "R": up to 1.3 off (standing in fight mode the body turns on the spot only past 70
+                   degrees) */
+                in->forward = fabsf(wrap_pi(atan2f(dx, dz) - c->facing)) < 1.3f;
                 return;
             }
             if ((route.until - now) % 8 == 0) {
@@ -972,8 +975,9 @@ static void route_input(const Character *c, CharacterInput *in)
         }
         if (*s == 'F') {
             /* "F<name>,N": a melee fight with the character for up to N frames, or until it is down
-               to no hit points: turned to it, run at it past 9 away, a punch or kick tapped every
-               8 frames within (three punches, then a kick) */
+               to no hit points or fallen 10 below her (not followed over an edge): turned to it, run
+               at it past 9 away, a punch or kick tapped every 8 frames within (three punches, then a
+               kick) */
             char name[64];
             int n = 0;
             const char *comma = strchr(s, ',');
@@ -983,7 +987,7 @@ static void route_input(const Character *c, CharacterInput *in)
             if (comma) n = atoi(comma + 1);
             const Chr *t = chars_find(name);
             if (!route.phase) route.until = now + (uint32_t)n, route.phase = 1;
-            if (!t || !t->c.hit_points || now >= route.until) { route_next(); continue; }
+            if (!t || !t->c.hit_points || now >= route.until || t->c.pos[1] < c->pos[1] - 10.0f) { route_next(); continue; }
             float dx = t->c.pos[0] - c->pos[0], dz = t->c.pos[2] - c->pos[2];
             float err = wrap_pi(atan2f(dx, dz) - c->desired_facing);
             in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
