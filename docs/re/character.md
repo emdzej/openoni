@@ -383,6 +383,14 @@ starting point (or 0) and a u16* for the slot.
 10. **Spawn script** (C+0x48 not empty): scheduled (`ONrScript_Schedule` 0x510160) before the game
     starts, run (0x5100b0) after.
 
+**The difficulty's health** (0x4db352, after `AI2rInitializeCharacter`): the hit points and their most
+(C+0x38, C+0x3c) times a factor of the game settings (ONGS) by the difficulty (persist +0x48, 0 easy to
+2 hard), rounded by 0x4340a0: +0xaec for the player (C+0x1e8 0); +0xae0 for a character whose team
+takes the player's for an enemy (`AI2rTeam_FriendOrFoe`, this team first, 2), none while there is no
+player. The data's factors: the player 1.3 on easy, the enemies 1.25 on hard, 1 otherwise. Confirmed.
+Ported (`difficulty_health`, chars.c); not yet: the AI's aim spread by +0xad4 (0x51ced0) and a hard
+game's other inventory for CHARs with flag 0x800 (0x4dac50).
+
 **Becoming active**, 0x4db830: the first free of the 64 records, cleared; handles linked; A+0xe4 = the
 position; animation defaults (A+0x1ed8/0x1eda 0xffff, overlays cleared, A+0x2190 −1, A+0x2195 1,
 A+0x221c/0x2220 6, the hand block); **the first animation** (0x4d7f90): AI movement may choose; otherwise

@@ -14,6 +14,7 @@
 #include "melee.h"
 #include "objc.h"
 #include "particle.h"
+#include "persist.h"
 #include "patrol.h"
 #include "powerup.h"
 #include "physics.h"
@@ -69,6 +70,29 @@ void chars_arm(void)
     armed = true;
     for (int i = 0; i < CHARS_MAX; i++)
         if (used[i]) arm(&slots[i]);
+}
+
+/* ONrGameState_NewCharacter 0x4dac50, last: the difficulty's share of the hit points and their most
+   (C+0x38, C+0x3c, rounded by 0x4340a0), from the game settings: +0xaec for the player (C+0x1e8 0),
+   +0xae0 for a character the player's team takes for an enemy (AI2rTeam_FriendOrFoe 2); none without a
+   player yet, or at 1. Easy gives the player 1.3, hard the enemies 1.25; normal is 1 for both. */
+static float rdf(const uint8_t *p) { float f; memcpy(&f, p, 4); return f; }
+
+static void difficulty_health(Chr *c)
+{
+    const uint8_t *gs = tm_instance_get(TM_TAG("ONGS"), "game_settings");
+    if (!gs) return;
+    int d = persist_difficulty();
+    float f;
+    if (c->player) f = rdf(gs + 0xaec + 4 * d);
+    else {
+        const Chr *p = chars_player();
+        if (!p || ai_team_relation(c->team, p->team) != 2) return;
+        f = rdf(gs + 0xae0 + 4 * d);
+    }
+    if (f == 1.0f) return;
+    c->c.hit_points = (uint32_t)lrintf((float)c->c.hit_points * f);
+    c->c.max_hit_points = (uint32_t)lrintf((float)c->c.max_hit_points * f);
 }
 
 /* ONrGameState_NewCharacter 0x4dac50 from a CHAR object: the first free slot; its class, place and
@@ -142,6 +166,7 @@ static Chr *create(int object)
     c->ai.alarm_groups = objc_char_alarm_groups(o);
     neutral_change_behavior(c, objc_char_neutral(o), true);   /* AI2rInitializeCharacter 0x48a6b0 */
     chr_hit_init(&c->c, objc_char_extra_health(o));
+    difficulty_health(c);
     if (armed) arm(c);
     return c;
 }
@@ -217,6 +242,7 @@ static Chr *create_setup(const uint8_t *r, const ObjcObject *flag)
     c->ai.job_patrol = c->ai.patrol;
     c->ai.job_alert = 1;
     chr_hit_init(&c->c, 0);
+    difficulty_health(c);
     return c;
 }
 

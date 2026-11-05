@@ -1,7 +1,9 @@
 # Status
 
-Under way: every level plays through, driven by scripted routes; much of the presentation is still
-missing. Level 1's training plays through to its end, with the level's own scripts driving the lessons:
+Under way: every level plays through to the end of the game, driven by scripted routes; much of the
+presentation is still missing. The routes play with the game's own cheats on (invincible, mostly
+omnipotent): their fighting is blind, and without the cheats only level 1's route lives through its
+level. Level 1's training plays through to its end, with the level's own scripts driving the lessons:
 movement, combat, the shooting range, the rifle and the two training drones. Then the cutscene after the
 training plays, its actors moved by the game's own recorded films, and the warehouse mission plays
 through: the consoles open the way, the thugs come at Konoko, she finds the LSI, frees the hostage who
@@ -159,6 +161,7 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.
 - The intro and outro movies; the cheat codes the won game unlocks.
+- The difficulty's AI aim and the hard game's inventory (its health shares are in).
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked
 against the original.
