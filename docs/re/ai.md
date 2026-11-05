@@ -1045,6 +1045,31 @@ current `src/melee.c` keeps its own shapes).
   (+0x24). `AI2iMelee_CheckStateTransition` 0x4a4590 finds one; `AI2iMelee_GetTransitionLength`
   0x4a4300 adds up a path's.
 
+### Toward the original's melee (the port's next step)
+
+The port's melee (`src/melee.c`) is a reduced version: its positions, maneuvers and the technique's
+weight are stand-ins, and the moves' motions and the transitions aren't built. The original's, by size
+of the decompiled code: `AI2rMelee_PrepareForUse` 0x4a4650 (about 450 lines), `AI2rMelee_Update`
+0x4a01f0 (1,200), `AI2iMelee_WeightTechnique` 0x4a2580 (2,000), `AI2iMelee_Position_Update` 0x4a6040
+(440, on `AI2iMelee_SetupAttackerState` 0x4a2270, `TRrCheckAnimationBounds`, `TRrIntersectAnimations`,
+`AI2iMelee_CheckStateTransition` 0x4a4590, 0x4a4300 and `AI2iMelee_WeightLocalMovement` 0x4a4440),
+`AI2iMelee_Maneuver_Update` 0x4a7060 (220). The attack prediction is ported (`src/chr_intersect.c`).
+
+`PrepareForUse`'s class part (in the profile, from +0x978): the jump's air time and the longest jump's
+(above); seven distances from +0x980, of which +0x98c..+0x998 are the forward, back, left and right
+steps of the fight variant's animation types 3, 0x10, 0x17 and 0x19 (`TRrAnimation_GetPosition`), and
++0x988..+0x998 at least half of ONCC +0x08. The transitions come from the exe's table at 0x541d68
+(0x38 bytes a row; groups of rows ended by an empty one, the table by an empty group). As read so far
+(*inferred*): +0x00 a melee state (1..4), +0x04 the state whose animation type (by 0x52ab50) the class
+must have, +0x08 "required" (a group none of whose rows the class has is an error), +0x0c the steps'
+count and +0x10 the steps (melee states), +0x20 an animation type, +0x28 and +0x2c the keys held and
+pressed (0x8000000 jump, 0x200000 forward, ...), +0x30 a float (0.7 for the rolls and jumps, 0.2 for
+the crouches). Each row the class has becomes a 0x28-byte transition in the profile (+0xe0, at most
+55): the bytes +0x00, +0x01, the count +0x02 and the duration +0x03, the steps +0x04, the float +0x08,
+the keys +0x10 and +0x14, the animation +0x18, the row's type +0x1c and the animation's +0x1e, and its
+motion along its direction (+0x20: the position point, × 0x5295bc) and across (+0x24: the last five
+frames' mean step).
+
 ### The weighting's call
 
 `AI2iMelee_WeightTechnique` 0x4a2580 takes: the attacker (ECX), the AI's melee state (EDX: the target
