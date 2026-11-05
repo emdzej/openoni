@@ -922,6 +922,10 @@ bool character_init(Character *c, const void *oncc, const float pos[3], float fa
     chr_hit_init(c, 0);
     c->console_marker = -1;
     c->speech_id = UINT32_MAX;
+    /* the end of ONrCharacter_SetCharacterClass 0x4d7c30: the size, between ONCC +0xc58 and +0xc5c by
+       UUrRandom (over 65535, 0x529d74) */
+    float lo = rdf((const uint8_t *)oncc + 0xc58), hi = rdf((const uint8_t *)oncc + 0xc5c);
+    c->scale = (hi - lo) * (float)trac_random() * 1.5259022e-05f + lo;
     chr_recalculate_idle_delay(c);
     if (!tm_link((const uint8_t *)oncc + ONCC_ANIMATIONS)) return false;
     /* 0x4d7f90, the first animation of ONrGameState_NewActiveCharacter 0x4db830: stand, from standing,
@@ -990,14 +994,29 @@ void chr_envanim_start(Character *c, const void *oban, bool no_rotation)
     /* (0x4ed080: the context's flags 0x44 while animated, no gravity nor walls: physics_update) */
 }
 
+bool chr_mini_me;
+
+/* 0x4e5a30's size: the player's 0.5 (0x54e170) with chr_mini_me (0x5ecb99), else the character's own */
+static float body_scale(const Character *c) { return !c->ai && chr_mini_me ? 0.5f : c->scale; }
+
+static void scale_axes(float m[12], float s)
+{
+    if (s != 1.0f)
+        for (int k = 0; k < 9; k++) m[k] *= s;
+}
+
 void chr_root_matrix(const Character *c, float out[12])
 {
+    /* 0x4e5a30: the place, the turn (or the object animation's matrix), then the size (MUrMatrix_Scale
+       0x434b90, unless 1), then up by the pelvis's height: the size shrinks the body toward the feet */
+    float s = body_scale(c);
     if (c->envanim.oban) {
         bool no_rot = c->envanim.state & ENVANIM_NO_ROTATION;
         float m[12];
         if (oban_matrix(c->envanim.oban, c->envanim.frame, no_rot, m)) {
             if (no_rot) {
                 memcpy(out, m, sizeof m);
+                scale_axes(out, s);
                 return;
             }
             /* 0x434c30, 0x434cf0 (pi/2 about x), 0x434d70 and 0x434df0 (0 about y and z), behind the
@@ -1008,12 +1027,14 @@ void chr_root_matrix(const Character *c, float out[12])
                 for (int k = 0; k < 3; k++)
                     out[3 * col + k] = m[k] * r[3 * col] + m[3 + k] * r[3 * col + 1] + m[6 + k] * r[3 * col + 2];
             memcpy(out + 9, m + 9, 12);
+            scale_axes(out, s);
             return;
         }
     }
     float co = cosf(c->facing), si = sinf(c->facing);
-    const float r[12] = { co, 0, -si, 0, 1, 0, si, 0, co, c->pos[0], c->pos[1] + c->pelvis_height, c->pos[2] };
+    const float r[12] = { co, 0, -si, 0, 1, 0, si, 0, co, c->pos[0], c->pos[1] + c->pelvis_height * s, c->pos[2] };
     memcpy(out, r, sizeof r);
+    scale_axes(out, s);
 }
 
 bool chr_big_head;

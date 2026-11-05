@@ -1457,7 +1457,8 @@ static bool char_ray(const Parts *x, const float *s, const float *d, float radiu
     float bt = 1e9f;
     for (int b = 0; b < CHR_BONES; b++) {
         float rel[3] = { s[0] - x->m[b][9], s[1] - x->m[b][10], s[2] - x->m[b][11] };
-        float ps[4] = { x->sph[b][0], x->sph[b][1], x->sph[b][2], x->sph[b][3] * 1.0f + radius };    /* C+0x34: 1 */
+        float sc = x->c->scale;     /* C+0x34: the part's sphere at the character's size */
+        float ps[4] = { x->sph[b][0] * sc, x->sph[b][1] * sc, x->sph[b][2] * sc, x->sph[b][3] * sc + radius };
         if (!sphere_ray(rel, d, ps, &t, &in)) continue;
         if (in) t = 0.0f;
         else if (t > 1.0f) continue;
@@ -1467,7 +1468,8 @@ static bool char_ray(const Parts *x, const float *s, const float *d, float radiu
     *t_out = bt;
     float p[3] = { s[0] + d[0] * bt, s[1] + d[1] * bt, s[2] + d[2] * bt }, cen[3];
     if (radius == 0.0f) {
-        cen[0] = x->m[best][9] + x->sph[best][0], cen[1] = x->m[best][10] + x->sph[best][1], cen[2] = x->m[best][11] + x->sph[best][2];
+        float sc = x->c->scale;
+        cen[0] = x->m[best][9] + x->sph[best][0] * sc, cen[1] = x->m[best][10] + x->sph[best][1] * sc, cen[2] = x->m[best][11] + x->sph[best][2] * sc;
         memcpy(point, p, 12);
         normal[0] = p[0] - cen[0], normal[1] = p[1] - cen[1], normal[2] = p[2] - cen[2];
         float l = 1.0f / sqrtf(dot3(normal, normal));
@@ -1481,7 +1483,7 @@ static bool char_ray(const Parts *x, const float *s, const float *d, float radiu
         normal[0] = -d[0], normal[1] = -d[1], normal[2] = -d[2];
         if (normalize_zero(normal)) normal[0] = 0, normal[1] = 1, normal[2] = 0;
     }
-    float r = x->sph[best][3];
+    float r = x->sph[best][3] * x->c->scale;
     if (sqrtf(dot3(w, w)) < r) memcpy(point, p, 12);
     else {
         float l = r / sqrtf(dot3(w, w));

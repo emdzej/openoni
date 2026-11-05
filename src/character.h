@@ -90,6 +90,7 @@ typedef struct Character {
                                        shield (a class with ONCC+0xc8e is shielded above 0.5) */
     float facing_offset;            /* C+0x174: the diagonal or sideways run's turn, undone each tick */
     float pelvis_height;            /* C+0x18c */
+    float scale;                    /* C+0x34: the body's size, random in the class's range */
     uint32_t last_action;           /* C+0x1e0, game time */
     uint32_t idle_delay;            /* C+0x1e4 */
 
@@ -115,6 +116,7 @@ typedef struct Character {
     uint16_t varient;               /* A+0x1ca0 */
     uint16_t fight_timer;           /* A+0x1ca2 */
     uint16_t combo_type;            /* A+0x1eb0: the last attack, for combos */
+    uint16_t left_type;             /* the type of the animation last left (NewAnimationHook's old one) */
     uint32_t combo_time;            /* A+0x1eb4: when it ended (0xffffffff: playing) */
     /* throws (throw.h) */
     struct Character *throw_target; /* A+0x1edc: whom this throw throws */
@@ -275,6 +277,8 @@ void chr_root_matrix(const Character *c, float out[12]);
    head grown with chr_big_head (0x5ecb98, the script variable "Draws everyone with a big head"). False
    for a body that isn't the characters' 19 parts. */
 extern bool chr_big_head;
+/* chr_mini_me (0x5ecb99, "Draws the main character small"): the player at half the size. */
+extern bool chr_mini_me;
 bool chr_pose_matrices(const Character *c, float (*m)[12]);
 /* chr_envanim's start (AI2iScript_EnvAnimate_Internal 0x4b7010): the animation from its start, a frame
    on; NULL stops it (chr_envanim_stop 0x4b7240). */

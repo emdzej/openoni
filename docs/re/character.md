@@ -376,7 +376,11 @@ starting point (or 0) and a u16* for the slot.
 6. **Class preparation**, once per class: particle classes (`P3rGetParticleClass` 0x45a030) for ONCC
    +0xc2c and the ONCP list, the ONIA impulses (0x487140), the hurt sounds (ONCC+0x110..0x11c,
    0x512440).
-7. **Scale** C+0x34 random in the class range; idle delay C+0x1e4.
+7. **Scale** C+0x34 random in the class range (the end of `ONrCharacter_SetCharacterClass` 0x4d7c30:
+   ONCC +0xc58 + (+0xc5c − +0xc58) × `UUrRandom` / 65535; 517 of the data's classes take 0.95 to 1.05);
+   idle delay C+0x1e4. The body's matrices (0x4e5a30) put the scale between the facing's turn and the
+   pelvis's height (so the body shrinks toward the feet), unless 1, or 0.5 for the player with
+   `chr_mini_me` (0x5ecb99); the shots' ray test (0x4f1630) scales each part's sphere by it. Ported.
 8. Previous position = position; facing − C+0x174 wrapped to [0, 2π) rotates a vector (0x433010, target
    not traced); BNV C+0x184 and graph node
    C+0x188; added to the present and living lists.

@@ -452,6 +452,7 @@ static void start_scripts(void)
     sl_register_bool("invincible", &chr_cheat_invincible);
     sl_register_bool("omnipotent", &chr_cheat_omnipotent);
     sl_register_bool("chr_big_head", &chr_big_head);     /* ONrGameState_InstallConsoleVariables 0x4d89b0 */
+    sl_register_bool("chr_mini_me", &chr_mini_me);
     sl_register_bool("marketing_line_off", &marketing_line_off);
     marketing_line_off = false;
     sl_register("killed_griffen", cmd_killed_griffen, NULL);

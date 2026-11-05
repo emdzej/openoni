@@ -42,12 +42,12 @@ picks the message:
 | 5 | glassworld | 0x5e96b2, `p3_furniture_breakable` | yes |
 | 6, 7 | winlevel, loselevel | G+0x1679bc to 1 (won) or 2 (lost) | yes |
 | 8 | bighead | 0x5ecb98, `chr_big_head` | yes |
-| 9 | minime | the scale C+0x34: under 0.75 back to 1 ("off"), else 0.25 | no: the scale isn't ported |
+| 9 | minime | the scale C+0x34: under 0.75 back to 1 ("off"), else 0.25 | yes |
 | 10 | superammo | C+4 bit 0x40 (no ammo used) | yes |
 | 12 | reservoirdogs | 0x5eb848: `AI2rTeam_FriendOrFoe` 0x48b2c0 answers 2 (foes) for any two teams | yes |
 | 13 | roughjustice | 0x620133: the player's shots wait the shooter's +0x48 instead of +0x46 (`WPiPulseShooter` 0x519c50, also 0x5192b0 and `WPrOutOfAmmoSound` 0x51d080), the kick scaled by +0x48 / +0x46 | the pulse's delay and kick |
 | 14 | chenille | C+0x1664 (the super value) at most 1: to 10 and C+4 bit 0x40000000; else both off | yes |
-| 15 | behemoth | 0x5ece90 (unthrowable, and the reactions of 0x4e7740 as for a class with ONCC+0xc8f); the scale 1.8, or back to a random one in the class's range (ONCC+0xc58..0xc5c, `UUrRandom`) | unthrowable only |
+| 15 | behemoth | 0x5ece90 (unthrowable, and the reactions of 0x4e7740 as for a class with ONCC+0xc8f); the scale 1.8, or back to a random one in the class's range (ONCC+0xc58..0xc5c, `UUrRandom`) | unthrowable and the size, not the reactions |
 | 16 | elderrune | 0x620134: with no hypo healing, the player under the maximum gains a point on each game tick that is a multiple of 60 (`WPrInventory_Update` 0x51bad0) | yes |
 | 17 | moonshadow | the invisibility C+0x1ba: 0xffff (for good), or 0 | yes |
 | 18 | munitionfrenzy | every ONWC (`TMrInstance_GetDataPtr_List`) as a new weapon, the i-th of n at the angle 2π i / n on a circle of 8 about the player, 10 up, facing along it (the angle + π/2) | yes |

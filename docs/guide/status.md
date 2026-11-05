@@ -166,8 +166,8 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - The impact effects (the hit sparks' classes). The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.
-- The intro and outro movies. Of the cheat codes: the shapeshifter's class change, the sizes of mini me
-  and behemoth, and the ultra mode's melee.
+- The intro and outro movies. Of the cheat codes: the shapeshifter's class change, behemoth's reactions
+  and the ultra mode's melee.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked
 against the original.

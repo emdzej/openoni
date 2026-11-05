@@ -9,6 +9,7 @@
 #include "knowledge.h"
 #include "persist.h"
 #include "tm.h"
+#include "trac.h"
 #include "ui.h"
 #include "weapon.h"
 
@@ -47,6 +48,13 @@ void cheat_key(uint8_t code)
 
 static bool toggle(bool *b) { return *b = !*b; }
 
+static float class_float(const Character *c, unsigned off)
+{
+    float f;
+    memcpy(&f, (const uint8_t *)c->oncc + off, 4);
+    return f;
+}
+
 /* "munitionfrenzy": every weapon class, in a circle of 8 about the player 10 up, each facing along the
    circle */
 static void weapons_locker(const Character *c)
@@ -79,8 +87,13 @@ bool cheat_apply(int id)
     case 6: ui_set_level_end(1); return true;
     case 7: ui_set_level_end(2); return true;
     case 8: return toggle(&chr_big_head);
-    case 9:     /* "minime": the player at a quarter of the size (C+0x34): the scale isn't ported */
-        return false;
+    case 9:     /* "minime": the player at a quarter of the size (C+0x34), or under 0.75 back to 1 */
+        if (c->scale < 0.75f) {
+            c->scale = 1.0f;
+            return false;
+        }
+        c->scale = 0.25f;
+        return true;
     case 10:    /* "superammo": C+4 0x40, no ammo used */
         c->flags ^= 0x40u;
         return (c->flags & 0x40u) != 0;
@@ -95,9 +108,15 @@ bool cheat_apply(int id)
         c->super = 0.0f;
         c->flags &= ~0x40000000u;
         return false;
-    case 15:    /* "behemoth": unthrowable (0x5ece90); the size (1.8, or a random one of the class's range
-                   when off) waits for the scale */
-        return toggle(&chr_cheat_unthrowable);
+    case 15:    /* "behemoth": unthrowable (0x5ece90) at 1.8 the size; off, a size of the class's range again
+                   (UUrRandom) */
+        if (!toggle(&chr_cheat_unthrowable)) {
+            float lo = class_float(c, 0xc58), hi = class_float(c, 0xc5c);
+            c->scale = (hi - lo) * (float)trac_random() * 1.5259022e-05f + lo;
+            return false;
+        }
+        c->scale = 1.8f;
+        return true;
     case 16: return toggle(&inventory_cheat_regeneration);
     case 17:    /* "moonshadow": invisible for good (C+0x1ba 0xffff), or not at all */
         if (c->invisibility != 0xffff) {
