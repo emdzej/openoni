@@ -132,7 +132,8 @@ no_fade:
     const void *t = txmp_resolve(tex, v->now - d->tex_time, d->tex_index);
     const uint8_t *tb = t;
     bool additive = tb && (tb[0x81] & 0x04);   /* TXMP +0x80 0x400 (0x40d640) */
-    gl_dev_draw(q, 4, idx, 6, gl_dev_texture(t), additive ? GL_DEV_ADD : GL_DEV_BLEND);
+    int mode = d->flare ? (additive ? GL_DEV_SCREEN_ADD : GL_DEV_SCREEN) : additive ? GL_DEV_ADD : GL_DEV_BLEND;
+    gl_dev_draw(q, 4, idx, 6, gl_dev_texture(t), mode);
 }
 
 static void geometry(const P3Draw *d)
@@ -144,20 +145,72 @@ static void geometry(const P3Draw *d)
     geom_draw(d->texture, m, NULL);
 }
 
+/* The contrail's quad (the draw engine's method +0x38, 0x412860): each end's place less and plus its
+   half width, u 0 and 1 across, v the end's along; the ends' colours. */
+static void contrail(const P3Contrail *s, void *user)
+{
+    const View *v = user;
+    GlVertex q[4];
+    const float *pos[4] = { s->a, s->a, s->b, s->b }, *w[4] = { s->wa, s->wa, s->wb, s->wb };
+    const float sg[4] = { 1, -1, 1, -1 }, us[4] = { 0, 1, 0, 1 }, vs[4] = { s->va, s->va, s->vb, s->vb };
+    for (int i = 0; i < 4; i++) {
+        uint32_t c = i < 2 ? s->argb_a : s->argb_b;
+        q[i].x = pos[i][0] + sg[i] * w[i][0];
+        q[i].y = pos[i][1] + sg[i] * w[i][1];
+        q[i].z = pos[i][2] + sg[i] * w[i][2];
+        q[i].u = us[i], q[i].v = vs[i];
+        q[i].r = (uint8_t)(c >> 16), q[i].g = (uint8_t)(c >> 8), q[i].b = (uint8_t)c, q[i].a = (uint8_t)(c >> 24);
+    }
+    static const uint16_t idx[6] = { 0, 1, 3, 0, 3, 2 };
+    const void *t = txmp_resolve(s->texture, v->now - s->tex_time, s->tex_index);
+    const uint8_t *tb = t;
+    bool additive = tb && (tb[0x81] & 0x04);
+    gl_dev_draw(q, 4, idx, 6, gl_dev_texture(t), additive ? GL_DEV_ADD : GL_DEV_BLEND);
+}
+
+/* P3rDisplayClass_Vector 0x460cf0: a line in the tint, at the alpha (the draw context's, 0x41e720). */
+static void vector(const P3Draw *d)
+{
+    int a8 = (int)lrintf(d->alpha * 255.0f);
+    a8 = a8 < 0 ? 0 : a8 > 255 ? 255 : a8;
+    uint8_t r = (uint8_t)(d->tint >> 16), g = (uint8_t)(d->tint >> 8), b = (uint8_t)d->tint;
+    GlVertex q[2] = {
+        { d->pos[0], d->pos[1], d->pos[2], 0, 0, r, g, b, (uint8_t)a8 },
+        { d->end[0], d->end[1], d->end[2], 0, 0, r, g, b, (uint8_t)a8 },
+    };
+    gl_dev_lines(q, 2, d->flare ? GL_DEV_SCREEN : GL_DEV_BLEND);
+}
+
 static void each(const P3Draw *d, void *user)
 {
     const View *v = user;
     if (d->geometry) geometry(d);
-    else if (!d->vector) sprite(v, d);
+    else if (d->vector) vector(d);
+    else sprite(v, d);
+}
+
+static void view_of(View *v, const float view[16], uint32_t now)
+{
+    /* the camera's axes and eye from the view matrix (rows of its rotation; eye = -R^T t) */
+    for (int k = 0; k < 3; k++) v->right[k] = view[4 * k], v->up[k] = view[4 * k + 1];
+    for (int k = 0; k < 3; k++) v->eye[k] = -(view[4 * k] * view[12] + view[4 * k + 1] * view[13] + view[4 * k + 2] * view[14]);
+    v->now = now;
 }
 
 void particle_draw(const float view[16], uint32_t now)
 {
     View v;
-    /* the camera's axes and eye from the view matrix (rows of its rotation; eye = -R^T t) */
-    for (int k = 0; k < 3; k++) v.right[k] = view[4 * k], v.up[k] = view[4 * k + 1];
-    for (int k = 0; k < 3; k++) v.eye[k] = -(view[4 * k] * view[12] + view[4 * k + 1] * view[13] + view[4 * k + 2] * view[14]);
-    v.now = now;
+    view_of(&v, view, now);
     gl_dev_cull(0);
     p3_each_drawn(each, &v);
+    p3_each_contrail(v.eye, now, contrail, &v);
+}
+
+void particle_draw_flares(const float view[16], float near, uint32_t now)
+{
+    View v;
+    view_of(&v, view, now);
+    const float fwd[3] = { -view[2], -view[6], -view[10] };    /* the camera looks down its -z */
+    gl_dev_cull(0);
+    p3_each_flare(v.eye, fwd, near, now, each, &v);
 }

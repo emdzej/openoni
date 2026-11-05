@@ -101,9 +101,28 @@ typedef struct {
     uint32_t tex_index, tex_time;
     float edge_min, edge_max;
     bool edge_fade, one_sided;
+    bool flare;                 /* a lens flare (p3_each_flare): drawn through walls */
+    float end[3];               /* a vector's: the line from pos to it */
 } P3Draw;
 typedef void (*P3DrawFn)(const P3Draw *d, void *user);
 void p3_each_drawn(P3DrawFn fn, void *user);
+/* The lens flares (flags2 bit 30), drawn after the rest: those the camera at eye, looking along fwd
+   (a unit vector) with its near plane, sees, faded in and out. */
+void p3_each_flare(const float eye[3], const float fwd[3], float near, uint32_t now, P3DrawFn fn, void *user);
+/* A contrail's segment (P3rDisplayClass_Contrail 0x461d20): from this particle's end to the one it
+   follows; each end its place and its half width (a vector), its colour (the tint, the alpha on top)
+   and its v across the texture. */
+typedef struct {
+    float a[3], wa[3], b[3], wb[3];
+    uint32_t argb_a, argb_b;
+    float va, vb;
+    const void *texture;        /* the TXMP */
+    uint32_t tex_index, tex_time;
+} P3Contrail;
+typedef void (*P3ContrailFn)(const P3Contrail *s, void *user);
+/* The contrails' segments now, for a camera at eye; brings the particles' contrail blocks up to date
+   (the original does it as it draws). */
+void p3_each_contrail(const float eye[3], uint32_t now, P3ContrailFn fn, void *user);
 
 /* The owner's inaccuracy, which widens direction 5's cone (WPrParticleInaccuracy 0x51ced0). */
 extern float (*p3_inaccuracy_hook)(uint32_t owner);

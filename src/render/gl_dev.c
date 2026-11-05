@@ -323,3 +323,15 @@ void gl_dev_draw(const GlVertex *v, uint32_t nv, const uint16_t *idx, uint32_t n
     glDrawElements(GL_TRIANGLES, (GLsizei)ni, GL_UNSIGNED_SHORT, 0);
     glBindVertexArray(0);
 }
+
+void gl_dev_lines(const GlVertex *v, uint32_t nv, int mode)
+{
+    if (dry || nv < 2) return;
+    state(0, mode);
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, stream_vbo);
+    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(nv * sizeof *v), v, GL_STREAM_DRAW);
+    attribs();
+    glDrawArrays(GL_LINES, 0, (GLsizei)(nv & ~1u));
+    glBindVertexArray(0);
+}

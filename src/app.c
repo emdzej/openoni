@@ -1285,7 +1285,8 @@ static void game_display(void)
     int w, h;
     plat_display_size(&w, &h);
     float proj[16], view[16];
-    perspective(proj, 0.785398f, h ? (float)w / (float)h : 1.0f, 2.0f, far_clip);
+    const float near = 2.0f;
+    perspective(proj, 0.785398f, h ? (float)w / (float)h : 1.0f, near, far_clip);
     if (!camera_view_matrix(view) && display.ct) {
         float eye[3] = { display.ct->pos[0], display.ct->pos[1] + 20, display.ct->pos[2] };
         view_matrix(view, eye, 3.14159265f - display.ct->facing, -0.3f);
@@ -1299,6 +1300,7 @@ static void game_display(void)
         if (chars_get(i)) char_draw_character(&chars_get(i)->c);   /* the blended pose */
     particle_draw(view, p3_tick());     /* P3rDisplay */
     laser_draw(view);
+    particle_draw_flares(view, near, p3_tick());
     if (display.player) ui_draw_hud(w, h, &display.player->c, display.ticks);
     ui_draw(w, h);
     int dw, dh;

@@ -47,5 +47,7 @@ void gl_dev_mesh_free(unsigned mesh);
 void gl_dev_draw_mesh(unsigned mesh, uint32_t first, uint32_t count, unsigned tex, int mode);
 /* Draws triangles from client memory (streamed). */
 void gl_dev_draw(const GlVertex *v, uint32_t nv, const uint16_t *idx, uint32_t ni, unsigned tex, int mode);
+/* Draws lines (pairs of vertices) from client memory, untextured: the draw engine's line (0x41f440). */
+void gl_dev_lines(const GlVertex *v, uint32_t nv, int mode);
 /* Back-face culling: 0 none, 1 counter-clockwise front faces kept, -1 clockwise kept. */
 void gl_dev_cull(int mode);

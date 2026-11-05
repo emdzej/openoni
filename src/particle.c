@@ -2330,52 +2330,310 @@ static bool do_action(Act *x)
 
 /* ---- drawing ---- */
 
+/* A particle's sprite or geometry as P3iDisplayParticleClass 0x460520's draws take it: false when it has
+   no place. */
+static bool drawn(P3Class *c, P3Particle *p, P3Draw *d)
+{
+    memset(d, 0, sizeof *d);
+    d->cls = c, d->p = p;
+    if (!p3_real_position(c, p, d->pos)) return false;
+    d->orient = fblock(c, p, P3_X_ORIENTATION);
+    d->velocity = fblock(c, p, P3_X_VELOCITY);
+    d->scale = 1, d->yscale = 1, d->alpha = 1;
+    fvalue(c, p, c->def + D_SCALE, &d->scale);
+    /* the scale grows with the speed (flags1 0x800: |v| + 1 times) */
+    if ((flags1(c) & F1_SCALE_VELOCITY) && d->velocity)
+        d->scale *= sqrtf(dot3(d->velocity, d->velocity)) + 1.0f;
+    d->yscale = d->scale;
+    if (flags1(c) & F1_YSCALE) fvalue(c, p, c->def + D_YSCALE, &d->yscale);
+    fvalue(c, p, c->def + D_ALPHA, &d->alpha);
+    if ((p->flags & P_FADING) && p->fade > 0.0f) d->alpha = p->life / p->fade;
+    if ((p->flags & P_CHOPPED) && p->fade > 0.0f) d->chop = 1.0f - p->life / p->fade;
+    fvalue(c, p, c->def + D_ROTATION, &d->rotation);
+    fvalue(c, p, c->def + D_XOFFSET, &d->x_offset);
+    fvalue(c, p, c->def + D_XSHORTEN, &d->x_shorten);
+    Val t = { .u = 0xffffffffu };
+    value(c, p, c->def + D_TINT, &t);
+    d->tint = t.u;
+    char nm[33];
+    memcpy(nm, c->def + D_INSTANCE, 32);
+    nm[32] = 0;
+    d->geometry = (flags1(c) & F1_GEOMETRY) != 0;
+    d->vector = (flags2(c) & F2_VECTOR) != 0;
+    d->texture = nm[0] ? tm_instance_get(d->geometry ? TM_TAG("M3GM") : TM_TAG("TXMP"), nm) : NULL;
+    d->mode = (int)(flags1(c) >> 5 & 7);
+    uint8_t *b;
+    if ((b = block(c, p, P3_X_TEX_INDEX))) d->tex_index = rd32(b);
+    if ((b = block(c, p, P3_X_TEX_TIME))) d->tex_time = rd32(b);
+    fvalue(c, p, c->def + D_EDGE_MIN, &d->edge_min);
+    fvalue(c, p, c->def + D_EDGE_MAX, &d->edge_max);
+    d->edge_fade = (flags2(c) & F2_EDGE_FADE) != 0;
+    d->one_sided = (flags2(c) & F2_ONE_SIDED) != 0;
+    if (d->vector) {
+        /* P3rDisplayClass_Vector 0x460cf0: from the position (its offset added) along the velocity times
+           the scale ("vector particles require velocity"); with an attachment both ends go through its
+           matrix, but the start only when there is an offset (else the bare position is drawn from) */
+        if (!d->velocity) return false;
+        const float *pos = p3_position(c, p), *off = fblock(c, p, P3_X_OFFSET);
+        if (!pos) return false;
+        float from[3] = { pos[0], pos[1], pos[2] };
+        if (off) from[0] += off[0], from[1] += off[1], from[2] += off[2];
+        for (int k = 0; k < 3; k++) d->end[k] = d->scale * d->velocity[k] + from[k];
+        const uint8_t *at = block(c, p, P3_X_ATTACH);
+        const float *m = at ? attach_matrix(rd32(at)) : NULL;
+        if (m) {
+            if (off) m4_apply(m, from, from);
+            m4_apply(m, d->end, d->end);
+        }
+        memcpy(d->pos, from, 12);
+    }
+    return true;
+}
+
+/* The lens flares, which 0x460520 puts off to their own pass: all but the contrails take it. */
+static bool is_flare(const P3Class *c)
+{
+    int mode = (int)(flags1(c) >> 5 & 7);
+    bool contrail = !(flags1(c) & F1_GEOMETRY) && !(flags2(c) & F2_VECTOR) && (mode == 5 || mode == 6);
+    return (flags2(c) & F2_LENSFLARE) && !contrail;
+}
+
 void p3_each_drawn(P3DrawFn fn, void *user)
 {
     for (uint16_t i = active_head; i != 0xffff; i = classes[i].next) {
         P3Class *c = &classes[i];
         /* P3iDisplayParticleClass 0x460520: not the decals nor the invisible (flags2 0x2800000); those of
-           0x100000 only with a debug switch (0x6a8b40, off) */
+           0x100000 only with a debug switch (0x6a8b40, off); the lens flares later (p3_each_flare) */
         if (flags2(c) & (F2_INVISIBLE | F2_DECAL | 0x100000)) continue;
+        if (is_flare(c)) continue;
         for (P3Particle *p = c->head; p; p = p->next) {
             if (p->flags & (P_HIDDEN | P_DEAD)) continue;
             P3Draw d;
-            memset(&d, 0, sizeof d);
-            d.cls = c, d.p = p;
-            if (!p3_real_position(c, p, d.pos)) continue;
-            d.orient = fblock(c, p, P3_X_ORIENTATION);
-            d.velocity = fblock(c, p, P3_X_VELOCITY);
-            d.scale = 1, d.yscale = 1, d.alpha = 1;
-            fvalue(c, p, c->def + D_SCALE, &d.scale);
-            /* the scale grows with the speed (flags1 0x800: |v| + 1 times) */
-            if ((flags1(c) & F1_SCALE_VELOCITY) && d.velocity)
-                d.scale *= sqrtf(dot3(d.velocity, d.velocity)) + 1.0f;
-            d.yscale = d.scale;
-            if (flags1(c) & F1_YSCALE) fvalue(c, p, c->def + D_YSCALE, &d.yscale);
-            fvalue(c, p, c->def + D_ALPHA, &d.alpha);
-            if ((p->flags & P_FADING) && p->fade > 0.0f) d.alpha = p->life / p->fade;
-            if ((p->flags & P_CHOPPED) && p->fade > 0.0f) d.chop = 1.0f - p->life / p->fade;
-            fvalue(c, p, c->def + D_ROTATION, &d.rotation);
-            fvalue(c, p, c->def + D_XOFFSET, &d.x_offset);
-            fvalue(c, p, c->def + D_XSHORTEN, &d.x_shorten);
-            Val t = { .u = 0xffffffffu };
-            value(c, p, c->def + D_TINT, &t);
-            d.tint = t.u;
-            char nm[33];
-            memcpy(nm, c->def + D_INSTANCE, 32);
-            nm[32] = 0;
-            d.geometry = (flags1(c) & F1_GEOMETRY) != 0;
-            d.vector = (flags2(c) & F2_VECTOR) != 0;
-            d.texture = nm[0] ? tm_instance_get(d.geometry ? TM_TAG("M3GM") : TM_TAG("TXMP"), nm) : NULL;
-            d.mode = (int)(flags1(c) >> 5 & 7);
-            uint8_t *b;
-            if ((b = block(c, p, P3_X_TEX_INDEX))) d.tex_index = rd32(b);
-            if ((b = block(c, p, P3_X_TEX_TIME))) d.tex_time = rd32(b);
-            fvalue(c, p, c->def + D_EDGE_MIN, &d.edge_min);
-            fvalue(c, p, c->def + D_EDGE_MAX, &d.edge_max);
-            d.edge_fade = (flags2(c) & F2_EDGE_FADE) != 0;
-            d.one_sided = (flags2(c) & F2_ONE_SIDED) != 0;
+            if (drawn(c, p, &d)) fn(&d, user);
+        }
+    }
+}
+
+/* 0x4628e0: a lens flare's fade (its block: the state in the high half, the ticks into it in the low):
+   0 fresh, 0x10000 shown, 0x20000 gone, 0x30000 coming in, 0x40000 going out. Seen, it comes in over the
+   class's fade-in ticks (+0x1fc, at least 1), from where a going out had come to; unseen, it goes out over
+   the fade-out ticks (+0x1fe). The alpha (0..255) as faded. A fresh one seen is shown at once; unseen,
+   gone. */
+static unsigned flare_fade(const P3Class *c, bool seen, uint32_t elapsed, unsigned alpha, uint32_t *st)
+{
+    unsigned in = rd16(c->def + D_FLARE_IN), out = rd16(c->def + D_FLARE_OUT);
+    if (in < 2) in = 1;
+    if (out < 2) out = 1;
+    unsigned at = *st & 0xffff, state = *st & 0xffff0000u, f;
+    if (seen) {
+        if (state == 0 || state == 0x10000) {
+            *st = 0x10000;
+            return alpha;
+        }
+        f = state == 0x30000 ? at : state == 0x40000 ? in - at * in / out : 0;
+        f = (f + elapsed) & 0xffff;
+        if (f < in) {
+            *st = f | 0x30000;
+            return f * alpha / in;
+        }
+        *st = 0x10000;
+        return alpha;
+    }
+    if (state == 0 || state == 0x20000) {
+        *st = 0x20000;
+        return 0;
+    }
+    f = state == 0x40000 ? at : state == 0x30000 ? out - at * out / in : 0;
+    f = (f + elapsed) & 0xffff;
+    if (f < out) {
+        *st = f | 0x40000;
+        return (out - f) * alpha / out;
+    }
+    *st = 0x20000;
+    return 0;
+}
+
+static uint32_t flare_shown;     /* 0x659ce0: the tick of the last display with lens flares */
+
+/* 0x460660 with its argument 1: the lens flares (flags2 bit 30; at most 32 classes, "exceeded maximum
+   number of lensflares"), after the rest, seen through walls (no depth test). A flare is seen when the
+   camera's view of it isn't blocked: 0x440dc0 (its octree leaf among those the camera sees: the port's
+   environment draws them all) and the draw engine's point test (method +0x54, 0x412b10), whose software
+   way the port takes: a ray (AKrCollision_Point 0x441c80, the first hit only, quads of flags 0x420a0
+   kept out) from the eye moved ahead by the near plane (at least 5) to the particle drawn back toward
+   the camera by the class's flare distance (+0x1e0). With a lens-flare block (flags1 0x400000) it fades
+   in and out by flare_fade over the ticks since the last display with flares; without, it is drawn only
+   when seen. Not ported: the random alpha of particle flag 2. */
+void p3_each_flare(const float eye[3], const float fwd[3], float near, uint32_t now, P3DrawFn fn, void *user)
+{
+    int n = 0;
+    uint32_t elapsed = now - flare_shown;
+    for (uint16_t i = active_head; i != 0xffff; i = classes[i].next) {
+        P3Class *c = &classes[i];
+        if ((flags2(c) & (F2_INVISIBLE | F2_DECAL | 0x100000)) || !is_flare(c)) continue;
+        if (n++ >= 32) continue;
+        float dist = 0.0f;
+        if (c->head) fvalue(c, c->head, c->def + D_FLARE_DIST, &dist);
+        float ahead = near > 5.0f ? near : 5.0f;    /* 0x52956c */
+        float from[3] = { eye[0] + fwd[0] * ahead, eye[1] + fwd[1] * ahead, eye[2] + fwd[2] * ahead };
+        for (P3Particle *p = c->head; p; p = p->next) {
+            if (p->flags & (P_HIDDEN | P_DEAD)) continue;
+            P3Draw d;
+            if (!drawn(c, p, &d)) continue;
+            float v[3];
+            for (int k = 0; k < 3; k++) v[k] = d.pos[k] - fwd[k] * dist - from[k];
+            static AkevHit hit[AKEV_HITS_MAX];
+            bool seen = !env || !akev_collide_point(env, from, v, 0x420a0, 0, hit);
+            uint32_t *st = (flags1(c) & 0x400000) ? (uint32_t *)block(c, p, P3_X_LENSFLARE) : NULL;
+            if (st) {
+                int a8 = (int)lrintf(d.alpha * 255.0f);
+                a8 = a8 < 0 ? 0 : a8 > 255 ? 255 : a8;
+                unsigned a = flare_fade(c, seen, elapsed, (unsigned)a8, st);
+                if (!a) continue;
+                d.alpha = (float)a / 255.0f;
+            } else if (!seen) continue;
+            d.flare = true;
             fn(&d, user);
+        }
+    }
+    if (n) flare_shown = now;
+}
+
+/* P3rDisplayClass_Contrail 0x461d20, for the classes drawn as contrails: sprite modes 5 (along the
+   orientation's first axis) and 6 (across the view). Each particle's contrail block (its place, its half
+   width, the tint, the alpha as 0..255) is brought up to date, then the segment from it to the other
+   end: for most classes the particle it follows (the link, +0x30), which must be of the same class
+   ("contrail link points to the wrong class") and alive (else the link goes and the particle has its
+   broken-link event, 10). The contrail emitters (flags2 0x20000000) are drawn after the rest
+   (0x460660, with the last argument 1): their other end is the newest particle of their contrail
+   emitter (the first whose link is itself, link type index + 2; its class must be flagged flags1
+   0x200000, "emitted contrail particle"), and the texture's v at their end fades from 1 to 0 over the
+   emitter's first value (1 without) since its last emission. A segment is skipped when longer than the
+   class's most (+0x1c4), faded by the edge fade (flags2 bit 26, by how square the segment is to the
+   view: under the min nothing, to the max the alpha scaled). The far end of a trail (a particle
+   following none) takes the width of the one after it. Not ported: the visibility test of flags2 bit 30
+   (0x440dc0, 0x41a900, the lens-flare frame of +0x70), the random alpha of particle flag 2. */
+static void contrail_class(uint16_t i, bool emitters, const float eye[3], uint32_t now, P3ContrailFn fn,
+                           void *user)
+{
+    P3Class *c = &classes[i];
+    int mode = (int)(flags1(c) >> 5 & 7);
+    if (!c->head || !block(c, c->head, P3_X_CONTRAIL)) return;  /* "requires contrail data" */
+    if (mode == 5 && !block(c, c->head, P3_X_ORIENTATION)) return;  /* "requires orientation" */
+    float most = 0.0f;
+    bool limited = fvalue(c, c->head, c->def + D_CONTRAIL, &most) && most * most > 0.0f;
+    char nm[33];
+    memcpy(nm, c->def + D_INSTANCE, 32);
+    nm[32] = 0;
+    const void *tex = nm[0] ? tm_instance_get(TM_TAG("TXMP"), nm) : NULL;
+    if (!tex) return;       /* "PARTICLE TEXTURE NOT FOUND" */
+    unsigned k = 0;
+    float rate = 1.0f;
+    P3Class *ec = NULL;
+    if (emitters) {
+        const uint8_t *e = emitters_of(c);
+        for (; k < nemitters(c); k++, e += EMITTER)
+            if (rd32(e + E_LINK) == k + 2) break;
+        if (k >= nemitters(c)) return;      /* "can't find contrail emitter" */
+        if (!fvalue(c, c->head, eparam(e, 0), &rate)) rate = 1.0f;
+        ec = emitter_class(e);
+        if (!ec || !(flags1(ec) & 0x200000)) return;    /* "emitted contrail particles must be ..." */
+    }
+    for (P3Particle *p = c->head; p; p = p->next) {
+        if (p->flags & (P_HIDDEN | P_DEAD)) continue;
+        uint8_t *cb = block(c, p, P3_X_CONTRAIL);
+        float *at = (float *)cb;
+        if (!p3_real_position(c, p, at)) continue;
+        float width = 1.0f, alpha = 1.0f;
+        fvalue(c, p, c->def + D_SCALE, &width);
+        fvalue(c, p, c->def + D_ALPHA, &alpha);
+        int a8 = (int)lrintf(alpha * 255.0f);
+        a8 = a8 < 0 ? 0 : a8 > 255 ? 255 : a8;
+        Val t = { .u = 0xffffffffu };
+        value(c, p, c->def + D_TINT, &t);
+        wr32(cb + 24, t.u);
+        cb[28] = (uint8_t)a8, cb[29] = 0;
+        P3Particle *q;
+        uint8_t *qb;
+        float va = 0.0f;
+        if (!emitters) {
+            if (!p->link) continue;
+            q = from_handle(p->link);
+            if (q && q->cls != i) continue;     /* the link to another class: kept, not drawn */
+            if (!q || (q->flags & P_DEAD)) {
+                p->link = 0;
+                p3_send_event(c, p, P3_EV_BROKEN_LINK, p->time);
+                continue;
+            }
+            qb = block(c, q, P3_X_CONTRAIL);
+        } else {
+            uint8_t *st = p->v + k * EMITTER_STATE;
+            if (!rd32(st + ES_LAST)) continue;
+            q = from_handle(rd32(st + ES_LAST));
+            if (!q || (q->flags & P_DEAD)) {
+                wr32(st + ES_LAST, 0);
+                continue;
+            }
+            qb = block(ec, q, P3_X_CONTRAIL);
+            if (!qb) continue;
+            float since = (float)now * 0.016666668f - rdf(st + ES_TIME);    /* 0x5297fc */
+            va = since < 0.0f ? 1.0f : since <= rate ? 1.0f - since / rate : 0.0f;
+        }
+        float *to = (float *)qb;
+        float seg[3] = { to[0] - at[0], to[1] - at[1], to[2] - at[2] };
+        if (limited && seg[0] * seg[0] + seg[1] * seg[1] + seg[2] * seg[2] > most * most) continue;
+        float view[3] = { at[0] - eye[0], at[1] - eye[1], at[2] - eye[2] };
+        float *w = at + 3;
+        if (mode == 5) {
+            const float *o = fblock(c, p, P3_X_ORIENTATION);
+            for (int j = 0; j < 3; j++) w[j] = o[j] * width;   /* MUrMatrix_GetCol 0 */
+        } else {
+            w[0] = seg[1] * view[2] - seg[2] * view[1];
+            w[1] = seg[2] * view[0] - seg[0] * view[2];
+            w[2] = seg[0] * view[1] - seg[1] * view[0];
+            float l = sqrtf(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
+            if (l > 0.01f)      /* 0x5295bc */
+                for (int j = 0; j < 3; j++) w[j] *= width / l;
+        }
+        if (!q->link) memcpy(to + 3, w, 12);
+        int alpha_a = cb[28];
+        if (flags2(c) & F2_EDGE_FADE) {
+            float lo = 0.0f, hi = 0.0f;
+            fvalue(c, p, c->def + D_EDGE_MIN, &lo);
+            fvalue(c, p, c->def + D_EDGE_MAX, &hi);
+            float ls = sqrtf(dot3(seg, seg)), lv = sqrtf(dot3(view, view));
+            float f = ls > 0.0f && lv > 0.0f ? 1.0f - fabsf(dot3(seg, view) / (ls * lv)) : 1.0f;
+            if (f < lo) continue;
+            if (f < hi) alpha_a = (int)lrintf((f - lo) * (float)alpha_a / (hi - lo));
+        }
+        P3Contrail s;
+        memcpy(s.a, at, 12), memcpy(s.wa, w, 12), memcpy(s.b, to, 12), memcpy(s.wb, to + 3, 12);
+        s.argb_a = (rd32(cb + 24) & 0xffffffu) | (uint32_t)alpha_a << 24;
+        s.argb_b = (rd32(qb + 24) & 0xffffffu) | (uint32_t)qb[28] << 24;
+        s.va = va, s.vb = 1.0f;
+        s.texture = tex;
+        uint8_t *b;
+        s.tex_index = (b = block(c, p, P3_X_TEX_INDEX)) ? rd32(b) : 0;
+        s.tex_time = (b = block(c, p, P3_X_TEX_TIME)) ? rd32(b) : now;
+        fn(&s, user);
+    }
+}
+
+/* P3iDisplayParticleClass 0x460520's choice: the contrail classes, then the contrail emitters among
+   them (0x460660, at most 16). The decals, invisible and hidden classes (flags2 0x2800000) are never
+   drawn; 0x100000 only in its own pass (not ported); the lens flares (0x40000000) are put off. */
+void p3_each_contrail(const float eye[3], uint32_t now, P3ContrailFn fn, void *user)
+{
+    for (int pass = 0; pass < 2; pass++) {
+        int n = 0;
+        for (uint16_t i = active_head; i != 0xffff; i = classes[i].next) {
+            const P3Class *c = &classes[i];
+            if (flags2(c) & (F2_INVISIBLE | F2_DECAL | 0x100000 | F2_LENSFLARE | F2_VECTOR)) continue;
+            int mode = (int)(flags1(c) >> 5 & 7);
+            if ((flags1(c) & F1_GEOMETRY) || (mode != 5 && mode != 6)) continue;
+            bool emitter = (flags2(c) & F2_CONTRAIL_EMITTER) != 0;
+            if (emitter != (pass == 1) || (emitter && n++ >= 16)) continue;  /* "exceeded maximum number of contrail ..." */
+            contrail_class(i, emitter, eye, now, fn, user);
         }
     }
 }
