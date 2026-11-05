@@ -297,6 +297,12 @@ typedef struct {
     bool point_started;
     uint32_t script;        /* +0x5ac: the script a point of type 0x15 waits for (sl_start), 0 none */
     bool ignore_player;     /* +0x538 */
+    /* the movement's glance (0x4a8150): its ticks (C+0x1598), delay (C+0x1594), kind (C+0x15a0: 1 a
+       point) and place (C+0x15a4); the patrol's waypoint 0x0e waiting for its end (+0x541) */
+    uint32_t glance_ticks, glance_delay;
+    int glance_kind;
+    float glance_at[3];
+    bool glance_wait;
     /* the stand-in mover */
     bool moving;
     float goal[3];

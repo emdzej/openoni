@@ -503,6 +503,10 @@ void ai_update(AiState *a, Character *c, const void *env)
        given the character's own facing; the states may set another after (combat's look at its
        target), and the path's way does while moving */
     if (!a->moving) a->facing = a->goal_facing ? a->goal_angle : c->facing;   /* (arrived with one: mode 2) */
+    /* its glance: the delay first, then the ticks, a tick counted once the aim is done (A+0x1ab8,
+       0x498e60) */
+    if (a->glance_delay) a->glance_delay--;
+    else if (a->glance_ticks && a->aim.done) a->glance_ticks--;
     neutral_end_script((Chr *)c);   /* the conversation's end script, due from the last tick */
     /* before the states (not passive): a neutral may start a conversation by itself */
     if (!(a->flags & AI_FLAG_PASSIVE) && !(c->flags & 1)) neutral_check((Chr *)c);

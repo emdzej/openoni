@@ -934,19 +934,23 @@ void combat_aim(AiState *a, Character *c)
     bool weapon_speed = a->state == AI_STATE_COMBAT || a->state == AI_STATE_PURSUIT || a->state == AI_STATE_ALARM ||
                         a->state == AI_STATE_PANIC || a->state == 10 || a->state == 11;
     float face = 1000.0f;
-    switch (m->look) {
+    /* a glance under way (no delay left) takes the look's place (0x4aa250) */
+    bool glancing = a->glance_ticks && !a->glance_delay;
+    int look = glancing ? a->glance_kind : m->look;
+    const float *look_at = glancing ? a->glance_at : m->look_at;
+    switch (look) {
     case 0:
         if (m->on) m->stop = true;          /* 0x498da0 */
         break;
     case 1:
-        face = wrap_2pi(atan2f(m->look_at[0] - c->pos[0], m->look_at[2] - c->pos[2]));
+        face = wrap_2pi(atan2f(look_at[0] - c->pos[0], look_at[2] - c->pos[2]));
         m->on = true, m->at_point = true, m->weapon_speed = weapon_speed;
-        memcpy(m->at, m->look_at, sizeof m->at);
+        memcpy(m->at, look_at, sizeof m->at);
         break;
     case 2:
-        face = wrap_2pi(atan2f(m->look_at[0], m->look_at[2]));
+        face = wrap_2pi(atan2f(look_at[0], look_at[2]));
         m->on = true, m->at_point = false, m->weapon_speed = weapon_speed;
-        memcpy(m->at, m->look_at, sizeof m->at);
+        memcpy(m->at, look_at, sizeof m->at);
         break;
     case 3:
         if (!m->look_char || !chars_in_use((const Chr *)m->look_char)) {

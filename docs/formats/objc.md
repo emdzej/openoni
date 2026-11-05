@@ -279,10 +279,11 @@ the low u16 of +0x1ac. Level 1 has 63 paths, 207 waypoints; most are 0x13s endin
 takes time or the way comes back to the waypoint it started from ("patrol %s is looping endlessly"):
 then on the next tick. Past the last waypoint, 0x4b0420 ends the patrol (the port: idle; going back to
 the character's job is not ported). Level 3's Floor1_Stk_1 ends in a 0x10 naming itself. The port's
-glances (0x0e) take no time, so a 0x10 back to a later waypoint could go round without
-reaching the start: the port stops after the path's count of waypoints in a tick (a stand-in).
+waypoints done at once still differ from the original's, so a 0x10 back to a later waypoint could go
+round without reaching the start: the port stops after the path's count of waypoints in a tick (a
+stand-in).
 
-The glance (read, not yet ported): `AI2rPatrol_Update` starts it when no glance or scan is under way
+The glance (ported: patrol.c, the count in ai.c, the look in combat.c): `AI2rPatrol_Update` starts it when no glance or scan is under way
 (C+0x1598 and the block's +0x558 clear) with 0x4a8150: C+0x15a0 1 (at a point), C+0x15a4 the flag's
 place, C+0x1598 the ticks, C+0x1594 a delay (0 here). Unless the character has arrived (C+0x112c) with
 its move's facing to keep (0x4aefb0), the patrol goes on at once and the glance plays on the way; else

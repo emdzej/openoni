@@ -107,6 +107,7 @@ void patrol_start(AiState *a, int path)
     a->point_started = false;
     a->wait = 0;
     a->script = 0;
+    a->glance_wait = false;
 }
 
 static bool flag_at(uint16_t id, float pos[3], float *facing)
@@ -159,6 +160,27 @@ static bool do_point(AiState *a, const PatrolPoint *w, const float pos[3], const
     case 0xb:   /* move through the point */
         if (start) ai_move_near(a, w->f, w->f[3] > 0.0f ? w->f[3] : 4.0f, false, 0.0f);
         return !a->moving;
+    case 0xe:   /* glance at the flag for the ticks (AI2rPatrol_Update 0x4afc90) */
+        if (start) {
+            /* another glance under way: this one waits to start */
+            if (a->glance_ticks) {
+                a->point_started = false;
+                return false;
+            }
+            if (!flag_at(w->a, p, &face)) return true;  /* AI2rError (0x4936b0) */
+            /* 0x4a8150: at the point, for the ticks, no delay */
+            a->glance_kind = 1;
+            a->glance_ticks = w->n;
+            a->glance_delay = 0;
+            memcpy(a->glance_at, p, sizeof a->glance_at);
+            /* still on the way, or arrived with no facing to keep (C+0x112c, 0x4aefb0): on at once, the
+               glance played as it goes; else the move stopped (0x4ae660) and the patrol waits */
+            a->glance_wait = !a->moving && a->goal_facing;
+            if (!a->glance_wait) return true;
+            a->moving = false;
+            return false;
+        }
+        return !a->glance_wait || !a->glance_ticks;
     case 0x10: {    /* loop to a waypoint (0x4b0650): to itself, the next one (the first after the last) */
         int n = paths[a->patrol].n, to = (int)w->n < n - 1 ? (int)w->n : n - 1;
         if (to == a->point) to = (a->point + 1) % n;
@@ -193,7 +215,7 @@ static bool do_point(AiState *a, const PatrolPoint *w, const float pos[3], const
     case 0x16:  /* ignore the player */
         a->ignore_player = w->n != 0;
         return true;
-    default:    /* looking, glancing, facing locks: not ported */
+    default:    /* looking, facing locks: not ported */
         (void)pos;
         return true;
     }
@@ -208,9 +230,9 @@ void patrol_update(AiState *a, const float pos[3], float facing, const char *who
         a->script = 0;
     }
     /* the points done at once go on until one takes time, or the way comes back to the point it
-       started from ("patrol %s is looping endlessly"): then on the next tick. The port's glances (not
-       ported) take no time, so a loop to a later point could go round without coming back: at most
-       the path's points in a tick (a stand-in) */
+       started from ("patrol %s is looping endlessly"): then on the next tick. A loop to a later point
+       could still go round without coming back (the port's points done at once differ from the
+       original's): at most the path's points in a tick (a stand-in) */
     int first = a->point;
     for (int guard = 0; a->patrol >= 0 && guard <= paths[a->patrol].n; guard++) {
         const Path *pa = &paths[a->patrol];
