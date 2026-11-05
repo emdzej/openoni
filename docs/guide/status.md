@@ -60,6 +60,11 @@ through the floor, the tankers (the first one's combat script brings the second)
 Griffin's squad. Then come the acid, the laser corridor with its ninja, Shinatama floating, and the evil
 Konoko. Her death plays the outro, and level 14 begins.
 
+Level 14, the neural lab, plays through as well: the pods and their consoles, Kerr's cutscene and the
+hypos, the three lab consoles that open the probe room, the guards who come after the scan, the security
+wing's ambush in two waves, the drop to the vats, the crane consoles, the guards lost to the acid, the
+outro on the crane, and level 18 begins.
+
 It can be tried in the browser on the <a href="/play/" target="_self">play page</a>, with your own copy of the game.
 
 ## What works
@@ -148,7 +153,7 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - The impact effects (the hit sparks' classes). The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.
-- The other 4 levels as a playthrough.
+- The last two levels, 18 and 19, as a playthrough.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked
 against the original.
