@@ -923,9 +923,9 @@ static void route_input(const Character *c, CharacterInput *in)
             continue;
         }
         if (*s == 'L') {
-            /* "L<type>": runs to the nearest powerup of the type ("lsi", "ammo", ...) on her floor and
-               taps the swap key there (pick up); none: on */
-            static char steps[256], rest[16384];
+            /* "L<type>": runs to the nearest powerup of the type ("lsi", "ammo", ...) on her floor (as
+               "W", to within 6) and taps the swap key there (pick up); none: on */
+            static char steps[16384], rest[16384];
             char type[16] = { 0 };
             const char *e = strchr(s, ';');
             snprintf(rest, sizeof rest, "%s", e ? e + 1 : "");
@@ -941,7 +941,14 @@ static void route_input(const Character *c, CharacterInput *in)
                 if (dx * dx + dz * dz < bd) bd = dx * dx + dz * dz, best = pu;
             }
             if (!best) { route_next(); continue; }
-            snprintf(steps, sizeof steps, "%.1f,%.1f,P,1.5;w60;q;w90", best->pos[0], best->pos[2]);
+            /* the way there planned as "W" does, its last step within 6 (the pickup reaches 8) */
+            float at[3] = { best->pos[0], best->pos[1], best->pos[2] };
+            size_t len;
+            if (!route_plan(c, at, steps, sizeof steps - 16) || (len = strlen(steps)) < 2 || strcmp(steps + len - 2, ",3"))
+                snprintf(steps, sizeof steps, "%.1f,%.1f,P,6", at[0], at[2]);
+            else
+                steps[len - 1] = '6';
+            strncat(steps, ";w60;q;w90", sizeof steps - strlen(steps) - 1);
             snprintf(route.buf, sizeof route.buf, "%s%s%s", steps, rest[0] ? ";" : "", rest);
             route.step = route.buf;
             route.phase = 0;

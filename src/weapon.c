@@ -6,6 +6,7 @@
 #include "chars.h"
 #include "chr_anim.h"
 #include "chr_hit.h"
+#include "knowledge.h"
 #include "m3gm.h"
 #include "objc.h"
 #include "particle.h"
@@ -1014,6 +1015,31 @@ static Character *owner_character(uint32_t owner)
     return NULL;
 }
 
+/* WPrParticleInaccuracy 0x51ced0: a character owner's (0x1000000 | id) inaccuracy, if it is alive and
+   AI-controlled (C+0x1e8 2): in combat (state 5) its shooting skill's (the targeting's, the combat
+   block +0x164, +0x10); for an enemy of the player (AI2rTeam_FriendOrFoe 2) times the difficulty's
+   factor (game settings +0xad4: 1.2 easy, 1 normal, 0.6 hard). Not ported: the patrol's targeting
+   (state 3: its skill's plus the block's +0x5bc) and a turret owner's (0x3000000: its class's +0x5f8,
+   always times the factor), which the port's turrets don't set. */
+static float particle_inaccuracy(uint32_t owner)
+{
+    if ((owner & 0xff000000u) != 0x1000000u) return 0.0f;
+    Chr *c = NULL;
+    for (int i = 0; i < chars_slots() && !c; i++) {
+        Chr *x = chars_get(i);
+        if (x && x->c.id == (owner & 0xffffff)) c = x;
+    }
+    if (!c || (c->c.flags & 1) || !c->c.ai) return 0.0f;
+    float v = 0.0f;
+    if (c->ai.state == AI_STATE_COMBAT && c->ai.combat.t.skill) v = rdf(c->ai.combat.t.skill + 0x10);
+    const Chr *pl = chars_player();
+    if (pl && ai_team_relation(c->team, pl->team) == 2) {
+        const uint8_t *gs = tm_instance_get(TM_TAG("ONGS"), "game_settings");
+        if (gs) v *= rdf(gs + 0xad4 + 4 * persist_difficulty());
+    }
+    return v;
+}
+
 /* 0x4e9530: the character turned to the direction; -1 (and turned the other way) when it was more than
    a right angle (0x529cd0) off, else 1. */
 static int face_along(Character *c, const float d[3])
@@ -1148,6 +1174,7 @@ static void blast_damage(const void *env, const float pos[3], int type, float da
 void weapons_install(void)
 {
     p3_damage_hook = particle_damage;
+    p3_inaccuracy_hook = particle_inaccuracy;
     p3_blast_hook = blast_damage;
     character_pickup_hook = start_pickup;
     character_weapon_input_hook = weapon_input;

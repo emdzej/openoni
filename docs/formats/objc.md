@@ -262,7 +262,7 @@ The fields by type, and what `AI2iPatrol_DoWaypoint` 0x4b0650 does with them:
 | 0x0b | point 3 floats, distance float | Move through the point |
 | 0x0c | | Stop looking |
 | 0x0d | | Free the facing |
-| 0x0e | u16, u32 | Glance (inferred) |
+| 0x0e | flag u16, ticks u32 | Glance at the flag for the ticks |
 | 0x0f | flag u16, distance float | Move near the flag |
 | 0x10 | index u32 | Loop to the waypoint (at most the last); one that names itself loops to the next (the first after the last) |
 | 0x11 | frames u16, u32 | Scan (inferred) |
@@ -281,6 +281,15 @@ then on the next tick. Past the last waypoint, 0x4b0420 ends the patrol (the por
 the character's job is not ported). Level 3's Floor1_Stk_1 ends in a 0x10 naming itself. The port's
 glances (0x0e) take no time, so a 0x10 back to a later waypoint could go round without
 reaching the start: the port stops after the path's count of waypoints in a tick (a stand-in).
+
+The glance (read, not yet ported): `AI2rPatrol_Update` starts it when no glance or scan is under way
+(C+0x1598 and the block's +0x558 clear) with 0x4a8150: C+0x15a0 1 (at a point), C+0x15a4 the flag's
+place, C+0x1598 the ticks, C+0x1594 a delay (0 here). Unless the character has arrived (C+0x112c) with
+its move's facing to keep (0x4aefb0), the patrol goes on at once and the glance plays on the way; else
+the move stops (0x4ae660) and the patrol waits for the glance's end. `AI2rMovement_Update` 0x4a8550
+counts the delay down first, then the ticks, a tick only once the aim is done (A+0x1ab8, 0x498e60);
+while it lasts the movement's look (0x4aa250) takes the glance's kind and place instead of its own
+(C+0x1584, C+0x1588).
 
 ## TRGV
 

@@ -161,7 +161,8 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.
 - The intro and outro movies; the cheat codes the won game unlocks.
-- The difficulty's AI aim and the hard game's inventory (its health shares are in).
+- The hard game's other inventory (the difficulty's health and the AI's aim are in), the turrets' aim
+  spread, and the patrols' glances.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked
 against the original.

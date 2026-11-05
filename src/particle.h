@@ -105,6 +105,8 @@ typedef struct {
 typedef void (*P3DrawFn)(const P3Draw *d, void *user);
 void p3_each_drawn(P3DrawFn fn, void *user);
 
+/* The owner's inaccuracy, which widens direction 5's cone (WPrParticleInaccuracy 0x51ced0). */
+extern float (*p3_inaccuracy_hook)(uint32_t owner);
 /* The damage a hit does to a character (the hook into the character module: 0x5179f0 through
    0x5178c0). owner: 0x1000000 | id for a character's, 0 none. */
 extern bool (*p3_damage_hook)(Character *c, const float point[3], const float dir[3], int type, float damage,

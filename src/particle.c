@@ -229,6 +229,7 @@ static P3Particle *chunks[CHUNKS];
 static uint32_t nslots;
 static struct { uint32_t free_count; P3Particle *free; P3Particle *dhead, *dtail; } bucket[BUCKETS];
 
+float (*p3_inaccuracy_hook)(uint32_t owner);
 bool (*p3_damage_hook)(Character *c, const float point[3], const float dir[3], int type, float damage,
                        float stun, float knockback, uint32_t owner, uint32_t handle, bool self_immune);
 void (*p3_glass_hook)(uint32_t quad, const float point[3], const float dir[3], float force, float radius);
@@ -1168,8 +1169,7 @@ static void setup_new(P3Class *k, P3Particle *q, uint32_t tick);
    more), each particle placed (position kind), aimed (direction kind) at its speed, linked, owned,
    oriented, then its create event. The emitter's state keeps the last one. True if the emitting
    particle died (following its link). Not ported: the attractors' emitting (rate 4, direction 6, one per
-   attractor), the bodies' surfaces and bones (positions 6 and 7: the parent's place), the weapon's
-   inaccuracy (direction 5's centre bias from the owner, WPrParticleInaccuracy 0x51ced0). */
+   attractor), the bodies' surfaces and bones (positions 6 and 7: the parent's place). */
 static bool emit(P3Class *c, P3Particle *p, unsigned k, float time)
 {
     uint8_t *e = emitters_of(c) + (size_t)k * EMITTER;
@@ -1248,12 +1248,15 @@ static bool emit(P3Class *c, P3Particle *p, unsigned k, float time)
             break;
         }
         case 2:     /* cone: the angle, the centre bias (P3mSignedRandom 0x45e990) */
-        case 5: {   /* inaccurate: the base angle added to the angle (the owner's inaccuracy: not ported) */
+        case 5: {   /* inaccurate: the base angle, widened by the owner's inaccuracy times the angle */
             float ang = 0, bias = 0, base = 0;
             bool ok;
             if (rd32(e + E_DIRECTION) == 2) ok = fvalue(c, p, eparam(e, 5), &ang) && fvalue(c, p, eparam(e, 6), &bias);
-            else ok = fvalue(c, p, eparam(e, 5), &base) && fvalue(c, p, eparam(e, 6), &ang) && fvalue(c, p, eparam(e, 7), &bias),
-                 ang += base;
+            else {
+                ok = fvalue(c, p, eparam(e, 5), &base) && fvalue(c, p, eparam(e, 6), &ang) && fvalue(c, p, eparam(e, 7), &bias);
+                const uint8_t *ob = block(c, p, P3_X_OWNER);
+                ang = base + (ob && p3_inaccuracy_hook ? p3_inaccuracy_hook(rd32(ob)) * ang : 0.0f);
+            }
             if (!ok) { dir[0] = 0, dir[1] = 1, dir[2] = 0; break; }
             float u = urand();
             if (bias > 0.0f) u = powf(u, bias + 1.0f);      /* pow 0x51f2c0 */
