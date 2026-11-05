@@ -7,7 +7,7 @@
 
 enum {
     SIZE = 0x326a0, VERSION = 0xf, MARK = 0xd0d00b0eu,
-    LEVELS_BITS = 0x08, WEAPONS = 0x2c, ITEMS = 0x30, DIARY_LEVEL = 0x34, DIARY_PAGE = 0x38, QUALITY = 0x3c,
+    LEVELS_BITS = 0x08, GRIFFIN = 0x28, WEAPONS = 0x2c, ITEMS = 0x30, DIARY_LEVEL = 0x34, DIARY_PAGE = 0x38, QUALITY = 0x3c,
     VOLUME = 0x40, FLAGS = 0x44, DIFFICULTY = 0x48, RESOLUTION = 0x4c, DEPTH = 0x50, GAMMA = 0x54,
     PLACE = 0x58, CONTINUES = 0x60,
 };
@@ -92,6 +92,8 @@ static void set_flag(uint32_t bit, bool on)
 }
 void persist_set_subtitles(bool on) { set_flag(1, on); }
 void persist_set_invert_mouse(bool on) { set_flag(2, on); }
+bool persist_won_game(void) { ensure(); return (get32(FLAGS) >> 2) & 1; }
+void persist_set_won_game(void) { set_flag(4, true); }
 
 float persist_gamma(void)
 {
@@ -113,6 +115,15 @@ void persist_resolution(int *w, int *h, int *depth)
     ensure();
     uint32_t r = get32(RESOLUTION);
     *w = (int)(r & 0xffff), *h = (int)(r >> 16), *depth = (int)get32(DEPTH);
+}
+
+bool persist_killed_griffin(void) { ensure(); return get32(GRIFFIN) != 0; }   /* 0x50f0c0 */
+
+void persist_set_killed_griffin(bool killed)
+{
+    ensure();
+    put32(GRIFFIN, killed);
+    save();
 }
 
 bool persist_weapon_seen(uint16_t index) { ensure(); return (get32(WEAPONS) >> (index & 0x1f)) & 1; }

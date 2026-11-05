@@ -106,6 +106,7 @@ void patrol_start(AiState *a, int path)
     a->point = 0;
     a->point_started = false;
     a->wait = 0;
+    a->script = 0;
 }
 
 static bool flag_at(uint16_t id, float pos[3], float *facing)
@@ -158,8 +159,9 @@ static bool do_point(AiState *a, const PatrolPoint *w, const float pos[3], const
     case 0xb:   /* move through the point */
         if (start) ai_move_near(a, w->f, w->f[3] > 0.0f ? w->f[3] : 4.0f, false, 0.0f);
         return !a->moving;
-    case 0x10: {    /* loop to a waypoint */
+    case 0x10: {    /* loop to a waypoint (0x4b0650): to itself, the next one (the first after the last) */
         int n = paths[a->patrol].n, to = (int)w->n < n - 1 ? (int)w->n : n - 1;
+        if (to == a->point) to = (a->point + 1) % n;
         a->point = to - 1;
         return true;
     }
@@ -178,12 +180,15 @@ static bool do_point(AiState *a, const PatrolPoint *w, const float pos[3], const
         if (a->wait) a->wait--;
         return a->wait == 0;
     case 0x14:  /* run patrolscript%04d */
-    case 0x15: {
-        char name[32];
-        snprintf(name, sizeof name, "patrolscript%04d", (int)(int16_t)w->a);
-        const char *args[1] = { who ? who : "" };
-        sl_call(name, who ? 1 : 0, args);
-        return true;
+    case 0x15: {    /* the same, waited for: the thread kept at +0x5ac */
+        if (start) {
+            char name[32];
+            snprintf(name, sizeof name, "patrolscript%04d", (int)(int16_t)w->a);
+            const char *args[1] = { who ? who : "" };
+            uint32_t id = sl_start(name, who ? 1 : 0, args);
+            if (w->type == 0x15) a->script = id;
+        }
+        return w->type == 0x14 || !sl_running(a->script);
     }
     case 0x16:  /* ignore the player */
         a->ignore_player = w->n != 0;
@@ -197,7 +202,17 @@ static bool do_point(AiState *a, const PatrolPoint *w, const float pos[3], const
 void patrol_update(AiState *a, const float pos[3], float facing, const char *who)
 {
     (void)facing;
-    for (int guard = 0; guard < PATROL_MAX_POINTS && a->patrol >= 0; guard++) {
+    /* AI2rPatrol_Update 0x4afc90: nothing more while the script of a point of type 0x15 runs */
+    if (a->script) {
+        if (sl_running(a->script)) return;
+        a->script = 0;
+    }
+    /* the points done at once go on until one takes time, or the way comes back to the point it
+       started from ("patrol %s is looping endlessly"): then on the next tick. The port's glances (not
+       ported) take no time, so a loop to a later point could go round without coming back: at most
+       the path's points in a tick (a stand-in) */
+    int first = a->point;
+    for (int guard = 0; a->patrol >= 0 && guard <= paths[a->patrol].n; guard++) {
         const Path *pa = &paths[a->patrol];
         if (a->point < 0 || a->point >= pa->n) {
             a->patrol = -1;     /* past the last waypoint: the patrol ends */
@@ -206,5 +221,6 @@ void patrol_update(AiState *a, const float pos[3], float facing, const char *who
         if (!do_point(a, &pa->p[a->point], pos, who)) return;
         a->point++;
         a->point_started = false;
+        if (a->point == first) return;
     }
 }

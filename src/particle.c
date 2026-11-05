@@ -214,6 +214,7 @@ static uint16_t pending = 0xffff;       /* 0x6a85c0: activated during an update 
 static bool updating;                   /* 0x6a866b */
 static bool removed_during;             /* 0x659ced */
 static uint32_t last_tick;              /* 0x6a8708 */
+static bool remove_dangerous;           /* 0x659cec */
 static float now;                       /* 0x5e96b4: the update's time */
 static uint32_t nlive;                  /* 0x6a8718 */
 
@@ -1722,9 +1723,37 @@ static void process_class(P3Class *c, uint32_t tick)
 /* P3rUpdate 0x45c830: once per new tick (or forced): the characters to collide with (the active
    physics contexts that collide), then the gameplay classes from the list's head, or the decorative
    ones from its tail; a decal class's particles age by their lifetimes only. */
+void p3_remove_dangerous(void) { remove_dangerous = true; }
+
 void p3_update(uint32_t tick, bool gameplay, Character **chars, int nchars)
 {
     if (!nclasses) return;
+    /* p3_removedangerous (0x458310) first: every listed class's particles that aren't fading or
+       chopped expire (0x10000); a class of the flag "die in cutscenes" kills them now, one of "expire
+       in cutscenes" leaves them a hundredth of a second to live */
+    if (remove_dangerous) {
+        updating = true;
+        pending = 0xffff;
+        removed_during = false;
+        for (uint16_t i = active_head; i != 0xffff;) {
+            P3Class *c = &classes[i];
+            uint16_t n = c->next;
+            bool die = (flags2(c) & F2_DIE_CUTSCENE) != 0;
+            if (die || (flags2(c) & F2_EXPIRE_CUTSCENE)) {
+                P3Particle *nx;
+                for (P3Particle *p = c->head; p; p = nx) {
+                    nx = p->next;
+                    if (p->flags & (P_FADING | P_CHOPPED)) continue;
+                    p->flags |= P_EXPIRING;
+                    if (die) kill_now(c, p);
+                    else p->life = 0.01f;
+                }
+            }
+            i = n;
+        }
+        after_update();
+        remove_dangerous = false;
+    }
     if (!gameplay && tick == last_tick) return;
     last_tick = tick;
     chr_list = chars;

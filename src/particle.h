@@ -46,6 +46,9 @@ void p3_kill(P3Class *c, P3Particle *p);
    ONrGameState_ProcessHeartbeat; the decorative ones once a frame, with false). chars: the characters
    the particles may hit. */
 void p3_update(uint32_t tick, bool gameplay, Character **chars, int nchars);
+/* p3_removedangerous (0x50aaf0, 0x458310; also ONrGameState_BeginCutscene without "keepparticles"): the
+   dangerous particles go at the next update. */
+void p3_remove_dangerous(void);
 /* P3rCreateEffect 0x456030's common part: a particle at pos with vel and orient (3x3, NULL along the
    velocity), its create event. NULL if none could be made. */
 P3Particle *p3_effect(P3Class *c, const float pos[3], const float vel[3], const float *orient, uint32_t tick);

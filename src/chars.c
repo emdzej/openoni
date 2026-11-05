@@ -13,6 +13,7 @@
 #include "knowledge.h"
 #include "melee.h"
 #include "objc.h"
+#include "particle.h"
 #include "patrol.h"
 #include "powerup.h"
 #include "physics.h"
@@ -1127,8 +1128,8 @@ static void all_passive(bool on)
    (0x4eb130), stood (ForceStand) unless "animation", her jump's motion across stopped with "nojump"; her
    weapon holstered unless "weapon" (0x4eff60); her invisibility gone unless
    "invis"; the AI passive unless "ai"; the camera's jello off unless "jello"; the input off; the sync on
-   unless "nosync". Not ported: the particles' cleanup (0x458310) unless "keepparticles", the sound's
-   switch (OSrSetEnabled). */
+   unless "nosync"; the dangerous particles removed (0x458310) unless "keepparticles". Not ported: the
+   sound's switch (OSrSetEnabled). */
 static bool cmd_begin_cutscene(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;
@@ -1152,6 +1153,7 @@ static bool cmd_begin_cutscene(SlThread *t, int c, const SlValue *v, SlValue *r,
     }
     if (!(flags & 8)) all_passive(true);
     if (!(flags & 1)) camera_enable_jello(false);
+    if (!(flags & 0x20)) p3_remove_dangerous();
     ui_set_input(false);
     ui_set_cutscene(true, !(flags & 0x10));
     return true;

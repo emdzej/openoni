@@ -39,6 +39,14 @@ void persist_set_gamma(float g);
 void persist_resolution(int *w, int *h, int *depth);
 
 /* 0x50f4e0, 0x50f500: a weapon class (its index, ONWC+0x136) had, and its recording. */
+/* +0x28: whether Griffin was killed at the end of level 18 (ONrWeKilledGriffen 0x50f060 sets it and
+   saves; 0x50f0c0 reads it), for level 19's ending. */
+/* ONrPersist_MarkWonGame 0x50f620: flags bit 2 (4), the block saved; 0x50f660 reads it (cheat codes
+   typed in play, 0x4f6110, need it). */
+bool persist_won_game(void);
+void persist_set_won_game(void);
+bool persist_killed_griffin(void);
+void persist_set_killed_griffin(bool killed);
 bool persist_weapon_seen(uint16_t index);
 void persist_set_weapon_seen(uint16_t index);
 /* 0x50f560, 0x50f580: a powerup type had. */

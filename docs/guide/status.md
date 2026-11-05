@@ -1,11 +1,11 @@
 # Status
 
-Under way, not yet playable from start to finish. Level 1's training plays through to its end, with
-the level's own scripts driving the lessons: movement, combat, the shooting range, the rifle and the
-two training drones. Then the cutscene after the training plays, its actors moved by the game's own
-recorded films, and the warehouse mission plays through: the consoles open the way, the thugs come at
-Konoko, she finds the LSI, frees the hostage who opens the warehouse, beats the timer to the last
-console, and the outro plays before level 2 begins.
+Under way: every level plays through, driven by scripted routes; much of the presentation is still
+missing. Level 1's training plays through to its end, with the level's own scripts driving the lessons:
+movement, combat, the shooting range, the rifle and the two training drones. Then the cutscene after the
+training plays, its actors moved by the game's own recorded films, and the warehouse mission plays
+through: the consoles open the way, the thugs come at Konoko, she finds the LSI, frees the hostage who
+opens the warehouse, beats the timer to the last console, and the outro plays before level 2 begins.
 
 Level 2, the TCTF's Manufacturing Plant, plays through as well: the consoles' chain of locks, the
 Chase after the hall's guards fall, the flyway, Griffin's call, the lasers and wall turrets, the
@@ -64,6 +64,11 @@ Level 14, the neural lab, plays through as well: the pods and their consoles, Ke
 hypos, the three lab consoles that open the probe room, the guards who come after the scan, the security
 wing's ambush in two waves, the drop to the vats, the crane consoles, the guards lost to the acid, the
 outro on the crane, and level 18 begins.
+
+Level 18, the compound, plays through too: the consoles' rounds against the zombie pit, the base's
+cutscene, Griffin, and level 19 begins. Level 19, the final level, plays through to the end: the
+parking lot and the truck, the LSI, the dish that lifts Konoko to the arena, Griffin's squad and Muro,
+whose death ends the game (the game won is kept in persist.dat).
 
 It can be tried in the browser on the <a href="/play/" target="_self">play page</a>, with your own copy of the game.
 
@@ -153,7 +158,7 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - The impact effects (the hit sparks' classes). The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.
-- The last two levels, 18 and 19, as a playthrough.
+- The intro and outro movies; the cheat codes the won game unlocks.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked
 against the original.

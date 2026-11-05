@@ -346,6 +346,38 @@ static bool fog_changeto(int k, float *v, int argc, const SlValue *argv)
     fog_change[k].on = true;
     return true;
 }
+/* killed_griffen murder:bool (0x4b9bd0, ONrWeKilledGriffen 0x50f060): "we killed griffen" or "we did
+   not kill griffen" on the console, the answer kept in persist.dat */
+static bool cmd_killed_griffen(SlThread *t, int argc, const SlValue *argv, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    bool killed = argc >= 1 && (argv[0].type == SL_STRING ? atoi(argv[0].s) : argv[0].type == SL_FLOAT ? argv[0].f != 0.0f : argv[0].i) != 0;
+    plat_log(killed ? "OpenOni: we killed griffen" : "OpenOni: we did not kill griffen");
+    persist_set_killed_griffin(killed);
+    return true;
+}
+
+/* did_kill_griffen (0x4b9bf0): the bool persist.dat keeps */
+static bool cmd_did_kill_griffen(SlThread *t, int argc, const SlValue *argv, SlValue *r, void *u)
+{
+    (void)t, (void)argc, (void)argv, (void)u;
+    r->type = SL_BOOL;
+    r->i = persist_killed_griffin();
+    return true;
+}
+
+/* p3_removedangerous (0x50aaf0) */
+static bool cmd_remove_dangerous(SlThread *t, int argc, const SlValue *argv, SlValue *r, void *u)
+{
+    (void)t, (void)argc, (void)argv, (void)r, (void)u;
+    p3_remove_dangerous();
+    return true;
+}
+
+/* marketing_line_off (0x5ecb9a, ONrGameState_InstallConsoleVariables 0x4d89b0): "turns the laser line
+   off", the weapons' laser sight, which the port doesn't draw yet */
+static bool marketing_line_off;
+
 static bool cmd_fog_start_to(SlThread *t, int argc, const SlValue *argv, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;
@@ -419,6 +451,11 @@ static void start_scripts(void)
     sl_register_bool("invincible", &chr_cheat_invincible);
     sl_register_bool("omnipotent", &chr_cheat_omnipotent);
     sl_register_bool("chr_big_head", &chr_big_head);     /* ONrGameState_InstallConsoleVariables 0x4d89b0 */
+    sl_register_bool("marketing_line_off", &marketing_line_off);
+    marketing_line_off = false;
+    sl_register("killed_griffen", cmd_killed_griffen, NULL);
+    sl_register("did_kill_griffen", cmd_did_kill_griffen, NULL);
+    sl_register("p3_removedangerous", cmd_remove_dangerous, NULL);
     sl_register("gl_fog_start_changeto", cmd_fog_start_to, NULL);
     sl_register("gl_fog_end_changeto", cmd_fog_end_to, NULL);
     memset(fog_change, 0, sizeof fog_change);
@@ -458,7 +495,8 @@ static void start_scripts(void)
    shifts the later "@" frames by when it came against F (when the route was made). "P" presses the pause
    key (the pause screen). "C" waits for the end of a cutscene (and of a script's "input 0"). "Gfrom,to,N" shoots
    the unbroken glass targets of those script ids, aiming the weapon's barrel at each. "F<name>,N" fights
-   the character hand to hand for up to N frames, until it is down; "A<N>" the nearest one in combat
+   the character hand to hand for up to N frames, until it is down; "L<type>" picks up the nearest
+   powerup of the type ("lsi"); "A<N>" the nearest one in combat
    with her, while there is one. "N<name>,N" talks with a neutral (the action key near it) until the
    conversation is over. "X<name>,N" hunts the character (through the rooms, then "F"). "K<id>" uses the console (its marker, the action key, again until it is used; an inactive one is
    waited by). "Wx,y,z" runs to the point through the rooms, the way found from where she is (while there is none,
@@ -884,6 +922,32 @@ static void route_input(const Character *c, CharacterInput *in)
             route.until = 0;
             continue;
         }
+        if (*s == 'L') {
+            /* "L<type>": runs to the nearest powerup of the type ("lsi", "ammo", ...) on her floor and
+               taps the swap key there (pick up); none: on */
+            static char steps[256], rest[16384];
+            char type[16] = { 0 };
+            const char *e = strchr(s, ';');
+            snprintf(rest, sizeof rest, "%s", e ? e + 1 : "");
+            size_t n = e ? (size_t)(e - s - 1) : strlen(s + 1);
+            memcpy(type, s + 1, n < sizeof type - 1 ? n : sizeof type - 1);
+            const Powerup *best = NULL;
+            float bd = 1e30f;
+            for (int i = 0; i < powerup_count(); i++) {
+                const Powerup *pu = powerup_get(i);
+                const char *tn = powerup_type_name(pu->type);
+                if (!tn || strcmp(tn, type) || fabsf(pu->pos[1] - c->pos[1]) > 20.0f) continue;
+                float dx = pu->pos[0] - c->pos[0], dz = pu->pos[2] - c->pos[2];
+                if (dx * dx + dz * dz < bd) bd = dx * dx + dz * dz, best = pu;
+            }
+            if (!best) { route_next(); continue; }
+            snprintf(steps, sizeof steps, "%.1f,%.1f,P,1.5;w60;q;w90", best->pos[0], best->pos[2]);
+            snprintf(route.buf, sizeof route.buf, "%s%s%s", steps, rest[0] ? ";" : "", rest);
+            route.step = route.buf;
+            route.phase = 0;
+            route.until = 0;
+            continue;
+        }
         if (*s == 'K') {
             /* "K<console id>[,tries]": uses the console: to its marker (as "W"), turned as it says, the
                action key; again (up to 5 times in all) until the console is used */
@@ -992,7 +1056,12 @@ static void route_input(const Character *c, CharacterInput *in)
             float err = wrap_pi(atan2f(dx, dz) - c->desired_facing);
             in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
             if (dx * dx + dz * dz > 81.0f) {
+                /* standing, she turns only past 70 degrees (HandleStandingTurn): stood 60 frames short
+                   of that, she runs, and turns as she runs */
+                static uint32_t stood;
                 in->forward = fabsf(wrap_pi(atan2f(dx, dz) - c->facing)) < 0.6f;
+                stood = !in->forward && c->type == 6 ? stood + 1 : 0;
+                if (stood > 60) in->forward = true;
                 return;
             }
             uint32_t k = (route.until - now) / 8;
@@ -1482,11 +1551,17 @@ static int play(int level, int *next)
             display.ct = &ct, display.player = player, display.ticks = ticks;
             game_display();
         }
-        /* ONiRunGame 0x4d4640: won, the next level (after level 19, the outro: not yet); lost, this
-           one again, from the save point (its scripts restore it) */
+        /* ONiRunGame 0x4d4640: won, the next level; lost, this one again, from the save point (its
+           scripts restore it). Level 19 won is the game's end: the game won noted (0x50f620) and the
+           game quits (0x630ffd), the outro movie played on the way out (0x4d56f0, or 0x4d5580 from
+           ONiMain's exit 0x4d3180 under 3Dfx: the movies are not ported). */
         if (ui_level_end() == 1) {
-            *next = next_level(level);
+            *next = level == 19 ? 0 : next_level(level);
             save_clear();       /* 0x4fda80 */
+            if (level == 19) {
+                persist_set_won_game();
+                plat_log("OpenOni: level 19 ends, the game won");
+            }
             return 0;
         }
         if (ui_level_end() == 2) {

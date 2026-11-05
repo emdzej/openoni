@@ -295,6 +295,7 @@ typedef struct {
     int point;              /* +0x528 */
     uint32_t wait;          /* the pause's ticks left */
     bool point_started;
+    uint32_t script;        /* +0x5ac: the script a point of type 0x15 waits for (sl_start), 0 none */
     bool ignore_player;     /* +0x538 */
     /* the stand-in mover */
     bool moving;

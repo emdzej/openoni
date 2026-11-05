@@ -264,16 +264,23 @@ The fields by type, and what `AI2iPatrol_DoWaypoint` 0x4b0650 does with them:
 | 0x0d | | Free the facing |
 | 0x0e | u16, u32 | Glance (inferred) |
 | 0x0f | flag u16, distance float | Move near the flag |
-| 0x10 | index u32 | Loop to the waypoint |
+| 0x10 | index u32 | Loop to the waypoint (at most the last); one that names itself loops to the next (the first after the last) |
 | 0x11 | frames u16, u32 | Scan (inferred) |
 | 0x12 | | Stop scanning |
 | 0x13 | frames u16, flag u16, float | Move to the flag, face its way, wait the frames (0: for good). On disk the frames come first; in memory the flag is at +4, the frames at +6 |
-| 0x14, 0x15 | u16 | Run `patrolscript%04d` with the character's name |
+| 0x14, 0x15 | u16 | Run `patrolscript%04d` with the character's name; 0x15 keeps the thread (+0x5ac) and the patrol waits until it ends |
 | 0x16 | byte | Ignore the player |
 | 0x17 | u16, u16, u32 | Unknown |
 
 A CHAR's job (+0x1a8) 3 is a patrol: `AI2rInitializeCharacter` 0x48a6b0 starts the path whose id is
 the low u16 of +0x1ac. Level 1 has 63 paths, 207 waypoints; most are 0x13s ending in a 0x10 or a 6.
+
+`AI2rPatrol_Update` 0x4afc90 goes on through the waypoints done at once in the same tick, until one
+takes time or the way comes back to the waypoint it started from ("patrol %s is looping endlessly"):
+then on the next tick. Past the last waypoint, 0x4b0420 ends the patrol (the port: idle; going back to
+the character's job is not ported). Level 3's Floor1_Stk_1 ends in a 0x10 naming itself. The port's
+glances (0x0e) take no time, so a 0x10 back to a later waypoint could go round without
+reaching the start: the port stops after the path's count of waypoints in a tick (a stand-in).
 
 ## TRGV
 

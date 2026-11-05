@@ -48,15 +48,15 @@ Steps 4 (renderer), 6 (character) and 7 (scripts) have begun:
   in [docs/re/ai.md](docs/re/ai.md)) move the others; `--param ailog=1` logs each fighter once a second.
   `--param call=<function>[,...]` runs level functions at the start (e.g. `spawn_top,final_striker_attack` on level 1).
 - `src/character.c`: a first playable. `--param play=1 --param level=1` runs Konoko through level 1
-  (`--param at=x,y,z,deg` starts her elsewhere); `--param viewer=level` flies through a level.
-  `--param route=<steps>` drives her headless (the steps are described in `app.c`, among them `M`, a
-  wait for a script's message that shifts the later frames, `G`, the glass targets shot, `Wx,y,z`, a run
-  to the point planned at run time through the rooms' graph (the locked doors kept out, the manual ones
-  opened), `C`, a wait for a cutscene's end, `K<id>`, a console used, `X<name>,N`, a character hunted
-  down, and `S<N>`, a wait until she stands; `--param trace=N` logs the characters and the doors near
-  Konoko every N frames; `--param sltrace=1` the scripts; `--param invincible=1` keeps her alive,
-  `--param omnipotent=1` makes her blows fell anyone and `--param unstoppable=1` keeps her on her feet
-  (the game's cheat switches), for runs of a level's scripts).
+  (`--param at=x,y,z,deg` starts her elsewhere); `--param viewer=level` flies through a level. `--param
+  route=<steps>` drives her headless (the steps are described in `app.c`, among them `M`, a wait for a
+  script's message that shifts the later frames, `G`, the glass targets shot, `Wx,y,z`, a run to the point
+  planned at run time through the rooms' graph (the locked doors kept out, the manual ones opened), `C`, a
+  wait for a cutscene's end, `K<id>`, a console used, `X<name>,N`, a character hunted down, `L<type>`, the
+  nearest powerup of a type picked up, and `S<N>`, a wait until she stands; `--param trace=N` logs the
+  characters and the doors near Konoko every N frames; `--param sltrace=1` the scripts; `--param
+  invincible=1` keeps her alive, `--param omnipotent=1` makes her blows fell anyone and `--param
+  unstoppable=1` keeps her on her feet (the game's cheat switches), for runs of a level's scripts).
 - `src/throw.c`: throws (the player's; the victim's part and its own damage), in
   [docs/re/character.md](docs/re/character.md) "Throws".
 - `src/weapon.c`: weapons (spawn, pickup, the trigger and shots, drop, the slots and holstering; the shots' particles are

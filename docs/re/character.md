@@ -661,7 +661,11 @@ and loses 0x0800 (owned), so its firing and background events stop; the one comi
   For a draw, an empty hand takes the last stowed weapon.
 - **The scripts**: `chr_forceholster` (0x4b86f0) and the cutscenes. `begin_cutscene` holsters the
   player's weapon unless its flag 2 ("weapon") is set (*ONrCharacter_ForceHolster* 0x4eff60), and
-  `end_cutscene` draws one into an empty hand (*ONrCharacter_ForceDraw* 0x4effa0).
+  `end_cutscene` draws one into an empty hand (*ONrCharacter_ForceDraw* 0x4effa0). Unless flag 0x20
+  ("keepparticles"), `ONrGameState_BeginCutscene` 0x4fd070 also asks the particles' cleanup (0x458310,
+  as `p3_removedangerous` does): the next particle update (0x45c830) goes over the classes in use, and
+  for those with flags2 0x10 kills their particles, with flags2 0x08 sets their life to 0.01; the others
+  of those classes, unless fading or chopped already, are marked expiring. Confirmed.
 - **Saves** keep all three slots: each is put back (0x4d7bf0), slot 2 then 1 then 0, the stowed ones
   stowed.
 

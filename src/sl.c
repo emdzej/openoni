@@ -692,9 +692,11 @@ struct SlThread {
     Frame frames[FRAMES];
     uint32_t sleep;
     bool done;
+    uint32_t id;        /* sl_start's handle */
 };
 static SlThread *threads[256];
 static int n_threads;
+static uint32_t next_id;
 
 int sl_threads(void) { return n_threads; }
 void sl_thread_sleep(SlThread *t, uint32_t ticks) { if (t) t->sleep = ticks; }
@@ -723,13 +725,20 @@ static SlThread *spawn(int func, int argc, const SlValue *argv)
     t->pc = UINT32_MAX;
     if (!enter(t, func, argc)) { free(t); return NULL; }
     threads[n_threads++] = t;
+    if (!++next_id) next_id = 1;
+    t->id = next_id;
     return t;
 }
 
 bool sl_call(const char *name, int argc, const char *const *args)
 {
+    return sl_start(name, argc, args) != 0;
+}
+
+uint32_t sl_start(const char *name, int argc, const char *const *args)
+{
     int k = find_func(sl_intern(name));
-    if (k < 0 || !funcs[k].defined) return false;
+    if (k < 0 || !funcs[k].defined) return 0;
     if (tracing && logfn) {
         char m[128];
         snprintf(m, sizeof m, "SL: start %s(%s)", name, argc >= 1 ? args[0] : "");
@@ -737,7 +746,15 @@ bool sl_call(const char *name, int argc, const char *const *args)
     }
     SlValue v[16];
     for (int i = 0; i < argc && i < 16; i++) v[i] = v_str(sl_intern(args[i]));
-    return spawn(k, argc < 16 ? argc : 16, v) != NULL;
+    SlThread *t = spawn(k, argc < 16 ? argc : 16, v);
+    return t ? t->id : 0;
+}
+
+bool sl_running(uint32_t id)
+{
+    for (int i = 0; id && i < n_threads; i++)
+        if (threads[i]->id == id && !threads[i]->done) return true;
+    return false;
 }
 
 static SlValue binop(int op, SlValue a, SlValue b)

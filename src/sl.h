@@ -45,6 +45,10 @@ bool sl_load_text(const char *name, const char *text, char *err, size_t errcap);
 /* Starts a thread running a function, with string arguments (the hooks pass the character's name);
    false if there is no such function. */
 bool sl_call(const char *func, int argc, const char *const *args);
+/* The same, giving the thread's handle (0: none started), for sl_running: whether that thread still
+   runs (the patrols' script points that wait for theirs). */
+uint32_t sl_start(const char *func, int argc, const char *const *args);
+bool sl_running(uint32_t id);
 bool sl_function_exists(const char *func);
 /* One tick (1/60 s): every thread runs until it sleeps, blocks or ends. */
 void sl_update(void);
