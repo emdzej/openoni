@@ -1205,6 +1205,15 @@ void sound_music_volume(const char *name, float volume, float seconds)
         }
 }
 
+const void *sound_impulse_find(const char *name) { return loaded ? find_nocase(&impulses, name) : NULL; }
+float sound_impulse_impact_velocity(const void *impulse) { return impulse ? ((const Impulse *)impulse)->impact_velocity : 0.0f; }
+
+void sound_impulse_play_at(const void *impulse, const float pos[3], const float *volume)
+{
+    if (!impulse || script_only) return;
+    impulse_play(impulse, pos, volume);
+}
+
 /* 0x5145f0: at the listener, volume 0..1. */
 void sound_impulse_play(const char *name, float volume)
 {

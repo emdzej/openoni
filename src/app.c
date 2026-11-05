@@ -22,12 +22,14 @@
 #include "weapon.h"
 #include "env.h"
 #include "envparticle.h"
+#include "impact.h"
 #include "laser.h"
 #include "turret.h"
 #include "persist.h"
 #include "save.h"
 #include "laser_draw.h"
 #include "env_draw.h"
+#include "decal_draw.h"
 #include "exe.h"
 #include "geom_draw.h"
 #include "graph.h"
@@ -1298,6 +1300,7 @@ static void game_display(void)
     draw_objects();
     for (int i = 0; i < chars_slots(); i++)
         if (chars_get(i)) char_draw_character(&chars_get(i)->c);   /* the blended pose */
+    decal_draw(env_draw_environment());     /* P3rDisplayStaticDecals, P3rDisplayDynamicDecals */
     particle_draw(view, p3_tick());     /* P3rDisplay */
     laser_draw(view);
     particle_draw_flares(view, near, p3_tick());
@@ -1392,6 +1395,7 @@ static int play(int level, int *next)
     material_mark_breakable((void *)env);   /* AKrLevel_Begin: the glass */
     p3_load();      /* the PAR3 classes of the loaded files (the binary data's loader), set up at the start */
     p3_set_environment(env);
+    impact_effects_level_begin();   /* its particle classes and impulses, the level's */
     envparticle_load();     /* ONrLevel_Load: the level's environment particles, after the particle system starts */
     weapons_reset();
     powerups_reset();
@@ -1655,6 +1659,8 @@ int app_main(void)
     prepare_collections(zero);
     sound_initialize();
     sound_level_load(0);
+    impact_types_load();        /* MArImpacts_PreProcess, MArMaterials_PreProcess */
+    impact_effects_load();      /* the ONIE block */
     char viewer[32], lv[16];
     if (plat_param("keys", modal_keys, sizeof modal_keys)) modal_key = modal_keys;
     if (plat_param("play", viewer, sizeof viewer)) {

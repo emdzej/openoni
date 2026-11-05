@@ -27,6 +27,9 @@ static const uint8_t *array(const void *env, unsigned field, unsigned count_at, 
 const uint8_t *akev_points(const void *e, uint32_t *n) { return array(e, AKEV_POINTS, PNTA_COUNT, n); }
 const uint8_t *akev_texcoords(const void *e, uint32_t *n) { return array(e, AKEV_TEXCOORDS, ARRAY_COUNT, n); }
 const uint8_t *akev_planes(const void *e, uint32_t *n) { return array(e, AKEV_PLANES, ARRAY_COUNT, n); }
+const uint8_t *akev_quad_records(const void *e, uint32_t *n) { return array(e, AKEV_QUADS, ARRAY_COUNT, n); }
+const uint8_t *akev_collision_records(const void *e, uint32_t *n) { return array(e, AKEV_QUAD_COLLISION, ARRAY_COUNT, n); }
+const uint8_t *akev_render_records(const void *e, uint32_t *n) { return array(e, AKEV_QUAD_RENDER, ARRAY_COUNT, n); }
 
 void akev_bounds(const void *env, float box[6]) { memcpy(box, (const uint8_t *)env + AKEV_BOUNDS, 6 * sizeof(float)); }
 

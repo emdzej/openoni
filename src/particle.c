@@ -13,6 +13,9 @@
 #include "akev_collide.h"
 #include "body.h"
 #include "chr_hit.h"
+#include "decal.h"
+#include "impact.h"
+#include "material.h"
 #include "exe.h"
 #include "m3gm.h"
 #include "sl.h"
@@ -57,7 +60,7 @@ enum {
 enum {
     P_HIDDEN = 0x01, P_FADING = 0x02, P_STUCK = 0x04, P_CHOPPED = 0x08, P_DEAD = 0x10, P_ORIENT_VELOCITY = 0x20,
     P_DIRTY = 0x40, P_EXPLODE = 0x80, P_SOUND = 0x100, P_MOVED = 0x200, P_TEMPORARY = 0x400, P_ATTACHED = 0x2000,
-    P_ATTRACTED = 0x4000, P_GONE = 0x8000, P_EXPIRING = 0x10000,
+    P_DECAL_DYNAMIC = 0x800, P_DECAL_STATIC = 0x1000, P_ATTRACTED = 0x4000, P_GONE = 0x8000, P_EXPIRING = 0x10000,
 };
 /* the class's record's flags (+0x40) */
 enum {
@@ -260,11 +263,12 @@ static void cross3(const float *a, const float *b, float *o)   /* MUrVector_Cros
     float x = a[1] * b[2] - a[2] * b[1], y = a[2] * b[0] - a[0] * b[2], z = a[0] * b[1] - a[1] * b[0];
     o[0] = x, o[1] = y, o[2] = z;
 }
-/* MUrVector_Normalize_ZeroTest 0x4340f0: true (and v untouched) when v is too short to normalise. */
+/* MUrVector_Normalize_ZeroTest 0x4340f0: true (and v untouched) when v is too short to normalise (|v|^2
+   under 9.5e-7, 0x529d00). */
 static bool normalize_zero(float *v)
 {
     float l = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
-    if (l < 1e-6f) return true;
+    if (fabsf(l) < 9.5367432e-07f) return true;
     l = 1.0f / sqrtf(l);
     v[0] *= l, v[1] *= l, v[2] *= l;
     return false;
@@ -555,7 +559,7 @@ static void default_param(uint32_t type, uint8_t *v)
 }
 
 /* P3rUpdateActionData 0x457240: an action's payload: the sound (not ported), the class an effect
-   creates, the impact type (not ported). */
+   creates, the impact type (0xffff none). */
 static void update_action_data(P3Class *c, uint8_t *a)
 {
     wr32(a + A_PAYLOAD, 0);
@@ -568,6 +572,11 @@ static void update_action_data(P3Class *c, uint8_t *a)
         n[16] = 0;
         P3Class *k = lookup(n);
         wr32(a + A_PAYLOAD, k ? k->index : 0);
+    } else if (t == A_IMPACT && rd32(param(a, 0)) == 6) {
+        char n[17];
+        memcpy(n, param(a, 0) + 4, 16);
+        n[16] = 0;
+        wr32(a + A_PAYLOAD, (uint32_t)impact_type_by_name(n) & 0xffff);    /* MArImpactType_GetByName 0x487140 */
     }
 }
 
@@ -921,10 +930,14 @@ static void unlink_particle(P3Class *c, P3Particle *p)
 static bool run_event(P3Class *c, P3Particle *p, int event, const uint8_t *list, float time, float dt, bool collided);
 
 /* 0x456ce0 and its callers' free list: the die event, the callbacks' end (the AI's projectile and the
-   flyby: not ported), the decal (not ported), the ambient sound's stop, the particle gone. */
+   flyby: not ported), the decal (P3rDeleteDecal 0x453630), the ambient sound's stop, the particle gone. */
 static void end_particle(P3Class *c, P3Particle *p)
 {
     run_event(c, p, P3_EV_DIE, c->def + D_EVENTS + 4 * P3_EV_DIE, p->time, 0.0f, false);
+    if ((flags2(c) & F2_DECAL) && (p->flags & (P_DECAL_STATIC | P_DECAL_DYNAMIC))) {
+        uint8_t *db = block(c, p, P3_X_DECAL);
+        if (db) decal_delete(rd32(db));
+    }
     if (p->flags & P_SOUND) {           /* OSrAmbient_Stop 0x511e40 */
         p->sound = -1;
         p->flags &= ~(uint32_t)P_SOUND;
@@ -1164,6 +1177,14 @@ static void construct_orientation(int dir, int up, const float *parent, const fl
 /* ---- emitting ---- */
 
 static void setup_new(P3Class *k, P3Particle *q, uint32_t tick);
+static void setup_attractor(P3Class *k, P3Particle *q)
+{
+    uint8_t *b;
+    if ((b = block(k, q, P3_X_ATTRACTOR))) {   /* the attractor (not ported): none */
+        wr32(b, 0xffffffffu);
+        wr32(b + 4, q->tick + (uint32_t)(trac_local_random() * 10u / 0xffffu));
+    }
+}
 
 /* P3iEmitParticle 0x45d610: the emitter's burst at the time: its count (the fraction a chance of one
    more), each particle placed (position kind), aimed (direction kind) at its speed, linked, owned,
@@ -1386,10 +1407,7 @@ static void setup_new(P3Class *k, P3Particle *q, uint32_t tick)
     }
     if ((b = block(k, q, P3_X_PREV_POS))) wr32(b, 0);
     if ((b = block(k, q, P3_X_LENSFLARE))) wr32(b, 0);
-    if ((b = block(k, q, P3_X_ATTRACTOR))) {   /* the attractor (not ported): none */
-        wr32(b, 0xffffffffu);
-        wr32(b + 4, q->tick + (uint32_t)(trac_local_random() * 10u / 0xffffu));
-    }
+    setup_attractor(k, q);
     if ((b = block(k, q, P3_X_CACHE))) memset(b, 0, 20);   /* AKrCollision_InitializeSpatialCache 0x441190 */
 }
 
@@ -1725,6 +1743,33 @@ static void process_class(P3Class *c, uint32_t tick)
     hit.hit = false;
 }
 
+/* P3iUpdateDecalClass (in P3rUpdate 0x45c830): a decal class's particles, oldest first. One whose decal
+   the ring took dies; the others age by their lifetimes; past the class's most decals (+0x200, at full
+   detail) the oldest start their fade; a fading one's decal takes its alpha. */
+static void update_decals(P3Class *c, uint32_t tick)
+{
+    uint16_t most = rd16(c->def + D_MAX_DECALS);   /* (halved, quartered at the lower particle details) */
+    uint32_t excess = (most == 0 || c->count < most) ? 0 : c->count - most;
+    uint32_t i = 0;
+    P3Particle *nx;
+    for (P3Particle *p = c->head; p; p = nx, i++) {
+        nx = p->next;
+        uint8_t *db = block(c, p, P3_X_DECAL);
+        if (!db || !decal_live(rd32(db))) {
+            if (!(p->flags & P_DEAD)) kill_now(c, p);
+            continue;
+        }
+        if (p->life != 0.0f && (p->life -= now - p->time) < 1.0f / 60.0f) {
+            p->life = 0.0f;
+            if (life_over(c, p)) continue;
+        }
+        if (!(p->flags & P_FADING) && i < excess && life_over(c, p)) continue;
+        if (p->flags & P_FADING) decal_set_alpha(rd32(db), (uint16_t)round_small(p->life * 255.0f / p->fade));
+        p->tick = tick;
+        p->time = now;
+    }
+}
+
 /* P3rUpdate 0x45c830: once per new tick (or forced): the characters to collide with (the active
    physics contexts that collide), then the gameplay classes from the list's head, or the decorative
    ones from its tail; a decal class's particles age by their lifetimes only. */
@@ -1783,18 +1828,7 @@ void p3_update(uint32_t tick, bool gameplay, Character **chars, int nchars)
             if (!(flags1(c) & F1_DECORATIVE)) break;
             if (!(c->flags & C_REMOVE)) {
                 if (!(flags2(c) & F2_DECAL)) process_class(c, tick);
-                else {
-                    P3Particle *nx;
-                    for (P3Particle *p = c->head; p; p = nx) {
-                        nx = p->next;
-                        if (p->life != 0.0f && (p->life -= now - p->time) < 1.0f / 60.0f) {
-                            p->life = 0.0f;
-                            if (life_over(c, p)) continue;
-                        }
-                        p->tick = tick;
-                        p->time = now;
-                    }
-                }
+                else update_decals(c, tick);
             }
             i = n;
         }
@@ -1802,11 +1836,16 @@ void p3_update(uint32_t tick, bool gameplay, Character **chars, int nchars)
     after_update();
 }
 
-void p3_set_environment(const void *e) { env = e; }
+void p3_set_environment(const void *e)
+{
+    env = e;
+    decal_set_environment(e);       /* P3rDecal_LevelBegin */
+}
 
 /* The level's end (0x4581d0 and 0x455b20) and P3rInitialize 0x455a50. */
 void p3_reset(void)
 {
+    decal_delete_all();     /* P3rDecalDeleteAllDynamic, and the static ones */
     for (uint16_t i = 0; i < nclasses; i++) free(classes[i].def);
     memset(classes, 0, sizeof classes);
     nclasses = nsorted = nfailed = 0;
@@ -1841,6 +1880,40 @@ void p3_load(void)
 }
 
 /* ---- the actions (the table's functions, 0x463f60 to 0x467c50) ---- */
+
+/* The location the effect actions fill (0x6c bytes on their stacks): the parent particle, its
+   orientation, velocity and owner, the tick of the time, and the step's hit (its point and normal). */
+static P3EffectLoc eloc;
+static void effect_location(P3Class *c, P3Particle *p, float time)
+{
+    memset(&eloc, 0, sizeof eloc);
+    eloc.parent_cls = c, eloc.parent = p;
+    const uint8_t *ob = block(c, p, P3_X_OWNER);
+    eloc.owner = ob ? rd32(ob) : 0;
+    eloc.orientation = fblock(c, p, P3_X_ORIENTATION);
+    eloc.dir = fblock(c, p, P3_X_VELOCITY);
+    eloc.tick = round_small(time * 60.0f);
+    if (hit.hit) memcpy(eloc.pos, hit.point, 12), memcpy(eloc.normal, hit.normal, 12);
+}
+
+/* 0x4ef9e0: the character's part nearest the point (by the centres of the parts' spheres in their
+   matrices), 7 if there is none. */
+static int nearest_part(const Character *ch, const float pt[3])
+{
+    int best = 7;
+    float bd = 3.4028235e38f;
+    for (int i = 0; i < chr_count; i++) {
+        if (parts[i].c != ch || !parts[i].ok) continue;
+        for (int b = 0; b < CHR_BONES; b++) {
+            float cen[3];
+            m4_apply(parts[i].m[b], parts[i].sph[b], cen);
+            float d[3] = { cen[0] - pt[0], cen[1] - pt[1], cen[2] - pt[2] };
+            float dd = dot3(d, d);
+            if (dd < bd) bd = dd, best = b;
+        }
+    }
+    return best;
+}
 
 static float *fvar(Act *x, int k) { return (float *)x->var[k]; }
 static bool pf(Act *x, unsigned k, float *out) { return fvalue(x->c, x->p, param(x->a, k), out); }
@@ -2236,39 +2309,34 @@ static bool do_action(Act *x)
         if (d < 0.0f) { kill_now(c, p); return true; }
         return false;
     }
-    case A_CREATE_EFFECT: {     /* P3rCreateEffect 0x456030 (its decals and wall offsets: in part) */
+    case A_CREATE_EFFECT: {     /* P3iAction_CollisionEffect 0x465840 */
         P3Class *ec = class_at(rd32(a + A_PAYLOAD));
         if (!ec) return false;
-        float at[3], wall_off = 0.0f;
-        const float *n = NULL;
+        effect_location(c, p, x->time);
+        const uint8_t *po = param(a, 2), *pa = param(a, 3);
+        P3EffectSpec spec = { .cls = ec, .orientation = rd32(po) == 10 ? rd32(po + 4) : P3_ORIENT_NORMAL };
+        bool attach = rd32(pa) == 10 && pa[4];
         if (hit.hit) {
-            memcpy(at, hit.point, 12);
-            n = hit.normal;
-            if (pf(x, 1, &wall_off)) at[0] += n[0] * wall_off, at[1] += n[1] * wall_off, at[2] += n[2] * wall_off;
-        } else if (!p3_real_position(c, p, at)) return true;
-        uint32_t tick = round_small(x->time * 60.0f);
-        P3Particle *q = p3_create(ec, tick);
-        if (!q) return false;
-        memcpy(q->pos, at, 12);
-        uint8_t *b, *pb;
-        if ((b = block(ec, q, P3_X_OWNER))) wr32(b, (pb = block(c, p, P3_X_OWNER)) ? rd32(pb) : 0);
-        if ((b = block(ec, q, P3_X_ATTACH))) wr32(b, 0);
-        if ((v = fblock(ec, q, P3_X_VELOCITY))) v[0] = v[1] = v[2] = 0.0f;
-        if ((v = fblock(ec, q, P3_X_OFFSET))) v[0] = v[1] = v[2] = 0.0f;
-        float *qo = fblock(ec, q, P3_X_ORIENTATION);
-        if (qo) {
-            static const float ID[9] = { 1, 0, 0, 0, 1, 0, 0, 0, 1 };
-            const float *po = fblock(c, p, P3_X_ORIENTATION), *pv = fblock(c, p, P3_X_VELOCITY);
-            if (n) {
-                float up[3] = { 0, 1, 0 };
-                construct_orientation(12, 8, NULL, NULL, n, qo);    /* the normal its y */
-                (void)up;
-            } else if (po) memcpy(qo, po, 36);
-            else if (pv) construct_orientation(12, 8, NULL, NULL, pv, qo);
-            else memcpy(qo, ID, 36);
+            if (!hit.wall && attach) spec.location = P3_LOC_ATTACHED, eloc.kind = P3_HIT_CHARACTER, eloc.chr = hit.chr;
+            else {
+                spec.location = pf(x, 1, &spec.offset) && spec.offset != 0.0f ? P3_LOC_OFFSET : P3_LOC_DEFAULT;
+                if (hit.wall) eloc.kind = P3_HIT_WALL, eloc.quad = hit.quad;
+                else eloc.kind = P3_HIT_CHARACTER, eloc.chr = hit.chr;
+            }
+        } else {
+            eloc.kind = (p->flags & P_EXPIRING) ? P3_HIT_NONE_ATTACHED : P3_HIT_NONE;
+            if (!p3_real_position(c, p, eloc.pos)) return true;
+            spec.location = P3_LOC_DEFAULT;
+            if (spec.orientation == P3_ORIENT_REFLECT || spec.orientation == P3_ORIENT_NORMAL) spec.orientation = P3_ORIENT_PARENT;
         }
-        setup_new(ec, q, tick);
-        run_event(ec, q, P3_EV_CREATE, ec->def + D_EVENTS + 4 * P3_EV_CREATE, x->time, 0.0f, false);
+        if (flags2(ec) & F2_DECAL) {
+            /* a decal: on the wall, along its normal, turned at random, dynamic, its class's size */
+            spec.location = P3_LOC_DECAL;
+            spec.decal_static = false, spec.decal_random_rotation = true;
+            spec.orientation = P3_ORIENT_NORMAL;
+            eloc.decal_scale[0] = eloc.decal_scale[1] = 1.0f;
+        }
+        p3_create_effect(&spec, &eloc);
         return false;
     }
     case A_STICK:
@@ -2319,8 +2387,36 @@ static bool do_action(Act *x)
             p->life = p->fade = (f0 + f0) / s;
         }
         return false;
-    case A_IMPACT:      /* ONrImpactEffect 0x4fe5b0: the sounds and particles of the material hit: not ported */
+    case A_IMPACT: {    /* P3iAction_ImpactEffect 0x465ac0 */
+        int type = (int)(rd32(a + A_PAYLOAD) & 0xffff);
+        if (type == 0xffff || type >= impact_type_count()) return false;
+        float m = 0.0f;
+        if (!pf(x, 1, &m) || (uint32_t)m >= 4u) return false;    /* the modifier, 0..3 */
+        effect_location(c, p, x->time);
+        eloc.decal_scale[0] = eloc.decal_scale[1] = 1.0f;
+        int material = 0;
+        if (hit.hit) {
+            /* just off the wall or the body: 0.2 along the normal (0x52a1d4) */
+            for (int k = 0; k < 3; k++) eloc.pos[k] = hit.point[k] + hit.normal[k] * 0.2f;
+            if (hit.wall) {
+                eloc.kind = P3_HIT_WALL, eloc.quad = hit.quad;
+                AkevQuad aq;
+                if (env && akev_quad(env, hit.quad, &aq) && (aq.texture & 0xffff) != 0xffff) {
+                    int mi = impact_material_index(material_of_texture(akev_texture(env, aq.texture & 0xffff)));
+                    if (mi >= 0) material = mi;     /* the texture's material (TXMP+0x98) */
+                }
+            } else {
+                eloc.kind = P3_HIT_CHARACTER, eloc.chr = hit.chr;
+                material = impact_character_material(hit.chr, nearest_part(hit.chr, hit.point), false);
+            }
+        } else {
+            eloc.kind = (p->flags & P_EXPIRING) ? P3_HIT_NONE_ATTACHED : P3_HIT_NONE;
+            if (!p3_real_position(c, p, eloc.pos)) return true;
+        }
+        /* the owner's character (WPrOwner_GetCharacter 0x51cda0), for the AI's sound: not ported */
+        impact_effect(type, material, (int)(uint32_t)m, &eloc, 1.0f);
         return false;
+    }
     case A_UNHIDE: p->flags &= ~(uint32_t)P_HIDDEN; return false;
     case A_HIDE: p->flags |= P_HIDDEN; return false;
     default:
@@ -2675,4 +2771,166 @@ P3Particle *p3_effect_owned(P3Class *c, const float pos[3], const float vel[3], 
     run_event(c, q, P3_EV_CREATE, c->def + D_EVENTS + 4 * P3_EV_CREATE, (float)tick * (1.0f / 60.0f), 0.0f, false);
     return (q->flags & P_DEAD) ? NULL : q;
 }
+/* P3rCreateEffect 0x456030: a particle of the specification's class made at the location's tick (a hit's
+   effect, kind 4, or a parent that is P_EXPIRING marks it P_EXPIRING; then a class that goes with the
+   cutscenes, flags2 0x18, makes none; a temporary parent's makes a temporary). Where: the location's
+   place (P3_LOC_OFFSET: moved along its normal by the offset; 2 and 3: left alone; P3_LOC_ATTACHED: on
+   the character hit, not ported: the place only). Turned (with an orientation block): P3_ORIENT_PARENT
+   the parent's matrix, or along its direction, or none; P3_ORIENT_REVERSE the same, the matrix's y and
+   z and the direction turned back; P3_ORIENT_REFLECT the direction reflected off the hit's normal (the
+   parent's matrix its up); P3_ORIENT_NORMAL along the normal; the last two only for a hit (kinds 1, 2),
+   else as P3_ORIENT_PARENT. The other blocks: the velocity, the owner, the attachment, a random
+   texture index (the local random), the texture's start, the rest cleared. A decal class's particle is
+   only made at P3_LOC_DECAL on a wall: its decal (P3rCreateDecal) from the class's scale (and y scale),
+   its wrap angle (+0x204, 60 degrees without), its alpha and tint, across the normal (the location's
+   up, else (-z, 0, x) of the normal, else z up; a normal along y with neither kills it), turned by a
+   random angle if the specification asks; without its decal the particle dies. Then the create event
+   (0x45b170, 11) and the creation hook (0x659ae4: not used). */
+P3Particle *p3_create_effect(const P3EffectSpec *spec, const P3EffectLoc *loc)
+{
+    P3Class *c = spec ? spec->cls : NULL;
+    if (!c || !loc) return NULL;
+    bool expiring = loc->kind == P3_HIT_NONE_ATTACHED || (loc->parent && (loc->parent->flags & P_EXPIRING));
+    if (expiring && (flags2(c) & (F2_EXPIRE_CUTSCENE | F2_DIE_CUTSCENE))) return NULL;
+    P3Particle *q = p3_create(c, loc->tick);       /* 0x455e40 */
+    if (!q) return NULL;
+    if (loc->parent && (loc->parent->flags & P_TEMPORARY)) q->flags |= P_TEMPORARY, c->flags |= C_TEMPORARIES;
+    if (expiring) q->flags |= P_EXPIRING;
+    bool died;
+    float *pos = position(c, q, &died);
+    if (died) return NULL;
+    const float *attach_m = loc->attach;
+    switch (spec->location) {
+    case 0: case 4: case 5:     /* 5: attached to the character's part hit (0x6a856c's, 0x4f13e0), not ported */
+        memcpy(pos, loc->pos, 12);
+        break;
+    case 1:
+        for (int k = 0; k < 3; k++) pos[k] = loc->pos[k] + spec->offset * loc->normal[k];
+        break;
+    default:
+        break;
+    }
+    float *o = fblock(c, q, P3_X_ORIENTATION);
+    if (o) {
+        static const float ID[9] = { 1, 0, 0, 0, 1, 0, 0, 0, 1 };
+        bool hit = loc->kind != P3_HIT_NONE && loc->kind != P3_HIT_NONE_ATTACHED;
+        int how = (int)spec->orientation;
+        if (how == P3_ORIENT_REFLECT) {
+            float d = 0.0f, nn = dot3(loc->normal, loc->normal);
+            if (!hit || !loc->dir || fabsf(nn) <= 0.001f) how = P3_ORIENT_NORMAL;      /* 0x5296e0 */
+            else {
+                d = dot3(loc->dir, loc->normal) * -2.0f / nn;      /* 0x52a18c */
+                float r[3] = { d * loc->normal[0] + loc->dir[0], d * loc->normal[1] + loc->dir[1], d * loc->normal[2] + loc->dir[2] };
+                if (loc->orientation) construct_orientation(12, 4, loc->orientation, NULL, r, o);
+                else construct_orientation(12, 8, NULL, NULL, r, o);
+            }
+        }
+        if (how == P3_ORIENT_NORMAL) {
+            if (!hit) how = P3_ORIENT_PARENT;
+            else if (loc->orientation) construct_orientation(12, 4, loc->orientation, NULL, loc->normal, o);
+            else construct_orientation(12, 8, NULL, NULL, loc->normal, o);
+        }
+        if (how == P3_ORIENT_PARENT) {
+            if (loc->orientation) memcpy(o, loc->orientation, 36);
+            else if (loc->dir) construct_orientation(12, 8, NULL, NULL, loc->dir, o);
+            else memcpy(o, ID, 36);     /* 0x434c60 */
+        } else if (how == P3_ORIENT_REVERSE) {
+            if (loc->orientation) {
+                memcpy(o, loc->orientation, 12);
+                for (int k = 3; k < 9; k++) o[k] = -loc->orientation[k];
+            } else if (loc->dir) {
+                float r[3] = { -loc->dir[0], -loc->dir[1], -loc->dir[2] };
+                construct_orientation(12, 8, NULL, NULL, r, o);
+            } else memcpy(o, ID, 36);
+        }
+    }
+    float *v;
+    uint8_t *b;
+    if ((v = fblock(c, q, P3_X_VELOCITY))) memcpy(v, loc->vel, 12);
+    if ((v = fblock(c, q, P3_X_OFFSET))) v[0] = v[1] = v[2] = 0.0f;
+    if ((b = block(c, q, P3_X_ATTACH))) wr32(b, attach_m ? p3_attach_id(attach_m) : 0);
+    if ((b = block(c, q, P3_X_OWNER))) wr32(b, loc->owner);
+    if ((b = block(c, q, P3_X_TEX_INDEX))) wr32(b, trac_local_random());    /* 0x426e30 */
+    if ((b = block(c, q, P3_X_TEX_TIME))) wr32(b, loc->tick);
+    if ((b = block(c, q, P3_X_PREV_POS))) wr32(b, 0);
+    if ((b = block(c, q, P3_X_LENSFLARE))) wr32(b, 0);
+    if ((b = block(c, q, P3_X_CACHE))) memset(b, 0, 20);   /* AKrCollision_InitializeSpatialCache 0x441190 */
+    if (flags2(c) & F2_DECAL) {
+        if (spec->location != P3_LOC_DECAL || loc->kind != P3_HIT_WALL) {
+            kill_now(c, q);     /* "P3rCreateEffect: tried to create a decal ..." */
+            return NULL;
+        }
+        uint8_t *db = block(c, q, P3_X_DECAL);
+        if (!db) {
+            kill_now(c, q);
+            return NULL;
+        }
+        memset(db, 0, 20);
+        char nm[33];
+        memcpy(nm, c->def + D_INSTANCE, 32);
+        nm[32] = 0;
+        const void *tex = nm[0] ? tm_instance_get(TM_TAG("TXMP"), nm) : NULL;
+        if (!tex) tex = tm_instance_get(TM_TAG("TXMP"), "notfoundtex");    /* "DECAL TEXTURE NOT FOUND" (0x53b8c0) */
+        if (!tex) {
+            kill_now(c, q);
+            return NULL;
+        }
+        float xs = 1.0f, ys;
+        if (!fvalue(c, q, c->def + D_SCALE, &xs)) xs = 1.0f;
+        ys = xs;
+        if ((flags1(c) & F1_YSCALE) && !fvalue(c, q, c->def + D_YSCALE, &ys)) xs = 1.0f;   /* (the x it resets) */
+        xs *= loc->decal_scale[0], ys *= loc->decal_scale[1];
+        float wrap = 60.0f;
+        if (!fvalue(c, q, c->def + D_DECAL_WRAP, &wrap)) wrap = 60.0f;      /* 0x52a188 */
+        wrap *= 0.017453292f;
+        float colb[3];
+        const float *dir = loc->dir;
+        if (!dir && loc->orientation) {
+            memcpy(colb, loc->orientation + 3, 12);     /* 0x434190: the y column */
+            dir = colb;
+        }
+        float ax[3], ay[3];
+        cross3(loc->normal, loc->up, ax);       /* 0x433b70 */
+        if (normalize_zero(ax)) {
+            ax[0] = -loc->normal[2], ax[1] = 0.0f, ax[2] = loc->normal[0];
+            if (normalize_zero(ax)) {
+                if (fabsf(loc->normal[1]) < 9.5367432e-07f) {     /* 0x529d00 */
+                    kill_now(c, q);
+                    return NULL;
+                }
+                ax[0] = 0.0f, ax[1] = 0.0f, ax[2] = 1.0f;
+            }
+        }
+        cross3(ax, loc->normal, ay);
+        float l = 1.0f / sqrtf(dot3(ax, ax));
+        for (int k = 0; k < 3; k++) ax[k] *= l;
+        if (spec->decal_random_rotation) {
+            float r = (float)trac_local_random() * 1.5259022e-05f * 6.2831855f;    /* 0x52a04c, 0x529548 */
+            float cs = cosf(r), sn = sinf(r), nx[3], ny[3];
+            for (int k = 0; k < 3; k++) ny[k] = cs * ay[k] + sn * ax[k], nx[k] = cs * ax[k] - sn * ay[k];
+            memcpy(ax, nx, 12), memcpy(ay, ny, 12);
+        }
+        float alpha = 1.0f;
+        fvalue(c, q, c->def + D_ALPHA, &alpha);
+        alpha = alpha < 0.0f ? 0.0f : alpha > 1.0f ? 1.0f : alpha;
+        uint16_t a8 = (uint16_t)round_small(alpha * 255.0f);
+        Val t = { .u = 0xffffffffu };
+        value(c, q, c->def + D_TINT, &t);
+        unsigned fl = (spec->decal_static ? DECAL_STATIC : 0) | ((flags2(c) & 0x400000) ? DECAL_CULL : 0) |
+                      ((flags2(c) & 0x200000) ? DECAL_UNSHADED : 0);
+        uint32_t id = decal_create(tex, (int32_t)loc->quad, fl, wrap, dir, loc->pos, loc->normal, ay, ax, xs, ys, a8, t.u);
+        if (!id) {
+            kill_now(c, q);
+            return NULL;
+        }
+        q->flags |= spec->decal_static ? P_DECAL_STATIC : P_DECAL_DYNAMIC;
+        wr32(db, id);
+        wr32(db + 4, q->handle);
+        decal_set_owner(id, q->handle);
+    }
+    setup_attractor(c, q);
+    run_event(c, q, P3_EV_CREATE, c->def + D_EVENTS + 4 * P3_EV_CREATE, (float)loc->tick * 0.016666668f, 0.0f, false);
+    return (q->flags & P_DEAD) ? NULL : q;
+}
+
 uint32_t p3_tick(void) { return last_tick; }

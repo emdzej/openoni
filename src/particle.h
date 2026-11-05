@@ -49,6 +49,40 @@ void p3_update(uint32_t tick, bool gameplay, Character **chars, int nchars);
 /* p3_removedangerous (0x50aaf0, 0x458310; also ONrGameState_BeginCutscene without "keepparticles"): the
    dangerous particles go at the next update. */
 void p3_remove_dangerous(void);
+/* P3rCreateEffect 0x456030's arguments. The specification (0x14 bytes, the impact effects' particles
+   from +0x40): the class, how the effect is turned and where it is put. */
+enum {
+    P3_ORIENT_PARENT = 0, P3_ORIENT_REVERSE = 1, P3_ORIENT_REFLECT = 2, P3_ORIENT_NORMAL = 3,
+    P3_LOC_DEFAULT = 0, P3_LOC_OFFSET = 1, P3_LOC_DECAL = 4, P3_LOC_ATTACHED = 5,
+};
+typedef struct {
+    P3Class *cls;               /* +0x00 */
+    uint32_t orientation;       /* +0x04: P3_ORIENT_*, 0..3 */
+    uint32_t location;          /* +0x08: P3_LOC_*, 0..5 (2 and 3: the place is left alone) */
+    float offset;               /* +0x0c: along the normal, for P3_LOC_OFFSET */
+    bool decal_static, decal_random_rotation;   /* +0x0c, +0x0d for a decal (the same bytes) */
+} P3EffectSpec;
+/* Where (the location, 0x6c bytes): the kinds of what was hit. */
+enum { P3_HIT_NONE = 0, P3_HIT_WALL = 1, P3_HIT_CHARACTER = 2, P3_HIT_NONE_ATTACHED = 4 };
+typedef struct {
+    uint32_t tick;              /* +0x00: when */
+    uint32_t owner;             /* +0x04: the damage's owner (P3_X_OWNER) */
+    float pos[3];               /* +0x08 */
+    float vel[3];               /* +0x14 */
+    float normal[3];            /* +0x20: the hit's */
+    float up[3];                /* +0x2c: a decal's axis (zero: one across the normal) */
+    float decal_scale[2];       /* +0x38, +0x3c: a decal's size, times its class's */
+    P3Class *parent_cls;        /* +0x40: the particle it comes from */
+    P3Particle *parent;         /* +0x44 */
+    const float *orientation;   /* +0x48: 3x3, NULL none */
+    const float *dir;           /* +0x4c: the parent's velocity, NULL none */
+    const float *attach;        /* +0x50: the matrix it hangs from, NULL none */
+    uint32_t kind;              /* +0x54: P3_HIT_* */
+    uint32_t quad;              /* +0x58: the wall's (P3_HIT_WALL) */
+    Character *chr;             /* +0x58: the character's (P3_HIT_CHARACTER) */
+} P3EffectLoc;
+/* P3rCreateEffect 0x456030: the particle made, NULL if none (a decal's, once made, in its list). */
+P3Particle *p3_create_effect(const P3EffectSpec *spec, const P3EffectLoc *loc);
 /* P3rCreateEffect 0x456030's common part: a particle at pos with vel and orient (3x3, NULL along the
    velocity), its create event. NULL if none could be made. */
 P3Particle *p3_effect(P3Class *c, const float pos[3], const float vel[3], const float *orient, uint32_t tick);

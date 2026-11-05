@@ -59,6 +59,12 @@ void sound_music_start(const char *name, float volume);
 void sound_music_stop(const char *name);
 void sound_music_volume(const char *name, float volume, float seconds);
 void sound_impulse_play(const char *name, float volume);
+/* An impulse by name (OSrImpulse_GetByName 0x512440, the scripts' case-insensitive lookup), NULL if none;
+   its impact velocity (+0x84); OSrImpulse_Play 0x512480: at pos (NULL: at the listener), volume NULL
+   for full. */
+const void *sound_impulse_find(const char *name);
+float sound_impulse_impact_velocity(const void *impulse);
+void sound_impulse_play_at(const void *impulse, const float pos[3], const float *volume);
 /* ONrGameState_EventSound_Play 0x4fdac0: the game's event sound of that index (the impulse named in
    the game settings, ONGS+0x7d0, 32 bytes each, 18 of them; SSrImpulse_UpdateGroupPointers 0x4f49b0),
    not placed. */

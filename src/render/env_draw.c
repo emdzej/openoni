@@ -17,6 +17,8 @@ typedef struct {
 
 static unsigned mesh;
 static const void *loaded_env;
+
+const void *env_draw_environment(void) { return loaded_env; }
 static uint32_t loaded_serial;
 static Range *ranges;
 static uint32_t n_ranges, n_solid;

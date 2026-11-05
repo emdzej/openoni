@@ -57,6 +57,11 @@ const uint8_t *akev_points(const void *env, uint32_t *count);      /* 3 floats *
 const uint8_t *akev_texcoords(const void *env, uint32_t *count);   /* 2 floats */
 const uint8_t *akev_planes(const void *env, uint32_t *count);      /* a, b, c, d */
 void akev_bounds(const void *env, float box[6]);
+/* The quads' raw records, as stored: AGQG (0x38 each: corners, texture coordinates, shades, flags at
+   +0x30), AGQC (0x1c: the plane's index, bit 31 its sign, then the box), AGQR (4: texture, a u16). */
+const uint8_t *akev_quad_records(const void *env, uint32_t *count);
+const uint8_t *akev_collision_records(const void *env, uint32_t *count);
+const uint8_t *akev_render_records(const void *env, uint32_t *count);
 uint32_t akev_quad_count(const void *env);
 /* Quad i; false if i is out of range or the quad's indices are past their arrays. */
 bool akev_quad(const void *env, uint32_t i, AkevQuad *q);

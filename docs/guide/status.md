@@ -160,12 +160,17 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   answer the scripts' `particle` command. The characters' animations make theirs too, hanging from the
   bones: the dust and trails of the moves, the ninja's fireballs and
   teleports.
+- **The impact effects**: what a hit makes, picked by the game's own table from the kind of blow or
+  shot and the material it meets (stone, metal, glass, flesh, the shields). The bullets' sparks,
+  dust and sounds on the walls and on the characters come from it.
+- **Decals**: the bullet holes and scorch marks, laid on the walls, cut to their shapes and folded
+  round their corners; they fade, and the oldest give way to new ones as the original's do.
 - **Sound** from the game's own sound groups.
 
 ## Not yet
 
-- The particles' decals (bullet holes), homing, and their sounds.
-- The impact effects (the hit sparks' classes). The power-ups' physics and glow, and the
+- The particles' homing and their sounds; the characters' decals.
+- The melee's impact effects, and the guards hearing the impacts. The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.
 - The intro and outro movies. Of the cheat codes: the shapeshifter's class change, behemoth's reactions
