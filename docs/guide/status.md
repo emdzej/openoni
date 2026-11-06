@@ -163,7 +163,10 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   as walls come between them and the camera. The level's own emitters (smoke, sparks, steam) run and
   answer the scripts' `particle` command. The characters' animations make theirs too, hanging from the
   bones: the dust and trails of the moves, the ninja's fireballs and
-  teleports.
+  teleports. Homing shots seek their targets as the original's do: the Scram Cannon's and the Screaming
+  Cannon's rockets, the sniper's rounds and the Van de Graaff's bolts, aimed at each foe in reach, find
+  the nearest one in front of them and turn towards it at their own rate; the power-ups' and the
+  overpower's glows are drawn to what they hang from.
 - **The impact effects**: what a hit makes, picked by the game's own table from the kind of blow or
   shot and the material it meets (stone, metal, glass, flesh, the shields). The bullets' sparks,
   dust and sounds on the walls and on the characters come from it, and the blows' flashes and sounds,
@@ -175,7 +178,7 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 
 ## Not yet
 
-- The particles' homing and their sounds.
+- The particles' sounds.
 - The weapons' physics (they rest where they drop) and their falls' impact effects. The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.

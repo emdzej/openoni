@@ -3,10 +3,10 @@
    the walls and the characters, and their damage. Weapons' shooters, projectiles, sparks, glass and
    smoke are all particles; so are the animations' own (docs/re/character.md, "The animation's particles").
 
-   Not ported yet (stand-ins marked in the code): the decals (bullet holes), the attractors (homing),
-   the impact effects (ONrImpactEffect: their sounds and particles), the particles' sounds, the AI's
-   knowledge of dangerous projectiles and the flyby sounds (the callbacks of ONrParticle3_Initialize),
-   the physics objects other than the characters, the lens flares and the detail levels. */
+   The attractors (homing: P3rFindAttractor, the iterators and selectors, the attract actions and the
+   emitters' aim at them) are ported. Not ported yet (stand-ins marked in the code): the particles'
+   sounds, the AI's knowledge of dangerous projectiles and the flyby sounds (the callbacks of
+   ONrParticle3_Initialize), the physics objects other than the characters and the detail levels. */
 #pragma once
 #include "character.h"
 

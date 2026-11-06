@@ -82,7 +82,7 @@ near them, and the `door_*` commands ([docs/re/door.md](docs/re/door.md)). `src/
   (`src/env.c`, with the textures' materials: `src/material.c`) run on it. `src/render/particle_draw.c` draws the sprites,
   geometry, vectors, contrails and lens flares; `src/decal.c` the decals (bullet holes, cut to the walls'
   quads and folded over their edges, [docs/re/decal.md](docs/re/decal.md)), drawn by
-  `src/render/decal_draw.c`; attractors and particle sounds are stand-ins. `src/impact.c`: the impact effects (the Impt and Mtrl
+  `src/render/decal_draw.c`; the attractors (homing) in `src/particle.c`; particle sounds are stand-ins. `src/impact.c`: the impact effects (the Impt and Mtrl
   trees, the ONIE table, ONrImpactEffect) the particles' impact action plays ([docs/re/impact.md](docs/re/impact.md)).
 - Aiming (the aiming screens in `src/chr_anim.c`, the recoil in `src/character.c`), reloading
   (`src/weapon.c`) and powerups (`src/powerup.c`): level 1's training plays through to its end.

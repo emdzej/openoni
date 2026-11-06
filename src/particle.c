@@ -16,6 +16,7 @@
 #include "chr_hit.h"
 #include "decal.h"
 #include "impact.h"
+#include "knowledge.h"
 #include "material.h"
 #include "exe.h"
 #include "m3gm.h"
@@ -1178,20 +1179,367 @@ static void construct_orientation(int dir, int up, const float *parent, const fl
 /* ---- emitting ---- */
 
 static void setup_new(P3Class *k, P3Particle *q, uint32_t tick);
-static void setup_attractor(P3Class *k, P3Particle *q)
+
+/* ---- the attractors ---- */
+
+/* An attractor is a particle (its handle, bit 31) or a character (its slot | 0x40000000). The class
+   names how to find one (+0x220: the iterator over the candidates, 0x53b714; +0x224: the selector that
+   keeps the best, 0x53b75c) and the distance (+0x26c); the angle selector its cone (+0x288 the widest,
+   +0x2a4 and +0x2c0 the angles the weight is blended between, +0x2dc the weight). */
+enum {
+    D_ATTRACT_ANGLE_MIN = 0x2a4, D_ATTRACT_ANGLE_MAX = 0x2c0, D_ATTRACT_WEIGHT = 0x2dc,
+    ATTRACT_CHARACTER = 0x40000000u,
+};
+
+/* The character of an owner (WPrOwner_GetCharacter 0x51cda0): the kinds 0x1000000 and 0x2000000. */
+static Chr *owner_character(uint32_t owner)
 {
-    uint8_t *b;
-    if ((b = block(k, q, P3_X_ATTRACTOR))) {   /* the attractor (not ported): none */
-        wr32(b, 0xffffffffu);
-        wr32(b + 4, q->tick + (uint32_t)(trac_local_random() * 10u / 0xffffu));
+    uint32_t kind = owner & 0xff000000u;
+    for (int i = 0; (kind == 0x1000000u || kind == 0x2000000u) && i < chars_slots(); i++) {
+        Chr *ch = chars_get(i);
+        if (ch && chars_in_use(ch) && ch->c.id == (owner & 0xffffff)) return ch;
     }
+    return NULL;
+}
+static Chr *character_by_id(uint32_t id)
+{
+    for (int i = 0; i < chars_slots(); i++) {
+        Chr *ch = chars_get(i);
+        if (ch && chars_in_use(ch) && ch->c.id == id) return ch;
+    }
+    return NULL;
+}
+/* Where a character attracts: with an active part its bone 8's place (0x4eaf70, A+0x2278), else the
+   pelvis (ONrCharacter_GetPelvisPosition 0x4e34f0). */
+static void character_attract_point(const Character *c, float out[3])
+{
+    const float *m = c->bone_world[8];
+    if (m[0] != 0.0f || m[4] != 0.0f || m[8] != 0.0f) {
+        out[0] = m[9], out[1] = m[10], out[2] = m[11];
+        return;
+    }
+    out[0] = c->pos[0], out[1] = c->pos[1] + c->pelvis_height, out[2] = c->pos[2];
+}
+
+/* The search's state (0x5e9600 to 0x5e96ac): the searching particle's place, the distance squared,
+   the characters' walk, the owner and its team; the selectors' best and the current attractor. */
+static struct {
+    float here[3], max2;
+    int next;
+    const Chr *owner;
+    uint32_t team;
+    float best;
+    uint32_t current;
+    float dir[3], angle_min, angle_max, weight, angle_cut;
+} as;
+
+/* An iterator: the first call (pos NULL) starts it with the distance; each next gives a candidate (its
+   place, distance and id), false when there are no more. */
+typedef bool (*AttractIterator)(P3Class *c, P3Particle *p, float pos[3], float *dist, uint32_t *id);
+
+/* "link" (P3iAttractorIterator_Link 0x4635b0): the particle it is linked to (+0x30), once, while it lives and is near enough. */
+static bool iterate_link(P3Class *c, P3Particle *p, float pos[3], float *dist, uint32_t *id)
+{
+    if (!pos) {
+        if (!p3_real_position(c, p, as.here)) return false;
+        as.max2 = *dist * *dist;
+        return true;
+    }
+    uint32_t h = p->link;
+    if (!h || *id == h) return false;
+    P3Particle *l = from_handle(h);
+    if (!l || !p3_real_position(&classes[l->cls], l, pos)) return false;
+    float d[3] = { as.here[0] - pos[0], as.here[1] - pos[1], as.here[2] - pos[2] }, d2 = dot3(d, d);
+    if (!(d2 <= as.max2)) return false;
+    *id = h;
+    *dist = sqrtf(d2);
+    return true;
+}
+
+/* "characters", "hostiles" and "all characters" (P3iAttractorIterator_Character 0x4638b0): the living characters near enough; all but
+   the owner's for the first two (unless "all", 8), the hostiles only those not friends of the owner's
+   team (AI2rTeam_FriendOrFoe 0x48b2c0), the Syndicate's (2) when the owner has no character. */
+static bool iterate_characters(P3Class *c, P3Particle *p, float pos[3], float *dist, uint32_t *id)
+{
+    uint32_t kind = rd32(c->def + D_ATTRACTOR);
+    if (!pos) {
+        if (!p3_real_position(c, p, as.here)) return false;
+        as.max2 = *dist * *dist;
+        as.next = 0;
+        as.team = 0xffff;
+        as.owner = NULL;
+        const uint8_t *ob = block(c, p, P3_X_OWNER);
+        if (kind != 8 && ob) {
+            uint32_t owner = rd32(ob), k = owner & 0xff000000u;
+            if (k == 0x1000000u || k == 0x2000000u) {
+                as.owner = owner_character(owner);
+                as.team = as.owner ? as.owner->team : 2;
+            }
+        }
+        return true;
+    }
+    while (as.next < chars_slots()) {
+        const Chr *ch = chars_get(as.next++);
+        if (!ch || !chars_in_use(ch) || (ch->c.flags & 1)) continue;      /* C+0x04 1: dead */
+        if (kind == 4 && ch == as.owner) continue;
+        if (kind == 5 && as.team != 0xffff && (ch == as.owner || ai_team_relation(as.team, ch->team) == 0)) continue;
+        character_attract_point(&ch->c, pos);
+        float d[3] = { as.here[0] - pos[0], as.here[1] - pos[1], as.here[2] - pos[2] }, d2 = dot3(d, d);
+        if (!(d2 <= as.max2)) continue;
+        *id = ch->c.id | ATTRACT_CHARACTER;
+        *dist = sqrtf(d2);
+        return true;
+    }
+    return false;
+}
+
+/* The selectors keep the best candidate in *found, the current attractor's score lessened by 0.9
+   (0x5295a4), the others' only when in sight if the class asks (flags2 2: AKrCollision_Point, 0x44800).
+   The first call (pos NULL) starts it; false then stops the search. */
+typedef bool (*AttractSelector)(P3Class *c, P3Particle *p, const float pos[3], float dist, uint32_t id, uint32_t *found);
+
+static bool attract_unseen(P3Class *c, const float pos[3])
+{
+    static AkevHit h[AKEV_HITS_MAX];
+    if (!(flags2(c) & 2) || !env) return false;
+    float v[3] = { pos[0] - as.here[0], pos[1] - as.here[1], pos[2] - as.here[2] };
+    return akev_collide_point(env, as.here, v, 0x44800, 0, h) != 0;
+}
+
+/* "distance" (P3iAttractorSelector_Distance 0x463ab0): the nearest. */
+static bool select_distance(P3Class *c, P3Particle *p, const float pos[3], float dist, uint32_t id, uint32_t *found)
+{
+    if (!pos) {
+        as.best = 1e9f;     /* 0x4e6e6b28 */
+        as.current = id;
+        return p3_real_position(c, p, as.here);
+    }
+    float score = dist;
+    if (id == as.current) score *= 0.9f;
+    else if (attract_unseen(c, pos)) return false;
+    if (score <= as.best) as.best = score, *found = id;
+    return false;
+}
+
+/* "angle" (P3iAttractorSelector_Conical 0x463be0): the nearest by the distance weighted by the angle off the particle's heading (its
+   orientation's, else its velocity, through the attachment): 1 within the smaller angle, blended to the
+   weight up to the larger, the weight then up to the widest, none past it. */
+static bool select_angle(P3Class *c, P3Particle *p, const float pos[3], float dist, uint32_t id, uint32_t *found)
+{
+    if (!pos) {
+        as.best = 1e9f;
+        as.current = id;
+        if (!p3_real_position(c, p, as.here)) return false;
+        const float *o = fblock(c, p, P3_X_ORIENTATION), *v = fblock(c, p, P3_X_VELOCITY);
+        if (o) memcpy(as.dir, o + 3, 12);
+        else if (v) memcpy(as.dir, v, 12);
+        else return false;
+        const uint8_t *at = block(c, p, P3_X_ATTACH);
+        const float *m = at ? attach_matrix(rd32(at)) : NULL;
+        if (m) m3_apply(m, as.dir, as.dir);
+        float l = 1.0f / sqrtf(dot3(as.dir, as.dir));
+        as.dir[0] *= l, as.dir[1] *= l, as.dir[2] *= l;
+        if (!fvalue(c, p, c->def + D_ATTRACT_ANGLE_MIN, &as.angle_min) ||
+            !fvalue(c, p, c->def + D_ATTRACT_ANGLE_MAX, &as.angle_max) ||
+            !fvalue(c, p, c->def + D_ATTRACT_WEIGHT, &as.weight) ||
+            !fvalue(c, p, c->def + D_ATTRACT_ANGLE, &as.angle_cut))
+            return false;
+        as.angle_min *= 0.017453292f, as.angle_max *= 0.017453292f, as.angle_cut *= 0.017453292f;
+        return true;
+    }
+    float d[3] = { pos[0] - as.here[0], pos[1] - as.here[1], pos[2] - as.here[2] };
+    float l = 1.0f / sqrtf(dot3(d, d));
+    d[0] *= l, d[1] *= l, d[2] *= l;
+    float dt = dot3(as.dir, d), a = acosf(dt < -1.0f ? -1.0f : dt > 1.0f ? 1.0f : dt);   /* 0x433e00 */
+    float score = dist;
+    if (a < as.angle_min) score = dist;
+    else if (a < as.angle_max) score = ((a - as.angle_min) * (as.weight - 1.0f) / (as.angle_max - as.angle_min) + 1.0f) * dist;
+    else if (a < as.angle_cut) score = as.weight * dist;
+    else return false;
+    if (id == as.current) score *= 0.9f;
+    else if (attract_unseen(c, pos)) return false;
+    if (score <= as.best) as.best = score, *found = id;
+    return false;
+}
+
+/* The iterators by the class's kind (0x53b714): none, link, class and tag (not ported: no class of the
+   game's uses them), characters, hostiles, emitted towards and the parent's attractor (no function), all
+   characters. The selectors (0x53b75c): distance, angle. */
+static AttractIterator attract_iterator(uint32_t kind)
+{
+    switch (kind) {
+    case 1: return iterate_link;
+    case 4: case 5: case 8: return iterate_characters;
+    default: return NULL;
+    }
+}
+
+/* P3rFindAttractor 0x463430: the attractor looked for, when due (delay 0: at its creation, unless attracted already; else
+   once the tick reaches the next search's): the iterator's candidates through the selector. The next search
+   is the delay on, plus up to 10 ticks at random while it had none. */
+static void attractor_search(P3Class *c, P3Particle *p, uint32_t delay)
+{
+    uint8_t *b = block(c, p, P3_X_ATTRACTOR);
+    if (!b) return;
+    if (delay == 0) {
+        if (p->flags & P_ATTRACTED) return;
+        wr32(b, 0xffffffffu);
+        wr32(b + 4, p->tick);
+    } else if (p->tick < rd32(b + 4)) {
+        return;
+    }
+    AttractIterator it = attract_iterator(rd32(c->def + D_ATTRACTOR));
+    uint32_t sk = rd32(c->def + D_SELECTOR);
+    AttractSelector sel = sk == 0 ? select_distance : sk == 1 ? select_angle : NULL;
+    if (!it || !sel) return;
+    uint32_t found = 0xffffffffu, id = 0xffffffffu;
+    float dist = 0.0f, pos[3];
+    fvalue(c, p, c->def + D_ATTRACT_DIST, &dist);
+    if (it(c, p, NULL, &dist, NULL) && sel(c, p, NULL, dist, rd32(b), NULL)) {
+        float d;
+        while (it(c, p, pos, &d, &id) && !sel(c, p, pos, d, id, &found)) {}
+    }
+    uint32_t next = delay;
+    if (!(p->flags & P_ATTRACTED)) next += (uint32_t)(trac_local_random() * 10u / 0xffffu);    /* 0x426e30 */
+    wr32(b, found);
+    if (found == 0xffffffffu) p->flags &= ~(uint32_t)P_ATTRACTED;
+    else p->flags |= P_ATTRACTED;
+    wr32(b + 4, p->tick + next);
+}
+static void setup_attractor(P3Class *k, P3Particle *q) { attractor_search(k, q, 0); }
+
+/* The attractors an emitter aims at (0x6a85e0, up to 32; the count 0x6a8714, listed 0x659cdc). */
+static uint32_t att_list[32], att_count;
+static bool att_listed;
+
+/* P3rIterateAttractors 0x4630c0: every candidate of the class's iterator, within the angle selector's
+   widest angle (when under 180) off the heading and in sight if asked, into the list; the class's own
+   attractor the first of them. With no iterator, its current attractor. */
+static void iterate_attractors(P3Class *c, P3Particle *p, uint32_t delay)
+{
+    uint8_t *b = block(c, p, P3_X_ATTRACTOR);
+    if (!b || (delay && p->tick < rd32(b + 4))) return;
+    att_count = 0;
+    att_listed = true;
+    AttractIterator it = attract_iterator(rd32(c->def + D_ATTRACTOR));
+    if (!it) {
+        if (rd32(b) != 0xffffffffu) att_count = 1, att_list[0] = rd32(b);
+        return;
+    }
+    float dist = 0.0f, pos[3], d;
+    uint32_t id = 0xffffffffu;
+    fvalue(c, p, c->def + D_ATTRACT_DIST, &dist);
+    if (it(c, p, NULL, &dist, NULL)) {
+        bool cone = false;
+        float most = 0.0f, here[3], dir[3] = { 0, 0, 0 };
+        if (rd32(c->def + D_SELECTOR) == 1 && fvalue(c, p, c->def + D_ATTRACT_ANGLE, &most) && most < 180.0f) {
+            cone = true;
+            most *= 0.017453292f;
+            if (!p3_real_position(c, p, here)) return;
+            const float *o = fblock(c, p, P3_X_ORIENTATION), *v = fblock(c, p, P3_X_VELOCITY);
+            if (o) memcpy(dir, o + 3, 12);
+            else if (v) memcpy(dir, v, 12);
+            else cone = false;
+            if (cone) {
+                const uint8_t *at = block(c, p, P3_X_ATTACH);
+                const float *m = at ? attach_matrix(rd32(at)) : NULL;
+                if (m) m3_apply(m, dir, dir);
+                float l = 1.0f / sqrtf(dot3(dir, dir));
+                dir[0] *= l, dir[1] *= l, dir[2] *= l;
+            }
+        }
+        while (att_count < 32 && it(c, p, pos, &d, &id)) {
+            if (cone) {
+                float u[3] = { pos[0] - here[0], pos[1] - here[1], pos[2] - here[2] };
+                float l = 1.0f / sqrtf(dot3(u, u));
+                u[0] *= l, u[1] *= l, u[2] *= l;
+                float k = dot3(dir, u);
+                if (!(acosf(k < -1.0f ? -1.0f : k > 1.0f ? 1.0f : k) <= most)) continue;   /* 0x433e00 */
+            }
+            if (attract_unseen(c, pos)) continue;
+            att_list[att_count++] = id;
+        }
+    }
+    wr32(b, att_count ? att_list[0] : 0xffffffffu);
+    wr32(b + 4, p->tick + delay);
+}
+
+/* P3rDecodeAttractorIndex 0x462f20: the attractor's place (and its velocity if asked: a particle's own, a character's last move
+   per second), false when it is gone. */
+static bool attractor_position(uint32_t id, bool want_velocity, float pos[3], float vel[3])
+{
+    if (id == 0xffffffffu) return false;
+    if (id & 0x80000000u) {
+        P3Particle *q = from_handle(id);
+        if (!q) return false;
+        P3Class *k = &classes[q->cls];
+        if (!p3_real_position(k, q, pos)) return false;
+        if (want_velocity && vel) {
+            const float *v = fblock(k, q, P3_X_VELOCITY);
+            if (v) memcpy(vel, v, 12);
+            else vel[0] = vel[1] = vel[2] = 0.0f;
+        }
+        return true;
+    }
+    if (!(id & ATTRACT_CHARACTER)) return false;
+    const Chr *ch = character_by_id(id & ~ATTRACT_CHARACTER);
+    if (!ch) return false;
+    character_attract_point(&ch->c, pos);
+    if (want_velocity && vel)
+        for (int k = 0; k < 3; k++) vel[k] = (ch->c.pos[k] - ch->c.prev_pos[k]) * 60.0f;
+    return true;
+}
+
+/* MUrQuat_SetFromTwoVectors 0x433590: the rotation taking a to b (both normalised, then 0x433670): none
+   when they agree, a half turn about an axis off b when they are opposite. */
+static void quat_between(const float a0[3], const float b0[3], float q[4])
+{
+    float a[3] = { a0[0], a0[1], a0[2] }, b[3] = { b0[0], b0[1], b0[2] };
+    float la = 1.0f / sqrtf(dot3(a, a)), lb = 1.0f / sqrtf(dot3(b, b));
+    for (int k = 0; k < 3; k++) a[k] *= la, b[k] *= lb;
+    float d = dot3(a, b);
+    if (d > 0.99999f) {     /* 0x529cf4 */
+        q[0] = q[1] = q[2] = 0.0f, q[3] = 1.0f;
+        return;
+    }
+    if (d < -0.99999f) {    /* the original's axis: (0, b.x, -b.y), or (-b.z, 0, b.x) when b is along z */
+        float x = 0.0f, y = b[0], z = -b[1];
+        if (sqrtf(b[0] * b[0] + b[1] * b[1]) < 1e-6f) x = -b[2], y = 0.0f, z = b[0];
+        float l = 1.0f / sqrtf(z * z + y * y + x * x);
+        q[0] = x * l, q[1] = y * l, q[2] = z * l, q[3] = 0.0f;
+        return;
+    }
+    float cx = a[2] * b[1] - a[1] * b[2], cy = a[0] * b[2] - a[2] * b[0], cz = a[1] * b[0] - a[0] * b[1];
+    float l = 1.0f / sqrtf(cz * cz + cy * cy + cx * cx), s = sqrtf((1.0f - d) * 0.5f);
+    q[0] = l * cx * s, q[1] = l * cy * s, q[2] = l * cz * s;
+    q[3] = sqrtf((d + 1.0f) * 0.5f);
+}
+/* MUrQuat_GetValue 0x433490: the rotation's axis (its vector over its length squared, as the original has it) and angle;
+   about z by none when there is no turn. */
+static void quat_axis_angle(const float q[4], float axis[3], float *angle)
+{
+    float s2 = q[2] * q[2] + q[1] * q[1] + q[0] * q[0];
+    if (!(s2 > 1e-6)) {
+        axis[0] = axis[1] = 0.0f, axis[2] = 1.0f, *angle = 0.0f;
+        return;
+    }
+    float r = 1.0f / s2;
+    axis[0] = r * q[0], axis[1] = r * q[1], axis[2] = r * q[2];
+    *angle = 2.0f * acosf(q[3]);
+}
+/* MUrQuat_SetValue 0x433530: the rotation about the axis (normalised) by the angle. */
+static void quat_from_axis(const float axis[3], float angle, float q[4])
+{
+    float h = angle * 0.5f, l = 1.0f / sqrtf(axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]);
+    float s = sinf(h) * l;
+    q[0] = axis[0] * s, q[1] = axis[1] * s, q[2] = axis[2] * s, q[3] = cosf(h);
 }
 
 /* P3iEmitParticle 0x45d610: the emitter's burst at the time: its count (the fraction a chance of one
    more), each particle placed (position kind), aimed (direction kind) at its speed, linked, owned,
    oriented, then its create event. The emitter's state keeps the last one. True if the emitting
-   particle died (following its link). Not ported: the attractors' emitting (rate 4, direction 6, one per
-   attractor), the bodies' surfaces and bones (positions 6 and 7: the parent's place). */
+   particle died (following its link). Not ported: the bodies' surfaces and bones (positions 6 and 7: the
+   parent's place). */
 static bool emit(P3Class *c, P3Particle *p, unsigned k, float time)
 {
     uint8_t *e = emitters_of(c) + (size_t)k * EMITTER;
@@ -1207,10 +1555,30 @@ static bool emit(P3Class *c, P3Particle *p, unsigned k, float time)
     int32_t count = fround(n) & 0xffff;
     float frac = n - (float)count;
     if (frac > 0.001f && urand() < frac) count++;
+    /* the attractors: aimed at (direction 6) or handed on (the new class's "emitted towards", 6), the
+       burst one each if the emitter asks (0x100; at least one with 0x200), its particles shared out */
+    uint32_t ef = rd32(e + E_FLAGS), per = 0, aim = 0xffffffffu;
+    bool use_attr = rd32(e + E_DIRECTION) == 6 || rd32(ec->def + D_ATTRACTOR) == 6;
+    if (use_attr) iterate_attractors(c, p, 0);
+    if (att_listed && (ef & 0x100)) {
+        per = (uint32_t)count;
+        uint32_t m = att_count;
+        if ((ef & 0x200) && (m & 0xffff) <= 1) m = 1;
+        count = (int32_t)(m * (uint32_t)count);
+    }
+    if (!(count & 0xffff)) return false;
+    float ehere[3];
+    if (rd32(e + E_DIRECTION) == 6 && !p3_real_position(c, p, ehere)) return true;
     uint32_t tick = round_small(time * 60.0f);
-    for (int32_t i = 0; i < count; i++) {
+    for (int32_t i = 0; i < (count & 0xffff); i++) {
         float off[3] = { 0, 0, 0 }, dir[3] = { 0, 1, 0 }, speed = 0.0f, r = 0.0f, a, b;
         float f0 = 0, f1 = 0, f2 = 0;
+        bool world = false;
+        if (att_listed && att_count && use_attr) {
+            uint32_t ix = (per & 0xffff) && (ef & 0x100) ? (uint32_t)(i & 0xffff) / (per & 0xffff)
+                        : ((uint32_t)(i & 0xffff) + ((ef & 0x400) ? rd16(st + ES_COUNT) : 0u)) % att_count;
+            if (ix < att_count) aim = att_list[ix];
+        }
         switch (rd32(e + E_POSITION)) {
         case 1:     /* line */
             if (fvalue(c, p, eparam(e, 2), &f0)) {
@@ -1312,7 +1680,16 @@ static bool emit(P3Class *c, P3Particle *p, unsigned k, float time)
             }
             dir[0] = f0, dir[1] = f1, dir[2] = f2;
             break;
-        default:    /* straight (up); the attractor's: not ported */
+        case 6: {   /* towards its attractor, in the world's frame */
+            float at[3];
+            if (aim == 0xffffffffu || !attractor_position(aim, false, at, NULL)) break;
+            dir[0] = at[0] - ehere[0], dir[1] = at[1] - ehere[1], dir[2] = at[2] - ehere[2];
+            float l = 1.0f / sqrtf(dir[2] * dir[2] + dir[0] * dir[0] + dir[1] * dir[1]);
+            dir[0] *= l, dir[1] *= l, dir[2] *= l;
+            world = true;
+            break;
+        }
+        default:    /* straight (up) */
             break;
         }
         if (rd32(e + E_SPEED) == 0) fvalue(c, p, eparam(e, 8), &speed);
@@ -1370,8 +1747,8 @@ static bool emit(P3Class *c, P3Particle *p, unsigned k, float time)
         }
         float *qvel = fblock(ec, q, P3_X_VELOCITY);
         if (qvel) {
-            if (porient) m3_apply(porient, dir, dir);
-            if (matrix) m3_apply(matrix, dir, dir);
+            if (!world && porient) m3_apply(porient, dir, dir);
+            if (!world && matrix) m3_apply(matrix, dir, dir);
             qvel[0] = speed * dir[0], qvel[1] = speed * dir[1], qvel[2] = speed * dir[2];
             const float *pvel = fblock(c, p, P3_X_VELOCITY);
             if ((rd32(e + E_FLAGS) & 0x10) && pvel)
@@ -1386,6 +1763,15 @@ static bool emit(P3Class *c, P3Particle *p, unsigned k, float time)
                 parent = pm;
             }
             construct_orientation((int)rd32(e + E_ORIENT_DIR), (int)rd32(e + E_ORIENT_UP), parent, off, dir, qorient);
+        }
+        uint8_t *qa = block(ec, q, P3_X_ATTRACTOR);
+        uint32_t qk = rd32(ec->def + D_ATTRACTOR);
+        if (qa && (qk == 6 || qk == 7)) {   /* its attractor: the one aimed at (6) or the emitter's (7) */
+            wr32(qa + 4, (uint32_t)(trac_local_random() * 10u / 0xffffu) + tick);
+            const uint8_t *pa = block(c, p, P3_X_ATTRACTOR);
+            uint32_t h = qk == 6 ? aim : pa ? rd32(pa) : 0xffffffffu;
+            wr32(qa, h);
+            if (h != 0xffffffffu) q->flags |= P_ATTRACTED;
         }
         setup_new(ec, q, tick);
         wr32(st + ES_LAST, q->handle);
@@ -2221,8 +2607,98 @@ static bool do_action(Act *x)
     case A_ROTATE_X: rotate(x, 0); return false;
     case A_ROTATE_Y: rotate(x, 1); return false;
     case A_ROTATE_Z: rotate(x, 2); return false;
-    case A_FIND_ATTRACTOR: case A_ATTRACT_GRAVITY: case A_ATTRACT_HOMING: case A_ATTRACT_SPRING:
-        return false;   /* the attractors: not ported */
+    case A_FIND_ATTRACTOR: {    /* P3iAction_FindAttractor 0x467720: the search, every so many seconds; the new attractor's event */
+        bool was = (p->flags & P_ATTRACTED) != 0;
+        if (!pf(x, 0, &f0)) return false;
+        attractor_search(c, p, round_small(f0 * 60.0f));
+        if (!was && (p->flags & P_ATTRACTED))
+            return run_event(c, p, P3_EV_NEW_ATTRACTOR, c->def + D_EVENTS + 4 * P3_EV_NEW_ATTRACTOR, x->time, 0.0f, false);
+        return false;
+    }
+    case A_ATTRACT_GRAVITY: {   /* P3iAction_AttractGravity 0x4677a0: towards the attractor by the strength over the distance squared */
+        const uint8_t *b = block(c, p, P3_X_ATTRACTOR);
+        float at[3], here[3], g, most;
+        Val flat = { .u = 0 };
+        if (!(p->flags & P_ATTRACTED) || !b || !attractor_position(rd32(b), false, at, NULL)) return false;
+        if (!(v = fblock(c, p, P3_X_VELOCITY))) return false;
+        if (!pf(x, 0, &g) || !pf(x, 1, &most) || !value(c, p, param(x->a, 2), &flat)) return false;
+        if (!p3_real_position(c, p, here)) return true;
+        float d[3] = { at[0] - here[0], at[1] - here[1], at[2] - here[2] };
+        float a = 100.0f / (d[2] * d[2] + d[1] * d[1] + d[0] * d[0]) * g;     /* 0x52a058 */
+        if (!(a <= most)) a = most;
+        if (flat.u) d[1] = 0.0f;    /* horizontal only */
+        v[0] += d[0] * a, v[1] += d[1] * a, v[2] += d[2] * a;
+        p->flags |= P_DIRTY;
+        return false;
+    }
+    case A_ATTRACT_HOMING: {    /* P3iAction_AttractHoming 0x467920: the velocity turned towards the attractor (led by its velocity
+                                   over the time to it, at most a second) by up to the rate (degrees a second) */
+        float here[3], rate, at[3], tv[3] = { 0, 0, 0 };
+        Val lead = { .u = 0 }, flat = { .u = 0 };
+        if (!(p->flags & P_ATTRACTED)) return false;
+        if (!p3_real_position(c, p, here)) return true;
+        if (!pf(x, 0, &rate) || !value(c, p, param(x->a, 1), &lead) || !value(c, p, param(x->a, 2), &flat)) return false;
+        const uint8_t *b = block(c, p, P3_X_ATTRACTOR);
+        if (!b || !attractor_position(rd32(b), (lead.u & 0xff) != 0, at, tv)) return false;
+        float d[3] = { at[0] - here[0], at[1] - here[1], at[2] - here[2] };
+        float d2 = d[2] * d[2] + d[1] * d[1] + d[0] * d[0];
+        if (d2 < 1e-4f) return false;   /* 0x5295dc */
+        const float *o = fblock(c, p, P3_X_ORIENTATION);
+        if (!(v = fblock(c, p, P3_X_VELOCITY))) return false;
+        float vy = v[1], speed = sqrtf(v[2] * v[2] + v[1] * v[1] + v[0] * v[0]), dist = sqrtf(d2);
+        if (speed < 1e-4f) {    /* still: set off towards it, or along its heading, slowly (0.001, 0x529dfc) */
+            if (!o) {
+                float k = 0.001f / dist;
+                v[0] = k * d[0], v[1] = k * d[1], v[2] = k * d[2];
+            } else {
+                v[0] = o[3] * 0.001f, v[1] = o[4] * 0.001f, v[2] = o[5] * 0.001f;
+            }
+        } else if (lead.u) {
+            float t = dist / speed;
+            if (!(t <= 1.0f)) t = 1.0f;
+            d[0] += tv[0] * t, d[1] += tv[1] * t, d[2] += tv[2] * t;
+        }
+        float q[4], axis[3], ang, m[9];
+        quat_between(v, d, q);
+        quat_axis_angle(q, axis, &ang);
+        float most = rate * x->dt * 0.017453292f;     /* 0x529550 */
+        if (!(ang <= most)) quat_from_axis(axis, most, q);
+        body_quat_to_matrix(q, m);      /* MUrQuatToMatrix 0x4338c0 */
+        m3_apply(m, v, v);
+        if (flat.u) v[1] = vy;
+        p->flags |= P_DIRTY;
+        return false;
+    }
+    case A_ATTRACT_SPRING: {    /* P3iAction_AttractSpring 0x467c50: towards the rest length from the attractor, by the stiffness
+                                   times the stretch, at most the most a step; at it, a random way */
+        float here[3], k, most, rest, at[3], dir[3];
+        if (!(p->flags & P_ATTRACTED)) return false;
+        if (!p3_real_position(c, p, here)) return true;
+        if (!(v = fblock(c, p, P3_X_VELOCITY))) return false;
+        if (!pf(x, 0, &k) || !pf(x, 1, &most) || !pf(x, 2, &rest)) return false;
+        const uint8_t *b = block(c, p, P3_X_ATTRACTOR);
+        if (!b || !attractor_position(rd32(b), false, at, NULL)) return false;
+        float d[3] = { at[0] - here[0], at[1] - here[1], at[2] - here[2] };
+        float dist = sqrtf(d[2] * d[2] + d[1] * d[1] + d[0] * d[0]);
+        if (dist < 0.001f) {
+            if (rest < dist) return false;
+            float s;
+            do {    /* a point in the unit ball (UUrLocalRandom, 0x52a050) */
+                for (int i = 0; i < 3; i++) dir[i] = (float)trac_local_random() * 3.0518044e-05f - 1.0f;
+                s = dir[2] * dir[2] + dir[1] * dir[1] + dir[0] * dir[0];
+            } while (!(s <= 1.0f));
+            float l = 1.0f / sqrtf(s);
+            dir[0] *= l, dir[1] *= l, dir[2] *= l;
+        } else {
+            float l = 1.0f / dist;
+            dir[0] = d[0] * l, dir[1] = d[1] * l, dir[2] = d[2] * l;
+        }
+        float a = (dist - rest) * k * x->dt;
+        if (!(a <= most)) a = most;
+        v[0] += a * dir[0], v[1] += a * dir[1], v[2] += a * dir[2];
+        p->flags |= P_DIRTY;
+        return false;
+    }
     case A_VELOCITY: {
         uint32_t f = flags1(c);
         if (free_move && (f & F1_COLLIDES) && !(f & 0x1c000) && !hit.hit) {

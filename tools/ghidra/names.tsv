@@ -1469,3 +1469,16 @@
 0051d080	WPrOutOfAmmoSound	WP	med	name from the Intel Mac build (neighbours:1.00)
 0051d180	WPrInventory_Weapon_Purge_Magic	WP	med	name from the Intel Mac build (strings:1)
 0051d1c0	TMrTemplate_SetupLayouts	TM	low	read: stores each template's layout pointer, then the table base (compiler-generated; name made up)
+00433490	MUrQuat_GetValue	MU	high	read: the quaternion's axis (its vector over its length squared) and angle (2 acos w); about z by 0 when no turn
+00433530	MUrQuat_SetValue	MU	high	read: the rotation about the (normalised) axis by the angle
+00433590	MUrQuat_SetFromTwoVectors	MU	high	read: both vectors normalised, then 0x433670 (identity past 0.99999, a half turn when opposite)
+00462f20	P3rDecodeAttractorIndex	P3	high	read: an attractor's place (and velocity): a particle (bit 31, its handle) or a character (0x40000000 | slot, bone 8 or the pelvis)
+00463430	P3rFindAttractor	P3	high	read: the class's iterator (0x53b714) through its selector (0x53b75c) when due; the next search the delay on (+ up to 10 ticks while none)
+004635b0	P3iAttractorIterator_Link	P3	high	read: the linked particle (+0x30) once, within the distance
+004636a0	P3iAttractorIterator_Class	P3	med	name from the Intel Mac build (the iterator table 0x53b714)
+004637a0	P3iAttractorIterator_Tag	P3	med	name from the Intel Mac build (the iterator table 0x53b714)
+004638b0	P3iAttractorIterator_Character	P3	high	read: the living characters within the distance (kinds 4 characters, 5 hostiles, 8 all), the owner's left out
+00467720	P3iAction_FindAttractor	P3	high	read: P3rFindAttractor every p0 seconds; event 13 (new attractor) when it finds one
+004677a0	P3iAction_AttractGravity	P3	high	read: velocity += offset * min(100 g / d^2, max) (y left out with p2)
+00467920	P3iAction_AttractHoming	P3	high	read: the velocity turned towards the attractor (led by its velocity, at most 1 s) by up to p0 degrees a second
+00467c50	P3iAction_AttractSpring	P3	high	read: velocity += dir * min((d - rest) k dt, max); a random direction when on it
