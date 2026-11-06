@@ -1087,8 +1087,7 @@ easy, normal, hard: `ONrPersist_GetDifficulty` 0x50f240, normal at start-up), mu
 0..100 (`(UUrRandom & 0xffff) × 100 / 0xffff`). After the decision come the combat report
 (`AI2rNotifyAttackLanded` 0x48b700) and the daze timer's cut to 1 (0x48b9d0); neither is ported yet.
 
-Stand-ins, marked in `src/melee.c`: the positions' update (`AI2iMelee_Position_Update`: toward the target to the
-first attack's reach or the profile's distance, 120 ticks at most); throws; the blockage's objects and characters; the
+Stand-ins, marked in `src/melee.c`: throws; the blockage's objects and characters; the
 movement's modifiers and facing mode as the executor's kinds (`src/ai.c`, a stand-in for
 `AI2iMovementState_Calculate_Movement`). A maneuver's step toward the target searches about the angle as
 the original (`AI2rFindLocalPath` 0x49d220: 15 ahead, then up to 4 steps of pi/16 to one side then the
@@ -1190,9 +1189,57 @@ current `src/melee.c` keeps its own shapes).
 
 The port's melee (`src/melee.c`): `AI2rMelee_PrepareForUse` 0x4a4650, the update 0x4a01f0, the
 weighting 0x4a2580 (with `AI2iMelee_GetTransitionLength` 0x4a4300, `AI2iMelee_CheckStateTransition`
-0x4a4590 and `AI2iMelee_RotateAnimationContext` 0x4a24b0) and the maneuvers' update 0x4a7060 are
-ported, on the attack prediction (`src/chr_intersect.c`). Left: `AI2iMelee_Position_Update` 0x4a6040
-(440 lines of decompiled code, on `AI2iMelee_SetupAttackerState`, the prediction and the transitions).
+0x4a4590 and `AI2iMelee_RotateAnimationContext` 0x4a24b0), the maneuvers' update 0x4a7060 and the
+positions' (`AI2iMelee_Position_Start` 0x4a5e40, `AI2iMelee_Position_Update` 0x4a6040, with
+`AI2iMelee_Position_GetCurrentAnimState` 0x4a5ef0) are ported, on the attack prediction
+(`src/chr_intersect.c`).
+
+### The positions
+
+`Position_Start` (0x4a5e40): a move at the weighing's last needed one (+0x44) is done at once; a
+position without a delay (the row's +0x24) starts at the step of its states that the character is
+already in, so a half-made transition isn't made again.
+
+`Position_GetCurrentAnimState` (0x4a5ef0): the animation state the character is in is the
+interpolation's start (else the animation's from state), but within 3 frames of the animation's end,
+or with none, the state it goes to; past the table it is 0 ("illegal anim state"). Its melee state comes
+from 0x6377e0 with the keys held.
+
+`Position_Update` (0x4a6040) walks the row's melee states (+0x2c count, +0x30 states), holding each one's
+keys (or the state's own, the 8-byte keys at 0x52abc0). In the state it waits for:
+
+- with an attack still ahead, the attack is predicted from where the remaining transitions take the
+  character and the target (`AI2iMelee_SetupAttackerState`, `TRrCheckAnimationBounds`): the distance
+  along the row's direction (+0x20: 1 and 5 forward, 2 back, 3 and 4 the sides) through the transition
+  lengths (`AI2iMelee_GetTransitionLength`, unless +0x26);
+- on the ground, a position that can't reach goes back to its first step (when started part way) or,
+  with a delay, waits within the move's range; beyond it, or too close, the technique fails;
+- a jump in waits until the attack would land in the first two thirds of its attack frames (dropping
+  the jump key once if it would go over, then four ticks);
+- a throw ahead waits for the target within its reach.
+
+Turned more than 120 degrees (0x52ade4) from the facing wanted, nothing is pressed, and a minute of it
+fails the technique; a stop with only a direction held steps that way (0x4a6b30). A character pushed off
+one its path goes through (A+0xb6, below) gives the technique up.
+
+### The push between characters
+
+`HandleGenericMask` (0x4e8c50), for both characters of a contact (`iCollideTwoLikelyCharacters`
+0x4e73e0, after the attacks are found and before they land): with d the ground vector from the other to
+this one, at least 1 long (0x529508), the move this tick (A+0xc4..0xcc) loses its part along d when it
+heads into the other (`MUrVector_PushBack` 0x433da0: the dot product below 0, else nothing), and A+0xb4
+counts the pushes. For a character the AI moves (C+4 0x400000), `AI2rTryToPathfindThrough` 0x48b670
+sets A+0xb6: the other is the one its movement ignores (`AI2rMovement_ShouldIgnoreObstruction` 0x4a81e0,
+C+0x14ac: the character its path follows, `AI2rPath_FollowCharacter` 0x4ae580), or, for an AI
+(C+0x1e8 2), its combat's target (state 5, the state block's +8) or the player while talking (state 8).
+Then `AI2iMovementState_MakeCollision` (through `AI2rMovementState_NotifyCharacterCollision` 0x4ab920: unless it paths through, the movement isn't
+mode 4 and its +0x880 isn't 1000, the collision's normal nearly level, |y| ≤ 0.9, and the point in
+front of the plane) tells the mover; that part waits for the mover's port. `DoCharacterFrame` clears
+A+0xb0..0xb6 near its end (0x4e06cb), after the AI thought and before the contacts. Confirmed.
+
+The push changes the move only before the physics takes it: the original's `OBiPhysics_Update` runs
+after every character's frame and contact, so the port's characters run their physics after
+`chr_collide_all` (`chr_physics_later`).
 
 `PrepareForUse`'s class part (in the profile, from +0x978): the jump's air time and the longest jump's
 (above); seven distances from +0x980, of which +0x98c..+0x998 are the forward, back, left and right

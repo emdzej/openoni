@@ -44,6 +44,7 @@ static uint16_t knockdown_fallback(uint16_t t)
    interpolation it changes with (the decompiler loses the values of its switches). */
 static bool down_type(uint16_t t);
 void (*chr_knockdown_hook)(Character *c);
+bool (*chr_path_through_hook)(const Character *c, const Character *o);
 
 void chr_knockdown(Character *c, uint16_t type)
 {
@@ -425,8 +426,28 @@ static uint32_t landed(const Character *a, const Spheres *sb, const uint32_t *to
     return bits;
 }
 
-/* iCollideTwoLikelyCharacters 0x4e73e0. HandleGenericMask (the push apart) waits for the physics. A thrower and
-   the one it throws (A+0x1ed8) don't touch. */
+/* HandleGenericMask 0x4e8c50: an active character touching another loses the part of its move (A+0xc4)
+   that heads into it, along the line between them on the ground (MUrVector_PushBack 0x433da0: only a
+   move toward it, the move's dot with the line below 0); not closer than 1 apart. A+0xb4 counts the
+   pushes; for one the AI moves, a character its path goes through sets A+0xb6, and the AI's movement
+   hears of the collision (AI2rMovementState_NotifyCharacterCollision 0x4ab920: the mover is a stand-in, not
+   ported). */
+static void push_off(Character *c, const Character *o)
+{
+    if (!c->has_physics) return;
+    float dx = c->pos[0] - o->pos[0], dz = c->pos[2] - o->pos[2];
+    float d = dx * dx + dz * dz;
+    if (d < 1.0f) return;                                       /* 0x529508 */
+    d = 1.0f / sqrtf(d);
+    float u[3] = { dx * d, 0.0f, dz * d };
+    float dot = c->move[0] * u[0] + c->move[1] * u[1] + c->move[2] * u[2];
+    if (dot < 0.0f)
+        for (int k = 0; k < 3; k++) c->move[k] -= dot * u[k];
+    c->pushes++;
+    if ((c->flags & 0x400000u) && chr_path_through_hook && chr_path_through_hook(c, o)) c->blocked_by_char = true;
+}
+
+/* iCollideTwoLikelyCharacters 0x4e73e0. A thrower and the one it throws (A+0x1ed8) don't touch. */
 static void collide_two(Character *a, Character *b)
 {
     if (a->threw == b || b->threw == a) return;
@@ -451,6 +472,8 @@ static void collide_two(Character *a, Character *b)
     uint16_t pa, pb;
     uint32_t ama, dma, amb, dmb;
     uint32_t la = landed(a, &sb, tb, ea, &pa, &ama, &dma), lb = landed(b, &sa, ta, eb, &pb, &amb, &dmb);
+    push_off(a, b);
+    push_off(b, a);
     if (pb <= pa) {
         for (unsigned i = 0; i < 32; i++)
             if (la >> i & 1) attack_lands(a, b, ea[i], ama, dma);

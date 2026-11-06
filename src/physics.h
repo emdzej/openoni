@@ -3,9 +3,9 @@
    floor (FindGroundCollision 0x4ec040: standing on it, the landing and its damage). Notes:
    docs/re/physics.md.
 
-   Stand-ins until their ports: the characters run their physics right after their own frame (the
-   original runs every context after all the characters: the same while characters don't push each
-   other, 0x4ecb40, and other physics objects, 0x43a9a0, aren't ported), and the AI's wall notice. */
+   chars_update runs every character's physics after all the frames and contacts, as the original
+   (chr_physics_later). Stand-ins until their ports: the physics objects' own collisions (0x4ecb40,
+   0x43a9a0) and the AI's wall notice. */
 #pragma once
 #include "character.h"
 

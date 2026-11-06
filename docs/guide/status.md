@@ -96,7 +96,8 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   the doors within each sound's reach, where it carries through the rooms. In combat they pick a behaviour for the range to their target
   from the level's combat settings, hold, advance or back off, fight hand to hand (their melee profile's
   techniques weighed as the original does: whether the target could block, which side they stand on,
-  how the moves' transitions and timing reach it, the attack predicted), and with a gun lead
+  how the moves' transitions and timing reach it, the attack predicted; stepping into reach as
+  the original's positions do, and stopped by the bodies they run into), and with a gun lead
   their target, aim from the weapon's muzzle and fire within their class's shooting skill. Knocked
   down, they lie dazed for their class's time and then get up. They start
   with the weapons and the inventory the level gives them, and drop what they were to drop when they die

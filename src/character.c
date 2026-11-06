@@ -816,6 +816,8 @@ static void sprint(Character *c, const ChrInput *in)
     }
 }
 
+bool chr_physics_later;
+
 static void do_frame(Character *c, const void *env, const ChrInput *in)
 {
     uint64_t held = in->held;
@@ -869,8 +871,11 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
     chr_bone_matrices(c);       /* 0x4e5a30: the parts' matrices (the pelvis, where particles hang) */
     inventory_invis_update(c);                          /* ONrCharacter_Invis_Update, after the matrices */
     physics_body(c);                                    /* step 19 */
-    /* OBiPhysics_Update runs after all the characters' frames; here right after each (physics.h) */
-    physics_update(c, env);
+    c->wall_hits = c->pushes = 0;                       /* (0x4e06cb: A+0xb0..0xb6 cleared) */
+    c->blocked_by_char = false;
+    /* OBiPhysics_Update runs after all the characters' frames and contacts (chr_physics_later) */
+    if (chr_physics_later) c->phys_pending = true;
+    else physics_update(c, env);
 }
 
 uint64_t chr_input_bits(const CharacterInput *in)

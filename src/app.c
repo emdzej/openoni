@@ -868,8 +868,9 @@ static void route_input(const Character *c, CharacterInput *in)
             return;
         }
         if (*s == 'A') {
-            /* "A<N>": for up to N frames, fights (as "F") the nearest character within 80 that is in
-               combat (alert 4) and has hit points; done when there is none */
+            /* "A<N>": for up to N frames, fights (as "F", run at past 9 unless touching) the nearest
+               character within 80 that is in combat (alert 4) and has hit points; done when there is
+               none */
             if (!route.phase) route.until = now + (uint32_t)atoi(s + 1), route.phase = 1;
             const Chr *t = NULL;
             float best = 80.0f * 80.0f;
@@ -884,7 +885,7 @@ static void route_input(const Character *c, CharacterInput *in)
             float dx = t->c.pos[0] - c->pos[0], dz = t->c.pos[2] - c->pos[2];
             float err = wrap_pi(atan2f(dx, dz) - c->desired_facing);
             in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
-            if (dx * dx + dz * dz > 81.0f) {
+            if (dx * dx + dz * dz > 81.0f && !c->pushes) {
                 /* as "R": up to 1.3 off (standing in fight mode the body turns on the spot only past 70
                    degrees) */
                 in->forward = fabsf(wrap_pi(atan2f(dx, dz) - c->facing)) < 1.3f;
@@ -1051,8 +1052,8 @@ static void route_input(const Character *c, CharacterInput *in)
         if (*s == 'F') {
             /* "F<name>,N": a melee fight with the character for up to N frames, or until it is down
                to no hit points or fallen 10 below her (not followed over an edge): turned to it, run
-               at it past 9 away, a punch or kick tapped every 8 frames within (three punches, then a
-               kick) */
+               at it past 9 away unless their bodies touch (pushes, the last tick's), a punch or kick
+               tapped every 8 frames within (three punches, then a kick) */
             char name[64];
             int n = 0;
             const char *comma = strchr(s, ',');
@@ -1066,7 +1067,7 @@ static void route_input(const Character *c, CharacterInput *in)
             float dx = t->c.pos[0] - c->pos[0], dz = t->c.pos[2] - c->pos[2];
             float err = wrap_pi(atan2f(dx, dz) - c->desired_facing);
             in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
-            if (dx * dx + dz * dz > 81.0f) {
+            if (dx * dx + dz * dz > 81.0f && !c->pushes) {
                 /* standing, she turns only past 70 degrees (HandleStandingTurn): stood 60 frames short
                    of that, she runs, and turns as she runs */
                 static uint32_t stood;
@@ -1156,7 +1157,7 @@ static void route_input(const Character *c, CharacterInput *in)
         in->forward = 1;
         in->walk = mode == 'k' || (mode == 'P' && dx * dx + dz * dz < 100.0f);
         /* no headway for a second (something the rooms' grids don't hold, at the body's height): a
-           second of stepping to the side, one way then the other */
+           second of stepping to the side, one way then the other, punching when a body holds her */
         static float stuck_best;
         static const char *stuck_step;
         static int stuck, side, tries;
@@ -1169,6 +1170,8 @@ static void route_input(const Character *c, CharacterInput *in)
         }
         if (++stuck > 60) {
             in->strafe = side & 1 ? -1 : 1;
+            /* held by a character's body (pushes): blows at it, every 8 frames */
+            if (c->pushes && stuck % 8 == 0) in->punch = true;
             if (stuck > 120) stuck = 0, side++, tries++;
         }
         /* ten such tries: the point is passed over (the next one may be reached around it) */
@@ -1538,13 +1541,13 @@ static int play(int level, int *next)
         if (player && plat_param("trace", dbg, sizeof dbg) && plat_frames() % (uint32_t)(atoi(dbg) > 1 ? atoi(dbg) : 30) == 0) {
             const Character *konoko = &player->c;
             const TmInstance *ti = konoko->anim ? tm_handle_instance(tm_handle_of(konoko->anim)) : NULL;
-            snprintf(m, sizeof m, "OpenOni: frame %u: %.1f %.1f %.1f hp %u facing %.2f (%.2f) type %u state %u varient %04x %s%s%u/%u ammo %d stowed %d%d particles %d glass %d clips %u pu %d talk %s cons %d step %.24s",
+            snprintf(m, sizeof m, "OpenOni: frame %u: %.1f %.1f %.1f hp %u facing %.2f (%.2f) type %u state %u varient %04x %s%s%u/%u ammo %d stowed %d%d particles %d glass %d clips %u pu %d talk %s cons %d pushes %u step %.24s",
                      (unsigned)plat_frames(), konoko->pos[0], konoko->pos[1], konoko->pos[2], konoko->hit_points, konoko->facing, konoko->desired_facing, konoko->type,
                      konoko->state, konoko->varient, ti && ti->name ? ti->name : "", " overlay ",
                      konoko->overlay[0].anim ? tr_type(konoko->overlay[0].anim) : 0u,
                      konoko->overlay[1].anim ? tr_type(konoko->overlay[1].anim) : 0u, konoko->weapon ? konoko->weapon->ammo : -1,
                      konoko->stowed[0] != NULL, konoko->stowed[1] != NULL, p3_live_count(), env_glass_broken(), konoko->ammo, powerup_count(),
-                     konoko->talk_partner ? ((const Chr *)konoko->talk_partner)->name : "-", (int)konoko->console_marker, route.step ? route.step : "-");
+                     konoko->talk_partner ? ((const Chr *)konoko->talk_partner)->name : "-", (int)konoko->console_marker, (unsigned)konoko->pushes, route.step ? route.step : "-");
             plat_log(m);
             for (int i = 0; i < door_count(); i++) {
                 float d[3];

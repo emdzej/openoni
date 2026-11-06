@@ -37,6 +37,9 @@ extern void (*chr_script_hook)(Character *c, int script);
 /* What ONrCharacter_Knockdown tells the AI (0x48b530) of its character knocked down from not lying.
    Set by chars.c. */
 extern void (*chr_knockdown_hook)(Character *c);
+/* AI2rTryToPathfindThrough 0x48b670, for a character the AI's movement drives (C+4 0x400000) pushed off
+   another: whether its path goes through that one (chars.c). */
+extern bool (*chr_path_through_hook)(const Character *c, const Character *o);
 /* The player's cheat switches (ONrCheater 0x4f5c30, and the game's variables of 0x4fbf10): unstoppable
    (G 0x5ece91), invincible (0x5ece92), omnipotent (0x5ece93: the player's blows and throws deal at least
    the victim's hit points); unthrowable (0x5ece90) has no variable. All cleared at the level's start

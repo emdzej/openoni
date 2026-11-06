@@ -211,6 +211,10 @@ typedef struct Character {
     float ground_height;            /* A+0x12c */
     float ground_point[3];          /* A+0xe4 */
     uint16_t wall_hits;             /* A+0xb0: walls met this tick */
+    uint16_t pushes;                /* A+0xb4: the characters it was pushed off this tick (0x4e8c50) */
+    bool blocked_by_char;           /* A+0xb6: pushed off a character its AI would path through
+                                       (AI2rTryToPathfindThrough 0x48b670) */
+    bool phys_pending;              /* its frame ran with chr_physics_later: physics_update is due */
     bool has_physics;               /* A+0x04 != 0 */
     /* The physics context's animation (chr_envanim: P+0x130, its state +0x134 with 2 for no rotation,
        the frame +0x136, the step +0x138, the time +0x13c): while it plays the character is where it is. */
@@ -250,6 +254,10 @@ extern void (*character_frame_hook)(Character *c, int step);
 /* One tick (1/60 s): the input (HandleHeartbeatInput), then the frame (DoCharacterFrame: the motion, the
    floor, the animation step, the pose). env: the AKEV for the floor stand-in, or NULL. */
 void character_update(Character *c, const CharacterInput *in, const void *env);
+/* Set while chars_update runs the frames: the characters' physics then waits for the contacts (the
+   original runs every context after all the characters' frames and their pushes, 0x4e8c50); the frames
+   mark it pending (phys_pending). Clear, each frame runs its own physics right away. */
+extern bool chr_physics_later;
 /* HandleStartTauntOrAction 0x4f80d0's part with the objects (action.h), in HandleHeartbeatInput after
    the jump: true if it took the input. NULL (the default): the taunt only. */
 extern bool (*character_action_hook)(Character *c, const ChrInput *in);

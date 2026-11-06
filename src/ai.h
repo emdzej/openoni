@@ -26,6 +26,7 @@ struct MeleeTech;
    and C+0x106c; the executor's attack override A+0x1acc..): see melee.h. */
 enum { MELEE_MEMORY = 32 };
 struct MeleeMove;
+struct MeleeTransition;
 typedef struct {
     const struct MeleeProfile *profile;     /* C+0x1068 */
     uint32_t available[MELEE_MEMORY];       /* C+0x106c: when a technique with a delay is free again */
@@ -50,9 +51,9 @@ typedef struct {
     uint32_t pos_step;                      /* +0x48: the transition's step */
     bool pos_mid;                           /* +0x64: started part way through */
     uint32_t pos_state;                     /* +0x4c */
-    uint32_t pos_50, pos_68;                /* +0x50, +0x68 */
-    bool pos_65;                            /* +0x65 */
-    uint32_t pos_ticks;                     /* (the port's stand-in's) */
+    const struct MeleeTransition *pos_trans;    /* +0x50: the transition toward it under way */
+    uint32_t pos_68;                        /* +0x68: ticks a jump waits after its jump key dropped */
+    bool pos_65;                            /* +0x65: the keys jump */
     uint64_t keys;                          /* +0x58: the keys held while waiting */
     uint32_t m60;                           /* +0x60 */
     bool m66;                               /* +0x66 */

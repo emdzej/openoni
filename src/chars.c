@@ -398,6 +398,18 @@ static void knocked_down(Character *c)
     ((Chr *)c)->ai.daze_started = false;
 }
 
+/* AI2rTryToPathfindThrough 0x48b670: the character its movement ignores (AI2rMovement_ShouldIgnoreObstruction
+   0x4a81e0: the one its path follows, C+0x14ac), its combat's target, or, talking (the neutral state), the
+   player. */
+static bool path_through(const Character *c, const Character *o)
+{
+    const Chr *a = (const Chr *)c;
+    if (a->ai.follow == o) return true;
+    if (!c->ai) return false;
+    if (a->ai.state == AI_STATE_COMBAT && a->ai.target && &a->ai.target->c == o) return true;
+    return a->ai.state == AI_STATE_NEUTRAL && !o->ai;
+}
+
 /* AI2rBlockFunction 0x48b870, every AI's block function (AI2rInitializeCharacter 0x48a6b0). */
 static bool block(Character *c)
 {
@@ -518,10 +530,12 @@ void chars_update(const CharacterInput *player_in, const void *env)
     character_action_frame_hook = action_frame;
     chr_block_hook = block;
     chr_knockdown_hook = knocked_down;
+    chr_path_through_hook = path_through;
     throw_install();
     throw_ai_hook = ai_throw;
     weapons_install();
     knowledge_update(env);      /* AI2rKnowledge_Update, before the characters */
+    chr_physics_later = true;
     for (int i = 0; i < CHARS_MAX; i++) {
         if (!used[i]) continue;
         /* ONrGameState_UpdateCharacters 0x4dccf0: a body's time runs out; an AI's (C+0x1e8 not 0) is
@@ -546,6 +560,10 @@ void chars_update(const CharacterInput *player_in, const void *env)
         if (used[i]) list[n++] = &slots[i].c;
     chr_collide_all(list, n);
     throw_update(list, n);
+    /* OBiPhysics_Update 0x43af50: every context, after the frames and the contacts */
+    chr_physics_later = false;
+    for (int i = 0; i < n; i++)
+        if (list[i]->phys_pending) list[i]->phys_pending = false, physics_update(list[i], env);
 }
 
 /* ---- the commands ---- */

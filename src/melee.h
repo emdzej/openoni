@@ -32,7 +32,7 @@ typedef struct MeleeMove {
    exe's table at 0x541d68): the direction, the state it starts from, its steps (melee states), its
    duration, a float of the row's, the keys held and pressed, its animation, the row's animation type
    and the state the animation goes to, its motion along the direction and across. */
-typedef struct {
+typedef struct MeleeTransition {
     uint8_t dir, from, nsteps, duration;    /* +0x00..+0x03 */
     uint8_t steps[4];                       /* +0x04 */
     float f08;                              /* +0x08 */

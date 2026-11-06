@@ -64,7 +64,7 @@ int main(void)
     d->c.facing = d->c.desired_facing = 3.14159265f;
     uint32_t hp0 = d->c.hit_points;
     int hits = 0, reactions = 0, failed = 0;
-    uint32_t last = hp0;
+    uint32_t last = hp0, expect = 0;
     for (int t = 0; t < 1200 && !(d->c.flags & 1); t++) {
         CharacterInput in = { 0 };
         in.punch = (t % 40) == 0 && (t / 40) % 2 == 0;
@@ -72,6 +72,7 @@ int main(void)
         chars_update(&in, env);
         if (d->c.hit_points < last) {
             hits++;
+            expect += p->c.type == 0x16 ? 4 : 5;    /* the punch's 4, the kick's 5 */
             printf("tick %4d: hit for %u, %u left; dummy type 0x%02x, player type 0x%02x\n", t, last - d->c.hit_points,
                    d->c.hit_points, d->c.type, p->c.type);
             last = d->c.hit_points;
@@ -79,7 +80,7 @@ int main(void)
         if (chr_is_victim_type(d->c.type)) reactions++;
     }
     printf("dummy: %u hit points, %d hits, %d ticks reacting\n", hp0, hits, reactions);
-    if (hits < 5 || !reactions || hp0 - last != (uint32_t)(hits / 2) * 9 + (hits % 2) * 4) failed++;
+    if (hits < 5 || !reactions || hp0 - last != expect) failed++;
     /* the blow that kills: back in reach, a few hit points left */
     const float near[3] = { p->c.pos[0] + 9.0f * sinf(p->c.facing), p->c.pos[1], p->c.pos[2] + 9.0f * cosf(p->c.facing) };
     physics_place(&d->c, near);

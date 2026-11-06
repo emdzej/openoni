@@ -756,6 +756,7 @@
 004a52d0	AI2iMelee_FindThrow	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a5500	AI2iMelee_Attack_Update	AI2	low	the attack category's update (function 6 of 0x52a9e8, named after Position_Update and Maneuver_Update): presses the move's keys through the attack override
 004a5de0	AI2iMelee_Position_GetParams	AI2	med	name from the Intel Mac build (strings:3)
+004a5e40	AI2iMelee_Position_Start	AI2	med	name from the Intel Mac build
 004a5ef0	AI2iMelee_Position_GetCurrentAnimState	AI2	med	name from the Intel Mac build (strings:1)
 004a6040	AI2iMelee_Position_Update	AI2	med	name from the Intel Mac build (strings:1)
 004a6e20	AI2iMelee_Maneuver_GetParams	AI2	med	name from the Intel Mac build (strings:3)
@@ -768,6 +769,7 @@
 004a8140	AI2rMovement_StopGlancing	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a81c0	AI2rMovement_FreeFacing	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a81d0	AI2rMovement_IgnoreCharacter	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004a81e0	AI2rMovement_ShouldIgnoreObstruction	AI2	med	the Mac build's next to IgnoreCharacter: C+0x14ac is the character
 004a8200	AI2rMovement_ChangeMovementMode	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a8230	AI2rMovement_NotifyAlertChange	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a8250	AI2rMovement_MovementModifier	AI2	med	name from the Intel Mac build (neighbours:1.00)
@@ -782,6 +784,7 @@
 004aa250	AI2iMovementState_Calculate_Movement	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004ab5b0	AI2rMovementState_NotifyWallCollision	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004ab6b0	AI2iMovementState_MakeCollision	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004ab920	AI2rMovementState_NotifyCharacterCollision	AI2	med	from HandleGenericMask: TryToPathfindThrough, then MakeCollision
 004aba20	AI2rMovementState_Report	AI2	med	name from the Intel Mac build (strings:1)
 004abc30	AI2rMovementState_RenderCollision	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004abe40	AI2rMovementState_RenderPath	AI2	med	name from the Intel Mac build (neighbours:1.00)

@@ -511,9 +511,10 @@ The contacts between characters, step 9 of `ONrGameState_UpdateCharacters` (0x4e
 - **Attacks** (0x4e8e70 for each side): the current animation's attacks at this frame (0x4290c0: the
   TRAM+0x0c list, 0x20 bytes each, count the byte at +0x17a; active when +0xe <= frame <= +0x10). An
   attack whose part mask (+0x00) meets the touching parts lands; the result is the landed attacks' bits
-  and the highest +0x1a among them (the priority). Then `HandleGenericMask` 0x4e8c50 for both: the two
-  push apart (the unit vector between them, through 0x433da0, out of the movement A+0xc4, and A+0xb4
-  counts the pushes).
+  and the highest +0x1a among them (the priority). Then `HandleGenericMask` 0x4e8c50 for both: each
+  loses the part of its move (A+0xc4) that heads into the other, along the ground line between them
+  (0x433da0), A+0xb4 counts the pushes and A+0xb6 notes one its AI paths through
+  ([ai.md](ai.md), "The push between characters").
 - **Priority**: the side whose priority is higher or equal hits first (`HandleAttackMask` 0x4e7740 for
   each landed attack); the other side hits too only if its priority is equal or higher.
 - **`HandleAttackMask`** 0x4e7740 (4,637 bytes): each attack hits a character once per animation (8

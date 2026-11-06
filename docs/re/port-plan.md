@@ -346,9 +346,10 @@ The order to port it, each step with a test on level 1:
    notes in [ai.md](ai.md), "Melee"): the profiles, the techniques picked by facing, range and
    delay, positions, maneuvers, attacks pressed through the executor's override, combos, the fight
    cookie, blocking by chance and difficulty; the attack prediction the weighting uses
-   (`src/chr_intersect.c`, `tests/intersect_test.c`). Next: the profile in memory as the original builds
-   it (`PrepareForUse`, `MoveIsValid`, the transitions), then the weighting and the update on it. Not
-   yet: evades, throws, `AI2rCombat_Update`'s ranges.
+   (`src/chr_intersect.c`, `tests/intersect_test.c`). The profile in memory as the original builds it
+   (`PrepareForUse`, `MoveIsValid`, the transitions), the weighting, the update, the maneuvers and the
+   positions run on it; the characters push each other off (0x4e8c50). Not yet: throws, the movement's
+   collisions (`AI2iMovementState_MakeCollision`), `AI2rCombat_Update`'s ranges.
 6. **Neutral characters and panic**.
 
 ## 10. Audio and movies
