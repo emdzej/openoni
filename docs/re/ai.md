@@ -1016,9 +1016,9 @@ current `src/melee.c` keeps its own shapes).
   (+0xdc) and up to 55 transitions from +0xe0, 0x28 bytes each. `AI2rMelee_PrepareForUse` 0x4a4650
   fills the class's part: +0x978 the jump's air time (2 × ONCC +0x08 / ONCC +0x04), +0x97c the
   longest jump's (that plus 2 × ONCC +0x16 × ONCC +0x10 / ONCC +0x04), and from +0x980 seven
-  distances. +0x98c, +0x990, +0x994 and +0x998 are the forward, back, left and right steps of the
-  class's animations of types 3, 0x10, 0x17 and 0x19 (fight variant 0x200). +0x988..+0x998 are at
-  least half of ONCC +0x08.
+  distances. +0x98c, +0x990, +0x994 and +0x998 are the forward, back, left and right steps: the
+  frame-0 velocity of the class's animations of type and state (3, 3), (9, 0x10), (0xa, 0x17) and
+  (0xb, 0x19) (fight variant 0x200). +0x988..+0x998 are at least half of ONCC +0x08.
 - **A technique** in memory: the name (64), flags (+0x40), weight (+0x44), importance (+0x48), the
   move count (+0x4c), the first move (+0x50), the repeat delay (+0x54). On disk the delay, count and
   first move are at +0x4c, +0x50, +0x54; `OBJiMelee_Read` reorders them. Then what `PrepareForUse`
@@ -1048,8 +1048,9 @@ current `src/melee.c` keeps its own shapes).
 ### Toward the original's melee (the port's next step)
 
 The port's melee (`src/melee.c`) is a reduced version: its positions, maneuvers and the technique's
-weight are stand-ins, and the moves' motions and the transitions aren't built. The original's, by size
-of the decompiled code: `AI2rMelee_PrepareForUse` 0x4a4650 (about 450 lines), `AI2rMelee_Update`
+weight are stand-ins. `AI2rMelee_PrepareForUse` 0x4a4650 is ported (the class part, the transitions,
+the moves' animations and motions, the techniques' computed flags, damage and reach); the stand-ins
+don't use all of it yet. The rest, by size of the decompiled code: `AI2rMelee_Update`
 0x4a01f0 (1,200), `AI2iMelee_WeightTechnique` 0x4a2580 (2,000), `AI2iMelee_Position_Update` 0x4a6040
 (440, on `AI2iMelee_SetupAttackerState` 0x4a2270, `TRrCheckAnimationBounds`, `TRrIntersectAnimations`,
 `AI2iMelee_CheckStateTransition` 0x4a4590, 0x4a4300 and `AI2iMelee_WeightLocalMovement` 0x4a4440),
@@ -1057,10 +1058,10 @@ of the decompiled code: `AI2rMelee_PrepareForUse` 0x4a4650 (about 450 lines), `A
 
 `PrepareForUse`'s class part (in the profile, from +0x978): the jump's air time and the longest jump's
 (above); seven distances from +0x980, of which +0x98c..+0x998 are the forward, back, left and right
-steps of the fight variant's animation types 3, 0x10, 0x17 and 0x19 (`TRrAnimation_GetPosition`), and
-+0x988..+0x998 at least half of ONCC +0x08. The transitions come from the exe's table at 0x541d68
-(0x38 bytes a row; groups of rows ended by an empty one, the table by an empty group). As read so far
-(*inferred*): +0x00 a melee state (1..4), +0x04 the state whose animation type (by 0x52ab50) the class
+steps of the fight variant's animations of type and state (3, 3), (9, 0x10), (0xa, 0x17) and (0xb,
+0x19) (their frame-0 velocity), and +0x988..+0x998 at least half of ONCC +0x08. The transitions come
+from the exe's table at 0x541d68 (0x38 bytes a row; groups of rows ended by an empty one, the table by
+an empty group): +0x00 the direction (1..4), +0x04 the state whose animation type (by 0x52ab50) the class
 must have, +0x08 "required" (a group none of whose rows the class has is an error), +0x0c the steps'
 count and +0x10 the steps (melee states), +0x20 an animation type, +0x28 and +0x2c the keys held and
 pressed (0x8000000 jump, 0x200000 forward, ...), +0x30 a float (0.7 for the rolls and jumps, 0.2 for

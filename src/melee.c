@@ -100,6 +100,8 @@ static bool add_profile(const ObjcObject *o, void *user)
     for (int i = 0; i < 4; i++) p->dodge[i] = rd32(d + 0x84 + 4 * i);
     p->block_single = rd32(d + 0x94);
     p->block_group = rd32(d + 0x98);     /* from version 0x26; before, the single chance */
+    for (int i = 0; i < 6; i++) p->factor[i] = rdf(d + 0x9c + 4 * i);
+    p->extra[0] = rd32(d + 0xb4), p->extra[1] = rd32(d + 0xb8);
     p->nattack = rd32(d + 0xbc);
     p->nevade = rd32(d + 0xc0);
     p->nmaneuver = rd32(d + 0xc4);
@@ -148,10 +150,201 @@ static const AttackMove *attack_of(uint32_t type)
 static uint32_t position_dir(uint32_t i) { return i < POSITIONS ? exe_u32(POSITIONS_VA + POSITION_SIZE * i + 0x20) : 0; }
 static bool position_has_params(uint32_t i) { return i < POSITIONS && (exe_u32(POSITIONS_VA + POSITION_SIZE * i + 0x24) & 0xff); }
 
-/* AI2rMelee_PrepareForUse 0x4a4650 for the class: each technique's kind and index, its delay slot,
-   the state it starts from and its direction, its first attack and that attack's reach (the TRAM's
-   +0x50, and that less half of +0x11c). Not ported: the moves' validity by the class's animations,
-   the throws' flags. */
+/* The melee states' animation states and types (0x52ab50, 0x52ab74: u16s, 18 each). */
+static uint16_t mstate_anim_state(uint32_t st) { return st < 18 ? exe_u16(0x52ab50 + 2 * st) : 0; }
+static uint16_t mstate_anim_type(uint32_t st) { return st < 18 ? exe_u16(0x52ab74 + 2 * st) : 0; }
+
+static int16_t rd16s(const uint8_t *p) { return (int16_t)(p[0] | p[1] << 8); }
+static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }
+
+/* 0x4292d0: the animation's position point at a frame (TRAM +0x28: s16 x, z, ... 8 bytes a frame), in
+   hundredths; false if it has none */
+static bool position_point(const void *tram, uint16_t frame, float out[2])
+{
+    const uint8_t *q = tr_raw_block(tram, 0x28, 8u * frame, 4);
+    if (!q) return false;
+    out[0] = (float)rd16s(q) * 0.01f, out[1] = (float)rd16s(q + 2) * 0.01f;
+    return true;
+}
+
+/* TRrAnimation_TestAttackFlag 0x428980 with every attack (0xffff): any of the attacks' flags (+8) */
+static bool any_attack_flag(const void *tram, unsigned bit)
+{
+    const uint8_t *k;
+    for (unsigned i = 0; (k = tr_attack(tram, i)); i++)
+        if (rd32(k + 8) & (1u << bit)) return true;
+    return false;
+}
+
+/* 0x428900: the attacks' most damage (+0xc) */
+static uint32_t attack_damage(const void *tram)
+{
+    uint32_t m = 0;
+    const uint8_t *k;
+    for (unsigned i = 0; (k = tr_attack(tram, i)); i++)
+        if (rd16(k + 0xc) >= m) m = rd16(k + 0xc);
+    return m;
+}
+
+/* 0x429220: an attack that stuns a blocker for 15 frames or more (+0x16); 0x429260: one that staggers
+   (+0x18) */
+static bool block_stuns(const void *tram)
+{
+    const uint8_t *k;
+    for (unsigned i = 0; (k = tr_attack(tram, i)); i++)
+        if (rd16(k + 0x16) >= 0xf) return true;
+    return false;
+}
+static bool staggers(const void *tram)
+{
+    const uint8_t *k;
+    for (unsigned i = 0; (k = tr_attack(tram, i)); i++)
+        if (rd16(k + 0x18) > 0) return true;
+    return false;
+}
+
+/* 0x428930: the throw's damages (TRAM +0x10, u16 every 4 bytes, the count at +0x17b), added */
+static uint32_t throw_damage(const void *tram)
+{
+    uint32_t n = ((const uint8_t *)tram)[0x17b], sum = 0;
+    for (uint32_t i = 0; i < n; i++) {
+        const uint8_t *q = tr_raw_block(tram, 0x10, 4u * i, 2);
+        if (q) sum += rd16(q);
+    }
+    return sum;
+}
+
+/* TRrAnimation_GetThrowDistance 0x4291c0 */
+static float throw_distance_of(const void *tram)
+{
+    const uint8_t *t = tr_raw_block(tram, TRAM_THROW, 0, 0x18);
+    return t ? rdf(t + 0x10) : 0.0f;
+}
+
+/* 0x4e36b0: a throw from the front (the animation types 0x6a, 0x6b, 0x6e, 0x70) */
+static bool throw_from_front(uint16_t type) { return type == 0x6a || type == 0x6b || type == 0x6e || type == 0x70; }
+
+/* A category's look up (its function 3 in the table at 0x52a9e8: 0x4a5430 attack, 0x4a6ec0 maneuver,
+   0x4a7620 evade, 0x4a7a90 throw): the move's animation type (0 none), the melee state it is done
+   from and goes to, its direction, and for a throw the victim's state and variant. */
+static uint16_t category_lookup(uint32_t type, uint32_t *dir, uint32_t *from, uint32_t *to, uint16_t *tstate, uint16_t *tvar)
+{
+    uint32_t cat = type >> 28, i = type & 0xfffffffu;
+    *tstate = *tvar = 0;
+    if (cat == MELEE_ATTACK) {
+        const AttackMove *m = attack_of(type);
+        if (!m) return 0;
+        *from = m->from, *to = m->to, *dir = m->dir;
+        return m->type;
+    }
+    if (cat == MELEE_MANEUVER) {
+        if (i >= 0xe) return 0;
+        uint32_t e = 0x543ab0 + 0x40 * i;
+        *dir = 5, *from = exe_u32(e + 0x30), *to = exe_u32(e + 0x34);
+        return exe_u16(e + 0x38);
+    }
+    if (cat == MELEE_EVADE) {
+        uint32_t v = exe_u32(0x543e50 + 0x38 * i);
+        *from = v & 0xff, *to = v >> 8 & 0xff, *dir = 0;
+        return (uint16_t)(v >> 16);
+    }
+    if (cat == MELEE_THROW) {
+        uint32_t v = exe_u32(0x544390 + 0x24 * i);
+        *from = ((v & 0xff) & 2) << 2 | 1, *to = 1, *dir = 1;
+        *tstate = (uint16_t)((((~v) & 0x10) | 0xc) >> 2);
+        if (v & 4) *tvar = 0x800;
+        return (uint16_t)(v >> 16);
+    }
+    return 0;
+}
+
+/* A category's "can follow" (function 4: 0x4a5490 attack, 0x4a7670 evade, the others always): an attack
+   that must follow an attack type needs a previous attack of that type; an evade only comes first. */
+static bool category_follows(uint32_t type, uint32_t prev)
+{
+    uint32_t cat = type >> 28;
+    if (cat == MELEE_ATTACK) {
+        const AttackMove *m = attack_of(type);
+        if (!m || m->prev == 0) return true;
+        if (prev == 0xffffffffu || (prev & 0xf0000000u)) return false;
+        const AttackMove *pm = attack_of(prev);
+        return pm && pm->type == m->prev;
+    }
+    if (cat == MELEE_EVADE) return prev == 0xffffffffu;
+    return true;
+}
+
+/* AI2iMelee_FindThrow 0x4a52d0: of the class's throws of the type from the state (its collections in
+   turn), the first whose victim's animation (the throw's +0x14 type, from the victim's state, the
+   variant's bits it asks for) the class has. */
+static bool find_throw(const Character *probe, uint16_t type, uint16_t state, uint16_t tstate, uint16_t tvar,
+                       const void **anim, const void **anim2, float *dist)
+{
+    const void *coll = chr_collection(probe), *list[64];
+    if (!coll) return false;
+    int n = trac_list(coll, type, state, list, 64);
+    for (int i = 0; i < n; i++) {
+        const uint8_t *t = tr_raw_block(list[i], TRAM_THROW, 0, 0x18);
+        if (!t) continue;
+        const void *v = chr_lookup_varient(probe, rd16(t + 0x14), tstate, (uint16_t)(tvar | 0x200));
+        if (!v) continue;
+        uint16_t vv = tr_varient(v);
+        if (!((vv & 0x6000) || !(tvar & 0x6000))) continue;
+        if (!((vv & 0x1800) || !(tvar & 0x1800))) continue;
+        *anim = list[i], *anim2 = v, *dist = throw_distance_of(list[i]);
+        return true;
+    }
+    return false;
+}
+
+/* AI2rMelee_MoveIsValid 0x4a50b0: the move's animation type, direction, the state it starts from (*cur,
+   set when unset; false when it can't be done from it), the state it leaves, its animations and a
+   throw's distance. A position's from its table (0x5435b0: the direction, "has parameters", its states,
+   the last the end); the others' from their category. */
+static bool move_is_valid(const Character *probe, uint32_t type, uint16_t *atype, uint32_t *dir, uint32_t *cur,
+                          uint32_t *to, const void **anim, const void **anim2, float *dist)
+{
+    uint32_t cat = type >> 28;
+    if (cat == MELEE_POSITION) {
+        uint32_t e = POSITIONS_VA + POSITION_SIZE * (type & 0xfffffffu);
+        *dir = exe_u32(e + 0x20);
+        *to = exe_u32(e + 0x2c + 4 * exe_u32(e + 0x2c));
+        if (exe_u32(e + 0x24) & 0xff) {
+            uint32_t st = exe_u32(e + 0x30);
+            *atype = mstate_anim_type(st);
+            *anim = chr_lookup_varient(probe, mstate_anim_type(st), mstate_anim_state(st), 0x200);
+        } else {
+            *atype = 0, *anim = NULL;
+        }
+        *dist = 0.0f;
+        return true;
+    }
+    uint32_t d = 0, from = 0, t = 0;
+    uint16_t tstate, tvar;
+    uint16_t at = category_lookup(type, &d, &from, &t, &tstate, &tvar);
+    if (!at) return false;
+    if (from && from != *cur) {
+        if (*cur) return false;
+        *cur = from;
+    }
+    uint16_t st = (*cur > 0 && *cur < 0x12) ? mstate_anim_state(from) : 1;
+    const void *a = NULL, *a2 = NULL;
+    float ds = 0.0f;
+    if (cat == MELEE_THROW) {
+        if (!find_throw(probe, at, st, tstate, tvar, &a, &a2, &ds)) return false;
+    } else {
+        a = chr_lookup_varient(probe, at, st, 0x200);
+        if (!a && (cat == MELEE_EVADE || cat == MELEE_ATTACK)) return false;
+    }
+    *atype = at, *dir = d, *to = t, *anim = a, *anim2 = a2, *dist = ds;
+    return true;
+}
+
+/* AI2rMelee_PrepareForUse 0x4a4650 for the class: its jump times and steps, the transitions between
+   melee states it has the animations for, and each technique's computed part: its kind and index, its
+   delay slot, the state it starts from and its direction, its moves' animations and motions, its
+   attacks' damage, reach and kinds (blockable high or low, unblockable, block stun, stagger), its
+   throw. A technique with a move the class can't do is left without moves. */
 static void prepare(MeleeProfile *p, const void *oncc)
 {
     if (p->prepared) return;
@@ -159,14 +352,94 @@ static void prepare(MeleeProfile *p, const void *oncc)
     Character probe;
     memset(&probe, 0, sizeof probe);
     probe.oncc = oncc;
+    p->oncc = oncc;
+    const uint8_t *cc = oncc;
+    if (cc) {
+        p->jump_time = (rdf(cc + 8) + rdf(cc + 8)) / rdf(cc + 4);
+        float f = (float)rd16(cc + 0x16) * rdf(cc + 0x10);
+        p->long_jump_time = (f + f) / rdf(cc + 4) + p->jump_time;
+    }
+    memset(p->dist, 0, sizeof p->dist);
+    static const struct { uint16_t type, state; int slot; float sign; bool z; } STEPS[4] = {
+        { 3, 3, 3, 1.0f, true }, { 9, 0x10, 4, -1.0f, true }, { 0xa, 0x17, 5, 1.0f, false }, { 0xb, 0x19, 6, -1.0f, false },
+    };
+    for (int i = 0; i < 4; i++) {
+        const void *t = chr_lookup_varient(&probe, STEPS[i].type, STEPS[i].state, 0x200);
+        if (!t) continue;
+        float v[3];
+        tr_position(t, 0, v);
+        p->dist[STEPS[i].slot] = STEPS[i].sign * (STEPS[i].z ? v[2] : v[0]);
+    }
+    for (int i = 2; i < 7; i++) {
+        float h = cc ? rdf(cc + 8) * 0.5f : 0.0f;
+        if (h < p->dist[i]) h = p->dist[i];
+        p->dist[i] = h;
+    }
+
+    /* the transitions: groups of rows (0x38 bytes from 0x541d68, a group ended by an empty row, the
+       table by an empty group); each row whose animation the class has, at most 55 */
+    p->ntransitions = 0;
+    bool full = false;
+    uint32_t over = 0;
+    for (uint32_t row = 0x541d68;; row += 0x38) {
+        uint32_t rows = 0, found = 0, first = row;
+        for (; exe_u32(row + 4); row += 0x38) {
+            rows++;
+            uint32_t st = exe_u32(row + 4);
+            const void *a = chr_lookup_varient(&probe, (uint16_t)exe_u32(row + 0x20), mstate_anim_state(st), 0x200);
+            if (!a) continue;
+            found++;
+            if (full) {
+                over++;
+                continue;
+            }
+            MeleeTransition *t = &p->transition[p->ntransitions++];
+            memset(t, 0, sizeof *t);
+            t->dir = (uint8_t)exe_u32(row);
+            t->from = (uint8_t)st;
+            t->nsteps = (uint8_t)exe_u32(row + 0xc);
+            t->f08 = rdf(exe_data(row + 0x30, 4));
+            t->held = exe_u32(row + 0x28), t->down = exe_u32(row + 0x2c);
+            t->type = (uint16_t)exe_u32(row + 0x20);
+            for (uint32_t k = 0; k < t->nsteps && k < 4; k++) t->steps[k] = (uint8_t)exe_u32(row + 0x10 + 4 * k);
+            t->anim = a;
+            t->duration = (uint8_t)tr_duration(a);
+            t->to = tr_to(a);
+            /* the motion: the position point at the end along the direction, and across it the mean
+               step of the last five frames */
+            float pt[2] = { 0, 0 }, sx = 0, sz = 0;
+            position_point(a, (uint16_t)(t->duration - 1), pt);
+            uint32_t k0 = t->duration >= 5 ? t->duration - 5u : 0, cnt = 0;
+            for (uint32_t k = k0; k < t->duration; k++) {
+                float v[3];
+                tr_position(a, (uint16_t)k, v);
+                sx += v[0], sz += v[2];
+                cnt++;
+            }
+            if (cnt) sx *= 1.0f / (float)cnt, sz *= 1.0f / (float)cnt;
+            switch (t->dir) {
+            case 1: t->across = sz, t->along = pt[1]; break;
+            case 2: t->along = -pt[1], t->across = -sz; break;
+            case 3: t->across = sx, t->along = pt[0]; break;
+            case 4: t->along = -pt[0], t->across = -sx; break;
+            default: t->along = t->across = 0.0f;
+            }
+            if (p->ntransitions > 0x36) full = true;
+        }
+        if (!rows) break;
+        (void)first, (void)found;   /* (a required group with none of its rows: AI2rError) */
+    }
+    (void)over;         /* (more than 55: AI2rError) */
+
+    /* the techniques */
     uint32_t nt = p->nattack + p->nevade + p->nmaneuver, slots = 0;
     for (uint32_t i = 0; i < nt; i++) {
         MeleeTech *k = &p->tech[i];
-        k->computed = 0;
-        k->attack = NULL;
-        k->reach = k->near = 0.0f;
+        k->attack_move = -1;
+        k->computed = 0, k->damage = 0, k->near = k->reach = 0.0f, k->attack_frames = 0, k->attack = NULL, k->throw_dist = 0.0f;
+        k->index = (uint16_t)i;
         k->delay_slot = -1;
-        if (i < p->nattack) k->computed |= 0x40000, k->index = (uint16_t)i;
+        if (i < p->nattack) k->computed |= 0x40000;
         else if (i < p->nattack + p->nevade) k->computed |= 0x80000, k->index = (uint16_t)(i - p->nattack);
         else k->computed |= 0x100000, k->index = (uint16_t)(i - p->nattack - p->nevade);
         if (!k->count || k->first + k->count > p->nmoves) {
@@ -174,39 +447,98 @@ static void prepare(MeleeProfile *p, const void *oncc)
             continue;
         }
         if (k->delay && slots < MELEE_MEMORY) k->delay_slot = (int16_t)slots++;
-        uint32_t dir = 0;
+        bool first = true;
+        uint32_t cur = 0;
         for (uint32_t j = 0; j < k->count; j++) {
             MeleeMove *mv = &p->move[k->first + j];
-            uint32_t cat = mv->type >> 28, idx = mv->type & 0xfffffffu;
+            uint32_t prev = j ? p->move[k->first + j - 1].type : 0xffffffffu;
+            if (!first && !category_follows(mv->type, prev)) {
+                mv->invalid = true;     /* (AI2rError) */
+                k->computed |= 0x4000;
+                break;
+            }
+            uint16_t atype = 0;
+            uint32_t mdir = 0, to = 0;
+            float dist = 0.0f;
+            bool ok = move_is_valid(&probe, mv->type, &atype, &mdir, &cur, &to, &mv->anim, &mv->anim2, &dist);
+            mv->state = (uint16_t)cur;
+            if (!ok) {
+                mv->invalid = true;
+                k->computed |= 0x4000;
+                break;
+            }
             mv->invalid = false;
-            uint32_t d = 0;
-            if (cat == MELEE_ATTACK) {
-                const AttackMove *am = attack_of(mv->type);
-                if (!am) { mv->invalid = true; continue; }
-                d = am->dir;
-                if (j == 0) k->computed |= am->from;
-                k->computed |= 0x1000;
-                if (!k->attack) {
-                    k->attack = chr_lookup_varient(&probe, am->type, 7, 0x200);
-                    if (k->attack) {
-                        const uint8_t *t = k->attack;
+            uint32_t cat = mv->type >> 28;
+            if (first) {
+                if (cur == 0) {
+                    k->computed |= 0x20000 | to;
+                    if (cat == MELEE_MANEUVER) continue;    /* (still the first move: the original's) */
+                    if (cat != MELEE_POSITION) {
+                        mv->invalid = true;
+                        k->computed |= 0x4000;
+                        break;
+                    }
+                } else {
+                    k->computed |= cur;
+                }
+            }
+            /* the direction: a maneuver's (5) only if none yet; another the first, or over a 5 (or'd, as
+               the original's) */
+            uint32_t d = k->computed >> 8 & 0xf;
+            if (mdir) {
+                if (mdir == 5) {
+                    if (d == 0) k->computed |= 0x500;
+                } else if (d != mdir && (d == 0 || d == 5)) {
+                    k->computed |= mdir << 8;
+                }
+            }
+            float m1[2] = { 0, 0 }, m2[2] = { 0, 0 };
+            if (mv->anim) position_point(mv->anim, (uint16_t)(tr_duration(mv->anim) - 1), m1);
+            if (mv->anim2) position_point(mv->anim2, (uint16_t)(tr_duration(mv->anim2) - 1), m2);
+            switch (mdir) {
+            case 0: case 1: case 5: mv->motion = m1[1], mv->motion2 = m2[1]; break;
+            case 2: mv->motion = -m1[1], mv->motion2 = -m2[1]; break;
+            case 3: mv->motion = m1[0], mv->motion2 = m2[0]; break;
+            case 4: mv->motion = -m1[0], mv->motion2 = -m2[0]; break;
+            default: break;
+            }
+            if (mv->anim) {
+                if (!tr_test_flag(mv->anim, TRAM_FLAG_THROW_SOURCE)) {
+                    if (tr_is_attack(mv->anim)) {
+                        const uint8_t *t = mv->anim;
+                        k->computed |= 0x1000;
+                        if (any_attack_flag(mv->anim, 1)) k->computed |= 0x8000;
+                        if (any_attack_flag(mv->anim, 2)) k->computed |= 0x10000;
+                        if (any_attack_flag(mv->anim, 0)) k->computed |= 0x200000;
+                        if (block_stuns(mv->anim)) k->computed |= 0x400000;
+                        if (staggers(mv->anim)) k->computed |= 0x800000;
+                        k->damage += attack_damage(mv->anim);
                         k->reach = rdf(t + 0x50);
                         k->near = k->reach - rdf(t + 0x11c) * 0.5f;
+                        k->attack_frames = rd16(t + 0xec);
+                        if (!(k->computed & 0x1000000) && !k->attack) k->attack_move = (int32_t)j, k->attack = mv->anim;
+                    }
+                } else {
+                    if (k->computed & 0x1000000) {      /* a second throw */
+                        mv->invalid = true;
+                        k->computed |= 0x4000;
+                        break;
+                    }
+                    k->computed |= 0x1000000;
+                    k->throw_dist = dist;
+                    k->computed |= throw_from_front(atype) ? 0x2000000 : 0x4000000;
+                    if (mv->anim2) {
+                        uint16_t v = tr_varient(mv->anim2);
+                        if (v & 0x6000) k->computed |= 0x8000000;
+                        else if (v & 0x1800) k->computed |= 0x10000000;
+                        k->damage += throw_damage(mv->anim2);
                     }
                 }
-            } else if (cat == MELEE_POSITION) {
-                if (idx >= POSITIONS) { mv->invalid = true; continue; }
-                d = position_dir(idx);
-                if (j == 0) k->computed |= 0x20000;
-            } else if (cat == MELEE_MANEUVER) {
-                if (j == 0) k->computed |= 0x20000;
-                if (idx == 0xd) k->computed |= 0x20000000;
-            } else {
-                if (j == 0) k->computed |= 0x20000;     /* evades and throws: not ported */
             }
-            if (d && (!dir || dir == 5)) dir = d;
+            if (cat == MELEE_MANEUVER && (mv->type & 0xfffffffu) == 0xd) k->computed |= 0x20000000;
+            first = false;
+            cur = to;
         }
-        k->computed |= dir << 8;
     }
 }
 
@@ -434,7 +766,9 @@ static bool position_move(AiState *a, Character *c, const MeleeMove *mv)
     MeleeState *m = &a->melee;
     uint32_t idx = mv->type & 0xfffffffu, dir = position_dir(idx);
     if (idx > 3 && idx < 12) return next_move(m);                   /* jumps, crouches, standing: not ported */
-    float want = m->tech && m->tech->reach > 0.0f ? m->tech->reach * 0.9f : 12.0f;
+    /* (the stand-in goes by the first attack's reach, TRAM +0x50; the technique's +0x64 is its last's) */
+    float first = m->tech && m->tech->attack ? rdf((const uint8_t *)m->tech->attack + 0x50) : 0.0f;
+    float want = first > 0.0f ? first * 0.9f : 12.0f;
     if (position_has_params(idx) && mv->p[1] > 0.0f) want = mv->p[1];
     if (m->dist <= want || ++m->move_ticks > 120) return next_move(m);
     int kind = dir == 2 ? AI_MOVE_BACK : dir == 3 ? AI_MOVE_LEFT : dir == 4 ? AI_MOVE_RIGHT : AI_MOVE_FORWARD;
@@ -542,7 +876,10 @@ bool melee_update(AiState *a, Character *c, const Character *target)
             if (mem == 1000.0f) continue;
             x *= 1.0f - (mem < 0.8f ? mem : 0.8f);
         }
+        /* (a direction or'd over a 5 can be 7: the original then reads past its six factors, into its
+           other locals; none of the game's profiles makes one, so the port skips it) */
         uint32_t dir = k->computed >> 8 & 0xf;
+        if (dir >= 6) continue;
         x *= (k->flags & 2) ? wide[dir] : narrow[dir];
         if (x == 0.0f) continue;
         if ((k->computed & 0xff) != state && !(k->computed & 0x20000)) continue;

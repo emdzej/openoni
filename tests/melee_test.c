@@ -87,6 +87,16 @@ int main(void)
         last_tech = t->ai.melee.tech;
         if (p->c.flags & 1) break;
     }
+    /* AI2rMelee_PrepareForUse's part: the class's steps and transitions, each technique's flags */
+    if (mp && mp->prepared) {
+        printf("prepared: jump %.2f long %.2f, steps %.2f %.2f %.2f %.2f %.2f, %u transitions\n", mp->jump_time,
+               mp->long_jump_time, mp->dist[2], mp->dist[3], mp->dist[4], mp->dist[5], mp->dist[6], mp->ntransitions);
+        for (uint32_t i = 0; i < mp->nattack + mp->nevade + mp->nmaneuver; i++) {
+            const MeleeTech *k = &mp->tech[i];
+            printf("  %-20s %08x damage %u reach %.1f near %.1f\n", k->name, k->computed, k->damage, k->reach, k->near);
+        }
+        if (mp->ntransitions < 4) failed |= 8;
+    }
     printf("combat after %d ticks, %d techniques, %d attacks, konoko %u -> %u hit points\n", combat_at, techniques, attacks, hp0,
            p->c.hit_points);
     if (combat_at < 0 || techniques < 2 || attacks < 2 || p->c.hit_points >= hp0) failed |= 2;

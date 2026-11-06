@@ -22,8 +22,27 @@ enum { MELEE_ATTACK = 0, MELEE_POSITION = 1, MELEE_MANEUVER = 2, MELEE_EVADE = 3
 typedef struct {
     uint32_t type;          /* category << 28 | the move */
     float p[3];
+    uint16_t state;         /* +0x10: the melee state it is done from */
+    const void *anim;       /* +0x14: its animation */
+    float motion;           /* +0x18: the animation's motion along the technique's direction */
+    const void *anim2;      /* +0x1c: a throw's victim's animation */
+    float motion2;          /* +0x20 */
     bool invalid;           /* +0x24 */
 } MeleeMove;
+
+/* A transition between melee states the class can make (built by AI2rMelee_PrepareForUse from the
+   exe's table at 0x541d68): the direction, the state it starts from, its steps (melee states), its
+   duration, a float of the row's, the keys held and pressed, its animation, the row's animation type
+   and the state the animation goes to, its motion along the direction and across. */
+typedef struct {
+    uint8_t dir, from, nsteps, duration;    /* +0x00..+0x03 */
+    uint8_t steps[4];                       /* +0x04 */
+    float f08;                              /* +0x08 */
+    uint32_t held, down;                    /* +0x10, +0x14 */
+    const void *anim;                       /* +0x18 */
+    uint16_t type, to;                      /* +0x1c, +0x1e */
+    float along, across;                    /* +0x20, +0x24 */
+} MeleeTransition;
 
 /* A technique: on disk a name (64), flags, weight, importance, the repeat delay, the move count and
    the first move; then what AI2rMelee_PrepareForUse 0x4a4650 works out. */
@@ -40,9 +59,15 @@ typedef struct MeleeTech {
     uint32_t computed;      /* +0x5c: the melee state it starts from (low byte), the direction
                                (bits 8..11), 0x1000 an attack, 0x4000 no moves, 0x20000 any state,
                                0x40000 attack, 0x80000 evade, 0x100000 maneuver */
+    uint32_t damage;        /* +0x60: its attacks' most damage, and its throws' */
+    float reach, near;      /* +0x64, +0x68: its last attack's reach, and that less half its +0x11c */
+    uint16_t attack_frames; /* +0x6c: that attack's TRAM +0xec */
     const void *attack;     /* +0x70: its first attack's animation */
-    float reach, near;      /* +0x64, +0x68: that attack's reach */
+    int32_t attack_move;    /* +0x74: that attack's move in the technique, -1 none */
+    float throw_dist;       /* +0x78 */
 } MeleeTech;
+
+enum { MELEE_TRANSITIONS = 55 };
 
 enum { MELEE_TECH_MAX = 64, MELEE_MOVE_MAX = 256 };
 
@@ -52,9 +77,19 @@ typedef struct MeleeProfile {
     uint32_t dodge[4];      /* +0x84..+0x90: the dodge chances (with the evades, not yet ported) */
     uint32_t block_single;  /* +0x94: the chance (%) to block an attack, fighting alone */
     uint32_t block_group;   /* +0x98: in a group of four or more (AI2rBlockFunction) */
+    float factor[6];        /* +0x9c..+0xb0: the weighting's factors for an attack the target couldn't
+                               block, blocks at the other height, unblockable, stagger, block stun,
+                               blocked */
+    uint32_t extra[2];      /* +0xb4, +0xb8 */
     uint32_t nattack, nevade, nmaneuver, nmoves;
     MeleeTech tech[MELEE_TECH_MAX];
     MeleeMove move[MELEE_MOVE_MAX];
+    const void *oncc;       /* +0xd4: the class it is prepared for */
+    uint32_t ntransitions;  /* +0xdc */
+    MeleeTransition transition[MELEE_TRANSITIONS];  /* +0xe0 */
+    float jump_time, long_jump_time;    /* +0x978, +0x97c */
+    float dist[7];          /* +0x980: [3..6] the steps forward, back, left and right; [2..6] at
+                               least half the class's +0x08 */
     bool prepared;
 } MeleeProfile;
 
