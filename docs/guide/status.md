@@ -185,7 +185,7 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 ## Not yet
 
 - The sounds' muffling by walls and their range culling (the game's own ambient layer over the sound
-  system); the characters pushing the weapons and power-ups about; the tutorial's forced HUD arcs.
+  system); the characters pushing the weapons and power-ups about.
 - The Bink movies; the graphics quality and gamma settings applied.
 - The intro and outro movies.
 

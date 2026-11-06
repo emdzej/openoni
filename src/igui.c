@@ -251,6 +251,7 @@ void igui_level_load(int level)
     cheat_message_clear();      /* 0x5ed00c */
     objectives_shown = diary_unlocked = 0;
     help_on = objective_new = diary_new = prompt_now = suppress_prompt = false;
+    ui_set_objective_unread(false);
     restored_time = 0xffffffffu;
     new_weapon = NULL;
     new_item = -1;
@@ -330,7 +331,13 @@ const IguiHud *igui_hud(const Character *c)
     if (gs) memcpy(&cap, gs, 4);    /* the health's cap, of the maximum */
     IguiBar *b = &hud.health_bar;
     IguiArc *h = hud.health;
-    if (b->dirty && c->max_hit_points) {
+    if (ui_filled(0x1)) {
+        /* ui_fill_element health: the two arcs full, the eased parts off; set again after */
+        h[0] = (IguiArc){ true, PI, -HALF };
+        h[1] = (IguiArc){ true, -HALF, -2.9670596f };
+        h[2].on = h[3].on = false;
+        b->dirty = true;
+    } else if (b->dirty && c->max_hit_points) {
         /* DisplayHealth: the health from pi round by 3 pi / 2 of its part, the overhealth from -pi/2
            by 1.396 of its part, up to the cap; the eased parts beyond them: the health's to the part
            shown (none while over the maximum), the overhealth's from the overhealth's end */
@@ -361,7 +368,11 @@ const IguiHud *igui_hud(const Character *c)
     }
     b = &hud.shield_bar;
     h = hud.shield;
-    if (b->dirty) {
+    if (ui_filled(0x8)) {
+        h[0] = (IguiArc){ true, 0.034906585f, 1.553343f };
+        h[1].on = false;
+        b->dirty = true;
+    } else if (b->dirty) {
         /* DisplayShield: from 0.035 by 1.518 of the part left (of 100), the eased part beyond it */
         static const float START = 0.034906585f, SPAN = 1.5184364f;
         float frac = 0.0f;
@@ -411,6 +422,7 @@ void igui_new_item(int type)
 void igui_notify_restore(uint32_t time)
 {
     objective_new = diary_new = false;
+    ui_set_objective_unread(false);
     restored_time = time;
     ui_message_remove("new_objective");
 }
@@ -434,7 +446,10 @@ static bool cmd_objective_set(SlThread *t, int c, const SlValue *v, SlValue *r, 
     objectives_shown = n;
     bool silent = c > 1 && v[1].type == SL_STRING && v[1].s && !strcmp(v[1].s, "silent");
     if (restored_time != 0xffffffffu && ui_time() < restored_time + 300) return true;
-    if (!silent) objective_new = prompt_now = true;
+    if (!silent) {
+        objective_new = prompt_now = true;
+        ui_set_objective_unread(true);
+    }
     return true;
 }
 
@@ -643,6 +658,7 @@ static void paint_objective(const WmDrawItem *item)
 {
     ps.flags &= ~2u;
     objective_new = false;
+    ui_set_objective_unread(false);
     ui_message_remove("new_objective");
     const uint8_t *igpa = ps.objective ? tm_link(ps.objective + 4) : NULL;
     if (!objectives_shown || !igpa) return;

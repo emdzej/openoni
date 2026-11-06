@@ -1336,7 +1336,8 @@
 00504c30	ONrInGameUI_TextConsole_Display	ON	med	name from the Intel Mac build (neighbours:0.75)
 00504cf0	ONrInGameUI_EnableHelpDisplay	ON	med	name from the Intel Mac build (neighbours:1.00)
 00504d50	ONiInGameUI_ShowElement	ON	med	name from the Intel Mac build (strings:1)
-00504e30	ONiInGameUI_FlashElement	ON	low	ui_flash_element: an element's flash bit set or cleared ("all" 0xfff)
+00504e30	ONiInGameUI_FillElement	ON	med	name from the Intel Mac build; ui_fill_element's handler (0x503040 registers it): an element's fill bit (0x5ed09c)
+00504f40	ONiInGameUI_FlashElement	ON	med	name from the Intel Mac build; ui_flash_element's handler: an element's flash bit (0x5ed02c), "all" 0xfff
 00505050	ONrInGameUI_NewWeapon	ON	med	name from the Intel Mac build (strings:1)
 005050b0	ONrInGameUI_NotifyRestoreGame	ON	med	name from the Intel Mac build (neighbours:1.00)
 005050d0	ONrDebugKey_WentDown	ON	med	name from the Intel Mac build (neighbours:1.00)

@@ -59,6 +59,14 @@ bool ui_message_print(const char *id, int32_t timer);
 bool ui_element_shown(int right);
 uint8_t ui_flash_alpha(uint32_t bit);
 bool ui_flashing(uint32_t bit);
+/* The flash's alpha now (0x5ecfe8), 255 while nothing flashes. */
+uint8_t ui_flash_value(void);
+/* A new objective not read yet (0x5ed098, set by igui.c): the flash's clock runs, the compass flashes
+   (whole without a target). */
+void ui_set_objective_unread(bool on);
+bool ui_objective_unread(void);
+/* An element's ui_fill_element bit (the same bits): drawn full. */
+bool ui_filled(uint32_t bit);
 bool ui_target(float pos[3], float *r2, float *d0);
 /* The splash screen a script asked for (G+0x118), taken (cleared); false none. */
 bool ui_splash_take(char name[32]);

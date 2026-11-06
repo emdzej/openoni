@@ -263,7 +263,8 @@ static void sprite(float x0, float y0, float x1, float y1, bool flip, const void
    narrowing with the distance from pi / 2 (as far as when it was set) to 0.349; then the "arrow" up
    (the flag more than 10 above) or upside down (more than 10 below), 36.5 right of the centre.
    Each flashes by its ui_flash_element bit (ballistic, energy, compass, arrow). Then the weapon's
-   displays (draw_weapon). Not ported: the tutorial's forced elements (0x5ed09c, 0x5ed098). */
+   displays (draw_weapon). ui_fill_element's bits (0x5ed09c) draw the clips, the cells, the compass and
+   the ammo's ring full and the arrow up. */
 static void draw_compass(const Character *c, float cx, float cy, const void *ring, const void *arrow, float scale);
 
 /* At the left element's centre: the ammo (0x500ea0) of the hand's weapon, else of the stowed one
@@ -282,7 +283,7 @@ static void draw_weapon(const Character *c, float cx, float cy, float scale)
         sprite(x0, y0, x0 + (float)tx16(icon, TXMP_WIDTH) * scale, y0 + (float)tx16(icon, TXMP_HEIGHT) * scale, false,
                icon, 255, GL_DEV_SCREEN);
         unsigned full = (unsigned)(w->cls[0xc0] | w->cls[0xc1] << 8);
-        unsigned ammo = (w->owner && (w->owner->flags & 0x40)) ? full : w->ammo;
+        unsigned ammo = (ui_filled(0x40) || (w->owner && (w->owner->flags & 0x40))) ? full : w->ammo;
         const void *ring = tm_link(w->cls + 0x54);
         if (ammo && full && ring)
             arc(cx, cy, 0.2617994f, (float)ammo / (float)full * 5.7595863f + 0.2617994f, 44.0f, 30.0f, 24, ring, scale,
@@ -305,7 +306,7 @@ static void draw_left(int w, int h, const Character *c, float scale)
     float cx = (10.0f + (float)((int)lw >> 1)) * scale, cy = (float)h - (float)((int)lh >> 1) * scale;
     sprite(cx - lw * 0.5f * scale, cy - lh * 0.5f * scale, cx + lw * 0.5f * scale, cy + lh * 0.5f * scale, false,
            left, 255, GL_DEV_SCREEN_ADD);
-    unsigned clips = c->ammo < 6 ? c->ammo : 6, cells = c->cells < 6 ? c->cells : 6;
+    unsigned clips = ui_filled(0x200) || c->ammo > 6 ? 6 : c->ammo, cells = ui_filled(0x400) || c->cells > 6 ? 6 : c->cells;
     if (clips)
         arc(cx, cy, 3.1415927f, 3.1415927f + (4.712389f - 3.1415927f) * (float)clips / 6.0f, 64.0f, 51.5f,
             (int)clips, ring, scale, 0xffffffffu, ui_flash_alpha(0x200));
@@ -318,30 +319,40 @@ static void draw_left(int w, int h, const Character *c, float scale)
 
 static void draw_compass(const Character *c, float cx, float cy, const void *ring, const void *arrow, float scale)
 {
-    float tp[3], r2, d0;
-    if (!ui_target(tp, &r2, &d0)) return;
-    float dx = tp[0] - c->pos[0], dy = tp[1] - c->pos[1], dz = tp[2] - c->pos[2];
-    float d2 = dx * dx + dy * dy + dz * dz, half;
-    if (d2 < r2) half = 3.1415927f;
-    else if (d2 <= d0) {
-        half = 1.5707964f - d2 / d0 * 1.5707964f;
-        if (half < 0.34906584f) half = 0.34906584f;
-        else if (half > 3.1415927f) half = 3.1415927f;
-    } else half = 0.34906584f;
-    /* the facing (ONrCharacter_GetFacing 0x4e33a0: the desired facing less the run's turn, in [0, 2 pi))
-       less the bearing */
-    float facing = c->desired_facing - c->facing_offset;
-    if (facing < 0.0f) facing += 6.2831855f;
-    else if (facing >= 6.2831855f) facing -= 6.2831855f;
-    float rel = facing - atan2f(dx, dz);
-    if (rel < -3.1415927f) rel += 6.2831855f;
-    else if (rel > 3.1415927f) rel -= 6.2831855f;
-    arc(cx, cy, rel - half + 4.712389f, rel + half + 4.712389f, 50.0f, 46.0f, 32, ring, scale, 0xffffffffu,
-        ui_flash_alpha(0x80));
-    if (arrow && (dy > 10.0f || dy < -10.0f)) {
+    float tp[3], r2, d0, dy = 0.0f;
+    bool on = ui_target(tp, &r2, &d0);
+    if (on) dy = tp[1] - c->pos[1];
+    /* flashing by its bit or while a new objective is unread (0x5ed098); whole when filled, or without
+       a target while the objective is unread */
+    uint8_t alpha = ui_flashing(0x80) || ui_objective_unread() ? ui_flash_value() : 255;
+    if (ui_filled(0x80) || (!on && ui_objective_unread())) {
+        arc(cx, cy, 0.0f, 6.2831855f, 50.0f, 46.0f, 32, ring, scale, 0xffffffffu, alpha);
+    } else if (on) {
+        float dx = tp[0] - c->pos[0], dz = tp[2] - c->pos[2];
+        float d2 = dx * dx + dy * dy + dz * dz, half;
+        if (d2 < r2) half = 3.1415927f;
+        else if (d2 <= d0) {
+            half = 1.5707964f - d2 / d0 * 1.5707964f;
+            if (half < 0.34906584f) half = 0.34906584f;
+            else if (half > 3.1415927f) half = 3.1415927f;
+        } else half = 0.34906584f;
+        /* the facing (ONrCharacter_GetFacing 0x4e33a0: the desired facing less the run's turn, in
+           [0, 2 pi)) less the bearing */
+        float facing = c->desired_facing - c->facing_offset;
+        if (facing < 0.0f) facing += 6.2831855f;
+        else if (facing >= 6.2831855f) facing -= 6.2831855f;
+        float rel = facing - atan2f(dx, dz);
+        if (rel < -3.1415927f) rel += 6.2831855f;
+        else if (rel > 3.1415927f) rel -= 6.2831855f;
+        arc(cx, cy, rel - half + 4.712389f, rel + half + 4.712389f, 50.0f, 46.0f, 32, ring, scale, 0xffffffffu,
+            alpha);
+    }
+    /* the arrow: up for a flag more than 10 above, upside down more than 10 below; filled, up but for
+       the one below */
+    bool down = on && dy < -10.0f, up = (on && dy > 10.0f) || (ui_filled(0x100) && !down);
+    if (arrow && (up || down)) {
         float x0 = cx + (36.5f - 6.0f) * scale, y0 = cy - 6.0f * scale;
-        sprite(x0, y0, x0 + 12.0f * scale, y0 + 12.0f * scale, dy <= 10.0f, arrow, ui_flash_alpha(0x100),
-               GL_DEV_SCREEN);
+        sprite(x0, y0, x0 + 12.0f * scale, y0 + 12.0f * scale, down, arrow, ui_flash_alpha(0x100), GL_DEV_SCREEN);
     }
 }
 
@@ -354,11 +365,13 @@ static void draw_compass(const Character *c, float cx, float cy, const void *rin
    0x555480; the hypo bit); the hits' (0x500db0: a side's arc at its fading C+0x166c, radii 37 and 30,
    4 segments, the angles the exe's table at 0x5554b0; the hits bit); the LSI's icon
    (ONiInGameUI_DisplayLSIIcon 0x501330: "lsi_icon", 54 square from 27 up and left of the centre, at
-   0x55 while the timer runs (0x4fd360), the lsi bit). Not ported: the tutorial's forced arcs
-   (0x5ed09c). */
+   0x55 while the timer runs (0x4fd360), the lsi bit). ui_fill_element's bits draw the invisibility's
+   arc and the hypos full and the hit arcs at 255. */
 static void draw_inventory(const Character *c, const IguiHud *hud, float cx, float cy, const void *ring, float scale)
 {
-    if (c->invisibility)
+    if (ui_filled(0x4))
+        arc(cx, cy, -0.034906585f, -1.553343f, 63.0f, 51.0f, 8, ring, scale, 0xffffffffu, ui_flash_alpha(0x4));
+    else if (c->invisibility)
         arc(cx, cy, -0.034906585f, (float)c->invisibility * 0.00055555557f * -1.5184364f - 0.034906585f, 63.0f, 51.0f,
             8, ring, scale, 0xffffffffu, ui_flash_alpha(0x4));
     unsigned s1 = 0xff, s2 = 0x7f;
@@ -370,13 +383,13 @@ static void draw_inventory(const Character *c, const IguiHud *hud, float cx, flo
         if (hud->shield[i].on)
             arc(cx, cy, hud->shield[i].a0, hud->shield[i].a1, 63.0f, 51.0f, 8, ring, scale, 0xffffffffu,
                 (uint8_t)(i ? s2 : s1));
-    unsigned hypos = c->hypos < 6 ? c->hypos : 6;
+    unsigned hypos = ui_filled(0x10) || c->hypos > 6 ? 6 : c->hypos;
     for (unsigned i = 0; i < hypos; i++) {
         const uint8_t *t = exe_data(0x555480 + 8 * i, 8);
         if (t) arc(cx, cy, rdfp(t), rdfp(t + 4), 63.0f, 51.0f, 1, ring, scale, 0xffffffffu, ui_flash_alpha(0x10));
     }
     for (unsigned i = 0; i < 4; i++) {
-        unsigned a = c->hit_flash[i];
+        unsigned a = ui_filled(0x2) ? 0xffu : c->hit_flash[i];
         const uint8_t *t = exe_data(0x5554b0 + 8 * i, 8);
         if (!a || !t) continue;
         if (ui_flashing(0x2)) a = a * ui_flash_alpha(0x2) / 255u;

@@ -393,8 +393,15 @@ Not the WM's, but drawn with it on the in-game UI's screen (`ONrInGameUI_Display
 - **DisplayHits** 0x500db0: each side's arc at C+0x166c+side, set to 255 in `ONrCharacter_TakeDamage`
   0x4e65f0 from the hit's direction turned by the desired facing less the run's turn (C+0x170 - C+0x174)
   and faded by 3 a tick in the update; the flash bit 2 scales them.
-- The draw order: health, invisibility, shield, hypos, hits, the LSI's icon. Not ported: the
-  tutorial's forced arcs (0x5ed09c bits 1, 2, 4, 8).
+- The draw order: health, invisibility, shield, hypos, hits, the LSI's icon.
+- **`ui_fill_element`** (`ONiInGameUI_FillElement` 0x504e30; `ui_flash_element` is 0x504f40, both
+  registered by 0x503040 with the element table at 0x5556d0) sets bits of 0x5ed09c, cleared at the
+  level's start: health (1) and shield (8) show SetArcPoints' full arcs and mark their bar dirty, the
+  hits (2) all four at 255, the invisibility (4) its full arc, the hypos (0x10), clips (0x200) and cells
+  (0x400) six, the ammo (0x40) its ring full, the compass (0x80) a whole circle and the arrow (0x100)
+  up (unless the flag is more than 10 below). No level script uses it.
+- A new objective not yet read (0x5ed098) runs the flash's clock and flashes the compass, a whole
+  circle while no target is set.
 
 ## The port
 
