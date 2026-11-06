@@ -9,6 +9,7 @@
 #include "akev.h"
 #include "akev_collide.h"
 #include "objc.h"
+#include "particle.h"
 #include "physctx.h"
 #include "persist.h"
 #include "text.h"
@@ -1352,6 +1353,89 @@ static void os_update_all(void)
         if (os_amb[i].used && os_amb[i].has_pos) os_update(&os_amb[i], NULL);
 }
 
+/* ---- the projectiles' flybys (0x61fa38: 24 records of 0x28 bytes; 0x62009c, the records in use up to
+   the last one taken) ---- */
+
+enum { FLYBY_MAX = 24 };
+typedef struct {
+    bool used;                  /* +0x00, bit 0 */
+    float prev[3], cur[3];      /* +0x04, +0x10: the particle's place the frame before and now */
+    uint32_t handle;            /* +0x1c: the particle's +0x2c when taken (+0x24 the particle) */
+    const Impulse *impulse;     /* the class's (+0x20 the class, its +0x8c) */
+} Flyby;
+
+static Flyby flybys[FLYBY_MAX];
+static uint32_t nflybys;
+
+static void flyby_free(uint32_t i)
+{
+    flybys[i].used = false;
+    if (i + 1 == nflybys) nflybys--;
+}
+
+int sound_flyby_add(const void *impulse, uint32_t handle, const float pos[3])     /* 0x5156f0 */
+{
+    uint32_t i = 0;
+    while (i < nflybys && flybys[i].used) i++;
+    if (i >= FLYBY_MAX) return -1;
+    if (i >= nflybys) nflybys = i + 1;
+    Flyby *f = &flybys[i];
+    f->used = true;
+    memcpy(f->cur, pos, sizeof f->cur);
+    memcpy(f->prev, pos, sizeof f->prev);
+    f->handle = handle;
+    f->impulse = impulse;
+    return (int)i;
+}
+
+/* 0x5157c0: the place moves on (pos NULL: the particle's real place failed, and the record goes: true).
+   When the listener's nearest point on the frame's move lies within it (the move's dot with the
+   listener's offset changes sign), the impulse plays there: the point where it is zero, or the move's
+   middle if the two hardly differ, heard through the walls (0x511a00). */
+static bool flyby_step(uint32_t i, const float *pos)
+{
+    Flyby *f = &flybys[i];
+    memcpy(f->prev, f->cur, sizeof f->prev);
+    if (!pos) {
+        flyby_free(i);
+        return true;
+    }
+    memcpy(f->cur, pos, sizeof f->cur);
+    float mv[3], a[3], b[3];
+    for (int k = 0; k < 3; k++) mv[k] = f->cur[k] - f->prev[k], a[k] = f->prev[k] - listener[k], b[k] = f->cur[k] - listener[k];
+    float d0 = a[2] * mv[2] + a[1] * mv[1] + a[0] * mv[0], d1 = b[2] * mv[2] + b[1] * mv[1] + b[0] * mv[0];  /* 0x433bb0 */
+    if (!((double)d1 * d0 < 0.0)) return false;
+    float diff = d1 - d0, at[3];
+    if (fabs((double)diff) > 9.999999974752427e-07) {      /* 0x52b890 */
+        double t = (double)d1 / diff, u = -((double)d0 / diff);
+        for (int k = 0; k < 3; k++) at[k] = (float)(u * f->cur[k] + t * f->prev[k]);
+    } else
+        for (int k = 0; k < 3; k++) at[k] = (f->prev[k] + f->cur[k]) * 0.5f;     /* 0x529560 */
+    if (!f->impulse) return false;
+    float vol;
+    if (!occlusion(at, f->impulse->max_dist, f->impulse->min_occlusion, &vol, false, NULL)) return false;
+    if (!script_only) impulse_play(f->impulse, at, &vol);      /* SSrImpulse_Play 0x480440 */
+    return false;
+}
+
+void sound_flyby_end(int slot, const float *pos)       /* 0x515a00 */
+{
+    if (slot < 0 || (uint32_t)slot >= FLYBY_MAX) return;
+    if (!flyby_step((uint32_t)slot, pos)) flyby_free((uint32_t)slot);
+}
+
+/* OSrUpdate's part: a record whose particle's storage holds another one goes; the others step. */
+static void flyby_update_all(void)
+{
+    for (uint32_t i = 0; i < nflybys; i++) {
+        if (!flybys[i].used) continue;
+        float pos[3];
+        int r = p3_handle_position(flybys[i].handle, pos);
+        if (r < 0) flyby_free(i);
+        else flyby_step(i, r ? pos : NULL);
+    }
+}
+
 /* ---- the level's sound objects (OBJ type "Sound", docs/formats/objc.md "SNDG"): the playlist
    (0x620078, entries of 0x3c bytes made by 0x512b30 at the end of OSrLevel_Load 0x514970). A sphere plays
    its ambient at its place while the listener is within three times its max radius; a volume plays it
@@ -1821,6 +1905,8 @@ bool sound_level_load(int level)
 void sound_level_unload(void)
 {
     sobj_clear();
+    memset(flybys, 0, sizeof flybys);   /* the particles' ends (0x4581d0) take their records */
+    nflybys = 0;
     memset(os_amb, 0, sizeof os_amb);
     os_env = NULL;
     stop_all();
@@ -1869,11 +1955,12 @@ static void ss2_update(void)
 }
 
 /* OSrUpdate 0x514f20: the placed ambients again (for the listener sound_set_listener was given), the
-   level's sound spheres and volumes, then the scripts' part: slots of ended ambients are freed, the
-   dialog ends. Still to come: the projectiles' flybys (0x62009c). */
+   projectiles' flybys, the level's sound spheres and volumes, then the scripts' part: slots of ended
+   ambients are freed, the dialog ends. */
 void sound_update(void)
 {
     os_update_all();
+    flyby_update_all();
     sobj_update_all();
     ticks++;
     now++;

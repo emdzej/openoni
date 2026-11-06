@@ -112,6 +112,11 @@ void p3_set_detail_from_quality(void);   /* the definition's flags1 (0) or flags
 float *p3_position(P3Class *c, P3Particle *p);
 /* P3rGetRealPosition 0x45acc0: with its offset and attachment matrix. False if it died. */
 bool p3_real_position(P3Class *c, P3Particle *p, float out[3]);
+/* The particle a handle names while its storage holds the same one (the handle's +0x2c): 1 and its real
+   place, 0 if that failed (it died), -1 if it is gone. */
+int p3_handle_position(uint32_t handle, float out[3]);
+/* 0x456ff0: the classes' flyby impulses looked up again (p3_load does it, after the level's sounds). */
+void p3_update_sound_pointers(void);
 /* ONrCharacter_Collide_Ray 0x4f1630 for anyone: the segment from s along d against the character's
    parts; the nearest point on them. */
 bool p3_character_ray(const Character *c, const float s[3], const float d[3], float point[3]);

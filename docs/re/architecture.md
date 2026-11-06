@@ -21,7 +21,9 @@ Bungie's, from the Intel Mac build ([inventory](inventory.md)); addresses are th
 `ONiMain` 0x4d3280: command line (`OniParseCommandLine`), utilities (`UUrInitialize`), every module
 (`ONiInitializeAll`), level 0 (`ONrLevel_LoadZero`, the shared data and the menus), Motoko drawing
 (`ONrMotoko_SetupDrawing`), the window, splash screen, console (`COrConfigure`). Then two loops that block
-until they are done:
+until they are done. The splash screen ("displaying splash screen...") is a call to 0x4cae10, a bare
+`ret`: the empty function 38 callers share (confirmed), so the Windows release shows none, and the
+port neither. `intro.bik` plays (0x4d5580) between level 0 and the drawing's setup.
 
 1. `OWrOniWindow_Startup`: the **out-of-game UI** (main menu and its dialogs, on the WM toolkit).
 2. `ONiRunGame` 0x4d4640: the **game loop**. Per frame: input, the console (`0x4306f0`), game time

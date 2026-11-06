@@ -385,8 +385,10 @@
 004558a0	EPiDrawPositionMarker	EP	med	name from the Intel Mac build (neighbours:0.80)
 00455a50	P3rInitialize	P3	med	name from the Intel Mac build (neighbours:1.00)
 00455d00	P3rNewParticleStorage	P3	med	name from the Intel Mac build (strings:2)
+00455e10	P3rSetCallbacks	P3	low	made up: the creation, deletion and detail callbacks (0x659ae4, 0x6a872c, 0x6a85c4)
 00455e40	P3rCreateParticle	P3	med	name from the Intel Mac build (neighbours:1.00)
 00456030	P3rCreateEffect	P3	med	name from the Intel Mac build (strings:2)
+00456ff0	P3rUpdateSoundPointers	P3	low	made up: each class's flyby impulse by its name (+0x98)
 00457090	P3rListBrokenLinks	P3	med	name from the Intel Mac build (neighbours:0.83)
 00457240	P3rUpdateActionData	P3	med	name from the Intel Mac build (strings:1)
 00457ad0	P3rDumpParticles	P3	med	name from the Intel Mac build (strings:5)
@@ -1400,6 +1402,8 @@
 00508560	ONrMotoko_GraphicsQuality_NeverUseSuperLow	ON	med	name from the Intel Mac build (neighbours:1.00)
 00508570	ONrParticle3_Initialize	ON	med	name from the Intel Mac build (strings:3)
 00508da0	ONrParticle3_LevelZeroLoaded	ON	med	name from the Intel Mac build (strings:2)
+00508e20	ONiParticle3_Created	ON	low	made up: the creation callback, the AI's projectile record and the flyby
+00508e90	ONiParticle3_Deleted	ON	low	made up: the deletion callback
 00508ec0	ONiMotoko_Particle3Detail	ON	low	the P3 detail callback: 0 from quality 2, 1 for 1, 2 for 0 (name made up)
 00508ef0	ONiMotoko_Quality_Set	ON	med	Mac name: P3rChangeDetail by the quality
 005097f0	ONrParticle3_FindBodySurfacePosition	ON	med	name from the Intel Mac build (neighbours:1.00)
@@ -1477,6 +1481,9 @@
 00515120	OSiPlayList_Update_Spheres	OS	med	name from the Intel Mac build (neighbours:1.00)
 005152c0	OSiPlayList_EaseVolume	OS	low	made up: the sphere's loudness eased 0.05
 00515480	OSiPlayList_Update_Volumes	OS	low	made up, after OSiPlayList_Update_Spheres
+005156f0	OSrFlyby_Add	OS	low	made up: a flyby record for a particle
+005157c0	OSiFlyby_Update	OS	low	made up: the step; the impulse at the nearest point to the listener
+00515a00	OSrFlyby_Delete	OS	low	made up: the last step, the record freed
 00515a70	OSrVariant_SoundAnimation_Add	OS	med	name from the Intel Mac build (neighbours:1.00)
 00515c90	OSrVariantList_Initialize	OS	med	name from the Intel Mac build (strings:1)
 00516670	OSiVariant_Impulse_Get	OS	med	name from the Intel Mac build (strings:1)

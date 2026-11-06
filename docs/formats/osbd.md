@@ -253,8 +253,29 @@ starts, a playing one's volume moves to the new one by at most 0.05 (0x52a02c, 0
 as playing while its record is there. `SSrAmbient_Update` 0x4824a0 sets the place, the velocity, the
 direction and the volume (+0x44 of both base channels, held to 0..2).
 
-Not yet in the port: the level's sound objects (sound spheres and volumes) and the projectiles'
-flybys.
+The level's sound objects (the spheres and volumes, `OSrUpdate`'s playlist) are in
+[objc.md](objc.md) "SNDG".
+
+### Flybys
+
+A particle class with a flyby impulse (the name at +0x98 of its definition, 16 bytes; 0x456ff0 looks
+it up into the class's +0x8c after the level's sounds) takes one of 24 flyby records (0x61fa38, 0x28
+bytes each) when it is made: the game's creation callback (0x508e20, set by `P3rSetCallbacks`
+0x455e10) runs after each create event the particle lives through (`P3rCreateEffect`,
+`P3rSendEvent`, the emitters, the class change). The record (0x5156f0): bit 0 in use, the place the
+frame before (+4) and now (+0x10), the particle's +0x2c then (+0x1c), its class (+0x20), the
+particle (+0x24; its +3 the slot); none if all 24 are taken or its real place fails. `OSrUpdate`
+steps each record whose particle still has that +0x2c, frees the others; the deletion callback
+(0x508e90, after the die event) takes a last step and frees it (0x515a00).
+
+The step (0x5157c0): the place moves on (a failed real place frees the record). With m the frame's
+move and a, b the places before and now less the listener's, `d0 = a·m`, `d1 = b·m`; when
+`d0 × d1 < 0` the nearest point to the listener lies on the move, at `(d1 p_before − d0 p_now) / (d1
+− d0)` (the middle if `|d1 − d0| ≤ 1e-6`). There the class's impulse plays (`SSrImpulse_Play`
+0x480440, not when the scripts only), heard through the walls (0x511a00 with the impulse's max
+distance and min occlusion), not at all from three times its max distance. In the data only three
+classes have one: the Mercury Bow's bolt (`w8_mbo_p01`, `mb_flyby`), `w12_ba2_p01a`
+(`benrgy_flyby`) and `w13_muro_p01` (`muro_tr_flyby`). Ported in `src/sound.c` (`flyby_*`).
 
 ## Check
 

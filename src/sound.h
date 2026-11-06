@@ -71,6 +71,12 @@ void sound_impulse_play(const char *name, float volume);
 const void *sound_impulse_find(const char *name);
 float sound_impulse_impact_velocity(const void *impulse);
 void sound_impulse_play_at(const void *impulse, const float pos[3], const float *volume);
+/* The projectiles' flybys (0x61fa38, 24 records). 0x5156f0: a record for a particle of a class with a
+   flyby impulse, at pos (its place now); the slot, -1 if all 24 are taken. 0x515a00, the particle's end:
+   its last step (from pos; NULL: its place failed), then the record goes. Each frame (OSrUpdate) the
+   records step, and a particle passing its nearest point to the listener plays the impulse there. */
+int sound_flyby_add(const void *impulse, uint32_t handle, const float pos[3]);
+void sound_flyby_end(int slot, const float *pos);
 /* An ambient by name (OSrAmbient_GetByName 0x511670), NULL if none. OSrAmbient_Start 0x511730 at pos (the
    particles'): its id, UINT32_MAX if none started. OSrAmbient_Update 0x511ec0: moved, whether it plays.
    OSrAmbient_Stop 0x511e40. */

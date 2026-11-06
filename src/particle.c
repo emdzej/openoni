@@ -186,7 +186,7 @@ struct P3Class {
     uint16_t emitters;          /* +0x80 */
     uint16_t index;             /* +0x82 */
     uint16_t prev, next;        /* +0x84, +0x86: the active list (0xffff the end) */
-    void *flyby;                /* +0x8c: the flyby sound (not ported) */
+    const void *flyby;          /* +0x8c: the flyby impulse (0x456ff0: by the name at D_FLYBY) */
     P3Particle *head, *tail;    /* +0x90, +0x94 */
 };
 
@@ -792,6 +792,13 @@ static P3Particle *from_handle(uint32_t h)
     P3Particle *p = slot_at(h >> 14 & 0x1ffff);
     return p && p->handle == h && !(p->flags & P_GONE) ? p : NULL;
 }
+int p3_handle_position(uint32_t h, float out[3])
+{
+    P3Particle *p = from_handle(h);
+    if (!p) return -1;
+    return p3_real_position(&classes[p->cls], p, out) ? 1 : 0;
+}
+
 P3Particle *p3_from_handle(uint32_t h, P3Class **c)
 {
     P3Particle *p = from_handle(h);
@@ -881,6 +888,17 @@ static bool tint_variable(P3Class *c, P3Particle *p, uint32_t tint)
 
 bool p3_set_tint(P3Class *c, P3Particle *p, uint32_t tint) { return c && p && tint_variable(c, p, tint); }
 
+/* The game's creation callback (0x659ae4, 0x508e20), after a create event the particle lives through:
+   the AI's record of a dangerous projectile (a class with a dodge or alert radius, +0x90, +0x94: not
+   ported), and a class with a flyby impulse a flyby record (0x5156f0). */
+static void created(P3Class *c, P3Particle *p)
+{
+    float pos[3];
+    if (!c->flyby || !p3_real_position(c, p, pos)) return;
+    int slot = sound_flyby_add(c->flyby, p->handle, pos);
+    if (slot >= 0) p->flyby_slot = (uint8_t)slot;
+}
+
 /* P3rCreateParticle 0x455e40: the header, the lifetime drawn, the emitters (on if the flag says so,
    never emitted), the variables' first values. */
 P3Particle *p3_create(P3Class *c, uint32_t tick)
@@ -956,11 +974,17 @@ static void unlink_particle(P3Class *c, P3Particle *p)
 
 static bool run_event(P3Class *c, P3Particle *p, int event, const uint8_t *list, float time, float dt, bool collided);
 
-/* 0x456ce0 and its callers' free list: the die event, the callbacks' end (the AI's projectile and the
-   flyby: not ported), the decal (P3rDeleteDecal 0x453630), the ambient sound's stop, the particle gone. */
+/* 0x456ce0 and its callers' free list: the die event, the deletion callback (0x6a872c, 0x508e90: the
+   AI's projectile record, not ported, and the flyby's last step, 0x515a00), the decal (P3rDeleteDecal 0x453630), the ambient sound's stop, the particle gone. */
 static void end_particle(P3Class *c, P3Particle *p)
 {
     run_event(c, p, P3_EV_DIE, c->def + D_EVENTS + 4 * P3_EV_DIE, p->time, 0.0f, false);
+    if (p->flyby_slot != 0xff) {
+        float pos[3];
+        bool ok = p3_real_position(c, p, pos);
+        sound_flyby_end(p->flyby_slot, ok ? pos : NULL);
+        p->flyby_slot = 0xff;
+    }
     if ((flags2(c) & F2_DECAL) && (p->flags & (P_DECAL_STATIC | P_DECAL_DYNAMIC))) {
         uint8_t *db = block(c, p, P3_X_DECAL);
         if (db) decal_delete(rd32(db));
@@ -1040,12 +1064,14 @@ static bool run_event(P3Class *c, P3Particle *p, int event, const uint8_t *list,
     return false;
 }
 
-/* P3rSendEvent 0x45b2c0 (the create event finds the attractor first, 0x463430, and calls the create
-   callback after: not ported). */
+/* P3rSendEvent 0x45b2c0 (the create event finds the attractor first, 0x463430: not ported here, and
+   calls the creation callback after, when the particle lives). */
 bool p3_send_event(P3Class *c, P3Particle *p, int event, float time)
 {
     if (!c || !p || event < 0 || event > 15) return false;
-    return run_event(c, p, event, c->def + D_EVENTS + 4 * event, time, 0.0f, false);
+    bool died = run_event(c, p, event, c->def + D_EVENTS + 4 * event, time, 0.0f, false);
+    if (event == P3_EV_CREATE && !died) created(c, p);
+    return died;
 }
 
 /* ---- positions ---- */
@@ -1802,6 +1828,7 @@ static bool emit(P3Class *c, P3Particle *p, unsigned k, float time)
         setup_new(ec, q, tick);
         wr32(st + ES_LAST, q->handle);
         if (run_event(ec, q, P3_EV_CREATE, ec->def + D_EVENTS + 4 * P3_EV_CREATE, time, 0.0f, false)) continue;
+        created(ec, q);     /* 0x45e90e */
     }
     return false;
 }
@@ -2336,6 +2363,19 @@ void p3_load(void)
         if (flags2(&classes[i]) & detail_mask(detail)) classes[i].flags |= C_DETAIL_OFF;
         else classes[i].flags &= ~(uint32_t)C_DETAIL_OFF;
     }
+    p3_update_sound_pointers();
+}
+
+/* 0x456ff0 (OSrUpdateImpulsePointers 0x514d20, at the end of the level's load): each class's flyby
+   impulse by the name at D_FLYBY (OSrImpulse_GetByName 0x512440), none for an empty name. */
+void p3_update_sound_pointers(void)
+{
+    for (uint16_t i = 0; i < nclasses; i++) {
+        char name[17];
+        memcpy(name, classes[i].def + D_FLYBY, 16);
+        name[16] = 0;
+        classes[i].flyby = name[0] ? sound_impulse_find(name) : NULL;
+    }
 }
 
 /* ---- the actions (the table's functions, 0x463f60 to 0x467c50) ---- */
@@ -2588,7 +2628,8 @@ static bool do_action(Act *x)
         if ((b = block(nc, q, P3_X_PREV_POS))) wr32(b, 0);
         if ((b = block(nc, q, P3_X_LENSFLARE))) wr32(b, 0);
         if ((b = block(nc, q, P3_X_CACHE))) memset(b, 0, 20);
-        run_event(nc, q, P3_EV_CREATE, nc->def + D_EVENTS + 4 * P3_EV_CREATE, x->time, 0.0f, false);
+        if (!run_event(nc, q, P3_EV_CREATE, nc->def + D_EVENTS + 4 * P3_EV_CREATE, x->time, 0.0f, false))
+            created(nc, q);     /* 0x46539d */
         return false;
     }
     case A_KILL_LAST: case A_EXPLODE_LAST: {
@@ -3348,7 +3389,8 @@ P3Particle *p3_effect_owned(P3Class *c, const float pos[3], const float vel[3], 
         else memcpy(v, ID, 36);
     }
     setup_new(c, q, tick);
-    run_event(c, q, P3_EV_CREATE, c->def + D_EVENTS + 4 * P3_EV_CREATE, (float)tick * (1.0f / 60.0f), 0.0f, false);
+    if (!run_event(c, q, P3_EV_CREATE, c->def + D_EVENTS + 4 * P3_EV_CREATE, (float)tick * (1.0f / 60.0f), 0.0f, false))
+        created(c, q);
     return (q->flags & P_DEAD) ? NULL : q;
 }
 /* P3rCreateEffect 0x456030: a particle of the specification's class made at the location's tick (a hit's
@@ -3365,7 +3407,7 @@ P3Particle *p3_effect_owned(P3Class *c, const float pos[3], const float vel[3], 
    its wrap angle (+0x204, 60 degrees without), its alpha and tint, across the normal (the location's
    up, else (-z, 0, x) of the normal, else z up; a normal along y with neither kills it), turned by a
    random angle if the specification asks; without its decal the particle dies. Then the create event
-   (0x45b170, 11) and the creation hook (0x659ae4: not used). */
+   (0x45b170, 11) and the creation callback (0x659ae4). */
 P3Particle *p3_create_effect(const P3EffectSpec *spec, const P3EffectLoc *loc)
 {
     P3Class *c = spec ? spec->cls : NULL;
@@ -3509,7 +3551,8 @@ P3Particle *p3_create_effect(const P3EffectSpec *spec, const P3EffectLoc *loc)
         decal_set_owner(id, q->handle);
     }
     setup_attractor(c, q);
-    run_event(c, q, P3_EV_CREATE, c->def + D_EVENTS + 4 * P3_EV_CREATE, (float)loc->tick * 0.016666668f, 0.0f, false);
+    if (!run_event(c, q, P3_EV_CREATE, c->def + D_EVENTS + 4 * P3_EV_CREATE, (float)loc->tick * 0.016666668f, 0.0f, false))
+        created(c, q);      /* 0x456ba5 */
     return (q->flags & P_DEAD) ? NULL : q;
 }
 

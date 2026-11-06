@@ -6,6 +6,7 @@
 #include "exe.h"
 #include "material.h"
 #include "particle.h"
+#include "sound.h"
 #include "tm.h"
 #include "vfs.h"
 #include "vfs_host.h"
@@ -50,6 +51,9 @@ int main(void)
     }
     printf("particle_test: %d breakable quads, %d of the 18 targets\n", breakable, targets);
     if (breakable != 18 || targets != 18) { fprintf(stderr, "particle_test: the glass isn't the targets\n"); failed++; }
+    sound_initialize();     /* the level's sounds before the classes, which look up their flybys */
+    sound_level_load(0);
+    sound_level_load(1);
     p3_load();
     p3_set_environment(env);
     printf("particle_test: %d classes\n", p3_class_count());
@@ -103,6 +107,32 @@ int main(void)
     if (after < before + 2) { fprintf(stderr, "particle_test: the pulse emitted nothing\n"); failed++; }
     for (int k = 1; k <= 120; k++) p3_update(tick + k, true, NULL, 0);
     printf("particle_test: after 2 s: %d alive\n", p3_live_count());
+
+    /* the flyby: the Mercury Bow's bolt down the range past a listener beside its path plays its flyby
+       impulse (mb_flyby) as it passes */
+    P3Class *bc = p3_class("w8_mbo_p01");
+    if (!bc) { fprintf(stderr, "particle_test: no Mercury Bow bolt\n"); return 1; }
+    static const float ear[3] = { -688, 0, -620 }, dir[3] = { 1, 0, 0 };
+    float at[3] = { ear[0], floor_y + 10, ear[2] };
+    sound_set_listener(at, dir);
+    for (int k = 0; k < 10; k++) sound_update();
+    int quiet = sound_channels_playing(), heard = 0;
+    tick += 200;
+    P3Particle *b = p3_create(bc, tick);
+    float *bp = p3_position(bc, b);
+    bp[0] = -692, bp[1] = floor_y + 10, bp[2] = -560;
+    float *bv = p3_block(bc, b, P3_X_VELOCITY);
+    if (bv) bv[0] = 0, bv[1] = 0, bv[2] = -600;
+    p3_send_event(bc, b, P3_EV_CREATE, tick / 60.0f);
+    for (int k = 1; k <= 30; k++) {
+        p3_update(tick + k, true, NULL, 0);
+        sound_update();
+        int n = sound_channels_playing();
+        if (n > heard) heard = n;
+    }
+    printf("particle_test: the bolt's flyby: %d channels before, up to %d as it passes\n", quiet, heard);
+    if (heard <= quiet) { fprintf(stderr, "particle_test: no flyby\n"); failed++; }
+    sound_terminate();
     if (failed) return 1;
     printf("particle_test: ok\n");
     return 0;
