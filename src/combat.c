@@ -679,11 +679,21 @@ static void select_maneuver(AiState *a, Character *c, const void *env)
             break;
         case COMBAT_MANEUVER_MELEE:         /* 0x49e910 */
             if (!a->melee.profile || !s->t.target) break;
-            if (dist_to(c, s->t.target->pos) * dist_to(c, s->t.target->pos) < 6400.0f) {   /* 0x52a9a4 */
-                ok = true;  /* (AI2rMelee_TestLocalEnvironment: taken as clear) */
-                break;
+            {
+                /* every fifth tick a countdown (+0x17c) that nothing sets; at 0, within 80 (0x52a9a4) a
+                   clear way to the target is a melee */
+                MeleeState *m = &a->melee;
+                m->env_wait = m->env_wait > 5 ? m->env_wait - 5 : 0;
+                if (m->env_wait == 0 && dist_to(c, s->t.target->pos) * dist_to(c, s->t.target->pos) < 6400.0f) {
+                    melee_test_local_environment(m, c, s->t.target);
+                    if (!m->env_blocked) {
+                        ok = true;
+                        break;
+                    }
+                }
+                m->env_hold = 60;
             }
-            /* too far: advance to within 15 to 20 of it */
+            /* too far, or no way: advance to within 15 to 20 of it */
             ai_halt(a);
             s->targeting = true;
             s->aim = false;
@@ -893,11 +903,6 @@ void combat_tick(AiState *a, Character *c, const void *env, bool has_target)
     bool fought = false;
     if (s->maneuver == COMBAT_MANEUVER_MELEE && target) {
         fought = melee_update(a, c, target);
-        if (!fought) {
-            /* (the port's: closing in when there is no technique to do) */
-            float dx = target->pos[0] - c->pos[0], dz = target->pos[2] - c->pos[2];
-            ai_move_near(a, target->pos, 12.0f, true, wrap_2pi(atan2f(dx, dz)));
-        }
     }
     /* an alarm run left for the fight: a target within the chase distance keeps it fighting for the
        fight time; one beyond the ignore distance sends it back to the alarm (AI2rAlarm_Setup) */
@@ -962,10 +967,7 @@ void combat_aim(AiState *a, Character *c)
         pelvis(m->look_char, m->at);
         break;
     }
-    /* (melee turns the character itself: the original through the executor's overrides, the port's
-       melee through its moves) */
-    bool melee = a->state == AI_STATE_COMBAT && a->combat.maneuver == COMBAT_MANEUVER_MELEE;
-    if (face != 1000.0f && !a->moving && !melee) a->facing = face;
+    if (face != 1000.0f && !a->moving) a->facing = face;
 
     /* AI2rExecutor_UpdateAim 0x498f50: from 15 over the feet, toward the point (or along the
        direction) at the aiming speed (6 degrees a tick, 0x52a880, by the weapon's +0x7c); more than

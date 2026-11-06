@@ -1298,8 +1298,9 @@ static void game_display(void)
     gl_dev_matrices(proj, view);
     env_draw();
     draw_objects();
+    char_shadows_clear();
     for (int i = 0; i < chars_slots(); i++)
-        if (chars_get(i)) char_draw_character(&chars_get(i)->c);   /* the blended pose */
+        if (chars_get(i)) char_draw_character(&chars_get(i)->c, i);   /* the blended pose */
     decal_draw(env_draw_environment());     /* P3rDisplayStaticDecals, P3rDisplayDynamicDecals */
     particle_draw(view, p3_tick());     /* P3rDisplay */
     laser_draw(view);

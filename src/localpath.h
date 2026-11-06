@@ -24,6 +24,15 @@ typedef struct LocalPoint {
 int local_path(const void *env, int room, const float start[3], const float end[3], const Character *c, bool allow7,
                bool simplify, LocalPoint *out);
 
+/* AI2rTryLocalMovement 0x49d560 (AI2rDoLocalMovement 0x49d700): a straight line over the grids from
+   `from` to `to`, staying under the cells' value 8 but for `tolerance` blocked cells at its start, into
+   the rooms beyond a grid's edge. False with no room or grid at `from` (the original's error report).
+   reached: the line got there (out: `to`), else out is where it stopped; kind: the worst value it met
+   (its line's highest, the lowest for a line that started blocked; where it stopped, that line's
+   highest); crossed_blocked: a line started blocked. */
+bool local_try_movement(const float from[3], const float to[3], int tolerance, bool *reached, float out[3],
+                        uint8_t *kind, bool *crossed_blocked);
+
 /* AI2rFindNearbyPoint 0x49cec0: a point dist from `from` toward angle reached by a straight line over the
    grids (threshold: the cells' value it stays under, tolerance: blocked cells allowed at its start), else
    the angle a step to either side, two steps, ... n steps; failing all, the farthest point a line got to

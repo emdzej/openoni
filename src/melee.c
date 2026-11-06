@@ -4,6 +4,13 @@
 #include "chars.h"
 #include "chr_anim.h"
 #include "exe.h"
+#include "localpath.h"
+#include "chr_intersect.h"
+#include "combat.h"
+#include "ui.h"
+#include "throw.h"
+#include "akev_collide.h"
+#include "particle.h"
 #include "objc.h"
 #include "persist.h"
 #include "tm.h"
@@ -553,55 +560,815 @@ void melee_start(MeleeState *m, const MeleeProfile *p, const void *oncc)
 
 /* ---- running ---- */
 
+/* ONrCharacter_GetPelvisPosition 0x4e34f0 (the active record's A+0x229c). */
+static void pelvis_of(const Character *c, float out[3]) { memcpy(out, &c->bone_world[0][9], 3 * sizeof(float)); }
+
+/* AI2rManeuver_CheckBlockage 0x49ea60: the segment from the pelvis to p hits the environment (the
+   first hit, AKrCollision_Point 0x441c80, skipping 0x48800). Not yet: the objects nearer than p
+   (AMrRayToObject 0x4d52c0) and the characters on the way (AI2rManeuver_TrySphereTreeCollision
+   0x49ec30). */
+static bool check_blockage(const Character *c, const float p[3])
+{
+    float from[3], v[3];
+    pelvis_of(c, from);
+    for (int i = 0; i < 3; i++) v[i] = p[i] - from[i];
+    const void *env = p3_environment();
+    static AkevHit hit[AKEV_HITS_MAX];
+    return env && akev_collide_point(env, from, v, 0x48800, 0, hit) != 0;
+}
+
+void melee_test_local_environment(MeleeState *m, const Character *c, const Character *target)
+{
+    /* the angle (AI2iMelee_AngleToTarget 0x4a21c0, without the attack's lead: the port's) */
+    float dx = target->pos[0] - c->pos[0], dz = target->pos[2] - c->pos[2];
+    m->angle = wrap_2pi(atan2f(dx, dz));
+    float sa = sinf(m->angle), ca = cosf(m->angle), loc[3];
+    chr_location(c, loc);
+    float d = m->dist + 50.0f;      /* 0x52a768 */
+    float to[3] = { d * sa + loc[0], loc[1], d * ca + loc[2] }, at[3];
+    m->env_time = c->time;          /* (the game's time: ONrGameState_GetGameTime) */
+    memcpy(m->env_pos, loc, sizeof loc);
+    bool reached, crossed;
+    uint8_t kind;
+    /* (AI2rMovement_IgnoreCharacter around it: the grids' obstacles aren't ported) */
+    if (local_try_movement(loc, to, 3, &reached, at, &kind, &crossed) && !crossed) {
+        if (!reached) {
+            float f = (at[0] - loc[0]) * sa + (at[2] - loc[2]) * ca;
+            m->room_fwd = f;
+            m->env_blocked = f < m->dist;
+            m->danger_fwd = kind == 8;
+            memcpy(m->env_fwd, at, sizeof at);
+        } else {
+            m->env_blocked = false;
+            m->room_fwd = 0.0f;
+            m->danger_fwd = false;
+            memcpy(m->env_fwd, to, sizeof to);
+        }
+    } else {
+        /* no grid, or a line that started blocked: blocked, 6 ahead (0x5297f8) */
+        m->env_blocked = true;
+        m->danger_fwd = false;
+        m->env_fwd[0] = m->env_pos[0] + sa * 6.0f;
+        m->env_fwd[1] = m->env_pos[1];
+        m->env_fwd[2] = m->env_pos[2] + ca * 6.0f;
+    }
+    float back[3] = { loc[0] - sa * 50.0f, loc[1], loc[2] - ca * 50.0f };
+    if (local_try_movement(loc, back, 3, &reached, at, &kind, &crossed)) {
+        if (!reached) {
+            m->danger_back = kind == 8;
+            memcpy(m->env_back, at, sizeof at);
+            m->room_back = (at[0] - loc[0]) * sa + (at[2] - loc[2]) * ca;
+        } else {
+            m->room_back = 0.0f;
+            m->danger_back = false;
+            memcpy(m->env_back, back, sizeof back);
+        }
+    } else {
+        m->room_back = 0.0f;
+        m->danger_back = false;
+        m->env_back[0] = m->env_pos[0] + sa * 6.0f;
+        m->env_back[1] = m->env_pos[1];
+        m->env_back[2] = m->env_pos[2] + ca * 6.0f;
+    }
+    /* a blockage within 8 doesn't count (nor with A+0xb6 set, not kept by the port); else the way from
+       the pelvis to the target's, at the lower of the two heights, decides */
+    if (m->env_blocked && m->dist < 8.0f) m->env_blocked = false;
+    if (m->env_blocked) {
+        float mine[3], theirs[3];
+        pelvis_of(c, mine);
+        pelvis_of(target, theirs);
+        if (theirs[1] > mine[1]) theirs[1] = mine[1];
+        m->env_blocked = check_blockage(c, theirs);
+    }
+}
+
 /* The time (GS+0x144) for the delays: the characters' own tick count stands in. */
 static uint32_t now_of(const Character *c) { return c->time; }
 
-/* The character's melee state: of the state its animation goes to (TRrAnimation_GetTo 0x428730), 13
-   (moving) told apart by the keys held: 14 forward, 16 left, 17 right, 15 back. */
-static uint32_t melee_state(const Character *c, uint64_t held)
+/* AI2iMelee_TranslateTotoroAnimState: of a melee state, 13 (moving) told apart by the keys held (A+0x2168,
+   the port's last tick's): 14 forward, 16 left, 17 right, 15 back. */
+static uint32_t translate_state(uint32_t s, uint64_t held)
 {
-    uint16_t to = c->anim ? tr_to(c->anim) : 0;
-    uint32_t s = to < sizeof melee_state_of ? melee_state_of[to] : 0;
-    if (s == 13) {
-        if (held & CHR_KEY_FORWARD) return 14;
-        if (held & CHR_KEY_STEP_LEFT) return 16;
-        if (held & CHR_KEY_STEP_RIGHT) return 17;
-        if (held & CHR_KEY_BACK) return 15;
-    }
-    return s;
+    if (s != 13) return s;
+    if (held & CHR_KEY_FORWARD) return 14;
+    if (held & CHR_KEY_STEP_LEFT) return 16;
+    if (held & CHR_KEY_STEP_RIGHT) return 17;
+    if (held & CHR_KEY_BACK) return 15;
+    return 13;
 }
 
-/* The facing that puts the target on the direction's side: 1 ahead, 2 behind, 3 left, 4 right. */
-static float facing_for(float angle, uint32_t dir)
+static uint32_t state_of(uint16_t anim_state, uint64_t held)
 {
-    switch (dir) {
-    case 2: return wrap_2pi(angle + PI);
-    case 3: return wrap_2pi(angle - HALF_PI);
-    case 4: return wrap_2pi(angle + HALF_PI);
-    default: return angle;
+    return translate_state(anim_state < sizeof melee_state_of ? melee_state_of[anim_state] : 0, held);
+}
+
+/* TRrAnimation_GetFirstAttackFrame 0x4292a0, GetLastAttackFrame 0x4292b0: the attack points' frames
+   (TRAM +0x130 the count, +0x134 12 bytes each, the frame first). */
+static uint16_t attack_point_frame(const void *tram, bool last)
+{
+    uint32_t n = rd32((const uint8_t *)tram + 0x130);
+    if (!n) return 0;
+    const uint8_t *pt = tr_raw_block(tram, 0x134, last ? 12u * (n - 1) : 0, 12);
+    return pt ? rd16(pt) : 0;
+}
+
+/* TRrAnimation 0x428960: the throw's victim animation type (the throw block's +0x14), 0 if none. */
+static uint16_t throw_target_type(const void *tram)
+{
+    const uint8_t *b = tr_raw_block(tram, TRAM_THROW, 0, 0x18);
+    return b ? rd16(b + 0x14) : 0;
+}
+
+/* ONrCharacter_InAir 0x4dc810 */
+static bool in_air(const Character *c) { return c->air_ticks != 0; }
+
+/* The categories' functions (the table at 0x52a9e8, 0x48 bytes each: ten functions from +0x20), by the
+   move's top four bits. */
+static unsigned category(const MeleeMove *mv) { return mv->type >> 28; }
+
+/* 8, AI2iMelee_*_FaceTarget: whether the move turns to the facing wanted; only a maneuver doesn't. */
+static bool cat_face_target(const MeleeMove *mv) { return category(mv) != MELEE_MANEUVER; }
+
+/* 9, AI2iMelee_*_CanEvade: an attack until its keys are pressed, a position on the ground, a maneuver
+   always; an evasion and a throw never. */
+static bool cat_can_evade(const MeleeState *m, const Character *c)
+{
+    switch (category(m->mv)) {
+    case MELEE_ATTACK: return !m->pressed;
+    case MELEE_POSITION: return !in_air(c);
+    case MELEE_MANEUVER: return true;
+    default: return false;
     }
 }
 
-/* The end of a technique (+0x0c cleared): the attacks' memory fades (failed ones come back). */
-static void end_technique(MeleeState *m)
+/* AI2iMelee_AngleToTarget 0x4a21c0: toward the target (+0x8c its difference), led by its motion over the
+   first attack's frames before it lands (+0x3c's first attack point). */
+static float angle_to_target(MeleeState *m, const Character *c)
 {
-    m->tech = NULL;
+    const Character *t = m->target;
+    for (int i = 0; i < 3; i++) m->vec[i] = t->pos[i] - c->pos[i];
+    float x = m->vec[0], z = m->vec[2];
+    if (m->lead) {
+        float f = (float)attack_point_frame(m->lead, false);
+        x = f * (t->pos[0] - t->prev_pos[0]) + x;       /* 0x4f1320: its motion this tick */
+        z = f * (t->pos[2] - t->prev_pos[2]) + z;
+    }
+    return wrap_2pi(atan2f(x, z));
+}
+
+/* AI2iMelee_UpdateFacing 0x4a1f10: the facing wanted (+0x98) and how far the character is from it
+   (+0x9c). Blocking or between techniques, the target; in one, its direction's side of it (none for 0
+   and 5), unless the facing is held. Quirks kept: left (3) isn't wrapped below 0, right (4) not past 2 pi. */
+static void update_facing(MeleeState *m, const Character *c)
+{
+    if (m->blocking) {
+        m->angle = m->face = angle_to_target(m, c);
+        m->face_target = true;
+    } else if (!m->tech) {
+        m->angle = m->face = angle_to_target(m, c);
+        m->face_target = false;
+    } else if (!m->hold_facing) {
+        m->angle = angle_to_target(m, c);
+        m->face_target = m->mv ? cat_face_target(m->mv) : true;
+        float f;
+        switch (m->tech->computed >> 8 & 0xf) {
+        case 0: case 5: m->face = 1000.0f; break;
+        case 1: m->face = m->angle; break;
+        case 2:
+            f = m->angle + PI;
+            m->face = f >= TWO_PI ? f - TWO_PI : f;
+            break;
+        case 3:
+            f = m->angle - HALF_PI;
+            m->face = f >= TWO_PI ? f - TWO_PI : f;
+            break;
+        case 4:
+            f = m->angle + HALF_PI;
+            m->face = f < 0.0f ? f + TWO_PI : f;
+            break;
+        default: break;
+        }
+    }
+    if (m->face == 1000.0f) {
+        m->face_off = 0.0f;
+        return;
+    }
+    m->face_off = fabsf(wrap_pi(m->face - c->facing));
+}
+
+/* AI2iMelee_ApplyFacing: a move that faces turns to the facing wanted at the full rate, its aim let go
+   (0x498b90, AI2rMovement_StopAiming); else the character looks at the target
+   (AI2rMovement_LookAtCharacter). */
+static void apply_facing(AiState *a)
+{
+    MeleeState *m = &a->melee;
+    if (m->face_target && m->face != 1000.0f) {
+        a->full_turn = true;
+        a->facing_override = m->face;
+        a->aim.look = 0;
+    } else {
+        a->aim.look = 3;
+        a->aim.look_char = m->target;
+    }
+}
+
+static void new_seeds(MeleeState *m)
+{
+    m->seed[0] = trac_random();     /* AI2iMelee_NewRandomSeeds */
+    m->seed[1] = trac_random();
+}
+
+/* The technique's state cleared (the start of a new one, AI2iMeleeState_NewTechnique, and the end). */
+static void clear_technique(MeleeState *m)
+{
+    m->keys = 0;
     m->move = 0;
-    m->move_started = m->pressed = false;
-    m->move_ticks = 0;
+    m->leftover = 0.0f;
+    m->keys_set = false;
+    m->m66 = false;
+    m->m84 = -1;
     m->face = 1000.0f;
-    if (m->profile)
-        for (uint32_t i = 0; i < m->profile->nattack && i < MELEE_MEMORY; i++)
-            m->memory[i] = m->memory[i] == 1000.0f ? 0.0f : m->memory[i] * 0.6f;
+    m->hold_facing = m->committed = false;
+    m->m60 = 0;
+}
+
+/* AI2iMeleeState_AbortTechnique: a failed attack is remembered (1000), the technique dropped. */
+static bool abort_technique(MeleeState *m)
+{
+    if (!m->tech) return true;
+    if ((m->tech->computed & 0x40000) && m->tech->index < MELEE_MEMORY) m->memory[m->tech->index] = 1000.0f;
+    m->tech = NULL;
+    m->mv = NULL;
+    m->lead = NULL;
+    new_seeds(m);
+    clear_technique(m);
+    return true;
+}
+
+/* AI2iMeleeState_ApplyTechniqueDelay: the technique may not be picked again for its delay. */
+static void apply_delay(MeleeState *m, const Character *c)
+{
+    if (m->tech && m->tech->delay && m->tech->delay_slot >= 0 && m->tech->delay_slot < MELEE_MEMORY)
+        m->available[m->tech->delay_slot] = now_of(c) + m->tech->delay;
+}
+
+/* AI2rExecutor_MoveOverride 0x498b60: these keys this tick. */
+static void move_override(AiState *a, uint64_t keys)
+{
+    a->key_override = true;
+    a->override_keys = keys;
+}
+
+/* The executor's attack override (AI2rExecutor_AttackOverride 0x498bb0). */
+static void attack_override(MeleeState *m, uint16_t type, uint64_t held, uint64_t down, uint16_t prev)
+{
+    m->override = true;
+    m->override_type = type;
+    m->override_prev = prev;
+    m->override_held = held;
+    m->override_down = down;
+}
+
+/* AI2iMelee_WeightLocalMovement 0x4a4440: a move that goes `along` (forward, or back below 0) toward a
+   danger ahead of the way (+0x141, +0x142 with the room +0x144, +0x148): true (and 0) when it would
+   reach it, a weight falling under 10 of it (x 0.1). Techniques with flag 4 (computed) don't care. */
+static bool weight_local_movement(const MeleeState *m, const MeleeTech *k, float along, float *w)
+{
+    float f = 1.0f;
+    bool danger = false;
+    if (!(k->computed & 4)) {
+        bool d;
+        float room;
+        if (along <= 0.0f) d = m->danger_back, along = -along, room = m->room_back;
+        else d = m->danger_fwd, room = m->room_fwd;
+        if (d) {
+            room -= along;
+            if (room >= 0.0f) {
+                if (room < 10.0f) f = room * 0.1f;
+            } else {
+                danger = true;
+                f = 0.0f;
+            }
+        }
+    }
+    if (w) *w = f;
+    return danger;
+}
+
+/* ONrCharacterClass_MovementSpeed 0x4ee020 for running (mode 6): forward 0.88, back 0.8, sideways 0.84. */
+static float run_speed(int kind)
+{
+    switch (kind) {
+    case 0: return 0.88f;
+    case 2: case 3: return 0.84f;
+    case 1: return 0.8f;
+    default: return 0.0f;
+    }
+}
+
+/* 0x498520: the class's turn a tick (ONCC+0x124, a hundredth of a turn). */
+static float turn_rate(const Character *c) { return rdf((const uint8_t *)c->oncc + 0x124) * 0.06283185631036758f; }
+
+/* AI2iMelee_SetupAttackerState 0x4a2270: the attacker's half of the context as it would start the
+   move: in the air as it is; else, for a moving position, a long jump begun (half the jump's and the
+   long jump's air times, the motion estimate with the class's jump speed up and at least the step along
+   the direction); the animation from its first frame. */
+static void setup_attacker(const MeleeProfile *p, ChrIntersectChar *h, const Character *c, bool moving, float step,
+                           uint32_t dir, const void *anim)
+{
+    h->modified = true;
+    if (in_air(c)) {
+        h->now.air = true;
+        h->now.jumped = (c->jumped & 1) != 0;
+        h->now.jump_held = false;       /* (A+0x2168's jump: the AI's held keys, last tick's) */
+        h->now.air_ticks = c->air_ticks;
+        memcpy(h->now.air_velocity, c->air_velocity, sizeof h->now.air_velocity);
+        float f = p->long_jump_time - (float)c->air_ticks;
+        h->now.air_frames = f >= 0.0f ? (uint16_t)lrintf(f) : 0;
+    } else if (!moving) {
+        h->now.air = false;
+    } else {
+        h->now.air = true;
+        h->now.jumped = true;
+        h->now.air_ticks = 0;
+        h->now.air_frames = (uint16_t)lrintf((p->long_jump_time + p->jump_time) * 0.5f);
+        chr_velocity_estimate(c, h->now.air_velocity);
+        h->now.air_velocity[1] += h->oncc_08;
+        float *v = h->now.air_velocity;
+        switch (dir) {
+        case 1: if (v[2] <= step) v[2] = step; break;
+        case 2: if (-step < v[2]) v[2] = -step; break;
+        case 3: if (v[0] <= step) v[0] = step; break;
+        case 4: if (-step < v[0]) v[0] = -step; break;
+        default: break;
+        }
+    }
+    h->frame = 0;
+    h->anim = anim;
+}
+
+static bool start_move(AiState *a, Character *c);
+
+/* AI2iMelee_StartNextMove 0x4a20f0: the move finished (its category's 7), the next started (its 5);
+   true when the technique is over (or the start ends it). */
+static bool start_next_move(AiState *a, Character *c)
+{
+    MeleeState *m = &a->melee;
+    if (!m->mv->invalid) {
+        switch (category(m->mv)) {
+        case MELEE_ATTACK: case MELEE_THROW:
+            /* 0x4a7fd0: an attack (or throw) that may not be interrupted commits the technique */
+            if (!(m->tech->flags & 1)) m->committed = true;
+            break;
+        case MELEE_MANEUVER:
+            apply_delay(m, c);      /* 0x4a7570 */
+            ai_halt(a);
+            break;
+        default: break;
+        }
+    }
+    m->move++;
+    new_seeds(m);
+    bool done;
+    if (m->move < m->tech->count) {
+        m->mv++;
+        done = start_move(a, c);
+    } else {
+        done = true;
+        m->mv = NULL;
+        m->lead = NULL;
+    }
+    update_facing(m, c);
+    apply_facing(a);
+    return done;
+}
+
+/* ---- the attacks (AI2iMelee_Attack_*) ---- */
+
+/* The wait while the character's animation can't yet give way to the move's (the move's state left
+   later, or an atomic part): 4 frames of the end for an animation of the fight variant, 8 for a
+   shortcut, else none. True: wait. */
+static bool move_window(const Character *c, const MeleeMove *mv, uint32_t to, uint32_t from)
+{
+    if (!c->anim) return false;
+    if (!tr_is_atomic(c->anim, (uint16_t)c->frame) && !(from != mv->state && to == mv->state)) return false;
+    uint32_t window = 0;
+    if (chr_lookup_varient(c, tr_type(c->anim), c->state, (uint16_t)(c->varient | 0x200))) window = 4;
+    else if (tr_is_shortcut(c->anim, c->state)) window = 8;
+    return window < (uint32_t)(tr_duration(c->anim) - c->frame);
+}
+
+static bool hold_keys(AiState *a)
+{
+    MeleeState *m = &a->melee;
+    if (m->keys_set && m->keys) move_override(a, m->keys);
+    return false;
+}
+
+/* AI2iMelee_Attack_Update 0x4a5500 */
+static bool attack_update(AiState *a, Character *c)
+{
+    MeleeState *m = &a->melee;
+    const MeleeMove *mv = m->mv;
+    if (m->pressed) {
+        if (m->override) return false;      /* AI2rExecutor_HasAttackOverride: not taken yet */
+        m->hold_facing = true;
+        m->face = c->facing;
+        apply_delay(m, c);
+        if (m->busy) {
+            /* still attacking: the next move waits unless it is an attack (a combo goes on) */
+            if (!m->tech || m->move + 1 >= m->tech->count) return false;
+            if (category(mv + 1) != MELEE_ATTACK) return false;
+        }
+        return start_next_move(a, c);
+    }
+    const AttackMove *am = attack_of(mv->type);
+    if (mv->invalid || !am) return true;    /* (AI2rError 0x4936b0) */
+    uint32_t to = state_of(c->anim ? tr_to(c->anim) : 0, a->held), from = state_of(c->from_state, a->held);
+    if (!m->committed && m->face != 1000.0f) {
+        int r = -1;
+        if (m->face_off > 1.0471975803375244f) return abort_technique(m);
+        ChrIntersect x;
+        if (m->face_off > 0.2617993950843811f) {
+            chr_intersect_setup(c, m->target, true, &x);
+            r = CHR_ISECT_MISSED;
+        } else if (!m->m66) {
+            chr_intersect_setup(c, m->target, true, &x);
+            setup_attacker(m->profile, &x.a, c, m->moving, m->step, am->dir, mv->anim);
+            if (!chr_intersect(&x)) r = x.result;
+        }
+        if (r >= 0) {
+            /* a miss: with keys to hold, too far but facing, or passing while turning, waits; else the
+               attack is given up */
+            if (!m->keys_set || r == CHR_ISECT_TOO_HIGH || r == CHR_ISECT_TOO_LOW || r == CHR_ISECT_AWAY)
+                return abort_technique(m);
+            if (r == CHR_ISECT_TOO_FAR) {
+                if (m->face_off < 0.05235987901687622f && (m->keys & 0x6600000)) return hold_keys(a);
+                return abort_technique(m);
+            }
+            if (r != CHR_ISECT_MISSED) return abort_technique(m);
+            if (!exe_data(0x52abac + from, 1)[0] || m->face_off >= 0.2617993950843811f ||
+                m->face_off <= 0.05235987901687622f)
+                goto press;
+            if (!(m->keys & 0x6600000)) return hold_keys(a);
+            /* the turn the keys make: along the attack's way and across it, the circle it needs against
+               the run's speed over the turn rate */
+            float f = c->facing;
+            int kind = 0;
+            switch (am->dir) {
+            case 2: f += PI; if (f >= TWO_PI) f -= TWO_PI; kind = 1; break;
+            case 3: f += HALF_PI; if (f >= TWO_PI) f -= TWO_PI; kind = 2; break;
+            case 4: f -= HALF_PI; if (f < 0.0f) f += TWO_PI; kind = 3; break;
+            default: break;
+            }
+            float s = sinf(f), co = cosf(f);
+            float along = fabsf(co * m->vec[2] + s * m->vec[0]);
+            float across = fabsf(co * m->vec[0] - s * m->vec[2]) - x.t_radius;
+            if (across <= 0.1f) return hold_keys(a);
+            float circle = (across * across + along * along) / (across + across) * 0.9f;
+            if (run_speed(kind) / turn_rate(c) <= circle) return hold_keys(a);
+            return abort_technique(m);
+        }
+    }
+press:
+    if (m->override) return false;
+    if (c->combo_type != am->prev && am->prev != 0) return abort_technique(m);
+    if (move_window(c, mv, to, from)) return hold_keys(a);
+    if (weight_local_movement(m, m->tech, mv->motion, NULL)) return abort_technique(m);
+    attack_override(m, am->type, am->held, am->down, am->prev);
+    m->pressed = true;
+    return false;
+}
+
+/* ---- the positions (AI2iMelee_Position_*) ---- */
+
+/* AI2iMelee_Position_Update 0x4a6040, a stand-in for its prediction: toward the target by the
+   position's direction until within the technique's first attack's reach, or the profile's distance
+   (the move's second number) when it takes distances; running for the run-ins. Two seconds at most. */
+static bool position_update(AiState *a, Character *c)
+{
+    MeleeState *m = &a->melee;
+    const MeleeMove *mv = m->mv;
+    uint32_t idx = mv->type & 0xfffffffu, dir = position_dir(idx);
+    if (idx > 3 && idx < 12) return start_next_move(a, c);     /* jumps, crouches, standing: not ported */
+    float first = m->tech->attack ? rdf((const uint8_t *)m->tech->attack + 0x50) : 0.0f;
+    float want = first > 0.0f ? first * 0.9f : 12.0f;
+    if (position_has_params(idx) && mv->p[1] > 0.0f) want = mv->p[1];
+    if (m->dist <= want || ++m->pos_ticks > 120) return start_next_move(a, c);
+    float off = dir == 2 ? PI : dir == 3 ? HALF_PI : dir == 4 ? -HALF_PI : 0.0f;
+    ai_halt(a);
+    ai_movement_modifier(a, wrap_2pi(m->angle + off), 1.0f);
+    a->mode = idx <= 3 || m->dist > want + 20.0f ? AI_MODE_RUN : AI_MODE_DEFAULT;
+    return false;
+}
+
+/* AI2iMelee_Position_Start 0x4a5e40: past the weighing's last needed move (+0x44) the move is done;
+   a position without parameters may start part way through its transition, from the step the
+   character's state is at. */
+static bool position_start(AiState *a, Character *c)
+{
+    MeleeState *m = &a->melee;
+    if ((uint32_t)(uint16_t)m->stop_move == m->move) return start_next_move(a, c);
+    m->pos_step = 0;
+    m->pos_mid = false;
+    m->pos_state = 0;
+    m->pos_50 = 0;
+    m->pos_65 = false;
+    m->pos_68 = 0;
+    m->pos_ticks = 0;
+    return position_update(a, c);
+}
+
+/* ---- the maneuvers (AI2iMelee_Maneuver_*) ---- */
+
+/* 0x4a6b30: a step of the maneuver's direction (1 forward, 2 back, 3 left, 4 right) from the facing, or,
+   toward the target, around the angle to it, the way tried over the grids (15 ahead,
+   AI2rTryLocalMovement; the original's search about the angle toward the target, AI2rFindLocalPath
+   0x49d220, a stand-in: the straight try); a blocked advance (with +0x140 clear) goes straight at the
+   target. True: moving. */
+static bool maneuver_step(AiState *a, Character *c, int dir, bool toward)
+{
+    MeleeState *m = &a->melee;
+    static const float off[4] = { 0.0f, 3.1415927410125732f, 1.5707963705062866f, 4.71238899230957f };
+    static const int kinds[4] = { AI_MOVE_FORWARD, AI_MOVE_BACK, AI_MOVE_LEFT, AI_MOVE_RIGHT };
+    if (dir < 1 || dir > 4) return false;
+    float base = toward ? m->angle : c->facing, way = base + off[dir - 1];
+    if (way >= TWO_PI) way -= TWO_PI;
+    float loc[3], to[3], at[3];
+    chr_location(c, loc);
+    to[0] = loc[0] + sinf(way) * 15.0f, to[1] = loc[1], to[2] = loc[2] + cosf(way) * 15.0f;
+    bool reached, crossed;
+    uint8_t kind;
+    if (!(local_try_movement(loc, to, 3, &reached, at, &kind, &crossed) && reached)) {
+        if (dir != 1 || m->env_blocked || c->air_ticks) return false;   /* (A+0x1a8: the port's air) */
+        way = m->angle;
+    }
+    ai_halt(a);
+    a->facing_mode = 1;
+    a->move_kind = kinds[dir - 1];
+    ai_movement_modifier(a, way, 1.0f);
+    return true;
+}
+
+/* The maneuvers' table (0x543ab0, 0x40 bytes each: the name, the parameters' counts and names, +0x1c
+   "toward the target", +0x20 the direction, +0x28 and +0x2c the keys held, +0x30 the kind of move). */
+static bool maneuver_toward(uint32_t idx) { return exe_data(0x543acc + 0x40 * idx, 1)[0] != 0; }
+static int maneuver_dir(uint32_t idx) { return (int)exe_u32(0x543ad0 + 0x40 * idx); }
+static uint64_t maneuver_keys(uint32_t idx)
+{
+    return (uint64_t)exe_u32(0x543ad8 + 0x40 * idx) | (uint64_t)exe_u32(0x543adc + 0x40 * idx) << 32;
+}
+
+/* AI2iMelee_Maneuver_Update 0x4a7060 */
+static bool maneuver_update(AiState *a, Character *c)
+{
+    MeleeState *m = &a->melee;
+    const MeleeMove *mv = m->mv;
+    uint32_t idx = mv->type & 0xfffffffu;
+    if (category(mv) != MELEE_MANEUVER || idx >= 0xe) return abort_technique(m);
+    uint32_t t = now_of(c);
+    if (idx == 0xd) {
+        /* "max range": the keys pressed once, then the technique ends */
+        if (!mv->p[1]) return abort_technique(m);
+        if (m->pressed) {
+            if (m->override) return false;
+            apply_delay(m, c);
+            if (!m->busy) return start_next_move(a, c);
+            return false;
+        }
+        uint32_t to = state_of(c->anim ? tr_to(c->anim) : 0, a->held), from = state_of(c->from_state, a->held);
+        if (move_window(c, mv, to, from)) {
+            if (m->keys_set && m->keys) move_override(a, m->keys);
+            return false;
+        }
+        uint64_t k = maneuver_keys(idx);
+        attack_override(m, exe_u16(0x543ae8 + 0x40 * idx), k, k, 0);
+        m->pressed = true;
+        return false;
+    }
+    if (!m->man_started) {
+        if ((c->anim && tr_is_attack(c->anim)) || m->override || in_air(c)) return false;
+        m->man_started = true;
+        m->man_until = (uint32_t)lrintf(mv->p[0] * 60.0f) + t;
+    }
+    if (m->man_until < t) return start_next_move(a, c);
+    if (!maneuver_toward(idx)) {
+        move_override(a, maneuver_keys(idx));
+        return false;
+    }
+    if (idx == 0) {
+        /* advance: until within the range less the threshold (at least 8) */
+        float f = mv->p[1] - mv->p[2];
+        if (f <= 8.0f) f = 8.0f;
+        if (m->dist < f) return start_next_move(a, c);
+    } else if (idx == 1) {
+        /* retreat: until beyond the range and the threshold (at least 75) */
+        float f = mv->p[2] + mv->p[1];
+        if (f <= 75.0f) f = 75.0f;
+        if (f < m->dist) return start_next_move(a, c);
+    }
+    if (maneuver_step(a, c, maneuver_dir(idx), true)) return false;
+    if (!m->tech) return true;
+    if (m->tech->computed & 0x40000) m->memory[m->tech->index] = 1000.0f;
+    m->tech = NULL;
+    m->mv = NULL;
+    m->lead = NULL;
+    new_seeds(m);
+    clear_technique(m);
+    return true;
+}
+
+/* AI2iMelee_Maneuver_Start 0x4a6f20: a pause (4) only for the debugging; "random stop" (8) ends the
+   technique by its chance (the first number, %); the others start their update. */
+static bool maneuver_start(AiState *a, Character *c)
+{
+    MeleeState *m = &a->melee;
+    const MeleeMove *mv = m->mv;
+    uint32_t idx = mv->type & 0xfffffffu;
+    if (category(mv) != MELEE_MANEUVER || idx > 0xd) return false;
+    if (idx == 8) {
+        if ((float)trac_random() * 1.5259021893143654e-05f * 100.0f < mv->p[0]) return abort_technique(m);
+        return start_next_move(a, c);
+    }
+    if (maneuver_toward(idx)) m->hold_facing = false;
+    if (idx == 0xd) m->pressed = false;
+    m->man_started = false;
+    return maneuver_update(a, c);
+}
+
+/* ---- the evasions (AI2iMelee_Evade_*) ---- */
+
+/* The evasions' table (0x543e30, 0x38 bytes each: +0x20 the states, +0x28 the keys held, +0x30 down). */
+static uint64_t evade_keys(uint32_t idx, unsigned at)
+{
+    uint32_t va = 0x543e30 + 0x38 * idx + at;
+    return (uint64_t)exe_u32(va) | (uint64_t)exe_u32(va + 4) << 32;
+}
+
+/* AI2iMelee_Evade_Update 0x4a76a0: its keys pressed once (in the move's window), then it lasts the
+   animation's duration; a technique not a maneuver gives up the evasion once the target's attack is
+   past (or another began). */
+static bool evade_update(AiState *a, Character *c)
+{
+    MeleeState *m = &a->melee;
+    const MeleeMove *mv = m->mv;
+    uint32_t t = now_of(c);
+    if (m->ev_until) {
+        if (t < m->ev_until) return false;
+        return start_next_move(a, c);
+    }
+    if (!(m->tech->computed & 0x100000)) {
+        const Character *tg = m->target;
+        if (!(tg->sound_serial == m->block_serial && tg->anim && tg->frame <= attack_point_frame(tg->anim, true))) {
+            if (m->ev_pressed) m->override = false;     /* AI2rExecutor_ClearAttackOverride */
+            return start_next_move(a, c);
+        }
+    }
+    if (m->ev_pressed) {
+        if (m->override) return false;
+        m->hold_facing = true;
+        m->face = c->facing;
+        m->ev_until = (c->anim ? tr_duration(c->anim) : 0) + t;
+        return false;
+    }
+    if (mv->invalid) return true;
+    if (m->override) return false;
+    uint32_t to = state_of(c->anim ? tr_to(c->anim) : 0, a->held), from = state_of(c->from_state, a->held);
+    if (move_window(c, mv, to, from)) return false;
+    uint32_t idx = mv->type & 0xfffffffu;
+    attack_override(m, (uint16_t)(exe_u32(0x543e50 + 0x38 * idx) >> 16), evade_keys(idx, 0x28), evade_keys(idx, 0x30), 0);
+    apply_delay(m, c);
+    m->ev_pressed = true;
+    return false;
+}
+
+static bool evade_start(AiState *a, Character *c)
+{
+    MeleeState *m = &a->melee;
+    m->ev_pressed = false;      /* 0x4a7680 */
+    m->ev_until = 0;
+    return evade_update(a, c);
+}
+
+/* ---- the throws (AI2iMelee_Throw_*) ---- */
+
+/* The throws' table (0x544370, 0x24 bytes each: the name, +0x20 flags (4 the victim in its 0x18
+   variant, 8 in its 0x60) and the throw's type in the high half). */
+static uint32_t throw_entry(uint32_t idx) { return exe_u32(0x544390 + 0x24 * idx); }
+
+/* AI2rExecutor_ThrowOverride 0x498c10: the throw to remap the punch into, and the punch (0x16). */
+static void throw_override(MeleeState *m, const void *anim, const void *victim, const Character *t)
+{
+    m->throwing = true;
+    m->throw_anim = anim;
+    m->throw_victim = victim;
+    m->throw_target = t;
+    attack_override(m, 0x16, CHR_KEY_PUNCH, CHR_KEY_PUNCH, 0);
+}
+
+/* The throw given up (the technique aborted, its move state cleared: 0x4a7f60). */
+static bool throw_abort(MeleeState *m)
+{
+    if (!m->tech) return true;
+    if ((m->tech->computed & 0x40000) && m->tech->index < MELEE_MEMORY) m->memory[m->tech->index] = 1000.0f;
+    m->tech = NULL;
+    m->mv = NULL;
+    m->lead = NULL;
+    new_seeds(m);
+    m->m84 = -1;
+    m->keys = 0;
+    m->move = 0;
+    m->leftover = 0.0f;
+    m->keys_set = false;
+    m->m66 = false;
+    m->face = 1000.0f;
+    m->hold_facing = m->committed = false;
+    m->m60 = 0;
+    return true;
+}
+
+/* AI2iMelee_Throw_Update 0x4a7b40: once pressed, the override taken, the next move. Else within 45
+   degrees of the facing and the throw's reach, a target that can be thrown now (not unthrowable, the
+   cheat's or flag 0x100, no throw flag on its animation, not invulnerable), in the variant the throw
+   asks: the class's throw for the two states (AI2iMelee_FindThrow); in the window, from the front
+   facing each other (beyond 135 degrees, 0x52adec) or from behind facing the same way (within 45),
+   the way clear of dangers, the throw override. Anything else gives the technique up. */
+static bool throw_move_update(AiState *a, Character *c)
+{
+    MeleeState *m = &a->melee;
+    const MeleeMove *mv = m->mv;
+    if (m->pressed) {
+        if (m->override) return false;
+        return start_next_move(a, c);
+    }
+    if (mv->invalid) return true;
+    if (c->anim && tr_test_flag(c->anim, 15)) return false;
+    const Character *t = m->target;
+    if (m->face_off > 0.7853981852531433f || !mv->anim || throw_distance_of(mv->anim) < m->dist) return abort_technique(m);
+    if (!throw_target_ok(t)) return abort_technique(m);
+    uint32_t e = throw_entry(mv->type & 0xfffffffu);
+    uint16_t var = 0;
+    if (e & 4) {
+        var = 0x800;
+        if (!(t->varient >> 8 & 0x18)) return abort_technique(m);
+    } else if (e & 8) {
+        var = 0x2000;
+        if (!(t->varient >> 8 & 0x60)) return abort_technique(m);
+    }
+    const void *anim, *victim;
+    float dist;
+    if (!find_throw(c, (uint16_t)(e >> 16), c->state, t->state, var, &anim, &victim, &dist)) return throw_abort(m);
+    if (c->anim && tr_is_atomic(c->anim, (uint16_t)c->frame) && c->frame < tr_duration(c->anim)) {
+        if (m->keys_set && m->keys) move_override(a, m->keys);
+        return false;
+    }
+    float d = fabsf(wrap_pi(t->facing - c->facing));
+    bool ok = d < 0.7853981852531433f;
+    if (throw_from_front(tr_type(anim))) ok = 2.356194496154785f < d;     /* ONrAnimType_ThrowIsFromFront */
+    if (!ok || weight_local_movement(m, m->tech, mv->motion, NULL)) return throw_abort(m);
+    apply_delay(m, c);
+    throw_override(m, anim, victim, t);
+    m->pressed = true;
+    return false;
+}
+
+/* 5, AI2iMelee_*_Start. */
+static bool start_move(AiState *a, Character *c)
+{
+    MeleeState *m = &a->melee;
+    switch (category(m->mv)) {
+    case MELEE_ATTACK:
+        m->pressed = false;     /* 0x4a54e0 */
+        return attack_update(a, c);
+    case MELEE_POSITION: return position_start(a, c);
+    case MELEE_MANEUVER: return maneuver_start(a, c);
+    case MELEE_EVADE: return evade_start(a, c);
+    default:
+        m->pressed = false;     /* 0x4a7b20 */
+        return throw_move_update(a, c);
+    }
+}
+
+/* 6, AI2iMelee_*_Update */
+static bool update_move(AiState *a, Character *c)
+{
+    switch (category(a->melee.mv)) {
+    case MELEE_ATTACK: return attack_update(a, c);
+    case MELEE_POSITION: return position_update(a, c);
+    case MELEE_MANEUVER: return maneuver_update(a, c);
+    case MELEE_EVADE: return evade_update(a, c);
+    default: return throw_move_update(a, c);
+    }
 }
 
 void melee_stop(MeleeState *m)
 {
-    m->override = false;
-    if (m->tech) end_technique(m);
+    /* AI2rStopMeleeTechnique 0x48b6d0 */
+    m->override = m->throwing = false;
+    abort_technique(m);
 }
 
-void melee_notify_animation(MeleeState *m, uint16_t type, uint16_t left, bool victim)
+void melee_notify_animation(MeleeState *m, const void *anim, uint16_t type, uint16_t left, bool victim)
 {
     /* hit (0x4e37b0): the technique stops */
     if (victim) {
@@ -610,10 +1377,15 @@ void melee_notify_animation(MeleeState *m, uint16_t type, uint16_t left, bool vi
     }
     /* the attack's keys pressed (AI2rExecutor_HasAttackOverride): its animation, the keys taken; still
        the one they follow, on waiting; any other, "wrong animation" (AI2rError 0x4936b0) and the
-       override and the technique stop (a combo whose keys started the attack before again, say) */
+       override and the technique stop */
+    if (m->throwing) {
+        /* AI2rExecutor_HasThrowOverride: an attack or a throw takes it */
+        if (anim && (tr_is_attack(anim) || tr_test_flag(anim, 15))) m->override = m->throwing = false;
+        return;
+    }
     if (!m->override) return;
     if (type == m->override_type) {
-        m->override = false;
+        m->override = false;    /* AI2rExecutor_ClearAttackOverride */
         return;
     }
     if (left == m->override_type) return;
@@ -662,9 +1434,12 @@ static bool get_cookie(AiState *a, const Character *c, const Character *target)
     return false;
 }
 
-/* The facing factors (AI2rMelee_Update 0x4a01f0): per direction, 1 within 45 degrees falling to 0 at
-   60 (narrow) or 1 within 70 falling to 0 at 110 (wide); direction 1 at least 0.35. */
-static void facing_factors(float angle, float facing, float narrow[6], float wide[6])
+/* 0x4998a0: the cookie given back. */
+static void release_cookie(AiState *a) { a->melee.cookie = false; }
+
+/* AI2iMelee_CalculateDirectionWeights: per direction, 1 within 45 degrees falling to 0 at 60 (narrow) or
+   1 within 70 falling to 0 at 110 (wide); 0 and 5 always 1; direction 1 at least 0.35. */
+static void direction_weights(float angle, float facing, float narrow[6], float wide[6])
 {
     for (int d = 0; d < 6; d++) {
         if (d == 0 || d == 5) { narrow[d] = wide[d] = 1.0f; continue; }
@@ -673,260 +1448,467 @@ static void facing_factors(float angle, float facing, float narrow[6], float wid
         else if (d == 3) x -= HALF_PI;
         else if (d == 4) x += HALF_PI;
         float a = fabsf(wrap_pi(x));
-        narrow[d] = a < 0.78539819f ? 1.0f : a <= 1.0471976f ? (a - 1.0471976f) * -3.8197186f : 0.0f;
-        wide[d] = a < 1.2217305f ? 1.0f : a <= 1.9198622f ? (a - 1.9198622f) * -1.4323945f : 0.0f;
+        narrow[d] = a < 0.7853981852531433f ? 1.0f : a <= 1.0471975803375244f ? (a - 1.0471975803375244f) * -3.819718599319458f : 0.0f;
+        wide[d] = a < 1.2217304706573486f ? 1.0f : a <= 1.919862151145935f ? (a - 1.919862151145935f) * -1.4323945045471191f : 0.0f;
     }
     if (narrow[1] <= 0.35f) narrow[1] = 0.35f;
     if (wide[1] <= 0.35f) wide[1] = 0.35f;
 }
 
-/* The weighting of one maneuver's moves when the AI may not attack: advancing wants the target
-   beyond its range, retreating within, by how far over the threshold (at least 5); attacks,
-   positions, throws and "max range" rule it out. */
-static float maneuver_factor(const MeleeProfile *p, const MeleeTech *k, float dist)
+/* AI2iMelee_HandleNoTechnique 0x4a1dd0: the cookie back, the facing free; beyond 8, toward the target
+   (to 50 at most) as far as the grids let it. True: moving. */
+static bool no_technique(AiState *a, Character *c)
 {
-    float f = 1.0f;
-    for (uint32_t j = 0; j < k->count; j++) {
-        const MeleeMove *mv = &p->move[k->first + j];
-        uint32_t cat = mv->type >> 28, idx = mv->type & 0xfffffffu;
-        if (cat == MELEE_ATTACK || cat == MELEE_POSITION || cat == MELEE_THROW) return 0.0f;
-        if (cat != MELEE_MANEUVER) continue;
-        float th = mv->p[2] < 5.0f ? 5.0f : mv->p[2];
-        if (idx == 0) {
-            float x = (dist - mv->p[1]) / th;
-            if (x < 0.0f) return 0.0f;
-            f *= x;
-        } else if (idx == 1) {
-            float x = (mv->p[1] - dist) / th;
-            if (x < 0.0f) return 0.0f;
-            f *= x;
-        } else if (idx == 0xd) {
-            return 0.0f;
-        }
-    }
-    return f;
-}
-
-/* ---- the moves ---- */
-
-/* Sets the executor's move for the tick (AI2rExecutor_Move): the move's kind toward the target. */
-static void exec_move(AiState *a, float facing, int mode, int kind)
-{
+    MeleeState *m = &a->melee;
+    release_cookie(a);
+    a->facing_mode = 0;
+    if (!m->target || m->dist <= 8.0f) return false;
     ai_halt(a);
-    ai_executor_move(a, facing, mode, kind, false);
-}
-
-/* Starts the next move (AI2iMelee_StartNextMove 0x4a20f0); false when the technique is over. */
-static bool next_move(MeleeState *m)
-{
-    m->move++;
-    m->move_started = m->pressed = false;
-    m->move_ticks = 0;
-    if (!m->tech || (uint32_t)m->move >= m->tech->count) {
-        end_technique(m);
-        return false;
-    }
+    float d = m->dist < 50.0f ? m->dist : 50.0f, loc[3], at[3];
+    chr_location(c, loc);
+    float to[3] = { d * sinf(m->angle) + loc[0], loc[1], d * cosf(m->angle) + loc[2] };
+    bool reached, crossed;
+    uint8_t kind;
+    bool ok = local_try_movement(loc, to, 3, &reached, at, &kind, &crossed);
+    if (!ok || !reached) return false;
+    ai_movement_modifier(a, wrap_2pi(atan2f(at[0] - loc[0], at[2] - loc[2])), a->combat.weight[COMBAT_MANEUVER_MELEE]);
     return true;
 }
 
-/* An attack move (its update 0x4a5500): when the character may take it (a combo's keys go in the last
-   frames of the attack before, 4), the keys are pressed through the override; the move is done when
-   the animation starts (the override taken, AI2rMelee_NotifyAnimation). A combo whose attack before
-   didn't play is given up. */
-static bool attack_move(AiState *a, Character *c, const MeleeMove *mv)
-{
-    MeleeState *m = &a->melee;
-    const AttackMove *am = attack_of(mv->type);
-    if (!am) return false;
-    if (m->pressed) {
-        if (m->override) return true;       /* not taken yet */
-        return next_move(m);
-    }
-    if (am->prev && c->combo_type != am->prev) {
-        if (m->tech && (m->tech->computed & 0x40000) && m->tech->index < MELEE_MEMORY) m->memory[m->tech->index] = 1000.0f;
-        end_technique(m);
-        return true;
-    }
-    if (c->anim && tr_is_attack(c->anim) && tr_duration(c->anim) - c->frame > 4) return true;   /* wait for the window */
-    m->override = true;
-    m->override_type = am->type;
-    m->override_prev = am->prev;
-    m->override_held = am->held;
-    m->override_down = am->down;
-    m->pressed = true;
-    if (m->tech && m->tech->delay_slot >= 0) m->available[m->tech->delay_slot] = now_of(c) + m->tech->delay;
-    return true;
-}
+/* The weighing of a technique (0x2c bytes each in the table at 0x637260). */
+typedef struct {
+    const MeleeTech *tech;      /* +0x00 */
+    float weight;               /* +0x04 */
+    int32_t attack_at;          /* +0x08: its first attack's move, -1 none */
+    const MeleeMove *attack;    /* +0x0c */
+    bool moving;                /* +0x10 */
+    bool late;                  /* +0x11: its attack would land after the target's */
+    float step;                 /* +0x14 */
+    int16_t stop_move;          /* +0x1a */
+} Weighing;
 
-/* A position (AI2iMelee_Position_Update 0x4a6040, a stand-in for its prediction): toward the target by
-   the position's direction until within the technique's attack's reach, or the profile's distance
-   (the move's second number) when it takes distances; running for the run-ins. Two seconds at most. */
-static bool position_move(AiState *a, Character *c, const MeleeMove *mv)
+/* AI2iMelee_WeightTechnique 0x4a2580, a stand-in until its port: the base weight (as the caller gives
+   it), but a run-in needs the room for its run. */
+static void weigh_technique(const AiState *a, Weighing *w)
 {
-    MeleeState *m = &a->melee;
-    uint32_t idx = mv->type & 0xfffffffu, dir = position_dir(idx);
-    if (idx > 3 && idx < 12) return next_move(m);                   /* jumps, crouches, standing: not ported */
-    /* (the stand-in goes by the first attack's reach, TRAM +0x50; the technique's +0x64 is its last's) */
-    float first = m->tech && m->tech->attack ? rdf((const uint8_t *)m->tech->attack + 0x50) : 0.0f;
-    float want = first > 0.0f ? first * 0.9f : 12.0f;
-    if (position_has_params(idx) && mv->p[1] > 0.0f) want = mv->p[1];
-    if (m->dist <= want || ++m->move_ticks > 120) return next_move(m);
-    int kind = dir == 2 ? AI_MOVE_BACK : dir == 3 ? AI_MOVE_LEFT : dir == 4 ? AI_MOVE_RIGHT : AI_MOVE_FORWARD;
-    bool run = idx <= 3 || m->dist > want + 20.0f;
-    exec_move(a, facing_for(m->angle, dir), run ? AI_MODE_RUN : AI_MODE_DEFAULT, kind);
-    return true;
-}
-
-/* A maneuver (AI2iMelee_Maneuver_Update 0x4a7060): advance or retreat for its duration (seconds) or
-   until past its range, circle (step aside) or pause for the duration, a chance of stopping the
-   technique (8), stopping it beyond a range (13). */
-static bool maneuver_move(AiState *a, Character *c, const MeleeMove *mv)
-{
-    (void)c;
-    MeleeState *m = &a->melee;
+    const MeleeState *m = &a->melee;
+    const MeleeTech *k = w->tech;
+    if (!k->count) {
+        w->weight = 0.0f;
+        return;
+    }
+    const MeleeMove *mv = &m->profile->move[k->first];
     uint32_t idx = mv->type & 0xfffffffu;
-    uint32_t ticks = (uint32_t)(mv->p[0] * 60.0f);
-    if (!m->move_started) m->move_started = true;
-    switch (idx) {
-    case 0:     /* advance */
-        if (m->dist < mv->p[1] || m->move_ticks++ >= ticks) return next_move(m);
-        exec_move(a, m->angle, AI_MODE_DEFAULT, AI_MOVE_FORWARD);
-        return true;
-    case 1:     /* retreat */
-        if (m->dist > mv->p[1] || m->move_ticks++ >= ticks) return next_move(m);
-        exec_move(a, m->angle, AI_MODE_DEFAULT, AI_MOVE_BACK);
-        return true;
-    case 2: case 3:     /* circle left, right */
-        if (m->move_ticks++ >= ticks) return next_move(m);
-        exec_move(a, m->angle, AI_MODE_DEFAULT, idx == 2 ? AI_MOVE_LEFT : AI_MOVE_RIGHT);
-        return true;
-    case 8:     /* random stop: the chance in percent */
-        if ((float)(trac_random() % 100) < mv->p[0]) {
-            end_technique(m);
-            return true;
-        }
-        return next_move(m);
-    case 0xd:   /* max range */
-        if (m->dist > mv->p[0]) {
-            end_technique(m);
-            return true;
-        }
-        return next_move(m);
-    default:    /* pause, taunt and the others: standing for the duration */
-        if (m->move_ticks++ >= ticks) return next_move(m);
-        exec_move(a, m->angle, AI_MODE_DEFAULT, AI_MOVE_NONE);
-        return true;
-    }
-}
-
-static bool run_move(AiState *a, Character *c)
-{
-    MeleeState *m = &a->melee;
-    const MeleeMove *mv = &m->profile->move[m->tech->first + m->move];
-    if (mv->invalid) return next_move(m);
-    switch (mv->type >> 28) {
-    case MELEE_ATTACK: return attack_move(a, c, mv);
-    case MELEE_POSITION: return position_move(a, c, mv);
-    case MELEE_MANEUVER: return maneuver_move(a, c, mv);
-    default: return next_move(m);       /* evades, throws: not ported */
-    }
-}
-
-/* ---- the update ---- */
-
-typedef struct { const MeleeTech *k; float w; } Weighed;
-
-bool melee_update(AiState *a, Character *c, const Character *target)
-{
-    MeleeState *m = &a->melee;
-    if (!m->profile || !target || (target->flags & 1)) {
-        melee_stop(m);
-        return false;
-    }
-    chr_enter_fight_mode(c);
-    float dx = target->pos[0] - c->pos[0], dy = target->pos[1] - c->pos[1], dz = target->pos[2] - c->pos[2];
-    m->dist = sqrtf(dx * dx + dy * dy + dz * dz);
-    m->angle = wrap_2pi(atan2f(dx, dz));     /* AI2iMelee_AngleToTarget 0x4a21c0 */
-    /* the default: look at the target, stand */
-    exec_move(a, m->angle, AI_MODE_DEFAULT, AI_MOVE_NONE);
-    /* a move under way runs; while an attack plays, the AI waits for it */
-    if (m->tech) {
-        run_move(a, c);
-        if (m->tech) return true;
-    }
-    if (c->anim && tr_is_attack(c->anim)) return true;      /* "waiting for moves to finish" */
-    if (m->override) return true;
-    /* choose: with the cookie the attacks, else the maneuvers */
-    const MeleeProfile *p = m->profile;
-    uint32_t state = melee_state(c, a->held), t = now_of(c);
-    float narrow[6], wide[6];
-    facing_factors(m->angle, c->facing, narrow, wide);
-    bool cookie = get_cookie(a, c, target);
-    Weighed w[MELEE_TECH_MAX];
-    int n = 0;
-    float total = 0.0f, max_attack = 0.0f;
-    uint32_t from = cookie ? 0 : p->nattack + p->nevade, count = cookie ? p->nattack : p->nmaneuver;
-    for (uint32_t i = 0; i < count; i++) {
-        const MeleeTech *k = &p->tech[from + i];
-        float x = (float)k->weight;
-        if (k->computed & 0x4000) continue;
-        if (k->delay_slot >= 0 && m->available[k->delay_slot] > t) continue;
-        if (cookie) {
-            float mem = i < MELEE_MEMORY ? m->memory[i] : 0.0f;
-            if (mem == 1000.0f) continue;
-            x *= 1.0f - (mem < 0.8f ? mem : 0.8f);
-        }
-        /* (a direction or'd over a 5 can be 7: the original then reads past its six factors, into its
-           other locals; none of the game's profiles makes one, so the port skips it) */
-        uint32_t dir = k->computed >> 8 & 0xf;
-        if (dir >= 6) continue;
-        x *= (k->flags & 2) ? wide[dir] : narrow[dir];
-        if (x == 0.0f) continue;
-        if ((k->computed & 0xff) != state && !(k->computed & 0x20000)) continue;
-        if (cookie) {
-            /* AI2iMelee_WeightTechnique 0x4a2580, a stand-in: a run-in needs room for its run */
-            const MeleeMove *mv = &p->move[k->first];
-            uint32_t idx = mv->type & 0xfffffffu;
-            if ((mv->type >> 28) == MELEE_POSITION && position_has_params(idx) && idx <= 3 && m->dist < mv->p[0] - mv->p[2])
-                continue;
-        } else {
-            x *= maneuver_factor(p, k, m->dist);
-            if (x <= 0.0f) continue;
-        }
-        w[n].k = k;
-        w[n].w = x;
-        total += x;
-        if ((k->computed & 0x1001000) && max_attack <= x) max_attack = x;
-        n++;
-    }
-    /* with the cookie (0x545771), what isn't an attack weighs no more than the heaviest attack */
-    if (cookie && max_attack > 0.0f)
-        for (int i = 0; i < n; i++)
-            if (!(w[i].k->computed & 0x21001000) && w[i].w > max_attack) total -= w[i].w - max_attack, w[i].w = max_attack;
-    if (!n || total <= 0.0f) {
-        /* AI2iMelee_HandleNoTechnique 0x4a1dd0: the cookie goes back; beyond 8, toward the target */
-        m->cookie = false;
-        if (m->dist > 8.0f) exec_move(a, m->angle, AI_MODE_DEFAULT, AI_MOVE_FORWARD);
-        return false;
-    }
-    float r = (float)trac_random() * total * 1.5259022e-05f - 0.01f, sum = 0.0f;
-    const MeleeTech *pick = w[n - 1].k;
-    for (int i = 0; i < n; i++) {
-        sum += w[i].w;
-        if (r <= sum) {
-            pick = w[i].k;
-            m->leftover = sum - r;
+    if (category(mv) == MELEE_POSITION && position_has_params(idx) && idx <= 3 && m->dist < mv->p[0] - mv->p[2])
+        w->weight = 0.0f;
+    for (uint32_t j = 0; j < k->count; j++) {
+        if (category(&m->profile->move[k->first + j]) == MELEE_ATTACK) {
+            w->attack_at = (int32_t)j;
+            w->attack = &m->profile->move[k->first + j];
             break;
         }
     }
-    m->tech = pick;
-    m->move = 0;
-    m->move_started = m->pressed = false;
-    m->move_ticks = 0;
-    if ((pick->computed & 0x40000) && pick->index < MELEE_MEMORY) m->memory[pick->index] += 0.4f;
-    if (!(pick->computed & 0x21001000)) m->cookie = false;     /* 0x4998a0: not an attack, the cookie goes */
-    run_move(a, c);
+}
+
+/* The maneuvers' weighing when the AI may not attack (AI2iMelee_WeightSpacingBehavior, in the update
+   with 0x545778): advancing wants the target beyond its range, retreating within, by how far over the
+   threshold (at least 5); circling by the other attackers around the target (toward the side they
+   leave, away from those near it); an evasion needs the way its animation goes clear; attacks,
+   positions, throws and "max range" rule it out. False: none. */
+static bool weigh_spacing(const AiState *a, const Character *c, Weighing *w)
+{
+    const MeleeState *m = &a->melee;
+    const MeleeTech *k = w->tech;
+    for (uint32_t j = 0; j < k->count; j++) {
+        const MeleeMove *mv = &m->profile->move[k->first + j];
+        uint32_t cat = category(mv), idx = mv->type & 0xfffffffu;
+        if (cat == MELEE_MANEUVER) {
+            float th = mv->p[2] < 5.0f ? 5.0f : mv->p[2], f;
+            switch (idx) {
+            case 0:
+                f = (m->dist - mv->p[1]) / th;
+                if (f < 0.0f) return false;
+                w->weight *= f;
+                break;
+            case 1:
+                f = (mv->p[1] - m->dist) / th;
+                if (f < 0.0f) return false;
+                w->weight *= f;
+                break;
+            case 2: case 3: {
+                /* the others fighting the target: those within half the range's degrees of the angle
+                   (the move's first number), nearer than 10 or on the ground, push the circling */
+                f = 0.0f;
+                const Character *self = c;
+                for (int i = 0; i < chars_slots(); i++) {
+                    const Chr *o = chars_get(i);
+                    if (!o || &o->c == self || o->player || o->ai.state != AI_STATE_COMBAT || !o->ai.target ||
+                        &o->ai.target->c != m->target)
+                        continue;
+                    const MeleeState *om = &o->ai.melee;
+                    float dd = om->dist - m->dist;
+                    if (!(dd <= 10.0f || !om->cookie)) continue;
+                    float range = mv->p[0] * 0.01745329238474369f;
+                    float da = wrap_pi(om->angle - m->angle);
+                    if (fabsf(da) > range) continue;
+                    if (idx == 2) da = -da;
+                    float lim = fabsf(dd) < 10.0f ? 0.0f : 0.3490658402442932f;
+                    if (da > lim) {
+                        if (da < 0.5235987901687622f) f -= 1.0f;
+                        else f -= 1.0f - (da - 0.5235987901687622f) / (range - 0.5235987901687622f);
+                    } else if (da < 0.0f) {
+                        if (da > -0.5235987901687622f) f += 1.0f;
+                        else f += 1.0f - (-da - 0.5235987901687622f) / (range - 0.5235987901687622f);
+                    }
+                }
+                f += 1.0f;
+                if (f <= 0.0f) return false;
+                w->weight *= f;
+                break;
+            }
+            case 0xd:
+                return false;
+            default:
+                break;
+            }
+        } else if (cat == MELEE_EVADE) {
+            /* the way the evasion's animation goes (its last position point, turned to the facing) */
+            if (!mv->anim) return false;
+            float s = sinf(c->facing), co = cosf(c->facing), pt[2], loc[3], at[3];
+            if (!position_point(mv->anim, (uint16_t)(tr_duration(mv->anim) - 1), pt)) return false;
+            chr_location(c, loc);
+            float to[3] = { pt[0] * co + pt[1] * s + loc[0], loc[1], pt[1] * co - pt[0] * s + loc[2] };
+            bool reached, crossed;
+            uint8_t kind;
+            if (!local_try_movement(loc, to, 3, &reached, at, &kind, &crossed)) return false;
+            if (k->computed & 4) {
+                if (!reached && kind != 8) return false;
+            } else if (!reached) {
+                return false;
+            }
+        } else {
+            return false;   /* attacks, positions, throws */
+        }
+    }
     return true;
+}
+
+/* The pick by weight (seed +0xa0 or +0xa2): the first whose running total reaches the random part of the
+   total, less 0.01. */
+static int pick(const Weighing *w, int n, float total, uint16_t seed, float *leftover)
+{
+    float r = (float)seed * total * 1.5259021893143654e-05f - 0.009999999776482582f, sum = 0.0f;
+    for (int i = 0; i < n; i++) {
+        sum += w[i].weight;
+        if (r <= sum) {
+            *leftover = sum - r;
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* The evasion's chance (AI2iMelee_CheckEvasionChance): rolled once for each animation of the target's,
+   the profile's first dodge chance (+0x84) times the difficulty's (game settings +0xab0); passed, its
+   attack's damage makes the second: +0x88 plus +0x8c scaled by the damage over +0x90 (all of it
+   beyond), times +0xac8's. */
+static void check_evasion_chance(MeleeState *m, const Character *tg)
+{
+    const MeleeProfile *p = m->profile;
+    if (tg->sound_serial == m->evade_serial) return;
+    m->hit_frames = -1;
+    const uint8_t *gs = tm_instance_get(TM_TAG("ONGS"), "game_settings");
+    int d = persist_difficulty();
+    float f1 = gs ? rdf(gs + 0xab0 + 4 * d) : 1.0f, f2 = gs ? rdf(gs + 0xac8 + 4 * d) : 1.0f;
+    float chance = (float)p->dodge[0] * f1;
+    if ((float)(((trac_random() & 0xffffu) * 100u) / 0xffffu) < chance) {
+        m->evade_check = true;
+        uint32_t damage = tg->anim ? attack_damage(tg->anim) : 0;
+        uint32_t extra = damage < p->dodge[3] ? (p->dodge[2] * damage) / p->dodge[3] : p->dodge[2];
+        float second = ((float)p->dodge[1] + (float)(int32_t)extra) * f2;
+        m->evade_ok = (float)(((trac_random() & 0xffffu) * 100u) / 0xffffu) < second;
+    } else {
+        m->evade_check = false;
+    }
+    m->evade_serial = tg->sound_serial;
+}
+
+/* AI2rMelee_Update 0x4a01f0: one tick of the melee against the target. */
+bool melee_update(AiState *a, Character *c, const Character *target)
+{
+    MeleeState *m = &a->melee;
+    m->target = target;
+    if (!target || !m->profile) return no_technique(a, c);
+    chr_enter_fight_mode(c);    /* 0x4eb0b0 */
+    update_facing(m, c);
+    float dx = c->pos[0] - target->pos[0], dy = c->pos[1] - target->pos[1], dz = c->pos[2] - target->pos[2];
+    m->dist = sqrtf(dx * dx + dy * dy + dz * dz);
+    const Chr *tc = (const Chr *)target;
+    if (tc->player && !ui_input_enabled()) {      /* AI2rAllowedToAttack 0x48bc30 */
+        m->override = false;    /* AI2rExecutor_ClearAttackOverride */
+        return no_technique(a, c);
+    }
+    const MeleeProfile *p = m->profile;
+    if (m->target != m->last_target) {
+        m->blocking = false;
+        m->evade_serial = (uint32_t)-1;
+        m->last_target = m->target;
+    }
+    /* holding a block against the target's attack while it lasts */
+    if (m->blocking) {
+        if (target->sound_serial == m->block_serial && target->anim && tr_is_attack(target->anim) &&
+            !throw_target_type(target->anim) && target->frame < attack_point_frame(target->anim, true)) {
+            apply_facing(a);
+            move_override(a, m->block_keys);
+            return true;
+        }
+        m->blocking = false;
+    }
+    bool going = false;     /* a move under way goes on */
+    m->busy = (c->anim && (tr_is_attack(c->anim) || tr_test_flag(c->anim, 15))) || m->override || in_air(c);
+    if (m->mv) {
+        ai_halt(a);
+        apply_facing(a);
+        a->facing_mode = 0;
+        going = !update_move(a, c);
+    }
+    if (m->busy) {
+        /* "waiting for moves to finish" */
+        apply_facing(a);
+        return true;
+    }
+    if (!m->mv && m->tech) {
+        /* the technique is over: its memory fades */
+        m->tech = NULL;
+        clear_technique(m);
+        for (uint32_t i = 0; i < p->nattack && i < MELEE_MEMORY; i++)
+            m->memory[i] = m->memory[i] == 1000.0f ? 0.0f : m->memory[i] * 0.6f;
+    }
+    bool may_change = going ? cat_can_evade(m, c) : true;
+    bool hit_coming = false;
+    if (may_change && target->anim && tr_is_attack(target->anim)) {
+        check_evasion_chance(m, target);
+        if (m->evade_check) {
+            /* the target's attack predicted against the character (TRrCheckAnimationBounds, then
+               TRrIntersectAnimations) */
+            ChrIntersect x;
+            chr_intersect_setup(target, c, false, &x);
+            if (chr_intersect_bounds(&x) && chr_intersect(&x)) {
+                hit_coming = true;
+                m->hit_frames = (int32_t)x.frames;
+            }
+        }
+    }
+    if (going && !hit_coming) return true;
+    uint16_t to = c->anim ? tr_to(c->anim) : 0;
+    if (to > 0x45) to = 0;      /* ("has an illegal anim state") */
+    bool fallen = to == 0x12 || to == 0x32;     /* ONrAnimState_IsFallen 0x4ecdf0 */
+    uint32_t state = state_of(to, a->held);
+    bool cookie = exe_data(0x545772, 1)[0] ? get_cookie(a, c, target) : true;
+    const MeleeTech *chosen = NULL;
+    Weighing w[MELEE_TECH_MAX];
+    int picked = -1;
+    memset(w, 0, sizeof w);
+    /* (also with C+8 bit 2 or 0x5eb849, debugging switches nothing sets) */
+    if (!m->tech || !m->committed) {
+        m->angle = angle_to_target(m, c);
+        float narrow[6], wide[6];
+        direction_weights(m->angle, c->facing, narrow, wide);
+        uint32_t t = now_of(c);
+        int n = 0;
+        float total = 0.0f, best_attack = 0.0f;
+        uint32_t from, count;
+        if (!cookie) {
+            from = p->nattack + p->nevade;
+            count = p->nmaneuver;
+        } else {
+            from = 0;
+            count = p->nattack;
+        }
+        if (count > 32) count = 32;     /* ("exceeds max") */
+        for (uint32_t i = 0; i < count; i++) {
+            const MeleeTech *k = &p->tech[from + i];
+            Weighing *e = &w[i];
+            e->tech = k;
+            e->weight = (float)k->weight;
+            e->attack_at = -1;
+            e->attack = NULL;
+            e->moving = false;
+            e->stop_move = -1;
+            if (cookie && m->memory[i] == 1000.0f) {
+                e->weight = 0.0f;
+                continue;
+            }
+            if (k != m->tech && k->delay_slot >= 0 && k->delay_slot < MELEE_MEMORY && t < m->available[k->delay_slot]) {
+                e->weight = 0.0f;
+                continue;
+            }
+            if (cookie) {
+                float mem = m->memory[i] < 0.8f ? m->memory[i] : 0.8f;
+                e->weight = (1.0f - mem) * e->weight;
+            }
+            uint32_t dir = k->computed >> 8 & 0xf;
+            /* (a direction or'd over a 5 can be 7: the original then reads past its six factors, into its
+               other locals; none of the game's profiles makes one, so the port skips it) */
+            if (dir >= 6) {
+                e->weight = 0.0f;
+                continue;
+            }
+            e->weight *= (k->flags & 2) ? wide[dir] : narrow[dir];
+            if (e->weight == 0.0f) continue;
+            if ((k->computed & 0xff) != state) {
+                /* another state: only "any state" techniques, and with the cookie none of state 0 (an
+                   error report) */
+                if ((cookie && (k->computed & 0xff) == 0) || !(k->computed & 0x20000)) {
+                    e->weight = 0.0f;
+                    continue;
+                }
+            }
+            if (cookie) weigh_technique(a, e);
+            else if (!(k->computed & 0x21001000)) {
+                if (exe_data(0x545778, 1)[0] && k->count && !weigh_spacing(a, c, e)) e->weight = 0.0f;
+            } else {
+                e->weight = 0.0f;
+            }
+            if (e->weight == 0.0f) continue;
+            if (k == m->tech) e->weight += e->weight;      /* the one under way, twice */
+            total += e->weight;
+            n++;
+            if ((k->computed & 0x1001000) && best_attack <= e->weight) best_attack = e->weight;
+        }
+        /* the one under way, an attack (with the cookie) or a maneuver, kept while its weight holds */
+        const MeleeTech *keep = NULL;
+        if (m->tech && !(m->tech->computed & 0x80000) && (m->tech->computed & (cookie ? 0x40000 : 0x100000)) &&
+            m->tech->index < count && m->leftover <= w[m->tech->index].weight) {
+            keep = m->tech;
+            if (cookie && hit_coming && w[m->tech->index].late) hit_coming = false;
+        }
+        bool clamp = exe_data(0x545771, 1)[0] && !fallen && cookie;
+        if (n && clamp && best_attack != 0.0f) {
+            /* with the cookie, what isn't an attack weighs no more than the heaviest attack */
+            for (uint32_t i = 0; i < count; i++)
+                if (!(w[i].tech->computed & 0x21001000) && best_attack < w[i].weight)
+                    total -= w[i].weight - best_attack, w[i].weight = best_attack;
+        }
+        if (n && !keep) {
+            for (;;) {
+                if (!n) break;
+                float left;
+                int i = pick(w, (int)count, total, m->seed[0], &left);
+                if (i < 0) break;
+                /* an attack that the prediction says won't land is struck off */
+                const Weighing *e = &w[i];
+                bool ok = true;
+                if (cookie && !e->moving && e->attack && category(e->attack) == MELEE_ATTACK) {
+                    ChrIntersect x;
+                    chr_intersect_setup(c, target, true, &x);
+                    setup_attacker(p, &x.a, c, e->moving, e->step, e->tech->computed >> 8 & 0xf, e->attack->anim);
+                    ok = chr_intersect(&x);
+                }
+                if (ok) {
+                    m->leftover = left;
+                    picked = i;
+                    break;
+                }
+                total -= w[i].weight;
+                n--;
+                w[i].weight = 0.0f;
+            }
+            if (picked >= 0) {
+                chosen = w[picked].tech;
+                m->moving = w[picked].moving;
+                m->step = w[picked].step;
+                m->stop_move = w[picked].stop_move;
+                if (hit_coming && w[picked].late) hit_coming = false;
+            }
+        } else if (keep) {
+            chosen = keep;
+        }
+    }
+    if (hit_coming && m->evade_ok) {
+        /* an evasion: weighed by the state alone, through the weighing's second call */
+        uint32_t t = now_of(c), count = p->nevade > 32 ? 32 : p->nevade;
+        Weighing ev[MELEE_TECH_MAX];
+        int n = 0;
+        float total = 0.0f;
+        for (uint32_t i = 0; i < count; i++) {
+            const MeleeTech *k = &p->tech[p->nattack + i];
+            Weighing *e = &ev[i];
+            memset(e, 0, sizeof *e);
+            e->tech = k;
+            e->weight = (float)k->weight;
+            e->stop_move = -1;
+            if ((k->computed & 0xff) != state ||
+                (k->delay_slot >= 0 && k->delay_slot < MELEE_MEMORY && t < m->available[k->delay_slot])) {
+                e->weight = 0.0f;
+                continue;
+            }
+            weigh_technique(a, e);
+            if (e->weight != 0.0f) total += e->weight, n++;
+        }
+        if (n) {
+            float left;
+            int i = pick(ev, (int)count, total, m->seed[1], &left);
+            if (i >= 0) {
+                m->leftover = left;
+                m->moving = ev[i].moving;
+                m->step = ev[i].step;
+                m->stop_move = ev[i].stop_move;
+                m->block_serial = target->sound_serial;
+                chosen = ev[i].tech;
+                w[0] = ev[i];
+                picked = 0;
+                hit_coming = false;
+            }
+        }
+        if (hit_coming) {
+            /* no evasion: block, low against a low attack or with the state's crouch (0x52ab98) */
+            m->blocking = true;
+            m->block_serial = target->sound_serial;
+            if (any_attack_flag(target->anim, 1)) m->block_keys = 0;
+            else if (any_attack_flag(target->anim, 2) || exe_data(0x52ab98 + state, 1)[0]) m->block_keys = CHR_KEY_CROUCH;
+            else m->block_keys = 0;
+            m->keys = 0;
+            m->tech = NULL;
+            m->mv = NULL;
+            m->lead = NULL;
+            m->move = 0;
+            m->leftover = 0.0f;
+            m->m60 = 0;
+            clear_technique(m);
+            update_facing(m, c);
+            apply_facing(a);
+            move_override(a, m->block_keys);
+            return true;
+        }
+    }
+    if (!chosen) {
+        if (fallen) {
+            move_override(a, CHR_KEY_FORWARD);      /* up from the floor */
+            return true;
+        }
+        m->tech = NULL;
+        m->mv = NULL;
+        m->lead = NULL;
+        clear_technique(m);
+        memset(m->memory, 0, sizeof m->memory);
+        return no_technique(a, c);
+    }
+    if (chosen != m->tech) {
+        m->tech = chosen;
+        m->mv = &p->move[chosen->first];
+        m->lead = (picked >= 0 && w[picked].tech == chosen && w[picked].attack) ? w[picked].attack->anim : NULL;
+        m->move = 0;
+        m->leftover = picked >= 0 ? m->leftover : 0.0f;
+        clear_technique(m);
+        update_facing(m, c);
+        apply_facing(a);
+        if ((chosen->computed & 0x40000) && chosen->index < MELEE_MEMORY) m->memory[chosen->index] += 0.4f;
+        if (!(chosen->computed & 0x21001000)) release_cookie(a);
+    }
+    if (m->mv->invalid) return !start_next_move(a, c) || m->tech != NULL;
+    start_move(a, c);
+    return m->tech != NULL;
 }
 
 /* AI2rBlockFunction 0x48b870 (the AI's C+0x15ec, asked by HandleAttackMask once the character could

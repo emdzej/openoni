@@ -233,6 +233,10 @@ typedef struct Character {
 bool character_init(Character *c, const void *oncc, const float pos[3], float facing);
 /* ONrCharacter_SetCharacterClass 0x4d7c30, for a living character: false if the class lacks its parts. */
 bool chr_set_class(Character *c, const void *oncc);
+/* The location (C+0x160, docs/re/character.md "The location"), which the port doesn't keep apart: the
+   pelvis's x and z; for y the body's bottom (C+0x190), or at least the ground's height (A+0xe8) while on
+   the ground; then 0.5 up. */
+void chr_location(const Character *c, float out[3]);
 /* The weapons' parts (weapon.c): HandleStartPickup (true if it took the input), the weapon's keys of
    HandleHeartbeatInput, and two steps of DoCharacterFrame: the pickup animation's action frame (at the
    start) and the trigger (after the overlays). */

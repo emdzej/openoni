@@ -166,13 +166,13 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   dust and sounds on the walls and on the characters come from it, and the blows' flashes and sounds,
   by the attack and the body part that lands it, and the footsteps' dust and sounds by the floor's
   material.
-- **Decals**: the bullet holes and scorch marks, laid on the walls, cut to their shapes and folded
+- **Decals**: the bullet holes, scorch marks and the characters' shadows, laid on the walls, cut to their shapes and folded
   round their corners; they fade, and the oldest give way to new ones as the original's do.
 - **Sound** from the game's own sound groups.
 
 ## Not yet
 
-- The particles' homing and their sounds; the characters' decals.
+- The particles' homing and their sounds.
 - The weapons' physics (they rest where they drop) and their falls' impact effects. The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.

@@ -12,7 +12,9 @@ void char_draw(const void *oncc, const float pos[3], float facing, const void *t
 void char_draw_pose(const void *oncc, const float pos[3], float facing, float height, const float *quats, uint32_t bones);
 /* A Character (character.h) in its blended pose: the quaternions of ONrCharacter_BuildQuaternions
    0x4e5360 and the pelvis height C+0x18c. */
-void char_draw_character(const Character *c);
+void char_draw_character(const Character *c, int slot);
+/* The characters' display 0x4e1540: the characters' shadows taken down before they are drawn again. */
+void char_shadows_clear(void);
 /* The class's first animation of a type in its collection (TRAC, then the collections it falls back
    to), NULL if none. A stand-in for TRrCollection_Lookup 0x427f00 until the character engine. */
 const void *char_find_animation(const void *oncc, unsigned type);

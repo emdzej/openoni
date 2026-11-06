@@ -191,7 +191,40 @@ characters and objects and before the particles, with depth writes off:
 
   The Windows method is not yet located; the shade × tint product is inferred.
 
+## The characters' shadows
+
+Each character's shadow is a decal, remade every frame (`src/render/char_draw.c`):
+
+- **The characters' display** (0x4e1540) first deletes every active character's shadow (A+0x27fe set
+  while there is one). Then it draws the characters with C+4 0x8000 and 0x4000.
+- **The character's deletion** (0x4dc580) deletes its shadow as well.
+- **The end of ONiCharacter_Display_Body** (0x4e1d70) makes the new one:
+  - **Gates:** the graphics quality (0x5ed37c, ONrPersist_GetQuality 0x50f0d0) must be at least 1 (0x508540),
+    `chr_shadows` (0x54e18d, "Enables character shadows", 1) on, C+4 without 4 or 0x1000000, and the
+    body's fade (A+0x2818 while invisible or teleporting, else 1) above 0.
+  - **The block:** a character's first shadow takes a block of 0x804 bytes (0x4fdc50, G+0x15706a +
+    slot × 0x804). Its first two u16 are the character's index; A+0x27e8 points past them.
+  - **The texture:** ONCC+0x20, else TXMP "notfoundtex" (0x53b8c0).
+  - **Where:** under the pelvis (A+0x229c, A+0x22a4).
+    - On the ground (A+0xf6 0) with a floor quad (A+0x128), it lies on that quad at the floor's height
+      (A+0xe8), of size ONCC+0x2c and alpha u16 +0x38.
+    - Otherwise a sphere of radius +0x2c is cast. Its centre starts at the body's bottom (C+0x190, or
+      A+0xe8 on the ground) less the radius, and it moves (0, −(+0x2c + +0x24), 0) (AKrCollision_Sphere
+      0x441cb0, skip 0x46800, the nearest). No hit, no shadow. Otherwise it lies on the hit's quad at
+      the hit's point, and h is the height over the hit (at least 0):
+      - h < +0x28: t = h / +0x28; the size runs from +0x2c to +0x30, and the alpha from +0x38 to +0x3a.
+      - h < +0x24: t = (+0x24 − h) / (+0x24 − +0x28); the size runs from +0x34 to +0x30, and the alpha
+        is +0x3a × t.
+      - Higher: no shadow.
+  - **The fade:** below 1, the alpha is multiplied by it (rounded).
+  - **The call:** P3rCreateDecal with flags 0x1e (into the block, facing quads, planar, unshaded), wrap
+    0x3fb2b8c2 (80°), no direction, normal (0, 1, 0), b (0, 0, 1), a (1, 0, 0), both scales the size,
+    tint white, the block A+0x27e8, size 0x800. A block over the size fails ("decal size %d exceeds").
+    On success, A+0x27fe is set and the block's +4 (the owner particle) is −1.
+
+The port keeps the shadows' ids by character slot and gives them their own memory
+(`decal_create_into` checks the size).
+
 ## Not yet
 
-- The characters' decals (0x4e1540, 0x4e1d70 and 0x4dc580 call P3rCreateDecal and P3rDeleteDecal).
 - The vis vector's culling.

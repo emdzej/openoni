@@ -19,7 +19,7 @@
 /* The categories of move (the type's top four bits): the table at 0x52a9e8. */
 enum { MELEE_ATTACK = 0, MELEE_POSITION = 1, MELEE_MANEUVER = 2, MELEE_EVADE = 3, MELEE_THROW = 4 };
 
-typedef struct {
+typedef struct MeleeMove {
     uint32_t type;          /* category << 28 | the move */
     float p[3];
     uint16_t state;         /* +0x10: the melee state it is done from */
@@ -103,9 +103,12 @@ void melee_start(MeleeState *m, const MeleeProfile *p, const void *oncc);
 /* AI2rMelee_Update: one tick against the target (a Chr). Returns false if there was nothing to do
    (no technique). */
 bool melee_update(AiState *a, Character *c, const Character *target);
+/* AI2rMelee_TestLocalEnvironment 0x49fe60: the way toward the target (to 50 past it) and away from it
+   (50) over the grids. */
+void melee_test_local_environment(MeleeState *m, const Character *c, const Character *target);
 /* AI2rStopMeleeTechnique 0x48b6d0, and when the character is hit (AI2rMelee_NotifyAnimation 0x49fd10). */
 void melee_stop(MeleeState *m);
 /* AI2rBlockFunction 0x48b870: whether the AI blocks an attack it could block. Draws a random number. */
 bool melee_block(const AiState *a);
 /* AI2rMelee_NotifyAnimation: a new animation of type for the character, after one of type left. */
-void melee_notify_animation(MeleeState *m, uint16_t type, uint16_t left, bool victim);
+void melee_notify_animation(MeleeState *m, const void *anim, uint16_t type, uint16_t left, bool victim);

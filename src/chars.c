@@ -415,7 +415,20 @@ static void new_animation(Character *c)
     }
     if (ch->ai.state != AI_STATE_COMBAT) return;
     combat_animation(&ch->ai, c);
-    melee_notify_animation(&ch->ai.melee, c->type, c->left_type, chr_is_victim_type(c->type));
+    /* AI2rMelee_NotifyAnimation 0x49fd10, in the melee maneuver */
+    if (ch->ai.combat.maneuver == COMBAT_MANEUVER_MELEE)
+        melee_notify_animation(&ch->ai.melee, c->anim, c->type, c->left_type, chr_is_victim_type(c->type));
+}
+
+/* AI2rExecutor_TryingToThrow 0x498d50 */
+static bool ai_throw(const Character *c, const void **anim, const void **victim, Character **target)
+{
+    const MeleeState *m = &((const Chr *)c)->ai.melee;
+    if (!m->throwing) return false;
+    *anim = m->throw_anim;
+    *victim = m->throw_victim;
+    *target = (Character *)m->throw_target;
+    return true;
 }
 
 static void action_frame(Character *c) { combat_action(&((Chr *)c)->ai, c); }
@@ -506,6 +519,7 @@ void chars_update(const CharacterInput *player_in, const void *env)
     chr_block_hook = block;
     chr_knockdown_hook = knocked_down;
     throw_install();
+    throw_ai_hook = ai_throw;
     weapons_install();
     knowledge_update(env);      /* AI2rKnowledge_Update, before the characters */
     for (int i = 0; i < CHARS_MAX; i++) {

@@ -8,7 +8,7 @@
 /* The flags of P3rCreateDecal. */
 enum {
     DECAL_STATIC = 0x01,        /* in the static list, its own memory (else the dynamic ring) */
-    DECAL_INTO = 0x02,          /* into the caller's buffer (not used by the port) */
+    DECAL_INTO = 0x02,          /* into the caller's buffer: decal_create_into (its own memory here) */
     DECAL_CULL = 0x04,          /* only the quads facing the decal (flags2 0x400000) */
     DECAL_PLANAR = 0x08,        /* cut to the quads the sphere meets, no folding (the characters') */
     DECAL_UNSHADED = 0x10,      /* the colours not taken from the quads' shading (flags2 0x200000) */
@@ -25,6 +25,11 @@ void decal_set_environment(const void *env);
 uint32_t decal_create(const void *texture, int32_t quad, unsigned flags, float wrap, const float *dir, const float pos[3],
                       const float normal[3], const float b[3], const float a[3], float xs, float ys, uint16_t alpha,
                       uint32_t tint);
+/* The same written into the caller's buffer of room bytes (flag 2, the characters' shadows): 0 if the
+   decal's block doesn't fit. It goes to the static list. */
+uint32_t decal_create_into(const void *texture, int32_t quad, unsigned flags, float wrap, const float *dir,
+                           const float pos[3], const float normal[3], const float b[3], const float a[3], float xs,
+                           float ys, uint16_t alpha, uint32_t tint, uint32_t room);
 /* The particle the decal belongs to (the decal block's +4): killed when the ring takes its memory. */
 void decal_set_owner(uint32_t id, uint32_t particle);
 /* Whether the decal still has its triangles (the ring hasn't taken them). */

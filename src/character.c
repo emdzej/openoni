@@ -855,7 +855,7 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
         chr_overlays_advance(c);
         if (character_frame_hook) character_frame_hook(c, CHR_FRAME_FIRE);
         chr_build_quaternions(c);
-        if (c->anim_particles) chr_bone_matrices(c);
+        chr_bone_matrices(c);
         inventory_invis_update(c);
         return;
     }
@@ -866,7 +866,7 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
     chr_overlays_advance(c);
     if (character_frame_hook) character_frame_hook(c, CHR_FRAME_FIRE);
     chr_build_quaternions(c);
-    if (c->anim_particles) chr_bone_matrices(c);        /* where the animation's particles hang */
+    chr_bone_matrices(c);       /* 0x4e5a30: the parts' matrices (the pelvis, where particles hang) */
     inventory_invis_update(c);                          /* ONrCharacter_Invis_Update, after the matrices */
     physics_body(c);                                    /* step 19 */
     /* OBiPhysics_Update runs after all the characters' frames; here right after each (physics.h) */
@@ -1076,4 +1076,15 @@ bool chr_pose_matrices(const Character *c, float (*m)[12])
     if (chr_big_head)
         for (int k = 0; k < 9; k++) m[10][k] *= 4.0f;
     return true;
+}
+
+void chr_location(const Character *c, float out[3])
+{
+    /* the end of ONrGameState_DoCharacterFrame */
+    out[0] = c->bone_world[0][9];
+    out[2] = c->bone_world[0][11];
+    float y = c->bottom;
+    if (c->no_ground_ticks == 0 && c->air_ticks == 0 && !(c->flags & 0x20000) && y < c->ground_point[1])
+        y = c->ground_point[1];
+    out[1] = y + 0.5f;
 }

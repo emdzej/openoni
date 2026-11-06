@@ -68,6 +68,37 @@ void ai_executor_move(AiState *a, float facing, int mode, int kind, bool full_tu
     a->kind = kind;
 }
 
+bool ai_movement_modifier(AiState *a, float dir, float weight)
+{
+    if (a->nmod > 7) return false;      /* (0x4936b0: a report) */
+    a->mod_dir[a->nmod] = dir;
+    a->mod_weight[a->nmod] = weight;
+    a->nmod++;
+    return true;
+}
+
+/* A stand-in for AI2iMovementState_Calculate_Movement 0x4aa250 with modifiers and no path: along the
+   first modifier's direction; in the facing mode 1 as its kind of move (the body turned from the way by
+   0, pi, pi/2 or 3 pi/2), else the kind by how far the way is from the facing (within 45 degrees ahead,
+   left or right of it, else back). */
+static void apply_modifiers(AiState *a, const Character *c)
+{
+    (void)c;
+    if (!a->nmod || a->moving) return;
+    if (a->facing_mode == 1 && a->move_kind >= AI_MOVE_FORWARD && a->move_kind <= AI_MOVE_RIGHT) {
+        static const float off[4] = { 0.0f, 3.1415927f, 1.5707964f, 4.712389f };
+        a->kind = a->move_kind;
+        a->facing = wrap_2pi(a->mod_dir[0] - off[a->move_kind]);
+        return;
+    }
+    float face = a->facing_override != 1000.0f ? a->facing_override : a->facing;
+    float d = wrap_2pi(a->mod_dir[0] - face);
+    if (d <= 0.78539819f || d >= 5.4977871f) a->kind = AI_MOVE_FORWARD;
+    else if (d < 2.3561945f) a->kind = AI_MOVE_LEFT;
+    else if (d <= 3.9269908f) a->kind = AI_MOVE_BACK;
+    else a->kind = AI_MOVE_RIGHT;
+}
+
 /* AI2rIsHurrying 0x48b020: an AI hurries in the states the table at 0x52a4d8 doesn't mark calm (combat,
    alarm, panic), and in the pursuit while it hurries to the contact's place. */
 static bool hurrying(const AiState *a)
@@ -503,6 +534,7 @@ void ai_update(AiState *a, Character *c, const void *env)
        given the character's own facing; the states may set another after (combat's look at its
        target), and the path's way does while moving */
     if (!a->moving) a->facing = a->goal_facing ? a->goal_angle : c->facing;   /* (arrived with one: mode 2) */
+    a->nmod = 0;
     /* its glance: the delay first, then the ticks, a tick counted once the aim is done (A+0x1ab8,
        0x498e60) */
     if (a->glance_delay) a->glance_delay--;
@@ -519,6 +551,7 @@ void ai_update(AiState *a, Character *c, const void *env)
     a->ticks++;
     mover(a, c, env);
     combat_aim(a, c);
+    apply_modifiers(a, c);
     ChrInput in;
     executor_update(a, c, &in);
     character_update_input(c, &in, env);

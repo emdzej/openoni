@@ -16,6 +16,8 @@
 #include "particle.h"
 #include "powerup.h"
 #include "chr_anim.h"
+#include "akev.h"
+#include "ui.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -86,6 +88,12 @@ int main(void)
         return 1;
     }
     prepare();
+    const void *env = NULL;     /* the level's environment, for the fight's local paths */
+    TmFile *f = tm_file_at(tm_file_slots() - 1);
+    for (uint32_t i = 0; f && i < tm_file_instance_count(f); i++) {
+        const TmInstance *in = tm_file_instance(f, i);
+        if (in->tmpl->tag == AKEV_TAG && in->data) env = in->data;
+    }
     int failed = 0;
     int n = chars_load();
     Chr *p = chars_player();
@@ -158,7 +166,8 @@ int main(void)
            has been hurt, a last blow from demo3 at 6000 ticks ends it */
         if (d2->c.hit_points < d2_hp) hurt = true;
         if (fight_ticks == 6000 && hurt && !((d2->c.flags | d3->c.flags) & 1)) chr_take_damage(&d2->c, d2->c.hit_points, 0.0f, NULL, 0, &d3->c);
-        chars_update(&(CharacterInput){ 0 }, NULL);
+        ui_update();    /* the game time: the combat state thinks every fifth tick of it */
+        chars_update(&(CharacterInput){ 0 }, env);
         sl_update();
         if (d3->ai.state == AI_STATE_COMBAT || d2->ai.state == AI_STATE_COMBAT) fought = 1;
         bool one_dead = (d2->c.flags & 1) || (d3->c.flags & 1);
@@ -173,9 +182,15 @@ int main(void)
        damage (its flag 0x1000, being thrown, lasts until its AI asks for an animation: the same tick) */
     /* the fight next to her may have hit her and left her facing off the way she wants to face, and its
        survivor would go for the (Syndicate) dummy, hitting her too: where it ended is chance, so the
-       throw starts from her facing settled and the survivor far away */
-    p->c.facing = p->c.desired_facing;
+       throw starts with her standing (a player knocked down lies, state 18, until a key: forward gets her
+       up), her facing settled and the survivor far away */
     if (d2 && d3) ((d2->c.flags & 1) ? d3 : d2)->c.pos[0] += 1000.0f;
+    for (int k = 0, stood = 0; k < 900 && stood < 60; k++) {
+        stood = p->c.state == CHR_STATE_STANDING ? stood + 1 : 0;
+        chars_update(&(CharacterInput){ .forward = p->c.state == 18 }, NULL);
+        sl_update();
+    }
+    p->c.facing = p->c.desired_facing;
     snprintf(script, sizeof script, "func void dummy(void) {\n  ai2_spawn dum_train_throw\n}\n");
     if (!sl_load_text("chars_dummy", script, err, sizeof err) || !sl_call("dummy", 0, NULL)) failed++;
     sl_update();

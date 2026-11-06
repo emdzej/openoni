@@ -147,11 +147,45 @@ static const void *attempt_throw(Character *c, uint16_t front, uint16_t behind)
     return best.anim;
 }
 
+bool (*throw_ai_hook)(const Character *c, const void **anim, const void **victim, Character **target);
+
+bool throw_target_ok(const Character *t)
+{
+    if (!can_be_thrown(t) || (!t->ai && chr_cheat_unthrowable) || (t->flags & 0x100)) return false;
+    return t->anim && !tr_test_flag(t->anim, 1) && !invulnerable_frame(t->anim, t->frame);
+}
+
+/* RemapAnimationHook 0x4ea550, the AI's part: the throw its executor asks for, of a target within 45
+   degrees of the facing that the throw reaches (AttemptSpecificThrow, which may find another victim's
+   animation: "AI tried to throw ... got ...", taken); the thrower turns to it and enters fight mode. */
+static const void *remap_ai(Character *c, const void *next)
+{
+    const void *anim, *victim;
+    Character *t;
+    if (!throw_ai_hook || !throw_ai_hook(c, &anim, &victim, &t) || !t) return next;
+    float a = wrap_2pi(atan2f(t->pos[0] - c->pos[0], t->pos[2] - c->pos[2]));
+    float f = wrap_2pi(c->desired_facing - c->facing_offset);   /* C+0x170 less C+0x174 */
+    float d = a - f;
+    if (d < 0.0f) d += TWO_PI;
+    if (d >= PI) d -= TWO_PI;
+    if (fabsf(d) > 0.7853982f) return next;     /* ("AI %s tried to throw %s at %f degrees") */
+    float dx = c->pos[0] - t->pos[0], dy = c->pos[1] - t->pos[1], dz = c->pos[2] - t->pos[2];
+    Best best = { NULL, NULL, 0 };
+    attempt_specific(c, t, dx * dx + dy * dy + dz * dz, anim, &best);
+    if (!best.anim) return next;
+    t->thrown_by = c;
+    c->facing = wrap_2pi(d + c->facing);
+    c->throw_target = t;
+    c->throw_victim_anim = best.victim;
+    chr_enter_fight_mode(c);
+    return best.anim;
+}
+
 /* RemapAnimationHook 0x4ea550: a character the AI doesn't drive (C+0x04 flag 0x400000) turns its throw
    moves into a throw of the character in front. */
 static const void *remap(Character *c, const void *next)
 {
-    if (c->ai) return next;     /* AI2rExecutor_TryingToThrow's throws: not yet */
+    if (c->ai) return remap_ai(c, next);
     uint16_t front, behind;
     switch (tr_type(next)) {
     case 0x1f: front = 0x6a, behind = 0x6c; break;

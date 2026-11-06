@@ -929,6 +929,9 @@ The combat state's hand-to-hand fighting. The port is `src/melee.c`, with its te
 | Pressing an attack's keys | `AI2rExecutor_AttackOverride` 0x498bb0 | confirmed |
 | Blocking | `AI2rBlockFunction` 0x48b870, every AI's C+0x15ec | confirmed |
 | Weighting a technique | `AI2iMelee_WeightTechnique` 0x4a2580 | not ported: the base weight stays |
+| The categories' functions | the table at 0x52a9e8 (names from the Mac build) | confirmed |
+| The way toward and away from the target | `AI2rMelee_TestLocalEnvironment` 0x49fe60 | confirmed |
+| A straight way over the grids | `AI2rTryLocalMovement` 0x49d560, `AI2rDoLocalMovement` 0x49d700 | confirmed |
 
 **A new animation** in the melee maneuver (0x49fd10, after the behaviour's message 12): a hit
 reaction (0x4e37b0) stops the technique. With the attack's keys pressed and not yet taken
@@ -965,21 +968,110 @@ All read from the exe at run time.
 | 0x543a94, the maneuvers | Advance, Retreat, Circle Left, Circle Right, Pause, …, Taunt (7), Random Stop (8), …, Max Range (0xd) |
 | 0x52ac50, the melee states | pairs |
 
+### The state
+
+The melee state is the combat state's block +0x450 (m below), with the profile at C+0x1068 and the
+techniques' delays at C+0x106c (when each is free again, by its delay slot). Its fields, as `MeleeState`
+in `src/ai.h` names them: +0x00 the target and +0x04 the last one; +0x0c the technique, +0x34 its move,
++0x38 the move's record, +0x3c the first attack's animation (the angle's lead); +0x10 and +0x14 and
++0x44 from its weighing (a moving position, its step, the last needed move); +0x18 the facing held,
++0x19 committed (an attack that may not be interrupted done), +0x1c the pick's leftover weight; +0x2c
+the cookie and +0x30 until when; +0x40 the move's keys pressed, +0x41 and +0x58 keys to hold while
+waiting, +0x42 busy (attacking, throwing, keys pressed or in the air); +0x48..+0x68 the position's,
++0x6c and +0x70 the maneuver's duration, +0x74 and +0x78 the evasion's; +0x7c "the move faces", +0x80
+the distance, +0x88 the angle, +0x8c the difference to the target, +0x98 the facing wanted (1000 none)
+and +0x9c how far from it; +0xa0 and +0xa2 the picks' randoms; +0xa4 the attacks' memory (32); +0x124
+the frames before the target's attack lands, +0x128 the target's animation the dodge was rolled for
+(C+0x1dc, its animations' serial), +0x12c and +0x12d the two dodge rolls, +0x12e blocking, +0x130 its
+animation, +0x138 the block's keys; +0x140..+0x170 the local environment; +0x17c a countdown read
+every fifth tick and never set (so the environment is tested each time), +0x178 set to 60 and never
+read.
+
+### The categories
+
+Each move's category (the type's top four bits) has ten functions in the table at 0x52a9e8, named in
+the Mac build: Iterate, GetName, GetParams, GetAnimType, CanFollow, Start, Update, Finish, FaceTarget
+and CanEvade.
+
+| | Attack | Position | Maneuver | Evade | Throw |
+|---|---|---|---|---|---|
+| Start | keys not pressed, Update | 0x4a5e40 | 0x4a6f20 | 0x4a7680 | 0x4a7b20 |
+| Update | 0x4a5500 | 0x4a6040 | 0x4a7060 | 0x4a76a0 | 0x4a7b40 |
+| Finish | committed unless interruptible | none | the delay, the path halted | none | as an attack |
+| FaceTarget | yes | yes | no | yes | yes |
+| CanEvade | until pressed | not in the air | yes | no | no |
+
+`AI2iMelee_StartNextMove` 0x4a20f0 finishes the move, starts the next (or ends the technique past the
+last), then the facing (`AI2iMelee_UpdateFacing` 0x4a1f10: the target's angle, led by its motion over the
+first attack's frames, turned to the technique's direction: 1 ahead, 2 behind, 3 and 4 to a side; 0 and
+5 none) and `ApplyFacing` (a move that faces turns at the full rate through 0x498b90, else the AI looks
+at the target). Quirks kept: direction 3 isn't wrapped below 0, nor 4 past 2π.
+
+**An attack** (0x4a5500): once pressed it waits for the override to be taken, holds its facing, sets
+the delay and goes on (busy, only into a following attack). Before pressing, unless committed, it
+gives up beyond 60° of its facing; past 15° it counts as passing; else the prediction
+(`AI2iMelee_SetupAttackerState` 0x4a2270, `TRrIntersectAnimations`) must hit. A miss with keys to hold
+waits (too far while within 3° of the facing; passing while turning, between 3° and 15°, when the turn
+the keys make, (across² + along²) / (2 across) × 0.9, is within the run's speed over the turn rate);
+any other miss gives up. Then the combo must follow (A+0x1eb0), the window must have come (the
+animation's last 4 frames of a fight-variant one, 8 of a shortcut, when its state is left later or it
+is atomic) and the way must not end in a danger (`AI2iMelee_WeightLocalMovement` 0x4a4440); the keys go
+to `AI2rExecutor_AttackOverride`.
+
+**A maneuver** (0x4a7060): for its duration (seconds), with its table's keys (0x543ab0, 0x40 bytes
+each) or, "toward the target", a step of its direction tried 15 ahead over the grids; advancing ends
+within the range less the threshold (at least 8), retreating beyond the range and threshold (at least
+75); "random stop" (8) ends the technique by its chance, "max range" (13) presses its keys once.
+
+**An evasion** (0x4a76a0): its keys (0x543e30, 0x38 bytes each) pressed once in the window, then the
+animation's duration; one in a technique that isn't a maneuver is given up once the target's attack is
+past.
+
 ### The update
 
-Once a tick while in combat and near the target. If no technique runs, it picks one by weight among
-those whose facing and range allow it, and not within their repeat delay. The facing factor is 1
-within π/4 of the target and falls linearly to 0 at π/3; with the wide flag it is 1 within 70° and
-0 at 110°, and at least 0.35 for direction 1. Each technique then runs its moves in turn, each through
-its category's start and update. An attack move presses its keys through the executor's override:
-while in combat the executor ORs them into the held and down keys, and with no previous type to follow
-it zeroes the combo type. The next attack's keys are pressed within the last 4 frames of the current
-attack, so the combo continues. When a technique ends, its memory weight goes to 0 if it was 1000,
-else it is multiplied by 0.6.
+`AI2rMelee_Update` 0x4a01f0, once a tick in the melee maneuver:
+
+1. **Gates.** No target (or one the player can't be attacked as, `AI2rAllowedToAttack` 0x48bc30):
+   `AI2iMelee_HandleNoTechnique` 0x4a1dd0 (the cookie back, the facing free, and beyond 8 a step
+   toward the target as far as the grids let it, at the melee maneuver's weight).
+2. **Blocking** against the target's attack goes on while it is the same animation, an attack, not a
+   throw, and before its last attack point.
+3. **The move** under way runs (the path halted, the facing applied, free). Busy, the AI waits. A
+   technique without a move left ends: its memory fades (1000 to 0, else × 0.6).
+4. **Evasion.** When nothing runs or the move may be left (CanEvade) and the target attacks, the dodge is
+   rolled once per target animation (`CheckEvasionChance`): the profile's +0x84 times the difficulty's
+   (game settings +0xab0); then +0x88 plus +0x8c scaled by the attack's damage over +0x90, times
+   +0xac8's, allows an evasion. With the first passed, the target's attack is predicted against the AI
+   (a context of the target attacking, `TRrCheckAnimationBounds`, `TRrIntersectAnimations`).
+5. **The choice**, unless committed: with the cookie (`AI2rFight_GetAttackCookie`, with 0x545772) the
+   attacks, else the maneuvers, at most 32. Each starts at its weight; an attack remembered as failed
+   (1000) or within its delay is out; an attack's weight is × (1 − its memory, at most 0.8); then the
+   direction's weight (`CalculateDirectionWeights`: 1 within 45° falling to 0 at 60°, or 70° and 110°
+   for the wide flag; 0 and 5 always 1, 1 at least 0.35). Another state's technique counts only with
+   "any state" (0x20000; with the cookie, not one of state 0). Then the weighing: attacks through
+   `WeightTechnique`; maneuvers through the spacing (with 0x545778): advance and retreat by how far over
+   their range (the threshold at least 5), circling by the other attackers within the move's degrees
+   (toward the side they leave), an evasion by the way its animation goes, attacks, positions, throws
+   and "max range" out. The one under way counts twice and is kept while its leftover holds. With the
+   cookie, on the ground (0x545771), what isn't an attack weighs no more than the heaviest attack. The
+   pick (seed +0xa0) strikes off attacks the prediction says won't land.
+6. **A coming hit**: with the evasion allowed, an evasion is picked (seed +0xa2) among those of the
+   state; without one, the AI blocks: no keys against a high attack, crouching against a low one or in a
+   crouching state (0x52ab98).
+7. **No technique**: lying, forward (up); else everything cleared (the memory too) and
+   `HandleNoTechnique`. A new one is set up (+0x38 its first move), its memory + 0.4, the cookie given
+   back if it isn't an attack, and its first move started.
 
 At most two attackers (0x545774) hold the fight cookie at once; a cookie is held for 180 ticks.
 
-The animation's reach is TRAM +0x50; the near limit is the reach less half of TRAM +0x11c.
+**The local environment** (`AI2rMelee_TestLocalEnvironment` 0x49fe60, from the combat's melee test
+0x49e910 while within 80 of the target): a straight way over the grids from the location toward the
+target to 50 past it, and away from it for 50 (`AI2rTryLocalMovement`, tolerance 3); short of it,
+blocked (+0x140) when it ends before the target, and a danger (+0x141, +0x142) when it ends at a cell
+of 8. A way that started blocked (or no grid) is blocked, 6 ahead. A blockage within 8 doesn't count;
+else the way from the pelvis to the target's (at the lower height) through the environment decides
+(`AI2rManeuver_CheckBlockage` 0x49ea60, `AKrCollision_Point` skipping 0x48800). Blocked, the combat
+advances instead (to within 15 to 20).
 
 ### Blocking
 
@@ -995,10 +1087,12 @@ easy, normal, hard: `ONrPersist_GetDifficulty` 0x50f240, normal at start-up), mu
 0..100 (`(UUrRandom & 0xffff) × 100 / 0xffff`). After the decision come the combat report
 (`AI2rNotifyAttackLanded` 0x48b700) and the daze timer's cut to 1 (0x48b9d0); neither is ported yet.
 
-Stand-ins, marked in `src/melee.c`: the weighting's prediction of what an attack does to the target;
-the positions' prediction (`TRrIntersectAnimations`), replaced by the reach and the profile distances,
-with a 120-tick timeout; evades and the dodge chance; throws; jumps and crouches; and the circling's
-check of the other attackers.
+Stand-ins, marked in `src/melee.c`: the weighting (`AI2iMelee_WeightTechnique`: the base weight, a
+run-in needing its room); the positions' update (`AI2iMelee_Position_Update`: toward the target to the
+first attack's reach or the profile's distance, 120 ticks at most); throws; the maneuvers' search about
+the angle (`AI2rFindLocalPath` 0x49d220: the straight try); the blockage's objects and characters; the
+movement's modifiers and facing mode as the executor's kinds (`src/ai.c`, a stand-in for
+`AI2iMovementState_Calculate_Movement`).
 
 ### Predicting an attack
 

@@ -457,10 +457,12 @@ static int16_t round_cell(float v) { return (int16_t)lrintf(v); }   /* 0x434030 
    or the edge cell's when no room beyond (or one with flag 8). The first room crossed into is kept
    across the tries; the next try into it reuses it, but its cells are found on its grid while the line
    goes on with the old grid's (an original bug: kept). The grid's obstacles aren't ported (localpath.h). */
-static bool local_movement(float out[3])
+static bool local_movement(float out[3], uint8_t *kind, bool *crossed_blocked)
 {
     GraphGrid g = N.g;
     int16_t sx = N.sx, sz = N.sz;
+    uint8_t worst = 0;
+    *crossed_blocked = false;
     for (;;) {
         int16_t ex, ez;
         graph_to_cell(&g, N.to, &ex, &ez);
@@ -489,9 +491,14 @@ static bool local_movement(float out[3])
         int lx, lz;
         if (!line_weight(sx, sz, x1, z1, N.threshold, N.tolerance, &first_blocked, &lo, &hi, &lx, &lz)) {
             graph_cell_middle(&g, lx, lz, NULL, out);
+            *kind = hi;
             return false;
         }
+        /* the worst value met: the line's highest, or its lowest when it started blocked */
+        if (!first_blocked) worst = hi > worst ? hi : worst;
+        else worst = lo > worst ? lo : worst, *crossed_blocked = true;
         if (!edge) {
+            *kind = worst;
             memcpy(out, N.to, sizeof N.to);
             return true;
         }
@@ -514,11 +521,13 @@ static bool local_movement(float out[3])
             GraphGrid ng;
             if (room < 0 || (graph_room_flags(room) & 8) || !graph_grid(room, &ng)) {
                 memcpy(out, e, sizeof e);
+                *kind = worst;
                 return false;
             }
             graph_to_cell(&ng, p, &sx, &sz);
             if (sx < 0 || sx >= (int16_t)ng.w || sz < 0 || sz >= (int16_t)ng.h) {
                 memcpy(out, e, sizeof e);
+                *kind = worst;
                 return false;
             }
             g = ng;
@@ -528,8 +537,8 @@ static bool local_movement(float out[3])
     }
 }
 
-bool local_find_nearby_point(const float from[3], float dist, float min, float angle, float step, unsigned n,
-                             uint8_t threshold, int tolerance, float out[3])
+/* The start's room, grid and cell for a try (clamped to the grid). */
+static bool start_at(const float from[3])
 {
     int room = graph_room_at(from);
     if (room < 0 || !graph_grid(room, &N.g) || !N.g.cells) return false;     /* (0x4936b0: a report) */
@@ -539,6 +548,27 @@ bool local_find_nearby_point(const float from[3], float dist, float min, float a
     if (N.sz < 0) N.sz = 0;
     else if (N.sz > (int16_t)N.g.h - 1) N.sz = (int16_t)N.g.h - 1;
     N.next_room = -1;
+    return true;
+}
+
+bool local_try_movement(const float from[3], const float to[3], int tolerance, bool *reached, float out[3],
+                        uint8_t *kind, bool *crossed_blocked)
+{
+    /* AI2rTryLocalMovement 0x49d560: threshold 8 (0x5eb884) */
+    *reached = false;
+    if (!start_at(from)) return false;
+    memcpy(N.to, to, sizeof N.to);
+    N.threshold = 8;
+    N.tolerance = tolerance;
+    N.crossings = 0;
+    *reached = local_movement(out, kind, crossed_blocked);
+    return true;
+}
+
+bool local_find_nearby_point(const float from[3], float dist, float min, float angle, float step, unsigned n,
+                             uint8_t threshold, int tolerance, float out[3])
+{
+    if (!start_at(from)) return false;
     N.threshold = threshold;
     N.tolerance = tolerance;
     bool found = false;
@@ -554,7 +584,9 @@ bool local_find_nearby_point(const float from[3], float dist, float min, float a
             N.to[2] = from[2] + cosf(a) * dist;
             N.crossings = 0;
             float at[3];
-            if (local_movement(at)) {
+            uint8_t kind;
+            bool crossed;
+            if (local_movement(at, &kind, &crossed)) {
                 memcpy(out, N.to, sizeof N.to);
                 return true;
             }

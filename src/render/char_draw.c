@@ -1,12 +1,17 @@
 /* Character drawing: see char_draw.h. */
 #include "char_draw.h"
 
+#include "akev_collide.h"
 #include "body.h"
 #include "character.h"
+#include "chars.h"
+#include "decal.h"
 #include "exe.h"
 #include "geom_draw.h"
 #include "gl_dev.h"
 #include "m3gm.h"
+#include "particle.h"
+#include "persist.h"
 #include "tm.h"
 #include "tram.h"
 
@@ -64,10 +69,75 @@ void char_draw(const void *oncc, const float pos[3], float facing, const void *t
     char_draw_pose(oncc, pos, facing, h, bones ? q : NULL, bones);
 }
 
+static float rdf(const uint8_t *p) { float f; memcpy(&f, p, 4); return f; }
+
+/* The shadows' decals, by the characters' slots (A+0x27e8, its block from 0x4fdc50; A+0x27fe set while one
+   is up). */
+static uint32_t shadows[CHARS_MAX];
+static bool shadows_on = true;          /* 0x54e18d, chr_shadows ("Enables character shadows") */
+
+void char_shadows_clear(void)
+{
+    /* The characters' display 0x4e1540: every character's shadow goes before the bodies are drawn */
+    for (int i = 0; i < CHARS_MAX; i++)
+        if (shadows[i]) decal_delete(shadows[i]), shadows[i] = 0;
+}
+
+/* The end of ONiCharacter_Display_Body 0x4e1d70: the shadow, a decal (flags 0x1e: into the character's
+   block of 0x800 bytes, facing quads, planar, unshaded) of the class's texture (ONCC+0x20, else
+   "notfoundtex" 0x53b8c0) under the pelvis. On the ground it lies on the floor's quad at the floor's
+   height (A+0xe8), of size ONCC+0x2c and alpha +0x38; in the air (or with no floor quad) a sphere of that
+   size from the body's bottom less it (C+0x190, or the floor's height) falls by the size plus +0x24
+   (AKrCollision_Sphere 0x441cb0, skipping 0x46800, the nearest): at a height h over the hit up to +0x28
+   the size goes from +0x2c to +0x30 and the alpha from +0x38 to +0x3a, then to +0x24 from +0x30 to +0x34
+   and the alpha from +0x3a to none; higher, none. The fade below 1 scales the alpha. */
+static void shadow(const Character *c, int slot, float fade)
+{
+    if (persist_quality() < 1 || !shadows_on || (c->flags & 4) || fade <= 0.0f || (c->flags & 0x1000000)) return;
+    if (slot < 0 || slot >= CHARS_MAX) return;
+    const uint8_t *oc = c->oncc;
+    const void *tex = tm_link(oc + 0x20);
+    if (!tex) tex = tm_instance_get(TM_TAG("TXMP"), exe_str(0x53b8c0));
+    if (!tex) return;
+    float pos[3] = { c->bone_world[0][9], c->bone_world[0][10], c->bone_world[0][11] };
+    const float normal[3] = { 0, 1, 0 }, b[3] = { 0, 0, 1 }, a[3] = { 1, 0, 0 };
+    float far = rdf(oc + 0x24), fadeh = rdf(oc + 0x28), size = rdf(oc + 0x2c);
+    int32_t quad = -1;
+    float alpha;
+    if (c->air_ticks == 0 && c->ground_quad != -1) {
+        quad = c->ground_quad;
+        pos[1] = c->ground_point[1];
+        alpha = rd16(oc + 0x38);
+    } else {
+        float y = c->air_ticks == 0 ? c->ground_point[1] : c->bottom;
+        const void *env = p3_environment();
+        float sphere[4] = { pos[0], y - size, pos[2], size }, move[3] = { 0, -(size + far), 0 };
+        static AkevHit hit[AKEV_HITS_MAX];
+        if (!env || !akev_collide_sphere(env, sphere, move, 0x46800, 1, hit)) return;
+        float h = y - hit[0].point[1];
+        if (h < 0.0f) h = 0.0f;
+        memcpy(pos, hit[0].point, sizeof pos);
+        if (h < fadeh) {
+            float t = h / fadeh;
+            size = (rdf(oc + 0x30) - size) * t + size;
+            alpha = (float)lrintf((float)(rd16(oc + 0x3a) - rd16(oc + 0x38)) * t + (float)rd16(oc + 0x38));
+        } else if (h < far) {
+            float t = (far - h) / (far - fadeh);
+            size = (rdf(oc + 0x30) - rdf(oc + 0x34)) * t + rdf(oc + 0x34);
+            alpha = (float)lrintf((float)rd16(oc + 0x3a) * t);
+        } else return;
+        quad = (int32_t)hit[0].quad;
+    }
+    if (fade < 1.0f) alpha = (float)lrintf(alpha * fade);
+    /* (the wrap 0x3fb2b8c2, the tint white) */
+    shadows[slot] = decal_create_into(tex, quad, 0x1e, 1.3962633609771729f, NULL, pos, normal, b, a, size, size,
+                                      (uint16_t)alpha, 0xffffffffu, 0x800);
+}
+
 /* ONiCharacter_Display_Body 0x4e1d70's alpha: the body at A+0x2818 while invisible or a teleport fades it
    (C+4 0x40000; none drawn at 0), blended below 1 (255 times it); invisible, the INVIS texture (0x550e78)
    over the body scaled 1.4 about each bone (TRrBody_DrawMagic 0x427770) at (1 - it) x 56.1 (0x52b300). */
-void char_draw_character(const Character *c)
+void char_draw_character(const Character *c, int slot)
 {
     const void *body = body_of_class(c->oncc, 4);
     if (!body || body_bones(body) != CHR_BONES) {
@@ -93,4 +163,5 @@ void char_draw_character(const Character *c)
             }
         }
     }
+    shadow(c, slot, a);
 }

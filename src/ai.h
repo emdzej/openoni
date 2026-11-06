@@ -22,23 +22,72 @@ struct KnowEntry;
 struct MeleeProfile;
 struct MeleeTech;
 
-/* The melee state (the combat state's melee part, C+0xf70 + 0x458.., and the executor's attack
-   override A+0x1acc..): see melee.h. */
+/* The melee state (AI2rMelee, the combat state's block +0x450: "m" below, and the character's C+0x1068
+   and C+0x106c; the executor's attack override A+0x1acc..): see melee.h. */
 enum { MELEE_MEMORY = 32 };
+struct MeleeMove;
 typedef struct {
     const struct MeleeProfile *profile;     /* C+0x1068 */
-    const struct MeleeTech *tech;           /* +0x0c: the technique under way */
-    int move;                               /* +0x34: its move */
-    bool move_started;
-    bool pressed;                           /* +0x40: the attack's keys are pressed */
-    uint32_t move_ticks;
-    float leftover;                         /* +0x1c */
-    float memory[MELEE_MEMORY];             /* +0xa4: the attacks done lately (1000 failed) */
     uint32_t available[MELEE_MEMORY];       /* C+0x106c: when a technique with a delay is free again */
-    float dist, angle;                      /* +0x80, +0x88 */
-    float face;                             /* +0x98: the facing wanted, 1000 the target */
-    bool cookie;                            /* +0x484: may attack */
-    uint32_t cookie_until;                  /* +0x488 */
+    const Character *target;                /* +0x00 */
+    const Character *last_target;           /* +0x04 */
+    const struct MeleeTech *tech;           /* +0x0c: the technique under way */
+    bool moving;                            /* +0x10: its weighing's (a position that moves) */
+    float step;                             /* +0x14: and the step's length */
+    bool hold_facing;                       /* +0x18: the facing kept (an attack or an evasion begun) */
+    bool committed;                         /* +0x19: an attack that may not be interrupted begun */
+    float leftover;                         /* +0x1c: the pick's weight left over */
+    bool cookie;                            /* +0x2c (C+0x8b8 block +0x484): may attack */
+    uint32_t cookie_until;                  /* +0x30 */
+    uint32_t move;                          /* +0x34: the move under way */
+    const struct MeleeMove *mv;             /* +0x38 */
+    const void *lead;                       /* +0x3c: the first attack's animation, for the angle's lead */
+    bool pressed;                           /* +0x40: the move's keys pressed */
+    bool keys_set;                          /* +0x41: keys to hold while waiting (+0x58) */
+    bool busy;                              /* +0x42: attacking, throwing, keys pressed or in the air */
+    int16_t stop_move;                      /* +0x44: the weighing's last needed move, -1 none */
+    /* the position's (+0x48..+0x68) */
+    uint32_t pos_step;                      /* +0x48: the transition's step */
+    bool pos_mid;                           /* +0x64: started part way through */
+    uint32_t pos_state;                     /* +0x4c */
+    uint32_t pos_50, pos_68;                /* +0x50, +0x68 */
+    bool pos_65;                            /* +0x65 */
+    uint32_t pos_ticks;                     /* (the port's stand-in's) */
+    uint64_t keys;                          /* +0x58: the keys held while waiting */
+    uint32_t m60;                           /* +0x60 */
+    bool m66;                               /* +0x66 */
+    bool man_started;                       /* +0x6c: the maneuver's duration set */
+    uint32_t man_until;                     /* +0x70 */
+    bool ev_pressed;                        /* +0x74: the evasion's keys pressed */
+    uint32_t ev_until;                      /* +0x78: when it ends */
+    bool face_target;                       /* +0x7c: the move faces the facing wanted (+0x98) */
+    float dist;                             /* +0x80 */
+    int32_t m84;                            /* +0x84 */
+    float angle;                            /* +0x88 */
+    float vec[3];                           /* +0x8c: to the target */
+    float face;                             /* +0x98: the facing wanted, 1000 none */
+    float face_off;                         /* +0x9c: how far from it */
+    uint16_t seed[2];                       /* +0xa0, +0xa2: the picks' randoms */
+    float memory[MELEE_MEMORY];             /* +0xa4: the attacks done lately (1000 failed) */
+    int32_t hit_frames;                     /* +0x124: the frames before the target's attack lands, -1 */
+    uint32_t evade_serial;                  /* +0x128: the target's animation the dodge was rolled for */
+    bool evade_check;                       /* +0x12c: the dodge chance passed: look at its attack */
+    bool evade_ok;                          /* +0x12d: and an evasion is allowed */
+    bool blocking;                          /* +0x12e: holding the block against the attack */
+    uint32_t block_serial;                  /* +0x130 */
+    uint64_t block_keys;                    /* +0x138 */
+    /* the local environment (AI2rMelee_TestLocalEnvironment 0x49fe60): toward the target and away */
+    bool env_blocked;                       /* +0x140: no room to close in */
+    bool danger_fwd, danger_back;           /* +0x141, +0x142: the way ends at a danger cell (8) */
+    float room_fwd, room_back;              /* +0x144, +0x148: how far it goes */
+    uint32_t env_time;                      /* +0x14c */
+    float env_pos[3], env_fwd[3], env_back[3];  /* +0x150, +0x15c, +0x168 */
+    uint32_t env_hold, env_wait;            /* +0x178 (set, never read), +0x17c (read, never set) */
+    /* the executor's throw override (AI2rExecutor_ThrowOverride 0x498c10): the throw, the victim's
+       animation, the target */
+    bool throwing;                          /* A+0x1ae8 */
+    const void *throw_anim, *throw_victim;  /* A+0x1aec, A+0x1af0 */
+    const Character *throw_target;          /* A+0x1af4 */
     /* the executor's attack override */
     bool override;                          /* A+0x1acc */
     uint16_t override_type, override_prev;  /* A+0x1ace, A+0x1ad0 */
@@ -303,6 +352,14 @@ typedef struct {
     int glance_kind;
     float glance_at[3];
     bool glance_wait;
+    /* the movement's facing mode (C+0x1578: 0 free, 1 a fixed kind of move C+0x157c, AI_MOVE_*: the
+       body turned from the way it goes; AI2rMovement_FreeFacing 0x4a81c0 and 0x4a81a0) and this tick's
+       modifiers (C+0x14b0, at most 8: a direction and a weight each, AI2rMovement_MovementModifier
+       0x4a8250) */
+    int facing_mode;
+    int move_kind;
+    int nmod;
+    float mod_dir[8], mod_weight[8];
     /* the stand-in mover */
     bool moving;
     float goal[3];
@@ -358,6 +415,8 @@ void ai_return_to_job(AiState *a);
 void ai_halt(AiState *a);
 /* AI2rExecutor_Move 0x498b00. */
 void ai_executor_move(AiState *a, float facing, int mode, int kind, bool full_turn);
+/* AI2rMovement_MovementModifier 0x4a8250: move toward the direction this tick (false: 8 already). */
+bool ai_movement_modifier(AiState *a, float dir, float weight);
 /* One tick of a character the AI moves: the stand-in mover, then the executor, then the character's
    update with the input it made. */
 void ai_update(AiState *a, Character *c, const void *env);

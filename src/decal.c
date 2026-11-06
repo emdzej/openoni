@@ -889,6 +889,8 @@ static void ring_free(int16_t slot)
     ring.d[slot].live = false;
 }
 
+static uint32_t into_room;      /* the caller's buffer, for DECAL_INTO */
+
 uint32_t decal_create(const void *texture, int32_t quad, unsigned flags, float wrap, const float *dir, const float pos[3],
                       const float normal[3], const float b[3], const float a[3], float xs, float ys, uint16_t alpha,
                       uint32_t tint)
@@ -1057,6 +1059,7 @@ uint32_t decal_create(const void *texture, int32_t quad, unsigned flags, float w
     /* the block: the header, the places, the coordinates, the indices (to a multiple of 4), the shades */
     uint32_t nidx4 = (nidx & 3) ? (nidx & ~3u) + 4 : nidx;
     uint32_t size = (nidx4 + nv * 12) * 2 + 0x14;
+    if ((flags & DECAL_INTO) && size > into_room) return 0;     /* "P3rCreateDecal: decal size %d exceeds" */
     int slot_i = -1;
     for (int k = 0; k < DECALS_MAX; k++) {
         uint32_t id = next_id + (uint32_t)k;
@@ -1164,3 +1167,13 @@ void decal_each(DecalFn fn, void *user)
 }
 
 int decal_count(void) { return lists[0].count + lists[1].count; }
+
+uint32_t decal_create_into(const void *texture, int32_t quad, unsigned flags, float wrap, const float *dir,
+                           const float pos[3], const float normal[3], const float b[3], const float a[3], float xs,
+                           float ys, uint16_t alpha, uint32_t tint, uint32_t room)
+{
+    into_room = room;
+    uint32_t id = decal_create(texture, quad, flags | DECAL_INTO, wrap, dir, pos, normal, b, a, xs, ys, alpha, tint);
+    into_room = 0;
+    return id;
+}
