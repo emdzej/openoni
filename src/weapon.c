@@ -1328,7 +1328,9 @@ static bool inflict_damage(Character *c, const float dir[3], int type, uint32_t 
         }
     }
     chr_take_damage(c, dmg, knockback, dir, 0, owner_character(owner));
-    if (c->flags & 1) return false;
+    /* an unstoppable character (0x4e6500: the cheat for the player, C+0x04 bit 0x100) takes no
+       knockdown or stun of the damage's kind */
+    if (chr_is_unstoppable(c) || (c->flags & 1)) return false;
     switch (type) {
     case 1:
         if (st) {
