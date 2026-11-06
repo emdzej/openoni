@@ -6,6 +6,8 @@
    of the original (SetVolume, SetPan, SetFrequency, Play, Stop) are kept as the ds_* functions below, in
    DirectSound's units, so the volume and pan curves are the original's. */
 #include "sound.h"
+#include "akev.h"
+#include "akev_collide.h"
 #include "persist.h"
 #include "text.h"
 #include "ui.h"
@@ -1004,6 +1006,21 @@ static void ambient_set_volume(uint32_t id, float vol, float seconds)
 /* SSrAmbient_Update 0x4824a0 without the position: whether the id still plays. */
 static bool ambient_alive(uint32_t id) { return enabled && playing_of(id) != NULL; }
 
+/* SSrAmbient_Update 0x4824a0: the place (when given) and the volume (when given, the base tracks' held
+   to 0..2) of a playing ambient; false if it isn't. */
+static bool ambient_update(uint32_t id, const float *pos, const float *vol)
+{
+    Playing *pa = enabled ? playing_of(id) : NULL;
+    if (!pa) return false;
+    if (pos) memcpy(pa->pos, pos, sizeof pa->pos), pa->has_pos = true;
+    if (vol) {
+        pa->volume = *vol;
+        if (pa->a) chan_set_volume(pa->a, *vol);
+        if (pa->b) chan_set_volume(pa->b, *vol);
+    }
+    return true;
+}
+
 /* ---- the mixer: the buffers' streaming and the end of a sound (0x484ef0, 0x4851f0, 0x486880) ---- */
 
 /* The end of a channel's data. Looping: the group plays again on it (a new permutation). Otherwise the
@@ -1089,6 +1106,209 @@ static uint32_t ticks;          /* ONrGameState_GetGameTime 0x4fc880 */
 
 static const Ambient *ambient_named(const char *name) { return loaded ? find_nocase(&ambients, name) : NULL; }
 
+/* ---- the OS layer's ambients (OSrAmbient_Start 0x511730: 1024 records of 0x4c bytes, their slots at
+   0x61fa34): an ambient at a place is heard only within three times its farthest distance, and each
+   wall between it and the listener muffles it ---- */
+
+enum { OS_MAX = 1024 };
+typedef struct {
+    bool used;
+    const Ambient *amb;         /* +0x08 */
+    uint32_t ss;                /* +0x0c: the sound system's ambient, UINT32_MAX none */
+    bool has_pos;               /* +0x10 */
+    float pos[3];               /* +0x14 */
+    float min_dist, max_dist;   /* +0x20, +0x24 */
+    float volume;               /* +0x28: the muffling's, eased */
+    uint32_t phase, time;       /* +0x2c, +0x30: the muffling worked out every 12 ticks, at the record's phase */
+    float cached;               /* +0x34 */
+} OsAmbient;
+
+static OsAmbient os_amb[OS_MAX];
+static const void *os_env;      /* the level's (0x4fc860) */
+
+void sound_set_environment(const void *env) { os_env = env; }
+
+/* OSiCalc_PositionAndVolume 0x511a00: false if pos is beyond three times max from the listener. vol: 1,
+   or with walls between, 0.8 less a twelfth of their count squared (three at most), no less than
+   min_occlusion (above 0.99: 1 at once). The walls: the quads the line from pos to the listener crosses
+   (the flags 0x8044800 let it through), not those within 0.1 of pos before the first; a run of quads
+   of flag 0x1000000 at the start (a door's) counts once, as one object (the quads' +0x34): a door's
+   quad facing the listener (not two-sided, 0x200), or within 2 of the last (8 after one that faced),
+   doesn't count, and one that doesn't face but comes within 3 of the last uncounted takes that one
+   back. With the cache (the update's), the last value until the record's next 12-tick turn. */
+static bool occlusion(const float pos[3], float max, float min_occlusion, float *vol, bool cached, OsAmbient *r)
+{
+    *vol = 0.0f;
+    float dx = pos[0] - listener[0], dy = pos[1] - listener[1], dz = pos[2] - listener[2];
+    if (max * max < (dx * dx + dy * dy + dz * dz) * 0.11111112f) return false;     /* 0x52b134 */
+    if (min_occlusion > 0.99f) {        /* 0x52a03c */
+        *vol = 1.0f;
+        if (r) r->cached = *vol;
+        return true;
+    }
+    if (cached && r && ticks < (r->time - r->time % 12) + 12 + r->phase) {
+        *vol = r->cached;
+        return true;
+    }
+    unsigned walls = 3;
+    if (os_env) {
+        walls = 0;
+        static AkevHit hits[AKEV_HITS_MAX];
+        float v[3] = { listener[0] - pos[0], listener[1] - pos[1], listener[2] - pos[2] };
+        unsigned n = akev_collide_point(os_env, pos, v, 0x8044800u, 0xff, hits);   /* AKrCollision_Point 0x4412d0 */
+        int32_t door = -1;
+        bool first = true, first_door = true, pending = false, faced = false;
+        float last[3] = { pos[0], pos[1], pos[2] }, pend[3] = { 0, 0, 0 };
+        for (unsigned i = 0; i < n; i++) {
+            const float *p = hits[i].point;
+            AkevQuad q;
+            if (!akev_quad(os_env, hits[i].quad, &q)) continue;
+            float s2 = (pos[2] - p[2]) * (pos[2] - p[2]) + (pos[0] - p[0]) * (pos[0] - p[0]) + (pos[1] - p[1]) * (pos[1] - p[1]);
+            if (!walls && !(0.01f <= s2)) continue;     /* 0x529e3c */
+            if (!(q.flags & 0x1000000u) || !first) {
+                walls++;
+                first = false;
+            } else if (door == -1) {
+                bool near = false;
+                if (first_door || faced) {
+                    float r2 = first_door ? 4.0f : 64.0f;     /* 0x529818, 0x52a740 */
+                    near = (last[2] - p[2]) * (last[2] - p[2]) + (last[1] - p[1]) * (last[1] - p[1]) + (last[0] - p[0]) * (last[0] - p[0]) < r2;
+                }
+                faced = false;
+                if (!(q.flags & 0x200u)) {
+                    const float *pl = hits[i].plane;
+                    faced = pl[0] * v[0] + pl[1] * v[1] + pl[2] * v[2] > 0.0f;
+                }
+                if (pending && faced &&
+                    (p[2] - pend[2]) * (p[2] - pend[2]) + (p[1] - pend[1]) * (p[1] - pend[1]) + (p[0] - pend[0]) * (p[0] - pend[0]) < 9.0f)  /* 0x52a5b0 */
+                    walls--;
+                first_door = false;
+                memcpy(last, p, sizeof last);
+                pending = false;
+                if (faced || near) {
+                    if (q.object != 0xffffffffu) door = (int32_t)q.object;
+                } else {
+                    memcpy(pend, p, sizeof pend);
+                    walls++;
+                    pending = true;
+                }
+            } else if ((int32_t)q.object != door) {
+                walls++;
+            }
+        }
+        if (walls > 2) walls = 3;
+    }
+    if (walls) {
+        float m = 0.8f - (float)(int)(walls * walls) * 0.083333336f;     /* 0x5296d8, 0x52b888 */
+        *vol = m < min_occlusion ? min_occlusion : m;
+    } else
+        *vol = 1.0f;
+    if (r) r->time = ticks, r->cached = *vol;
+    return true;
+}
+
+static OsAmbient *os_of(uint32_t id) { return id < OS_MAX && os_amb[id].used ? &os_amb[id] : NULL; }
+
+static void os_remove(OsAmbient *r) { r->used = false; }
+
+/* OSrAmbient_Start 0x511730: a record in the first free slot (none past 1024), at pos with the
+   distances (the ambient's own when not given). At a place it starts only within hearing, at its
+   muffled volume; out of it one that plays once is dropped (no id), another waits for the listener. */
+static uint32_t os_start(const Ambient *amb, const float *pos, const float *min, const float *max)
+{
+    uint32_t live = 0, slot = UINT32_MAX;
+    for (uint32_t i = 0; i < OS_MAX; i++) {
+        if (os_amb[i].used) live++;
+        else if (slot == UINT32_MAX) slot = i;
+    }
+    if (slot == UINT32_MAX) return UINT32_MAX;
+    OsAmbient *r = &os_amb[slot];
+    memset(r, 0, sizeof *r);
+    r->used = true;
+    r->amb = amb;
+    r->ss = UINT32_MAX;
+    r->min_dist = min ? *min : amb->min_dist;
+    r->max_dist = max ? *max : amb->max_dist;
+    r->cached = 1.0f;
+    r->phase = live % 12;   /* its place in the records' array */
+    if (!pos) {
+        if (!script_only) r->ss = ambient_start(amb, NULL, 0, 0, NULL);     /* 0x4823a0 */
+        return slot;
+    }
+    memcpy(r->pos, pos, sizeof r->pos);
+    r->has_pos = true;
+    float vol;
+    if (occlusion(r->pos, r->max_dist, amb->min_occlusion, &vol, false, r) && !script_only) {
+        r->ss = ambient_start(amb, r->pos, r->min_dist, r->max_dist, &vol);     /* 0x4821f0 */
+        r->volume = vol;
+        return slot;
+    }
+    if (amb->flags & AMB_PLAY_ONCE) {
+        os_remove(r);
+        return UINT32_MAX;
+    }
+    return slot;
+}
+
+/* OSrAmbient_Stop 0x511e40: its sound stops and the record goes. */
+static void os_stop(uint32_t id)
+{
+    OsAmbient *r = os_of(id);
+    if (!r) return;
+    if (r->ss != UINT32_MAX) ambient_stop(r->ss);
+    os_remove(r);
+}
+
+/* OSiAmbient_Update 0x511f00: a placed record again (moved to pos when given). Out of hearing a playing
+   one goes silent, and stops unless it plays once; in it, it starts again or its volume eases (0.05 a
+   frame) to the muffling's. One that plays once goes when its sound has ended. False: gone. */
+static bool os_update(OsAmbient *r, const float *pos)
+{
+    if (pos) memcpy(r->pos, pos, sizeof r->pos);
+    r->has_pos = true;
+    float vol;
+    bool once = (r->amb->flags & AMB_PLAY_ONCE) != 0;
+    if (!occlusion(r->pos, r->max_dist, r->amb->min_occlusion, &vol, true, r)) {
+        if (r->ss == UINT32_MAX) return true;
+        if (!ambient_update(r->ss, r->pos, &vol)) {
+            r->ss = UINT32_MAX;
+            if (!once) return true;
+            os_remove(r);
+            return false;
+        }
+        if (once) return true;
+        ambient_halt(r->ss);    /* 0x481d90 */
+        r->ss = UINT32_MAX;
+        return true;
+    }
+    if (r->ss == UINT32_MAX) {
+        if (!script_only) r->ss = ambient_start(r->amb, r->pos, r->min_dist, r->max_dist, &vol);
+        r->volume = vol;
+        return true;
+    }
+    float d = r->volume - vol, step = d > 0.0f ? (d < 0.05f ? d : 0.05f) : (d < -0.05f ? -0.05f : d);   /* 0x52a02c, 0x52a31c */
+    if (d != 0.0f) {
+        float t = r->volume - step;
+        vol = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
+    }
+    if (!ambient_update(r->ss, r->pos, &vol)) {
+        r->ss = UINT32_MAX;
+        if (once) {
+            os_remove(r);
+            return false;
+        }
+    }
+    r->volume = vol;
+    return true;
+}
+
+/* OSrUpdate 0x514f20's first part: every placed record again. */
+static void os_update_all(void)
+{
+    for (int i = 0; i < OS_MAX; i++)
+        if (os_amb[i].used && os_amb[i].has_pos) os_update(&os_amb[i], NULL);
+}
+
 /* 0x514160 (the Mac build's OSiDialog_Start): returns true while another dialog plays and the call doesn't
    interrupt; then nothing starts. The dialog is an ambient at priority 3 at full volume. It counts as
    playing until its ambient ends or, sooner, the length of base track 1's first resolved sound (2 s if the
@@ -1144,8 +1364,7 @@ uint32_t sound_speech_play(const char *name, const float pos[3], uint32_t *ticks
         miss = false;
         for (int k = 0; k < 5; k++)
             for (uint32_t i = 0; g[k] && i < g[k]->nperms; i++) miss |= !g[k]->perms[i].sndd;
-        float vol = 1.0f;
-        id = ambient_start(amb, pos, amb->min_dist, amb->max_dist, &vol);
+        id = os_start(amb, pos, NULL, NULL);
         if (amb->base1)
             for (uint32_t i = 0; i < amb->base1->nperms; i++)
                 if (amb->base1->perms[i].sndd) {
@@ -1164,32 +1383,27 @@ uint32_t sound_speech_play(const char *name, const float pos[3], uint32_t *ticks
     return id;
 }
 
-/* OSrAmbient_Update 0x511ec0 (no new place): whether it still plays. OSrAmbient_Stop 0x511e40. */
-bool sound_speech_playing(uint32_t id) { return id != UINT32_MAX && ambient_alive(id); }
-void sound_speech_stop(uint32_t id) { if (id != UINT32_MAX) ambient_stop(id); }
+/* OSrAmbient_Update 0x511ec0 (no new place): whether its record is still there. OSrAmbient_Stop 0x511e40. */
+bool sound_speech_playing(uint32_t id) { return os_of(id) != NULL; }
+void sound_speech_stop(uint32_t id) { os_stop(id); }
 
 /* OSrAmbient_Start 0x511730 for a particle (P3iAction_AmbientSound 0x4675a0): the ambient at pos, its
-   own distances, full volume; none while the impulses are the scripts' only. As the speech's: the OS
-   layer's table (1024 records of 0x4c bytes), its range test and the walls' muffling (0x511a00) aren't
-   ported, it starts at once. */
+   own distances; none while the impulses are the scripts' only. */
 uint32_t sound_ambient_start_at(const void *amb, const float pos[3])
 {
     if (!amb || script_only) return UINT32_MAX;
-    const Ambient *a = amb;
-    float vol = 1.0f;
-    return ambient_start(a, pos, a->min_dist, a->max_dist, &vol);
+    return os_start(amb, pos, NULL, NULL);
 }
 
-/* OSrAmbient_Update 0x511ec0: the ambient moved to pos; whether it still plays. */
+/* OSrAmbient_Update 0x511ec0: the ambient moved to pos (OSiAmbient_Update); whether it is still there. */
 bool sound_ambient_move(uint32_t id, const float pos[3])
 {
-    Playing *pa = enabled ? playing_of(id) : NULL;
-    if (!pa) return false;
-    if (pa->has_pos) memcpy(pa->pos, pos, sizeof pa->pos);
-    return true;
+    OsAmbient *r = os_of(id);
+    if (!r) return false;
+    return pos ? os_update(r, pos) : true;
 }
 
-void sound_ambient_stop(uint32_t id) { if (id != UINT32_MAX) ambient_stop(id); }     /* OSrAmbient_Stop 0x511e40 */
+void sound_ambient_stop(uint32_t id) { os_stop(id); }     /* OSrAmbient_Stop 0x511e40 */
 const void *sound_ambient_find(const char *name) { return name ? ambient_named(name) : NULL; }
 
 bool sound_dialog_play(const char *name) { return !dialog_start(name, false); }
@@ -1372,6 +1586,8 @@ bool sound_level_load(int level)
 
 void sound_level_unload(void)
 {
+    memset(os_amb, 0, sizeof os_amb);
+    os_env = NULL;
     stop_all();
     for (uint32_t i = 0; i < groups.n; i++) {
         Group *g = groups.v[i];
@@ -1417,11 +1633,12 @@ static void ss2_update(void)
     for (int i = 0; i < PLAYING_MAX; i++) if (playing[i].state != PA_FREE) machine(&playing[i]);
 }
 
-/* OSrUpdate 0x514f20 (the scripts' part): slots of ended ambients are freed, the dialog ends. Still to come
-   with the level's sound objects: the placed ambients (0x61fa34), the sound spheres and volumes (0x620078)
-   and the projectiles' flybys (0x62009c). */
+/* OSrUpdate 0x514f20: the placed ambients again (for the listener sound_set_listener was given), then
+   the scripts' part: slots of ended ambients are freed, the dialog ends. Still to come with the level's
+   sound objects: the sound spheres and volumes (0x620078) and the projectiles' flybys (0x62009c). */
 void sound_update(void)
 {
+    os_update_all();
     ticks++;
     now++;
     for (int i = 0; i < 16; i++) if (slots[i].id != UINT32_MAX && !ambient_alive(slots[i].id)) slots[i].id = UINT32_MAX;

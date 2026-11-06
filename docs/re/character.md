@@ -729,6 +729,37 @@ Ported in `src/ai.c` (the overrides, the attack override and the aim not yet), d
 mover (straight to a point) until the movement layer is; `ai2_movetoflag` uses it. `ai_test`: a thug
 turns round, walks 60 to a point and faces the way asked.
 
+## The level of detail
+
+The port: `src/chr_lod.c`. A class's body set (ONCC +0xc34) has five bodies, the lowest detail first.
+
+- **Seen** (0x4e27d0, from the characters' display 0x4e1540, confirmed): C+0x1660 the squared distance
+  from the camera's place to C+0x148. Out of view when the angle between the camera's view and the
+  direction to the character (unit, 0x433050; `MUrAngleBetweenVectors` 0x433e00) is above the field of
+  view plus pi/8 (0x52b304), or the far distance squared is under C+0x1660. In view, the environment
+  must see it too (0x440bb0 through the octree's visible nodes, with the byte 0x5533dc 1; not ported, the
+  port's environment draw has no node visibility), and C+0x163c goes to 0. Out, C+0x163c counts up, and
+  the character still counts while under 4 with a level of detail. `chr_draw_all_characters` (0x5ecba2)
+  skips the test. The display resets an unseen one's A+0x2224 to 0 and A+0x221c and A+0x2220 to 6
+  ("none yet"), and draws only the seen ones.
+- **`ONrGameState_ComputeCharacterLOD` 0x4e2900** (confirmed). With `chr_lod` (0x54e174, -1) in 0..4,
+  every one gets it (shown, wanted) and A+0x2224 0. Otherwise the list is sorted (0x437f40, the CRT's
+  qsort with the order 0x4e2e70: the player first, then by C+0x1660) and each one's detail
+  (A+0x2218) is the count of the class's four squared distances (ONCC +0x60: 440^2, 220^2, 110^2, 0 for
+  the classes of the CD) at or above C+0x1660, so 0 beyond the first and 3 for any other but a
+  distance of 0. The triangles of a detail: the sum of its parts' geometries' face normal counts. The
+  budget (0x5083f0) by the graphics quality 0 to 4: 1500, 2200, 3000, 3400, 4000. Over it, all the
+  details step down together (-1 to -4) until the total fits (none fitting: -6); within it, up (+1 to
+  +4) until the total is over, then back one (+5 if none is). Then in order, each one's detail plus the
+  step goes up one more when that keeps the running total (left at the last total worked out) under
+  the budget; held to 0..4; the first at least 2, the second at least 1. A+0x2220 takes it; A+0x2224
+  counts the frames it differs from the shown one (A+0x221c), which takes it at once from 6, after 7
+  frames going down or 10 going up, never while the animation's type (A+0x1b00) is 6 or 0x11 with its
+  state (A+0x1afc) 7, 0x12, 0x13, 0x1f or 0x32. In a cutscene (G+0x3c) the shown one is at least 1.
+- **The draw** (`ONiCharacter_Display_Body` 0x4e1d70): the shown detail, one less while the body's
+  alpha (A+0x2818 when invisible or C+4 0x40000) is under 1, held to 0..4, and at the quality 4 (0x508560)
+  at least 1.
+
 ## Character setups (AISA)
 
 `chr_create <id>` (*AI2iScript_ChrCreate* 0x4b7710) makes a character from the level's setup array,

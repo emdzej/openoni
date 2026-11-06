@@ -1,6 +1,7 @@
 /* The draw device: see gl_dev.h. */
 #include "gl_dev.h"
 
+#include "persist.h"
 #include "platform.h"
 #include "txmp.h"
 
@@ -71,6 +72,101 @@ static void attribs(void)
 static bool dry;      /* a frame not shown: its drawing walked, nothing sent to GL */
 void gl_dev_set_dry(bool on) { dry = on; }
 
+/* ---- the display's gamma (0x407a60): a ramp of the display's own (taken as the identity) to the power
+   (1 - gamma) 1.2 + 0.4, 0.5 the identity. Off the identity the frame is drawn into a target of its own
+   and the ramp applied on the way to the screen, each 8-bit value through the 16-bit ramp's entry and
+   back to its high byte. ---- */
+
+static const char *GAMMA_VS =
+    "#version 300 es\n"
+    "out vec2 v_uv;\n"
+    "void main() {\n"
+    "  vec2 p = vec2(float((gl_VertexID & 1) << 2) - 1.0, float((gl_VertexID & 2) << 1) - 1.0);\n"
+    "  v_uv = p * 0.5 + 0.5;\n"
+    "  gl_Position = vec4(p, 0.0, 1.0);\n"
+    "}\n";
+
+static const char *GAMMA_FS =
+    "#version 300 es\n"
+    "precision highp float;\n"
+    "uniform sampler2D u_frame;\n"
+    "uniform float u_power;\n"
+    "in vec2 v_uv;\n"
+    "out vec4 o;\n"
+    "void main() {\n"
+    "  vec3 c = floor(texture(u_frame, v_uv).rgb * 255.0 + 0.5) / 255.0;\n"
+    "  vec3 r = clamp(floor(pow(c, vec3(u_power)) * 65535.0 + 0.5), 0.0, 65535.0);\n"
+    "  o = vec4(floor(r / 256.0) / 255.0, 1.0);\n"
+    "}\n";
+
+static GLuint gamma_prog, gamma_fbo, gamma_tex, gamma_depth, gamma_vao;
+static GLint gamma_u_frame, gamma_u_power;
+static int gamma_w, gamma_h;
+static float gamma_power = 1.0f;
+static bool gamma_on;       /* this frame is drawn into the target */
+
+static void gamma_present(void)
+{
+    if (!gamma_on) return;
+    gamma_on = false;
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, gamma_w, gamma_h);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_SCISSOR_TEST);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glUseProgram(gamma_prog);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, gamma_tex);
+    glUniform1i(gamma_u_frame, 0);
+    glUniform1f(gamma_u_power, gamma_power);
+    glBindVertexArray(gamma_vao);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glBindVertexArray(vao);
+}
+
+/* At a frame's start: into the target when the ramp isn't the identity. */
+static void gamma_begin(int w, int h)
+{
+    float g = persist_gamma();
+    gamma_power = (1.0f - g) * 1.2f + 0.4f;    /* 0x529508, 0x529504, 0x529500 */
+    if (gamma_power == 1.0f) {
+        if (gamma_on) glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        gamma_on = false;
+        return;
+    }
+    if (!gamma_prog) {
+        gamma_prog = glCreateProgram();
+        glAttachShader(gamma_prog, shader(GL_VERTEX_SHADER, GAMMA_VS));
+        glAttachShader(gamma_prog, shader(GL_FRAGMENT_SHADER, GAMMA_FS));
+        glLinkProgram(gamma_prog);
+        gamma_u_frame = glGetUniformLocation(gamma_prog, "u_frame");
+        gamma_u_power = glGetUniformLocation(gamma_prog, "u_power");
+        glGenVertexArrays(1, &gamma_vao);
+        glGenFramebuffers(1, &gamma_fbo);
+        glGenTextures(1, &gamma_tex);
+        glGenRenderbuffers(1, &gamma_depth);
+        plat_present_hook = gamma_present;
+    }
+    if (w != gamma_w || h != gamma_h) {
+        gamma_w = w, gamma_h = h;
+        glBindTexture(GL_TEXTURE_2D, gamma_tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindRenderbuffer(GL_RENDERBUFFER, gamma_depth);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h);
+        glBindFramebuffer(GL_FRAMEBUFFER, gamma_fbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gamma_tex, 0);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, gamma_depth);
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, gamma_fbo);
+    gamma_on = true;
+}
+
 bool gl_dev_init(void)
 {
     if (prog) return true;      /* once: the next levels keep it */
@@ -102,6 +198,7 @@ bool gl_dev_init(void)
 void gl_dev_begin(int w, int h, float r, float g, float b)
 {
     if (dry) return;
+    gamma_begin(w, h);
     glViewport(0, 0, w, h);
     glDisable(GL_SCISSOR_TEST);
     glDepthMask(GL_TRUE);
@@ -168,24 +265,32 @@ unsigned gl_dev_texture(const void *txmp)
     uint8_t *px = txmp_rgba(txmp, &size);
     GLuint t = 0;
     if (px) {
+        /* the OpenGL upload (0x40cf40): below the graphics quality 2 (0x508530, high-quality textures
+           and trilinear) a mipmapped texture over 2 by 2 drops its top level, and its levels are
+           filtered nearest between (GL_LINEAR_MIPMAP_NEAREST) instead of linearly; flags 4 and 8 clamp
+           s and t (GL_CLAMP, which ES lacks: to the edge) */
+        bool hq = persist_quality() >= 2, mips = (in.flags & TXMP_FLAG_MIPMAPS) != 0;
         glGenTextures(1, &t);
         glBindTexture(GL_TEXTURE_2D, t);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
         unsigned w = in.width, hh = in.height, level = 0;
+        int drop = !hq && mips && w > 2 && hh > 2 ? 1 : 0;
         size_t off = 0;
         for (;;) {
-            glTexImage2D(GL_TEXTURE_2D, (GLint)level, GL_RGBA, (GLsizei)w, (GLsizei)hh, 0, GL_RGBA, GL_UNSIGNED_BYTE, px + off);
+            if ((int)level >= drop)
+                glTexImage2D(GL_TEXTURE_2D, (GLint)level - drop, GL_RGBA, (GLsizei)w, (GLsizei)hh, 0, GL_RGBA, GL_UNSIGNED_BYTE, px + off);
             off += (size_t)w * hh * 4;
-            if (!(in.flags & TXMP_FLAG_MIPMAPS) || (w == 1 && hh == 1) || off >= size) break;
+            if (!mips || (w == 1 && hh == 1) || off >= size) break;
             w = w > 1 ? w / 2 : 1;
             hh = hh > 1 ? hh / 2 : 1;
             level++;
         }
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, (GLint)level);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, level ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
+        int top = (int)level - drop;
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, top > 0 ? top : 0);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, top > 0 ? (hq ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR_MIPMAP_NEAREST) : GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, (in.flags & 4) ? GL_CLAMP_TO_EDGE : GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, (in.flags & 8) ? GL_CLAMP_TO_EDGE : GL_REPEAT);
         free(px);
     }
     texs[h].txmp = txmp;

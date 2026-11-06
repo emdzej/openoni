@@ -14,6 +14,9 @@
 /* Ends the frame: the frame is shown, app_audio fills the frame's audio, and the call returns in the next
    frame. Input (keys, mouse, pads) is sampled once per frame, so it is stable between two calls. */
 void plat_wait_frame(void);
+/* Called by plat_wait_frame before the frame is shown (the renderer's last pass: the display's gamma),
+   NULL none. */
+extern void (*plat_present_hook)(void);
 /* The frame clock in microseconds: the start of the current frame, advancing by the frame period. It
    replaces QueryPerformanceCounter / GetTickCount, so runs are reproducible. */
 uint64_t plat_time_us(void);

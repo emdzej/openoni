@@ -29,11 +29,13 @@
 00404e00	gl_draw_engine_initialize	-	med	name from the Intel Mac build (strings:3)
 00404f30	gl_draw_engine_terminate	-	med	name from the Intel Mac build (strings:1)
 00404ff0	gl_context_private_new	-	med	name from the Intel Mac build (strings:1)
+00407a60	M3iDisplay_SetGamma	M3	low	the display's ramp from the one at the start to the power (1 - gamma) 1.2 + 0.4, SetDeviceGammaRamp (name made up)
 0040bbe0	opengl_available	-	med	name from the Intel Mac build (neighbours:1.00)
 0040bcc0	initialize_opengl	-	med	name from the Intel Mac build (strings:6)
 0040cb20	gl_fog_start_changeto_func	-	med	Mac name: gl_fog_start_changeto, the start to a value over frames
 0040cb90	gl_fog_end_changeto_func	-	med	Mac name: gl_fog_end_changeto (its step written to +0x5f0, the update reads +0x5e8)
 0040cc00	gl_fog_update	-	med	Mac name: the fog changes stepped by the ticks since the last frame (from 0x405898)
+0040cf40	M3iGL_TextureUpload	M3	low	a TXMP to GL: flags 4/8 clamp, under quality 2 the top mip dropped and no trilinear (name made up)
 0040de90	MSrEnv_Clip_Tri	MS	med	name from the Intel Mac build (neighbours:1.00)
 0040ea60	iInterpShade_NoAlpha	-	med	name from the Intel Mac build (neighbours:1.00)
 0040eb20	MSrEnv_Clip_Quad	MS	med	name from the Intel Mac build (neighbours:1.00)
@@ -293,12 +295,14 @@
 00439580	OBrAnim_Start	OB	med	name from the Intel Mac build (neighbours:1.00)
 004395f0	OBrAnim_Matrix	OB	med	name from the Intel Mac build (neighbours:1.00)
 00439610	OBrAnimation_GetMatrix	OB	med	name from the Intel Mac build (neighbours:1.00)
+00439910	OBiPhysics_Create	OB	low	the object's context: the box from the geometries' bounds, the sphere, the flags from OBOA +0xc (name made up)
 00439f10	OBrNotifyPhysicsCollision	OB	med	name from the Intel Mac build (neighbours:1.00)
 0043a240	PHrCollision_Point_SphereTree	PH	med	name from the Intel Mac build (neighbours:1.00)
 0043a2d0	PHrCollision_Volume_SphereTree	PH	med	name from the Intel Mac build (neighbours:1.00)
 0043a560	PHrCollision_SphereTree_SphereTree	PH	med	name from the Intel Mac build (neighbours:1.00)
 0043a620	PHrPhysics_Update_Animation	PH	med	name from the Intel Mac build (neighbours:1.00)
 0043a710	PHiPhysics_FindCollisions	PH	low	the collisions sorted by distance, slid along until the first that takes a part off the move
+0043a9a0	PHiRemoveBackfacingCollisions	PH	med	name from the Intel Mac build: drops the hits the move leaves and those whose plane the sphere centre is behind
 0043aac0	PHiPhysics_Respond	PH	low	the search again after the slide; a significant hit stops the move
 0043ac80	PHrPhysicsContext_New	PH	med	name from the Intel Mac build (neighbours:1.00)
 0043ad60	PHrPhysicsContext_Delete	PH	med	name from the Intel Mac build (neighbours:1.00)
@@ -311,6 +315,7 @@
 0043b5e0	PHrPhysics_Init	PH	high	Mac name: zeroed, the quaternions the identity, gravity 0.294, scale 1, flags 2 (active), the matrices the identity
 0043b680	PHrPhysics_Initialize	PH	med	name from the Intel Mac build (strings:6)
 0043b6e0	PHrStatus	PH	med	name from the Intel Mac build (strings:5)
+0043b820	ONiObject_Callback_ApplyForce	OB	low	Mac name by role: the object's +0x20, the acceleration for types 2 and 4
 0043b870	PHrPhysics_Callback_FindEnvCollisions	PH	med	name from the Intel Mac build (neighbours:1.00)
 0043ba70	PHrPhysics_Single_PhyCollision	PH	med	name from the Intel Mac build (neighbours:1.00)
 0043be20	PHrPhysics_Callback_FindPhyCollisions	PH	med	Mac name: every other active context (not +0x134 flag 0x10) not skipped by the callback +0xc, through PHrPhysics_Single_PhyCollision
@@ -325,6 +330,9 @@
 0043c600	PHrGrid_Decompress	PH	med	name from the Intel Mac build (neighbours:1.00)
 0043c680	CLrSphere_Ray	CL	med	name from the Intel Mac build (neighbours:1.00)
 0043c7a0	CLrSphere_Line	CL	med	name from the Intel Mac build (neighbours:1.00)
+0043db00	CLrQuad_Sphere	CL	low	Mac name by role: a sphere against a quad of corner indices (plane within r, a corner, the projection inside, an edge)
+0043e3a0	CLrQuad_FindProjection	CL	low	Mac name by role: the axis of a quad of corner indices (0x43ddd0)
+0043f680	CLrSphere_Sphere	CL	low	Mac name by role: a sphere moving by a vector meets another (CLrSphere_Line with the other's radius, or either end within the sum)
 0043f750	PHrCollision_Volume_Ray	PH	med	name from the Intel Mac build (neighbours:1.00)
 0043ffe0	AKrLevel_Begin	AK	med	name from the Intel Mac build (neighbours:1.00)
 00440170	AKrInitialize	AK	med	name from the Intel Mac build (neighbours:1.00)
@@ -382,6 +390,8 @@
 00457090	P3rListBrokenLinks	P3	med	name from the Intel Mac build (neighbours:0.83)
 00457240	P3rUpdateActionData	P3	med	name from the Intel Mac build (strings:1)
 00457ad0	P3rDumpParticles	P3	med	name from the Intel Mac build (strings:5)
+00457e50	P3rLevelBegin	P3	med	Mac name: the detail from the callback 0x6a85c4, the classes it leaves out marked 0x40
+004580b0	P3rChangeDetail	P3	med	Mac name: the detail 0x6a8704; classes of the mask (1: 0x40, 2: 0x60) off, their particles killed
 00458740	P3iUpdateVersion	P3	med	name from the Intel Mac build (strings:2)
 00459eb0	P3iCheckActionListIndices	P3	med	name from the Intel Mac build (strings:1)
 00459f20	P3rLoadParticleDefinition	P3	med	name from the Intel Mac build (strings:1)
@@ -1146,12 +1156,16 @@
 004e1370	ONrDrawSphere	ON	med	name from the Intel Mac build (strings:1)
 004e1420	WPrDrawSprite	WP	med	name from the Intel Mac build (neighbours:0.75)
 004e1d70	ONiCharacter_Display_Body	ON	med	name from the Intel Mac build (strings:2)
+004e27d0	ONiCharacter_InCameraView	ON	low	in the field of view plus pi/8 and the far distance (C+0x1660 squared), then the environment; C+0x163c the frames out (name made up)
+004e2900	ONrGameState_ComputeCharacterLOD	ON	med	Mac name: by the class's squared distances (+0x60), all stepped to the triangle budget, the first two kept up
 004e2ea0	ONrCharacter_NextAnimation	ON	med	name from the Intel Mac build (strings:1)
 004e3110	ONrCharacter_SetFacing	ON	low	facing and desired facing both
 004e33a0	ONrCharacter_GetFacing	ON	low	the desired facing less the run's turn (C+0x170 - C+0x174), in [0, 2 pi)
+004e33e0	ONrCharacter_GetEarPosition	ON	low	the location with y the head's (A+0x2480), or 15 above it with no active part (name made up)
 004e3460	ONrCharacter_GetHeadPosition	ON	low	A+0x247c, else the location 15 up
 004e34f0	ONrCharacter_GetPelvisPosition	ON	med	A+0x229c, else the location with y + C+0x18c
 004e3590	ONrCharacter_GetFeetPosition	ON	low	the pelvis x, z; y the body bottom C+0x190 + 1
+004e3640	ONrCharacter_GetFacingVector	ON	low	Mac name by role: (0, 0, 1) turned about y by C+0x170 less C+0x174
 004e36b0	ONrAnimType_ThrowIsFromFront	ON	med	name from the Intel Mac build (neighbours:1.00)
 004e37b0	ONrCharacter_IsKnockedDown	ON	low	the knockdown, getup, victim and stun animation types
 004e38b0	ONiCharacter_InBlockState	ON	low	from standing/crouching/0x2f in a standing, turning, crouching or block type, or backing
@@ -1191,7 +1205,9 @@
 004ebd70	ONrCharacter_Callback_FindEnvCollisions	ON	med	the character's environment search: the root sphere swept, confirmed by the tree; walls counted
 004ec040	FindGroundCollision	-	med	name from the Intel Mac build (strings:6)
 004eca00	ONiCharacter_GroundCallback	ON	low	the physics' ground callback: FindGroundCollision, ticks without ground (A+0xe0), fall at 12
+004ecab0	ONrCharacter_Callback_ReceiveForce	ON	med	Mac name: into the knockback A+0xb8, unless the pusher is a weapon
 004ecb20	ONiCharacter_Callback_PostCollision	ON	low	a hit's move down cleared
+004ecb40	ONrCharacter_Callback_FindPhyCollisions	ON	med	Mac name: unless C+4 flag 2, the other contexts but the characters, the powerups and (for the player) the weapons
 004ecdf0	ONrAnimState_IsFallen	ON	low	the lying states 0x12 and 0x32 (name made up)
 004ece10	ONrAnimState_IsCrouch	ON	med	name from the Intel Mac build (neighbours:1.00)
 004ecf30	ONrCharacter_SetPanicVarient	ON	low	the variant 0x8000 on or off (name made up)
@@ -1365,10 +1381,18 @@
 00507ff0	ONiMotoko_Display_List	ON	med	name from the Intel Mac build (strings:2)
 00508160	ONiMotoko_Quality_Set	ON	med	name from the Intel Mac build (strings:3)
 00508200	ONrMotoko_SetupDrawing	ON	med	name from the Intel Mac build (strings:2)
+005083f0	ONrMotoko_GraphicsQuality_CharacterPolygonCount	ON	med	Mac name: 1500, 2200, 3000, 3400, 4000
+00508440	ONrMotoko_GraphicsQuality_RayCastCount	ON	med	Mac name: 1, 1, 1, 1, 2
+00508490	ONrMotoko_GraphicsQuality_NumDirectionalLights	ON	med	Mac name: 1, 1, 2, 2, 2
 005084e0	ONrMotoko_GraphicsQuality_RayCount	ON	med	name from the Intel Mac build (neighbours:1.00)
+00508530	ONrMotoko_GraphicsQuality_SupportTrilinear	ON	med	Mac name: quality >= 2 (also SupportHighQualityTextures, folded)
+00508540	ONrMotoko_GraphicsQuality_SupportShadows	ON	med	Mac name: quality >= 1 (also SupportReflectionMapping and SupportCosmeticCorpses, folded)
+00508550	ONrMotoko_GraphicsQuality_SupportHighQualityCorpses	ON	med	Mac name: quality >= 3
 00508560	ONrMotoko_GraphicsQuality_NeverUseSuperLow	ON	med	name from the Intel Mac build (neighbours:1.00)
 00508570	ONrParticle3_Initialize	ON	med	name from the Intel Mac build (strings:3)
 00508da0	ONrParticle3_LevelZeroLoaded	ON	med	name from the Intel Mac build (strings:2)
+00508ec0	ONiMotoko_Particle3Detail	ON	low	the P3 detail callback: 0 from quality 2, 1 for 1, 2 for 0 (name made up)
+00508ef0	ONiMotoko_Quality_Set	ON	med	Mac name: P3rChangeDetail by the quality
 005097f0	ONrParticle3_FindBodySurfacePosition	ON	med	name from the Intel Mac build (neighbours:1.00)
 00509dc0	ONrParticle3_FindBodyBonePosition	ON	med	name from the Intel Mac build (neighbours:1.00)
 00509ff0	ONiParticle3_CreateParticle	ON	med	name from the Intel Mac build (neighbours:0.80)
@@ -1438,6 +1462,7 @@
 00514d20	OSrUpdateImpulsePointers	OS	med	name from the Intel Mac build (neighbours:0.75)
 00514e20	OSrSetEnabled	OS	med	name from the Intel Mac build (neighbours:1.00)
 00514e60	OSrSetScriptOnly	OS	med	name from the Intel Mac build (neighbours:1.00)
+00514f20	OSrUpdate	OS	low	the listener (0x61fa18 and the sound system's), the placed ambients updated, the flybys, the sound objects
 00515120	OSiPlayList_Update_Spheres	OS	med	name from the Intel Mac build (neighbours:1.00)
 00515a70	OSrVariant_SoundAnimation_Add	OS	med	name from the Intel Mac build (neighbours:1.00)
 00515c90	OSrVariantList_Initialize	OS	med	name from the Intel Mac build (strings:1)
@@ -1456,8 +1481,8 @@
 00518690	WPrNew	WP	low	a new weapon of a class (a free slot, else the oldest unowned)
 00518930	WPiWeaponPhysics_PostCollision_Callback	WP	high	Mac name: a wall met faster than 0.35 into it plays the fall impact (0x5189c0); any hit but a character's sets the weapon's flag 2
 005189c0	WPiGenerateFallImpact	WP	med	name from the Intel Mac build (neighbours:1.00)
-00518a80	WPiWeaponPhysics_SkipPhyCollisions_Callback	WP	med	Mac name: weapon against weapon skipped unless either has word flag 0x2000
-00518b80	WPiWeaponPhysics_Callback_ReceiveForce	WP	med	Mac name: a character pushes an unowned weapon (conditions on C+0x1e8 and the AI's melee target)
+00518a80	WPiWeaponPhysics_SkipPhyCollisions_Callback	WP	med	Mac name: another weapon skipped when either has word flag 0x2000
+00518b80	WPiWeaponPhysics_Callback_ReceiveForce	WP	med	Mac name: a character pushes an unowned, landed weapon: the player only with wp_kickable, an AI not the gun its combat maneuver goes for
 00518c00	WPiInit	WP	med	name from the Intel Mac build (re/mac-matches.tsv); a new weapon of a class at a place (weapon_spawn's)
 00518e10	WPiWeapon_CreatePhysics	WP	med	name from the Intel Mac build (neighbours:1.00)
 00518f90	WPrDelete	WP	low	the shooters stopped, the particles and physics gone

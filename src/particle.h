@@ -105,7 +105,9 @@ const void *p3_environment(void);
 /* A particle's handle (+0x2c) and the particle a handle names while it lives (NULL else). */
 uint32_t p3_handle(const P3Particle *p);
 P3Particle *p3_from_handle(uint32_t h, P3Class **c);
-uint32_t p3_class_def_flags(const P3Class *c, int which);   /* the definition's flags1 (0) or flags2 (1) */
+uint32_t p3_class_def_flags(const P3Class *c, int which);
+/* 0x4580b0: the particle detail from the graphics quality again (the Options' quality set). */
+void p3_set_detail_from_quality(void);   /* the definition's flags1 (0) or flags2 (1) */
 /* The particle's position (P3rGetPositionPtr 0x45abc0), NULL if it died following its link. */
 float *p3_position(P3Class *c, P3Particle *p);
 /* P3rGetRealPosition 0x45acc0: with its offset and attachment matrix. False if it died. */

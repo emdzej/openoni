@@ -21,6 +21,7 @@
 #include "material.h"
 #include "exe.h"
 #include "m3gm.h"
+#include "persist.h"
 #include "sl.h"
 #include "tm.h"
 #include "trac.h"
@@ -248,6 +249,8 @@ static uint8_t *emitters_of(const P3Class *c) { return actions_of(c) + rd16(c->d
 static uint32_t flags1(const P3Class *c) { return rd32(c->def + D_FLAGS1); }
 static uint32_t flags2(const P3Class *c) { return rd32(c->def + D_FLAGS2); }
 static uint16_t nemitters(const P3Class *c) { return rd16(c->def + D_EMITTERS); }
+static int detail;      /* 0x6a8704: 0 full, 1 medium, 2 low */
+
 static P3Class *class_at(uint32_t index1) { return index1 && index1 <= nclasses ? &classes[index1 - 1] : NULL; }
 static P3Class *emitter_class(const uint8_t *e) { return class_at(rd32(e + E_CLASS)); }
 
@@ -2162,7 +2165,9 @@ static void process_class(P3Class *c, uint32_t tick)
    detail) the oldest start their fade; a fading one's decal takes its alpha. */
 static void update_decals(P3Class *c, uint32_t tick)
 {
-    uint16_t most = rd16(c->def + D_MAX_DECALS);   /* (halved, quartered at the lower particle details) */
+    uint16_t most = rd16(c->def + D_MAX_DECALS);
+    if (detail == 1) most >>= 1;        /* halved, quartered at the lower details (0x45caea) */
+    else if (detail == 2) most >>= 2;
     uint32_t excess = (most == 0 || c->count < most) ? 0 : c->count - most;
     uint32_t i = 0;
     P3Particle *nx;
@@ -2278,6 +2283,37 @@ void p3_reset(void)
 
 /* The classes of every loaded file's BINA "3RAP" instances (the binary data's loader for the PAR3 class,
    BDrRegisterClass at P3rInitialize), then their setup. */
+/* The classes a detail leaves out: medium the class flag 0x40, low 0x20 and 0x40. */
+static uint32_t detail_mask(int d) { return d == 1 ? F2_MEDIUM_DETAIL : d == 2 ? (F2_LOW_DETAIL | F2_MEDIUM_DETAIL) : 0; }
+
+/* 0x508ec0 (the detail callback, 0x6a85c4): from the graphics quality, 2 and up full, 1 medium, 0 low. */
+static int detail_of_quality(void)
+{
+    int q = persist_quality();
+    return q >= 2 ? 0 : q < 1 ? 2 : 1;
+}
+
+/* 0x4580b0 (through 0x508ef0, the quality set): the classes the detail leaves out marked off and their
+   particles killed, the others back on. */
+void p3_set_detail_from_quality(void)
+{
+    detail = detail_of_quality();
+    uint32_t mask = detail_mask(detail);
+    for (uint16_t i = 0; i < nclasses; i++) {
+        P3Class *c = &classes[i];
+        if (!(flags2(c) & mask)) {
+            c->flags &= ~(uint32_t)C_DETAIL_OFF;
+            continue;
+        }
+        c->flags |= C_DETAIL_OFF;
+        P3Particle *nx;
+        for (P3Particle *p = c->head; p; p = nx) {
+            nx = p->next;
+            kill_now(c, p);
+        }
+    }
+}
+
 void p3_load(void)
 {
     p3_reset();
@@ -2294,6 +2330,12 @@ void p3_load(void)
         }
     }
     setup_classes();
+    /* 0x457e50: the detail from the quality, the classes it leaves out marked */
+    detail = detail_of_quality();
+    for (uint16_t i = 0; i < nclasses; i++) {
+        if (flags2(&classes[i]) & detail_mask(detail)) classes[i].flags |= C_DETAIL_OFF;
+        else classes[i].flags &= ~(uint32_t)C_DETAIL_OFF;
+    }
 }
 
 /* ---- the actions (the table's functions, 0x463f60 to 0x467c50) ---- */

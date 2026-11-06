@@ -2,6 +2,7 @@
 #include "outgame.h"
 
 #include "exe.h"
+#include "particle.h"
 #include "persist.h"
 #include "sound.h"
 #include "tm.h"
@@ -127,6 +128,7 @@ static bool options_proc(WmWindow *d, uint32_t msg, uintptr_t p1, uintptr_t p2)
     switch ((uint16_t)p1) {
     case 100:       /* 0x50f0e0 */
         persist_set_quality(wm_slider_value(item));
+        p3_set_detail_from_quality();   /* 0x508ef0 */
         break;
     case 0x66:      /* 0x50f130, then SS2rVolume_Set */
         persist_set_volume((float)((double)wm_slider_value(item) * (double)0.01f));

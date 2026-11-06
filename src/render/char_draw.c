@@ -5,6 +5,7 @@
 #include "body.h"
 #include "character.h"
 #include "chars.h"
+#include "chr_lod.h"
 #include "decal.h"
 #include "exe.h"
 #include "geom_draw.h"
@@ -139,14 +140,14 @@ static void shadow(const Character *c, int slot, float fade)
    over the body scaled 1.4 about each bone (TRrBody_DrawMagic 0x427770) at (1 - it) x 56.1 (0x52b300). */
 void char_draw_character(const Character *c, int slot)
 {
-    const void *body = body_of_class(c->oncc, 4);
+    float a = (c->invisible_shown || (c->flags & 0x40000)) ? c->visibility : 1.0f;
+    const void *body = body_of_class(c->oncc, chr_lod_draw(c, a));
     if (!body || body_bones(body) != CHR_BONES) {
         char_draw_pose(c->oncc, c->pos, c->facing, c->pelvis_height, c->aimed, CHR_BONES);
         return;
     }
     BodyMatrix m[BODY_MAX_BONES];
     if (!chr_pose_matrices(c, m)) return;     /* an environment animation's root, if one plays */
-    float a = (c->invisible_shown || (c->flags & 0x40000)) ? c->visibility : 1.0f;
     if (a > 0.0f) {
         uint8_t alpha = a < 1.0f ? (uint8_t)lrintf(a * 255.0f) : 255;
         for (uint32_t b = 0; b < CHR_BONES; b++) geom_draw_alpha(body_geometry(body, b), m[b], body_texture(c->oncc, b), alpha);

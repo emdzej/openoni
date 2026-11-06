@@ -920,6 +920,7 @@ bool character_init(Character *c, const void *oncc, const float pos[3], float fa
 {
     memset(c, 0, sizeof *c);
     c->oncc = oncc;
+    c->lod_shown = c->lod_wanted = 6;
     memcpy(c->pos, pos, sizeof c->pos);
     memcpy(c->prev_pos, pos, sizeof c->prev_pos);
     c->facing = c->desired_facing = facing;

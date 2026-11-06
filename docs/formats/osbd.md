@@ -211,8 +211,50 @@ played its length. It counts for 2 s if the ambient couldn't start. The scripts'
 pause` (56 times in level 1) names no ambient, so it only waits for the current dialog.
 `sound_impulse_play` (0x5145f0) plays the impulse at the listener.
 
-Not yet in the port: the level's sound objects (placed ambients, sound spheres and volumes), the
-projectiles' flybys, subtitles, and occlusion.
+### The placed ambients and the walls
+
+The speech and the particles' sounds start through the OS layer (`OSrAmbient_Start` 0x511730), not
+the sound system directly: a table of 1024 records of 0x4c bytes (+0x08 the ambient, +0x0c the sound
+system's id or -1, +0x10 placed, +0x14 the place, +0x20 and +0x24 the distances, the ambient's own
+when not given, +0x28 the volume, +0x2c the record's index mod 12, +0x30 a time, +0x34 a cached
+volume, 1 at first), its ids the slots of an array at 0x61fa34.
+
+The listener (0x61fa18, the same as the sound system's, set by `OSrUpdate` 0x514f20 from
+`iComputeDeltaTicks` 0x4fafb0): in the follow camera with a player, her ears (0x4e33e0, with the byte
+0x5533e8 1: her location with y her head's, A+0x2480, or the location's 15 above with no active
+part) facing her way ((0, 0, 1) turned about y by C+0x170 less C+0x174, 0x4e3640); otherwise the
+camera's place (0x636518) and view (0x636524).
+
+`OSiCalc_PositionAndVolume` 0x511a00 (confirmed):
+
+- out of hearing (false) when max^2 < |place - listener|^2 / 9 (0x52b134);
+- the ambient's minimum occlusion (+0x40) above 0.99 (0x52a03c): volume 1;
+- with the cache (the updates), the cached volume while the game time is under the record's time
+  rounded down to 12, plus 12, plus its index mod 12;
+- else the walls on `AKrCollision_Point` 0x4412d0 from the place to the listener (all hits; quads of
+  flags 0x8044800 skipped), in order from the place: none counted within 0.1 (0.01 squared, 0x529e3c)
+  of it before the first; a quad without flag 0x1000000, or any after the first such, counts one. A
+  run of 0x1000000 quads from the first (a door's panels) is taken as one object (AGQG +0x34): each
+  "faces" the listener unless two-sided (0x200) when its plane's normal has a positive dot with the
+  direction to the listener; it counts unless it faces or is within 2 (the first; 0x529818) or 8
+  (0x52a740, after one that faced) of the last; one that faces within 3 (9 squared, 0x52a5b0) of the
+  last counted takes that count back; once one of them gave its object id (not -1), only quads of
+  other ids count;
+- n walls, at most 3: max(minimum occlusion, 0.8 - n^2 / 12) (0x5296d8, 0x52b888); none: 1; no
+  level: as 3. The time and the volume go to the cache.
+
+At the start: no place, the sound system's start without one (0x4823a0); a place in hearing, started
+(0x4821f0) at that volume; out of hearing, an ambient that plays once (+0x24 bit 1) is dropped (-1),
+another waits. `OSrUpdate` runs `OSiAmbient_Update` 0x511f00 on every placed record each frame, and
+`OSrAmbient_Update` 0x511ec0 with a new place: out of hearing, a playing one is set to volume 0
+(`SSrAmbient_Update` 0x4824a0) and stopped (0x481d90) unless it plays once; in hearing, a waiting one
+starts, a playing one's volume moves to the new one by at most 0.05 (0x52a02c, 0x52a31c), held to
+0..1. A record that plays once goes when its sound has ended (the update fails); a speech line counts
+as playing while its record is there. `SSrAmbient_Update` 0x4824a0 sets the place, the velocity, the
+direction and the volume (+0x44 of both base channels, held to 0..2).
+
+Not yet in the port: the level's sound objects (sound spheres and volumes) and the projectiles'
+flybys.
 
 ## Check
 

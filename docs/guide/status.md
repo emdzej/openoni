@@ -103,7 +103,9 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   with the weapons and the inventory the level gives them. When they die their gun flies from their
   hand and what they were to drop (clips, cells, hypos, a shield, invisibility, the LSI) tumbles out;
   a dropped weapon or power-up falls, lands with the sound of the floor's material, slides to rest
-  and, a weapon, fades away a minute and a half later; both lie on their glows. Without a gun they may go for one lying
+  and, a weapon, fades away a minute and a half later; both lie on their glows. The characters
+  stop at the level's crates and boxes, a falling weapon stops on a character, and the guards kick
+  the weapons on the ground aside (but not the one they are going for). Without a gun they may go for one lying
   nearby, by their class's chance. They run to alarm consoles when their scripts or combat settings say so, and an
   alarm alerts the guards of its group. A guard that hears or glimpses Konoko pursues her: it goes
   to where she was, glances or looks around there, and gives up as the trail goes cold, by the
@@ -135,9 +137,11 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   level brings it back over the level, with Resume), its dialogs built by the game's window manager from
   its data.
 - **Options**: the volume, the difficulty, the subtitles (shown under the dialogue) and the inverted
-  mouse, with the game's own sliders, popup menus and check boxes, kept in `persist.dat`. The graphics
-  quality and the gamma are kept but not yet applied, and the resolution lists only the one screen mode
-  the port has.
+  mouse, with the game's own sliders, popup menus and check boxes, kept in `persist.dat`. The gamma
+  brightens or darkens the picture as the original's display ramp did; the graphics quality sets the
+  characters' levels of detail (a triangle budget, nearer characters more detailed), the textures'
+  sharpness and filtering, the shadows and which particle effects play. The resolution lists only the
+  one screen mode the port has.
 - **The difficulty**: the characters' health, the enemies' aim (theirs and the turrets'), and on hard
   the stronger classes the levels' characters are upgraded to; their costumes picked at random from
   their class's variants.
@@ -180,13 +184,16 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   round their corners; they fade, and the oldest give way to new ones as the original's do.
 - **Sound** from the game's own sound groups: the music, the dialog and speech, the impacts, and the
   particles' sounds (the gunshots, the rockets' roar, the level's hissing steam and sparks), placed
-  where they play and following the particles that carry them.
+  where they play and following the particles that carry them. They are heard from Konoko's ears
+  (from the camera when it isn't following her), muffled by the walls between, and not at all from
+  three times their reach.
 
 ## Not yet
 
-- The sounds' muffling by walls and their range culling (the game's own ambient layer over the sound
-  system); the characters pushing the weapons and power-ups about.
-- The Bink movies; the graphics quality and gamma settings applied.
+- The level's sound spheres and volumes, and the bullets' flybys.
+- The Bink movies.
+- Of the graphics quality: the environment's visibility rays, the directional lights, the reflection
+  maps and the corpses (none of which the port's draw has yet).
 - The intro and outro movies.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked

@@ -373,9 +373,12 @@ static void sample_input(void)
 
 static double audio_acc;   /* fractional audio frames carried between frames */
 
+void (*plat_present_hook)(void);
+
 void plat_wait_frame(void)
 {
     static float audio_buf[4096 * 2];
+    if (plat_present_hook) plat_present_hook();
     audio_acc += APP_AUDIO_RATE / frame_hz;
     unsigned n = (unsigned)audio_acc;
     if (n > 4096) n = 4096;

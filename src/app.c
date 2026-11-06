@@ -11,6 +11,7 @@
 #include "cinematic.h"
 #include "character.h"
 #include "chars.h"
+#include "chr_lod.h"
 #include "combat.h"
 #include "knowledge.h"
 #include "char_draw.h"
@@ -463,6 +464,7 @@ static void start_scripts(void)
     sl_register_float("gl_fog_blue", &fog_rgb[2]);
     sl_register_float("gl_fog_start", &fog_start);
     sl_register_float("gl_fog_end", &fog_end);
+    sl_register_int("chr_lod", &chr_lod_forced);
     sl_register_bool("unstoppable", &chr_cheat_unstoppable);   /* the game's variables (0x4fbf10) */
     sl_register_bool("invincible", &chr_cheat_invincible);
     sl_register_bool("omnipotent", &chr_cheat_omnipotent);
@@ -1204,6 +1206,31 @@ static void route_input(const Character *c, CharacterInput *in)
 
 /* What the camera follows (the character fields CArFollow_Get_GoalPosition 0x4d7110 reads; aim angles
    come with the character engine's aiming). */
+/* iComputeDeltaTicks 0x4fafb0's listener for OSrUpdate 0x514f20: in the follow camera with a player, her
+   ears (0x4e33e0: her location at her head's height, 15 above it without an active part) facing her
+   way (0x4e3640: the desired facing less the run's turn); else the camera's place and view. */
+static void listen(const Chr *player)
+{
+    float pos[3], dir[3];
+    CameraView v;
+    if (player && camera_mode() == CAMERA_FOLLOW) {
+        const Character *c = &player->c;
+        float head[3];
+        chr_location(c, pos);
+        if (chr_part_point(c, 10, head)) pos[1] = head[1];
+        else pos[1] += 15.0f;   /* 0x529d84 */
+        float a = c->desired_facing - c->facing_offset;
+        if (a < 0.0f) a += 6.2831855f;
+        else if (a >= 6.2831855f) a -= 6.2831855f;     /* 0x529548 */
+        dir[0] = sinf(a), dir[1] = 0.0f, dir[2] = cosf(a);  /* MUrPoint_RotateYAxis 0x433010 of (0, 0, 1) */
+    } else if (camera_view(&v)) {
+        memcpy(pos, v.location, sizeof pos);
+        memcpy(dir, v.view, sizeof dir);
+    } else
+        return;
+    sound_set_listener(pos, dir);
+}
+
 static void fill_target(CameraTarget *t, const Character *c)
 {
     t->active = true;
@@ -1315,8 +1342,28 @@ static void game_display(void)
     env_draw();
     draw_objects();
     char_shadows_clear();
-    for (int i = 0; i < chars_slots(); i++)
-        if (chars_get(i)) char_draw_character(&chars_get(i)->c, i);   /* the blended pose */
+    /* 0x4e1540: the characters in the camera's view, their levels of detail (0x4e2900), then drawn */
+    LodCamera lc = { .fov = 0.785398f, .far = far_clip };
+    CameraView cv;
+    if (camera_view(&cv)) memcpy(lc.pos, cv.location, sizeof lc.pos), memcpy(lc.view, cv.view, sizeof lc.view);
+    else if (display.ct) memcpy(lc.pos, display.ct->pos, sizeof lc.pos), lc.view[2] = 1.0f;
+    Character *seen[CHARS_MAX];
+    int slot_of[CHARS_MAX], nseen = 0;
+    for (int i = 0; i < chars_slots(); i++) {
+        Chr *ch = chars_get(i);
+        if (!ch) continue;
+        if (!chr_lod_visible(&ch->c, &lc)) {
+            ch->c.lod_frames = 0;
+            ch->c.lod_shown = ch->c.lod_wanted = 6;
+            continue;
+        }
+        seen[nseen] = &ch->c;
+        slot_of[nseen++] = i;
+    }
+    Character *order[CHARS_MAX];
+    memcpy(order, seen, sizeof(Character *) * (size_t)nseen);
+    chr_lod_compute(order, nseen, display.player ? &display.player->c : NULL);
+    for (int k = 0; k < nseen; k++) char_draw_character(seen[k], slot_of[k]);   /* the blended pose */
     decal_draw(env_draw_environment());     /* P3rDisplayStaticDecals, P3rDisplayDynamicDecals */
     particle_draw(view, p3_tick());     /* P3rDisplay */
     laser_draw(view);
@@ -1431,6 +1478,7 @@ static int play(int level, int *next)
     CameraTarget ct = { .active = true };
     camera_init();
     camera_set_environment((void *)env);
+    sound_set_environment(env);
     fill_target(&ct, &player->c);
     camera_set_target(&ct);
     camera_reset();
@@ -1553,6 +1601,7 @@ static int play(int level, int *next)
             camera_set_target(&ct);
             camera_update(1, 0, NULL, ticks);   /* the tick's part (iComputeDeltaTicks 0x4fafb0) */
         }
+        listen(chars_player());
         sound_update();
         char dbg[32];
         if (player && plat_param("trace", dbg, sizeof dbg) && plat_frames() % (uint32_t)(atoi(dbg) > 1 ? atoi(dbg) : 30) == 0) {

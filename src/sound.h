@@ -39,6 +39,8 @@ void sound_update(void);
 /* The mix: frames x 2 floats (left, right) at SOUND_RATE. */
 void sound_mix(float *stereo, unsigned frames);
 
+/* The level's environment for the walls that muffle the placed ambients (NULL none: all muffled). */
+void sound_set_environment(const void *env);
 /* The listener for 3D sounds (OSrUpdate 0x514f20 passes the camera's position and facing to 0x482890).
    Until the camera calls it: the origin, facing +x. */
 void sound_set_listener(const float pos[3], const float facing[3]);

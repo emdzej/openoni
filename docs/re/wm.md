@@ -358,6 +358,39 @@ length (0x78 ticks without a sound) and 60 more, white (0x533f70) on dark grey (
 letterbox's console when the letterbox is on. The inverted mouse: the input's y axis (0x403220) is the
 move times -0.125 with it (the default), 0.125 without.
 
+### The graphics quality and the gamma
+
+The quality, 0 to 4 (`ONrPersist_SetGraphicsQuality` 0x50f0e0, then `ONiMotoko_Quality_Set` 0x508ef0),
+read through the Motoko getters (the Mac build's names; the Windows build folds those with the same
+code into one):
+
+| Getter | Value by quality 0..4 | Where | Port |
+|---|---|---|---|
+| CharacterPolygonCount 0x5083f0 | 1500, 2200, 3000, 3400, 4000 | the characters' levels of detail (0x4e2900) | `chr_lod.c` |
+| RayCastCount 0x508440 | 1, 1, 1, 1, 2 | `AKrEnvironment_StartFrame` 0x4430f0 (the visibility's rays) | not ported (no environment visibility) |
+| NumDirectionalLights 0x508490 | 1, 1, 2, 2, 2 | `ONrGameState_SetupDefaultLighting` 0x4f4a30 | not ported (no lights) |
+| RayCount 0x5084e0 | 16, 18, 20, 20, 20 | `AKrLevel_Begin` 0x43ffe0 (0x442f50) | not ported (no environment visibility) |
+| 0x508530: q >= 2 | trilinear, high-quality textures | the OpenGL texture upload 0x40cf40 | `gl_dev.c` |
+| 0x508540: q >= 1 | shadows, reflection maps, cosmetic corpses | `ONiCharacter_Display_Body` 0x4e1d70, `M3rGeometry_Draw` 0x41a750 (a geometry's +0x90 map), the corpses (0x4e1540: those named "_..."), 0x405410 | the shadows; no reflection pass nor corpses |
+| 0x508550: q >= 3 | high-quality corpses | 0x4e1540 | no corpses |
+| 0x508560: q >= 4 | never the lowest detail, hardware Bink | 0x4e1d70 | `chr_lod.c` |
+
+`ONiMotoko_Quality_Set` also sets the particles' detail (`P3rChangeDetail` 0x4580b0 with 0 for a
+quality of 2 and up, 1 for 1, 2 for 0; at the level's start 0x457e50 through the callback 0x508ec0):
+the classes whose definition's flags2 meet the detail's mask (1: 0x40, 2: 0x60) are off (the class's
+0x40) and their particles go; a decal class's most decals (+0x200) are halved at 1, quartered at 2
+(0x45caea).
+
+The upload (0x40cf40) of a TXMP: its flags 4 and 8 clamp s and t (`GL_CLAMP`), else repeat; mipmapped,
+under the quality 2 a texture over 2 by 2 drops its top level and filters `GL_LINEAR_MIPMAP_NEAREST`,
+else `GL_LINEAR_MIPMAP_LINEAR`; magnified linearly.
+
+The gamma (0x407a60, on the display's start and the option's change): the display's ramp as it was at
+the start (0x55fdfc, `GetDeviceGammaRamp`), each of its 768 entries to the power (1 - gamma) 1.2 + 0.4
+(0x529508, 0x529504, 0x529500) of it over 65535, times 65535, held to 0..65535, through
+`SetDeviceGammaRamp`. The port (`gl_dev.c`) takes the starting ramp as the identity and, off the
+identity, draws the frame into a target and applies the ramp on the way to the screen.
+
 ## The HUD's right ring
 
 Not the WM's, but drawn with it on the in-game UI's screen (`ONrInGameUI_Display` 0x4fff50; the port's

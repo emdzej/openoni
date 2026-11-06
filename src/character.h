@@ -104,6 +104,13 @@ typedef struct Character {
     uint16_t type;                  /* A+0x1b00 */
     uint16_t queued;                /* A+0x1b02: played when the current one ends, 0 none */
     uint16_t tick_type;             /* A+0x1b04: the type at the start of the tick */
+    /* the level of detail (chr_lod.c): shown, wanted and the frames they have differed */
+    int lod_base;                   /* A+0x2218: by the distance */
+    int lod_shown;                  /* A+0x221c: 0 lowest .. 4, 6 none yet */
+    int lod_wanted;                 /* A+0x2220 */
+    uint16_t lod_frames;            /* A+0x2224 */
+    float camera_d2;                /* C+0x1660: from the camera, squared */
+    uint32_t unseen;                /* C+0x163c: frames out of the camera's view */
     bool interpolating;             /* A+0x1b08 */
     float interp_height;            /* A+0x1b0c */
     uint16_t interp_state;          /* A+0x1b10 */
