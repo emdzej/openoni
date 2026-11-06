@@ -928,7 +928,7 @@ The combat state's hand-to-hand fighting. The port is `src/melee.c`, with its te
 | A new animation (the attacker's, or the victim's) | `AI2rMelee_NotifyAnimation` 0x49fd10 | confirmed |
 | Pressing an attack's keys | `AI2rExecutor_AttackOverride` 0x498bb0 | confirmed |
 | Blocking | `AI2rBlockFunction` 0x48b870, every AI's C+0x15ec | confirmed |
-| Weighting a technique | `AI2iMelee_WeightTechnique` 0x4a2580 | not ported: the base weight stays |
+| Weighting a technique | `AI2iMelee_WeightTechnique` 0x4a2580 | confirmed (Windows disassembly; the Mac build's structure) |
 | The categories' functions | the table at 0x52a9e8 (names from the Mac build) | confirmed |
 | The way toward and away from the target | `AI2rMelee_TestLocalEnvironment` 0x49fe60 | confirmed |
 | A straight way over the grids | `AI2rTryLocalMovement` 0x49d560, `AI2rDoLocalMovement` 0x49d700 | confirmed |
@@ -1087,12 +1087,13 @@ easy, normal, hard: `ONrPersist_GetDifficulty` 0x50f240, normal at start-up), mu
 0..100 (`(UUrRandom & 0xffff) × 100 / 0xffff`). After the decision come the combat report
 (`AI2rNotifyAttackLanded` 0x48b700) and the daze timer's cut to 1 (0x48b9d0); neither is ported yet.
 
-Stand-ins, marked in `src/melee.c`: the weighting (`AI2iMelee_WeightTechnique`: the base weight, a
-run-in needing its room); the positions' update (`AI2iMelee_Position_Update`: toward the target to the
-first attack's reach or the profile's distance, 120 ticks at most); throws; the maneuvers' search about
-the angle (`AI2rFindLocalPath` 0x49d220: the straight try); the blockage's objects and characters; the
+Stand-ins, marked in `src/melee.c`: the positions' update (`AI2iMelee_Position_Update`: toward the target to the
+first attack's reach or the profile's distance, 120 ticks at most); throws; the blockage's objects and characters; the
 movement's modifiers and facing mode as the executor's kinds (`src/ai.c`, a stand-in for
-`AI2iMovementState_Calculate_Movement`).
+`AI2iMovementState_Calculate_Movement`). A maneuver's step toward the target searches about the angle as
+the original (`AI2rFindLocalPath` 0x49d220: 15 ahead, then up to 4 steps of pi/16 to one side then the
+other; `src/localpath.c`). `AI2rCombat_WaitingForShieldCharge` 0x4904c0 (the combat behaviour's handler
+asked with message 0x10) is a stand-in that never waits.
 
 ### Predicting an attack
 
@@ -1187,14 +1188,11 @@ current `src/melee.c` keeps its own shapes).
 
 ### Toward the original's melee (the port's next step)
 
-The port's melee (`src/melee.c`) is a reduced version: its positions, maneuvers and the technique's
-weight are stand-ins. `AI2rMelee_PrepareForUse` 0x4a4650 is ported (the class part, the transitions,
-the moves' animations and motions, the techniques' computed flags, damage and reach); the stand-ins
-don't use all of it yet. The rest, by size of the decompiled code: `AI2rMelee_Update`
-0x4a01f0 (1,200), `AI2iMelee_WeightTechnique` 0x4a2580 (2,000), `AI2iMelee_Position_Update` 0x4a6040
-(440, on `AI2iMelee_SetupAttackerState` 0x4a2270, `TRrCheckAnimationBounds`, `TRrIntersectAnimations`,
-`AI2iMelee_CheckStateTransition` 0x4a4590, 0x4a4300 and `AI2iMelee_WeightLocalMovement` 0x4a4440),
-`AI2iMelee_Maneuver_Update` 0x4a7060 (220). The attack prediction is ported (`src/chr_intersect.c`).
+The port's melee (`src/melee.c`): `AI2rMelee_PrepareForUse` 0x4a4650, the update 0x4a01f0, the
+weighting 0x4a2580 (with `AI2iMelee_GetTransitionLength` 0x4a4300, `AI2iMelee_CheckStateTransition`
+0x4a4590 and `AI2iMelee_RotateAnimationContext` 0x4a24b0) and the maneuvers' update 0x4a7060 are
+ported, on the attack prediction (`src/chr_intersect.c`). Left: `AI2iMelee_Position_Update` 0x4a6040
+(440 lines of decompiled code, on `AI2iMelee_SetupAttackerState`, the prediction and the transitions).
 
 `PrepareForUse`'s class part (in the profile, from +0x978): the jump's air time and the longest jump's
 (above); seven distances from +0x980, of which +0x98c..+0x998 are the forward, back, left and right
@@ -1211,14 +1209,56 @@ the keys +0x10 and +0x14, the animation +0x18, the row's type +0x1c and the anim
 motion along its direction (+0x20: the position point, × 0x5295bc) and across (+0x24: the last five
 frames' mean step).
 
-### The weighting's call
+### The weighting
 
-`AI2iMelee_WeightTechnique` 0x4a2580 takes: the attacker (ECX), the AI's melee state (EDX: the target
-first, the distance at +0x80, the angle at +0x88), then on the stack the profile, the intersection
-context, "with the cookie" (1; 0 in the second call), the technique's direction, the melee state,
-another of the caller's values, the target's "could block", "high" and "low"
-(`ONrCharacter_CouldBlock`), and the technique's record (0x2c bytes in the table at 0x637260: the
-technique, the weight, ...). An attack is weighed by the profile's factors: the target couldn't
-block ×+0x9c, it blocks the other height ×+0xa0, unblockable ×+0xa4, stagger ×+0xa8, block stun
-×+0xac, else blocked ×+0xb0. Then the facing difference, the moves one by one (distances, angles,
-positions through the transitions, the attack predicted by `TRrIntersectAnimations`), and the throws.
+`AI2iMelee_WeightTechnique` 0x4a2580 (fastcall: the attacker, the AI's melee state; then the profile,
+an intersection context, "attacking", the technique's direction, the melee state, the animation state,
+the target's `ONrCharacter_CouldBlock` and its "high" and "low", the technique's record of 0x2c bytes in
+the table at 0x637260: the technique, the weight, the first attack's move and record, "moving" +0x10,
+"late" +0x11, the jump's step +0x14, the attacker's air ticks +0x18, the move a delay stops at +0x1a,
+the attack's turn sin/cos +0x1c/+0x20, its offset +0x24 and direction +0x28) scales the record's weight:
+
+- **The block** (an attack, flag 0x1000; never for an evasion): the target couldn't block ×+0x9c,
+  blocks the other height (flag 0x8000 low, 0x10000 high) ×+0xa0, unblockable (0x200000) ×+0xa4,
+  stagger (0x800000) ×+0xa8, block stun (0x400000) ×+0xac, else ×+0xb0. A disarm (0x1000000) with
+  0x8000000 or 0x10000000 needs the target holding a pistol (ONWC +0xcc without 8) and the attacker
+  empty-handed.
+- **The side**: the facings within 90° of each other put the attacker behind. Flags 0x2000000 "not
+  from behind" and 0x4000000 "not from the front" zero it on the wrong side, and on the right one weigh
+  (the angle past 90°) × 6/π, at most 1.
+- The context restored (0x4eefc0); attacking, the target's place and per-frame motion in the attacker's
+  space (`MUrMatrix3x3_MultiplyPoint` 0x433a40 of +0x190 by the matrix +0x160), the distance left (+0x80
+  less the target's radius +0x1a4), and its closing speed along the direction (0/1: −forward, 2:
+  forward, 3: −sideways, 4: sideways, 5: none).
+- **The moves** in turn. A *position* (the table at 0x5435b0, 0x40 bytes: +0x20 direction, +0x24 delay,
+  +0x28 the jump's slot in the profile's distances +0x980, +0x2c the count of states from +0x30): a delay
+  only when attacking and not after another position; a technique without attack, throw distance and
+  flag 0x20000000 out; slot 1 or 2 is in the air, slot 1 needing the target 7 higher. From the current
+  state's place in the row's list (its end: a delay stops there unless its minimum is 1 or more), the
+  transitions to the first state (`GetTransitionLength`: their factors into the weight, their motion and
+  ticks added; none: 0) and on to the rest, all from the current state (the original never advances it).
+  A delay's numbers are its minimum, maximum and ramp, its speed its animation's frame-0 step along the
+  row's direction. A *maneuver*: advance (dist − range − threshold, 0 below, ramping over the threshold),
+  retreat (range + threshold − dist), circling (the target's heading less the way to it turned back, in
+  degrees, inside the range of the first two numbers: ×depth/10 within 10), random stop ends the
+  weighing, max range 0 beyond its first number. An *evasion* (only when not attacking): its last
+  position point turned by the facing, seen from the target: ×(1 + 2 ahead/|across|), 0 below 0; the way
+  over the grids (`AI2rTryLocalMovement`, a danger cell allowed with flag 4); the target's attack against
+  it at its frame 0 still landing ×0.3. A *throw*: the animation with flag 15, the victim's with 16, the
+  throw type's side matching (else the original reports the profile), a throwable target; with a delay,
+  the reach (dist − 0.9 × the throw's distance) less the transitions' motion, at least 1, inside the
+  delay's range and catchable within 120 ticks; the local movement's weight (`WeightLocalMovement`
+  0x4a4440); a victim landing toward a danger ×+0xb4.
+- **The attack**: a shield-charge attack (flag 0x16) waiting for the charge out; the first attack
+  recorded; without a delay, a jump needs the target beyond the run, half the jump (0.5 × step × the
+  jump's air time) and its radius, closing included, then the local movement's weight; with a delay the
+  stop move, the target's reach less the attack's near (or the jump's), its range and the catch time
+  (at most 120 ticks), then the local movement. A hit of the target's coming first (+0x124 frames,
+  against the transitions' ticks and the attack's first frame) ×0.3, else "late". The target's place
+  moved on by its motion over the ticks, the attack turned toward it (direction 1 and 5 as is, 2 back,
+  3 and 4 sideways; ×|cos|; none in the air), offset by its run, the context rotated, the attacker set up
+  (`AI2iMelee_SetupAttackerState`) and `TRrCheckAnimationBounds` 0x429940: out of bounds, 0.
+
+The update's pick then strikes off an attack whose prediction (`TRrIntersectAnimations` on the same
+context, restored and rotated by the record: the Mac build's `AI2iCheckTechniqueViability`, inlined in
+the Windows update) misses.

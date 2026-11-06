@@ -645,6 +645,7 @@
 0048f3e0	AI2rCombat_Update	AI2	med	name from the Intel Mac build (strings:1)
 004901f0	AI2rCombat_GetRange	AI2	med	name from the Intel Mac build (neighbours:1.00)
 00490290	AI2iCombat_ChangeBehavior	AI2	low	the range's behaviour: the old one's exit message, the new one's enter
+004904c0	AI2rCombat_WaitingForShieldCharge	AI2	med	the combat behaviour's handler asked with message 0x10 (Mac name)
 00490510	AI2rCombat_NotifyKnowledge	AI2	low	the combat state's knowledge handler
 004908e0	AI2rCombat_SetNewTarget	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004909a0	AI2iCombat_LostTarget	AI2	low	the combat state loses its target: the waits start (name made up)
@@ -745,6 +746,7 @@
 004a20f0	AI2iMelee_StartNextMove	AI2	med	name from the Intel Mac build (neighbours:0.75)
 004a21c0	AI2iMelee_AngleToTarget	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a2270	AI2iMelee_SetupAttackerState	AI2	med	name from the Intel Mac build (neighbours:0.83)
+004a24b0	AI2iMelee_RotateAnimationContext	AI2	high	the context's target space turned by a weighing's turn and moved along its direction (Mac match)
 004a2580	AI2iMelee_WeightTechnique	AI2	med	name from the Intel Mac build (strings:6)
 004a4300	AI2iMelee_GetTransitionLength	AI2	med	Mac match (caller): the states' path through the profile's transitions
 004a4440	AI2iMelee_WeightLocalMovement	AI2	med	name from the Intel Mac build (strings:2)
@@ -1378,6 +1380,8 @@
 0050f3e0	ONrPersist_SetGamma	ON	low	+0x54 if 0..1, then the display's (0x407a60)
 0050f450	ONrPersist_GetGamma	ON	low	+0x54 clamped to 0..1
 0050f4a0	ONrPersist_SetPlace	ON	med	name from the Intel Mac build (neighbours:1.00)
+0050f620	ONrPersist_MarkWonGame	ON	low	persist +0x44 bit 2, the block saved (name made up)
+0050f660	ONrPersist_WonGame	ON	low	persist +0x44 bit 2 (name made up)
 0050f7a0	ONiPlatform_WindowProc	ON	low	the Windows window procedure: mouse and keys into the LI's queue
 0050fba0	ONrScript_Initialize	ON	med	name from the Intel Mac build (strings:3)
 00510160	ONrScript_Schedule	ON	med	name from the Intel Mac build (neighbours:0.75)
@@ -1462,5 +1466,3 @@
 0051d080	WPrOutOfAmmoSound	WP	med	name from the Intel Mac build (neighbours:1.00)
 0051d180	WPrInventory_Weapon_Purge_Magic	WP	med	name from the Intel Mac build (strings:1)
 0051d1c0	TMrTemplate_SetupLayouts	TM	low	read: stores each template's layout pointer, then the table base (compiler-generated; name made up)
-0050f620	ONrPersist_MarkWonGame	ON	low	persist +0x44 bit 2, the block saved (name made up)
-0050f660	ONrPersist_WonGame	ON	low	persist +0x44 bit 2 (name made up)

@@ -59,3 +59,5 @@ void chr_knockdown(Character *c, uint16_t type);
 /* The weapon node's matrix (the active record's matrix 19, A+0x2608): the fist's, turned by the hand
    (3x3 by columns, then the place). False without a body. */
 bool chr_weapon_matrix(const Character *c, float out[12]);
+/* ONrCharacter_CouldBlock 0x4e62b0: d could block an attack of x now; high and low, at which heights. */
+bool chr_could_block(const Character *d, const Character *x, bool *high, bool *low);

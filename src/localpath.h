@@ -33,6 +33,13 @@ int local_path(const void *env, int room, const float start[3], const float end[
 bool local_try_movement(const float from[3], const float to[3], int tolerance, bool *reached, float out[3],
                         uint8_t *kind, bool *crossed_blocked);
 
+/* AI2rFindLocalPath 0x49d220: a straight line (as local_try_movement) dist from `from` toward angle,
+   else toward the angle a step to one side then the other, two steps, ... up to n steps. reached: one got
+   there (out: its end, kind and crossed_blocked as local_try_movement's); else out, kind and
+   crossed_blocked are the first line's. False with no room or grid at `from`. */
+bool local_find_path(const float from[3], float dist, float angle, float step, unsigned n, uint8_t threshold,
+                     int tolerance, bool *reached, float out[3], uint8_t *kind, bool *crossed_blocked);
+
 /* AI2rFindNearbyPoint 0x49cec0: a point dist from `from` toward angle reached by a straight line over the
    grids (threshold: the cells' value it stays under, tolerance: blocked cells allowed at its start), else
    the angle a step to either side, two steps, ... n steps; failing all, the farthest point a line got to

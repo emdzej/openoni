@@ -9,6 +9,8 @@
 #include "combat.h"
 #include "ui.h"
 #include "throw.h"
+#include "weapon.h"
+#include "chr_hit.h"
 #include "akev_collide.h"
 #include "particle.h"
 #include "objc.h"
@@ -108,7 +110,7 @@ static bool add_profile(const ObjcObject *o, void *user)
     p->block_single = rd32(d + 0x94);
     p->block_group = rd32(d + 0x98);     /* from version 0x26; before, the single chance */
     for (int i = 0; i < 6; i++) p->factor[i] = rdf(d + 0x9c + 4 * i);
-    p->extra[0] = rd32(d + 0xb4), p->extra[1] = rd32(d + 0xb8);
+    p->throw_danger = rdf(d + 0xb4), p->extra = rd32(d + 0xb8);
     p->nattack = rd32(d + 0xbc);
     p->nevade = rd32(d + 0xc0);
     p->nmaneuver = rd32(d + 0xc4);
@@ -1082,24 +1084,34 @@ static bool position_start(AiState *a, Character *c)
 /* ---- the maneuvers (AI2iMelee_Maneuver_*) ---- */
 
 /* 0x4a6b30: a step of the maneuver's direction (1 forward, 2 back, 3 left, 4 right) from the facing, or,
-   toward the target, around the angle to it, the way tried over the grids (15 ahead,
-   AI2rTryLocalMovement; the original's search about the angle toward the target, AI2rFindLocalPath
-   0x49d220, a stand-in: the straight try); a blocked advance (with +0x140 clear) goes straight at the
-   target. True: moving. */
+   toward the target, around the angle to it: the way tried over the grids, 15 ahead (from the facing,
+   AI2rTryLocalMovement; toward the target, AI2rFindLocalPath 0x49d220 up to 4 steps of pi/16 to either
+   side, the way then the line's); a blocked advance (with +0x140 clear) goes straight at the target.
+   True: moving. */
 static bool maneuver_step(AiState *a, Character *c, int dir, bool toward)
 {
     MeleeState *m = &a->melee;
     static const float off[4] = { 0.0f, 3.1415927410125732f, 1.5707963705062866f, 4.71238899230957f };
     static const int kinds[4] = { AI_MOVE_FORWARD, AI_MOVE_BACK, AI_MOVE_LEFT, AI_MOVE_RIGHT };
     if (dir < 1 || dir > 4) return false;
-    float base = toward ? m->angle : c->facing, way = base + off[dir - 1];
+    float way = (toward ? m->angle : c->facing) + off[dir - 1];
     if (way >= TWO_PI) way -= TWO_PI;
-    float loc[3], to[3], at[3];
+    float loc[3], at[3];
     chr_location(c, loc);
-    to[0] = loc[0] + sinf(way) * 15.0f, to[1] = loc[1], to[2] = loc[2] + cosf(way) * 15.0f;
-    bool reached, crossed;
+    bool reached = false, crossed;
     uint8_t kind;
-    if (!(local_try_movement(loc, to, 3, &reached, at, &kind, &crossed) && reached)) {
+    if (!toward) {
+        /* 15 ahead of the way, straight (AI2rTryLocalMovement) */
+        float to[3] = { loc[0] + sinf(way) * 15.0f, loc[1], loc[2] + cosf(way) * 15.0f };
+        if (!local_try_movement(loc, to, 3, &reached, at, &kind, &crossed)) reached = false;
+    } else if (local_find_path(loc, 15.0f, way, 0.19634954631328583f, 4, 8, 3, &reached, at, &kind, &crossed) &&
+               reached) {
+        /* the way the line found (up to 4 steps of pi/16 either side) */
+        way = wrap_2pi(atan2f(at[0] - loc[0], at[2] - loc[2]));
+    } else {
+        reached = false;
+    }
+    if (!reached) {
         if (dir != 1 || m->env_blocked || c->air_ticks) return false;   /* (A+0x1a8: the port's air) */
         way = m->angle;
     }
@@ -1481,31 +1493,545 @@ typedef struct {
     float weight;               /* +0x04 */
     int32_t attack_at;          /* +0x08: its first attack's move, -1 none */
     const MeleeMove *attack;    /* +0x0c */
-    bool moving;                /* +0x10 */
+    bool moving;                /* +0x10: its position moves (a jump) */
     bool late;                  /* +0x11: its attack would land after the target's */
-    float step;                 /* +0x14 */
-    int16_t stop_move;          /* +0x1a */
+    float step;                 /* +0x14: the jump's step (the profile's dist[] of the position) */
+    uint16_t air_ticks;         /* +0x18: the attacker's air ticks when it weighed */
+    int16_t stop_move;          /* +0x1a: the move at which a delaying position stops, -1 none */
+    float rot_sin, rot_cos;     /* +0x1c, +0x20: the attack turned toward the target */
+    float offset;               /* +0x24: how far it goes before the attack */
+    uint32_t rot_dir;           /* +0x28: the attack's direction it was turned for, 0 none */
 } Weighing;
 
-/* AI2iMelee_WeightTechnique 0x4a2580, a stand-in until its port: the base weight (as the caller gives
-   it), but a run-in needs the room for its run. */
-static void weigh_technique(const AiState *a, Weighing *w)
+/* AI2iMelee_CheckStateTransition 0x4a4590: the first of the profile's transitions from the melee state
+   `from` with `to` among its steps whose animation (of the row's type from anim_state) the character
+   has, or, with no character, the profile's class (variant 0x200). */
+static const MeleeTransition *check_state_transition(const Character *c, const MeleeProfile *p, uint32_t from,
+                                                     uint32_t to, uint16_t anim_state)
+{
+    Character probe;
+    const Character *who = c;
+    if (!who) {
+        memset(&probe, 0, sizeof probe);
+        probe.oncc = p->oncc;
+        who = &probe;
+    }
+    uint16_t var = (uint16_t)((c ? c->varient : 0) | 0x200);
+    for (uint32_t i = 0; i < p->ntransitions; i++) {
+        const MeleeTransition *t = &p->transition[i];
+        if (t->from != from) continue;
+        unsigned k = 0;
+        while (k < t->nsteps && t->steps[k] != to) k++;
+        if (k < t->nsteps && chr_lookup_varient(who, t->type, anim_state, var)) return t;
+    }
+    return NULL;
+}
+
+/* AI2iMelee_GetTransitionLength 0x4a4300: the transitions from the melee state to `to` (through the
+   idle state 1 when there's no direct way), each from the last one's steps[0]: the factors multiplied
+   into *factor, their motion added to *along, their ticks to *ticks; *count of them. False: no way.
+   The state and the animation state are the caller's own: not written back. */
+static bool transition_length(const MeleeProfile *p, uint32_t state, uint16_t anim_state, uint32_t to, float *factor,
+                              float *along, float *ticks, uint32_t *count)
+{
+    float f = factor ? *factor : 0.0f, al = along ? *along : 0.0f, tk = ticks ? *ticks : 0.0f;
+    uint32_t n = 0, aim = to;
+    bool via_idle = false;
+    for (;;) {
+        bool ok = true;
+        while (state != aim) {
+            const MeleeTransition *t = check_state_transition(NULL, p, state, aim, anim_state);
+            if (!t) {
+                ok = false;
+                break;
+            }
+            al += t->along;
+            tk += (float)t->duration;
+            anim_state = t->to;
+            f *= t->f08;
+            n++;
+            state = t->steps[0];
+        }
+        if (ok) {
+            if (aim == to) break;
+            aim = to;
+            continue;
+        }
+        if (via_idle || state == 1 || aim == 1) return false;
+        aim = 1;
+        via_idle = true;
+    }
+    if (factor) *factor = f;
+    if (along) *along = al;
+    if (ticks) *ticks = tk;
+    if (count) *count = n;
+    return true;
+}
+
+/* AI2iMelee_RotateAnimationContext 0x4a24b0: the context's target space turned by the attack's turn
+   (from its saved matrix) and moved back along the attack's direction by its offset. */
+static void rotate_context(ChrIntersect *x, const Weighing *w)
+{
+    if (w->rot_dir) {
+        for (int i = 0; i < 4; i++) {
+            const float *s = &x->m0[i * 3];
+            float *d = &x->m[i * 3];
+            d[0] = w->rot_cos * s[0] - w->rot_sin * s[1];
+            d[1] = w->rot_sin * s[0] + w->rot_cos * s[1];
+            d[2] = s[2];
+        }
+    }
+    switch (w->rot_dir) {
+    case 0: case 1: x->m[10] -= w->offset; break;
+    case 2: x->m[10] += w->offset; break;
+    case 3: x->m[9] -= w->offset; break;
+    case 4: x->m[9] += w->offset; break;
+    default: break;
+    }
+    x->m_modified = true;
+}
+
+/* AI2rCombat_WaitingForShieldCharge 0x4904c0 asks the combat behaviour's handler (message 0x10); a
+   stand-in until the behaviours' messages are ported: never waiting. */
+static bool waiting_for_shield_charge(const Character *c) { (void)c; return false; }
+
+/* The position table's row (0x40 bytes at 0x5435b0): +0x20 the direction, +0x24 a delay, +0x28 the
+   jump's dist[] slot (0 none; 1 down to a lower target), +0x2c the melee states it goes through, from
+   +0x30. */
+static uint32_t prow(uint32_t idx, unsigned off) { return exe_u32(POSITIONS_VA + POSITION_SIZE * idx + off); }
+
+/* AI2iMelee_WeightTechnique 0x4a2580: w->weight (the caller's base) scaled for the technique against
+   the target: the attack's blockability (the profile's factors), its facing requirements (from the
+   front or behind, falling off within 30 degrees of the side), then its moves in turn: positions add
+   their transitions' motion and time (a delay position waits for the target to come in range, at its
+   animation's speed plus the target's closing), maneuvers and evasions by their own measures, and the
+   first attack is timed and turned toward where the target will be and checked by the prediction's
+   bounds (TRrCheckAnimationBounds); throws need a throwable target at their reach. x is the context of
+   the character against the target (for an evasion, of the target's attack against the character);
+   attacking: weighing an attack (else an evasion); dir the technique's direction; state the melee state
+   and anim_state the animation state it is in; blockable/high/low ONrCharacter_CouldBlock's. */
+static void weigh_technique(const AiState *a, const Character *c, ChrIntersect *x, bool attacking, uint32_t dir,
+                            uint32_t state, uint16_t anim_state, bool blockable, bool high, bool low, Weighing *w)
 {
     const MeleeState *m = &a->melee;
+    const MeleeProfile *p = m->profile;
     const MeleeTech *k = w->tech;
+    const Character *t = m->target;
     if (!k->count) {
         w->weight = 0.0f;
         return;
     }
-    const MeleeMove *mv = &m->profile->move[k->first];
-    uint32_t idx = mv->type & 0xfffffffu;
-    if (category(mv) == MELEE_POSITION && position_has_params(idx) && idx <= 3 && m->dist < mv->p[0] - mv->p[2])
-        w->weight = 0.0f;
+    uint32_t fl = k->computed;
+    if (fl & 0x1000) {
+        /* an attack: what the target's block would do to it */
+        if (!attacking) {
+            w->weight = 0.0f;
+            return;
+        }
+        if (!blockable) w->weight *= p->factor[0];
+        else if ((!low && (fl & 0x8000)) || (!high && (fl & 0x10000))) w->weight *= p->factor[1];
+        else if (fl & 0x200000) w->weight *= p->factor[2];
+        else if (fl & 0x800000) w->weight *= p->factor[3];
+        else if (fl & 0x400000) w->weight *= p->factor[4];
+        else w->weight *= p->factor[5];
+    } else if (fl & 0x1000000) {
+        /* a disarm: with flag 0x8000000 or 0x10000000 a target holding a pistol (not a rifle) and the
+           character empty-handed */
+        if (!attacking) {
+            w->weight = 0.0f;
+            return;
+        }
+        bool target_gun = t->weapon && !(weapon_options(t->weapon) & ONWC_RIFLE), own = c->weapon != NULL;
+        if (fl & 0x8000000) {
+            if (!target_gun || own) {
+                w->weight = 0.0f;
+                return;
+            }
+        } else if ((fl & 0x10000000) && (!target_gun || own)) {
+            w->weight = 0.0f;
+            return;
+        }
+    }
+    /* the facings: within 90 degrees of each other the character is behind the target */
+    float df = wrap_pi(t->facing - c->facing), adf = fabsf(df);
+    bool behind = adf < 1.5707963705062866f;
+    if (fl & 0x6000000) {
+        float f;
+        if (behind) {
+            if (fl & 0x2000000) {
+                w->weight = 0.0f;
+                return;
+            }
+            f = (1.5707963705062866f - adf) * 1.909859299659729f;
+        } else {
+            if (fl & 0x4000000) {
+                w->weight = 0.0f;
+                return;
+            }
+            f = (adf - 1.5707963705062866f) * 1.909859299659729f;
+        }
+        if (f <= 0.0f) f = 0.0f;
+        if (f < 1.0f) w->weight *= f;
+    }
+    chr_intersect_restore(x);
+    float loc[3], tloc[3];
+    chr_location(c, loc);
+    chr_location(t, tloc);
+    float pos[3] = { 0 }, vel[3] = { 0 }, left = 0.0f, closing = 0.0f;
+    if (attacking) {
+        /* the target's place and motion in the character's space, the motion along the direction */
+        pos[0] = x->m[9], pos[1] = x->m[10], pos[2] = x->m[11];
+        left = m->dist - x->t_radius;
+        chr_matrix3_apply(x->m, x->t_velocity, vel);
+        switch (dir) {
+        case 0: case 1: closing = -vel[1]; break;
+        case 2: closing = vel[1]; break;
+        case 3: closing = -vel[0]; break;
+        case 4: closing = vel[0]; break;
+        case 5: closing = 0.0f; break;
+        default: break;
+        }
+    }
+    w->offset = 0.0f;
+    w->air_ticks = x->a.now.air ? x->a.now.air_ticks : 0;
+    w->moving = false;
+    w->step = 0.0f;
+    w->rot_cos = 1.0f;
+    w->rot_sin = 0.0f;
+    w->rot_dir = 0;
+    float pre_along = 0.0f, pre_ticks = 0.0f, post_along = 0.0f, post_ticks = 0.0f;
+    float d_min = 0.0f, d_max = 0.0f, d_ramp = 0.0f, d_speed = 0.0f;
+    bool delay = false, in_air = false, after_position = false;
+    uint32_t cur = state;
+    uint16_t cur_anim = anim_state;
     for (uint32_t j = 0; j < k->count; j++) {
-        if (category(&m->profile->move[k->first + j]) == MELEE_ATTACK) {
-            w->attack_at = (int32_t)j;
-            w->attack = &m->profile->move[k->first + j];
+        const MeleeMove *mv = &p->move[k->first + j];
+        uint32_t idx = mv->type & 0xfffffffu;
+        switch (category(mv)) {
+        case MELEE_ATTACK: {
+            if (!attacking || !mv->anim || !tr_is_attack(mv->anim)) {
+                w->weight = 0.0f;   /* ("BROKEN") */
+                return;
+            }
+            if (tr_test_flag(mv->anim, 0x16) && waiting_for_shield_charge(c)) {
+                w->weight = 0.0f;
+                return;
+            }
+            if (!w->attack) {
+                w->attack_at = (int32_t)j;
+                w->attack = mv;
+            }
+            float ticks = pre_ticks + post_ticks, along = pre_along + post_along, f;
+            if (!delay) {
+                if (w->moving) {
+                    /* a jump in: the target beyond the run and half the jump */
+                    float need = along + 0.5f * w->step * p->jump_time + x->t_radius;
+                    if (!in_air) need += ticks * closing;
+                    if (left < need) {
+                        w->weight = 0.0f;
+                        return;
+                    }
+                    bool danger = weight_local_movement(m, k, along + w->step * p->jump_time + mv->motion, &f);
+                    w->weight *= f;
+                    if (danger) return;
+                }
+            } else {
+                float ac = left - along;
+                if (w->moving) ac -= 0.5f * w->step * p->jump_time;
+                if (w->stop_move == -1 && d_min >= 1.0f) {
+                    if (ac < d_min) {
+                        w->weight = 0.0f;
+                        return;
+                    }
+                    if (left < d_min + d_ramp) w->weight *= (ac - d_min) / d_ramp;
+                }
+                bool stopping = false;
+                float a4 = left - x->t_radius;
+                if (!w->moving) {
+                    a4 -= k->near;
+                    if (w->stop_move != -1 && a4 < -3.0f) stopping = true;
+                } else {
+                    a4 -= 0.5f * w->step * (p->jump_time + p->long_jump_time);
+                }
+                if (!stopping) {
+                    w->stop_move = -1;
+                    a4 -= along;
+                    if (!in_air) a4 -= ticks * closing;
+                    if (a4 <= 0.0f) a4 = 0.0f;
+                    if (d_max < a4) {
+                        w->weight = 0.0f;
+                        return;
+                    }
+                    if (d_max - d_ramp < a4) w->weight *= (d_max - a4) / d_ramp;
+                    float time = a4 / (in_air ? d_speed : d_speed + closing);
+                    if (time < 0.0f || time > 120.0f) {
+                        w->weight = 0.0f;
+                        return;
+                    }
+                    along += a4;
+                    ticks += time;
+                } else {
+                    along = 0.0f;
+                    ticks = 0.0f;
+                }
+                bool danger = weight_local_movement(m, k, along + mv->motion, &f);
+                w->weight *= f;
+                if (danger) return;
+            }
+            /* against the target's own attack under way */
+            if (m->hit_frames != -1) {
+                if ((float)m->hit_frames <= ticks + (float)attack_point_frame(mv->anim, false)) w->weight *= 0.3f;
+                else w->late = true;
+            }
+            /* where the target will be, the attack turned toward it */
+            if (ticks > 0.0f && !in_air) pos[0] += vel[0] * ticks, pos[1] += vel[1] * ticks;
+            if (!x->a.now.air) {
+                w->rot_dir = dir;
+                float len = sqrtf(pos[0] * pos[0] + pos[1] * pos[1]);
+                switch (dir) {
+                case 1: case 5: w->rot_sin = pos[0] / len, w->rot_cos = pos[1] / len; break;
+                case 2: w->rot_sin = -pos[0] / len, w->rot_cos = -pos[1] / len; break;
+                case 3: w->rot_sin = -pos[1] / len, w->rot_cos = pos[0] / len; break;
+                case 4: w->rot_sin = pos[1] / len, w->rot_cos = -pos[0] / len; break;
+                default: break;
+                }
+                w->weight *= fabsf(w->rot_cos);
+            } else {
+                w->rot_dir = 0;
+                w->rot_sin = 0.0f;
+                w->rot_cos = 1.0f;
+            }
+            w->offset = in_air ? along : ticks * closing + along;
+            rotate_context(x, w);
+            setup_attacker(p, &x->a, c, w->moving, w->step, dir, mv->anim);
+            if (!chr_intersect_bounds(x)) w->weight = 0.0f;
+            return;
+        }
+        case MELEE_POSITION: {
+            if (idx >= POSITIONS) {
+                w->weight = 0.0f;
+                return;
+            }
+            bool row_delay = (prow(idx, 0x24) & 0xff) != 0;
+            uint32_t slot = prow(idx, 0x28), n = prow(idx, 0x2c);
+            if ((!attacking && row_delay) || (after_position && row_delay)) {
+                w->weight = 0.0f;
+                return;
+            }
+            if (!(fl & 0x20000000) && !k->attack && k->throw_dist == 0.0f) {
+                w->weight = 0.0f;
+                return;
+            }
+            if (slot == 1 || slot == 2) {
+                in_air = true;
+                if (slot == 1 && loc[1] + 7.0f > tloc[1]) {
+                    w->weight = 0.0f;
+                    return;
+                }
+            }
+            /* the current state among the row's: from the next; at its end, a delay stops there */
+            uint32_t s = 0;
+            while (s < n && cur != prow(idx, 0x30 + 4 * s)) s++;
+            if (s < n) {
+                s++;
+                if (s == n) {
+                    if ((!row_delay || mv->p[0] < 1.0f) && w->stop_move == -1) w->stop_move = (int16_t)j;
+                    s = 0;
+                }
+            } else {
+                s = 0;
+            }
+            if (s == 0) {
+                if (!transition_length(p, cur, cur_anim, prow(idx, 0x30), &w->weight, &pre_along, &pre_ticks, NULL)) {
+                    w->weight = 0.0f;   /* ("NOTRANS-PRE") */
+                    return;
+                }
+                s = 1;
+            }
+            if (s == 1 && (delay = row_delay)) {
+                if (!mv->anim) {
+                    w->weight = 0.0f;
+                    return;
+                }
+                d_min = mv->p[0], d_max = mv->p[1], d_ramp = mv->p[2];
+                float v[3];
+                tr_position(mv->anim, 0, v);
+                switch (prow(idx, 0x20)) {
+                case 1: d_speed = v[2]; break;
+                case 2: d_speed = -v[2]; break;
+                case 3: d_speed = v[0]; break;
+                case 4: d_speed = -v[0]; break;
+                default: break;
+                }
+            }
+            for (; s < n; s++) {
+                if (!transition_length(p, cur, cur_anim, prow(idx, 0x30 + 4 * s), &w->weight, &post_along, &post_ticks,
+                                       NULL)) {
+                    w->weight = 0.0f;   /* ("NOTRANS-POST") */
+                    return;
+                }
+            }
+            after_position = true;
+            if (slot) {
+                w->moving = true;
+                w->step = p->dist[slot];
+            }
             break;
+        }
+        case MELEE_MANEUVER:
+            if (!attacking) {
+                w->weight = 0.0f;
+                return;
+            }
+            switch (idx) {
+            case 0: {
+                /* advance: the target beyond its range and threshold, ramping over the threshold */
+                float f = m->dist - mv->p[1] - mv->p[2];
+                if (f < 0.0f) {
+                    w->weight = 0.0f;
+                    return;
+                }
+                if (f < mv->p[2]) w->weight *= f / mv->p[2];
+                break;
+            }
+            case 1: {
+                float f = mv->p[1] + mv->p[2] - m->dist;
+                if (f < 0.0f) {
+                    w->weight = 0.0f;
+                    return;
+                }
+                if (f < mv->p[2]) w->weight *= f / mv->p[2];
+                break;
+            }
+            case 2: case 3: {
+                /* circling: the target's heading from the way to it, turned back (degrees), inside the
+                   range of the first two numbers, by how deep (within 10) */
+                float h = wrap_2pi(t->desired_facing - t->facing_offset);
+                float d = h - (m->angle - 3.1415927410125732f);
+                if (d < -3.1415927410125732f) d += TWO_PI;
+                else if (d > 3.1415927410125732f) d -= TWO_PI;
+                d *= 57.295780181884766f;
+                float v;
+                if (mv->p[0] < mv->p[1]) {
+                    float u = d - mv->p[0], o = mv->p[1] - d;
+                    v = u <= o ? u : o;
+                } else {
+                    float u = d - mv->p[1], o = mv->p[0] - d;
+                    v = u <= o ? u : o;
+                }
+                if (v < 0.0f) {
+                    w->weight = 0.0f;
+                    return;
+                }
+                if (v < 10.0f) w->weight *= v * 0.1f;
+                break;
+            }
+            case 8:
+                return;     /* random stop: the weighing ends there */
+            case 0xd:
+                /* max range */
+                if (!mv->anim) {
+                    w->weight = 0.0f;
+                    return;
+                }
+                if (tr_test_flag(mv->anim, 0x16) && waiting_for_shield_charge(c)) {
+                    w->weight = 0.0f;
+                    return;
+                }
+                if (m->dist > mv->p[0]) w->weight = 0.0f;
+                break;
+            default:
+                break;
+            }
+            break;
+        case MELEE_EVADE: {
+            if (attacking || !mv->anim) {
+                w->weight = 0.0f;
+                return;
+            }
+            /* where the evasion ends, in the world (from the character's facing), then seen from the
+               target: ahead of it it weighs less (1 + 2 ahead / across) */
+            float cf = cosf(c->facing), sf = sinf(c->facing);
+            float pp[2] = { 0.0f, 0.0f };
+            position_point(mv->anim, (uint16_t)(tr_duration(mv->anim) - 1), pp);
+            float ex = pp[1] * sf + pp[0] * cf, ez = pp[1] * cf - pp[0] * sf;
+            float tc = cosf(t->facing), ts = sinf(t->facing);
+            float ahead = ts * ex + tc * ez, across = tc * ex - ts * ez;
+            float f = 1.0f + (ahead + ahead) / fabsf(across);
+            if (f < 0.0f) {
+                w->weight = 0.0f;
+                return;
+            }
+            if (f < 1.0f) w->weight *= f;
+            float to[3] = { ex + loc[0], loc[1], ez + loc[2] }, at[3];
+            bool reached = false, crossed;
+            uint8_t kind;
+            if (local_try_movement(loc, to, 3, &reached, at, &kind, &crossed)) {
+                if ((fl & 4) && !reached && kind == 8) reached = true;
+            } else {
+                reached = false;
+            }
+            if (!reached) {
+                w->weight = 0.0f;
+                return;
+            }
+            /* the target's attack against the character evading */
+            x->t.frame = 0;
+            x->t.anim = mv->anim;
+            if (chr_intersect(x)) w->weight *= 0.3f;
+            break;
+        }
+        case MELEE_THROW: {
+            if (!attacking || !mv->anim || !tr_test_flag(mv->anim, 0xf) || !mv->anim2 || !tr_test_flag(mv->anim2, 0x10)) {
+                w->weight = 0.0f;
+                return;
+            }
+            /* a throw needs the side its technique asks for (else the original reports it) */
+            bool front = throw_from_front(tr_type(mv->anim));
+            if (behind ? front : !front) {
+                w->weight = 0.0f;
+                return;
+            }
+            if (!throw_target_ok(t)) {
+                w->weight = 0.0f;
+                return;
+            }
+            float a4 = 0.0f, f;
+            if (delay) {
+                a4 = left - 0.9f * throw_distance_of(mv->anim);
+                if (w->stop_move == -1 || a4 >= -3.0f) {
+                    w->stop_move = -1;
+                    a4 -= pre_along + post_along;
+                    if (a4 <= 1.0f) a4 = 1.0f;
+                    if (a4 < d_min) {
+                        w->weight = 0.0f;
+                        return;
+                    }
+                    if (a4 < d_min + d_ramp) w->weight *= (a4 - d_min) / d_ramp;
+                    if (d_max < a4) {
+                        w->weight = 0.0f;
+                        return;
+                    }
+                    if (d_max - d_ramp < a4) w->weight *= (d_max - a4) / d_ramp;
+                    float time = a4 / (in_air ? d_speed : d_speed + closing);
+                    if (time < 0.0f || time > 120.0f) {
+                        w->weight = 0.0f;
+                        return;
+                    }
+                } else {
+                    pre_along = post_along = 0.0f;
+                }
+            }
+            bool danger = weight_local_movement(m, k, a4 + mv->motion, &f);
+            w->weight *= f;
+            if (danger) return;
+            /* where the victim lands: toward a danger, the profile's factor */
+            if (weight_local_movement(m, k, left + mv->motion2, NULL)) w->weight *= p->throw_danger;
+            return;
+        }
+        default:
+            w->weight = 0.0f;
+            return;
         }
     }
 }
@@ -1686,16 +2212,16 @@ bool melee_update(AiState *a, Character *c, const Character *target)
     }
     bool may_change = going ? cat_can_evade(m, c) : true;
     bool hit_coming = false;
+    ChrIntersect evx, atx;     /* the target's attack on the character, and the character's on it */
     if (may_change && target->anim && tr_is_attack(target->anim)) {
         check_evasion_chance(m, target);
         if (m->evade_check) {
             /* the target's attack predicted against the character (TRrCheckAnimationBounds, then
                TRrIntersectAnimations) */
-            ChrIntersect x;
-            chr_intersect_setup(target, c, false, &x);
-            if (chr_intersect_bounds(&x) && chr_intersect(&x)) {
+            chr_intersect_setup(target, c, false, &evx);
+            if (chr_intersect_bounds(&evx) && chr_intersect(&evx)) {
                 hit_coming = true;
-                m->hit_frames = (int32_t)x.frames;
+                m->hit_frames = (int32_t)evx.frames;
             }
         }
     }
@@ -1717,6 +2243,11 @@ bool melee_update(AiState *a, Character *c, const Character *target)
         uint32_t t = now_of(c);
         int n = 0;
         float total = 0.0f, best_attack = 0.0f;
+        bool blockable = false, high = false, low = false;
+        if (cookie) {
+            chr_intersect_setup(c, target, true, &atx);
+            blockable = chr_could_block(target, c, &high, &low);
+        }
         uint32_t from, count;
         if (!cookie) {
             from = p->nattack + p->nevade;
@@ -1764,7 +2295,7 @@ bool melee_update(AiState *a, Character *c, const Character *target)
                     continue;
                 }
             }
-            if (cookie) weigh_technique(a, e);
+            if (cookie) weigh_technique(a, c, &atx, true, dir, state, to, blockable, high, low, e);
             else if (!(k->computed & 0x21001000)) {
                 if (exe_data(0x545778, 1)[0] && k->count && !weigh_spacing(a, c, e)) e->weight = 0.0f;
             } else {
@@ -1800,10 +2331,11 @@ bool melee_update(AiState *a, Character *c, const Character *target)
                 const Weighing *e = &w[i];
                 bool ok = true;
                 if (cookie && !e->moving && e->attack && category(e->attack) == MELEE_ATTACK) {
-                    ChrIntersect x;
-                    chr_intersect_setup(c, target, true, &x);
-                    setup_attacker(p, &x.a, c, e->moving, e->step, e->tech->computed >> 8 & 0xf, e->attack->anim);
-                    ok = chr_intersect(&x);
+                    /* AI2iCheckTechniqueViability (inlined here): the weighing's context, turned as it was */
+                    chr_intersect_restore(&atx);
+                    rotate_context(&atx, e);
+                    setup_attacker(p, &atx.a, c, e->moving, e->step, e->rot_dir, e->attack->anim);
+                    ok = chr_intersect(&atx);
                 }
                 if (ok) {
                     m->leftover = left;
@@ -1843,7 +2375,7 @@ bool melee_update(AiState *a, Character *c, const Character *target)
                 e->weight = 0.0f;
                 continue;
             }
-            weigh_technique(a, e);
+            weigh_technique(a, c, &evx, false, 0, state, to, false, false, false, e);
             if (e->weight != 0.0f) total += e->weight, n++;
         }
         if (n) {

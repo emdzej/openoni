@@ -200,7 +200,7 @@ static bool block_state(const Character *c)
    from the state in the fight variant, and the attacker within 20 degrees (0x54e168) of where the
    character aims (C+0x170 - C+0x174). high, low: the block animation's flags 3 and 2. Not ported: the
    weapon's test (none are held yet). */
-static bool could_block(const Character *d, const Character *x, bool *high, bool *low)
+bool chr_could_block(const Character *d, const Character *x, bool *high, bool *low)
 {
     if (!block_state(d) || d->block_pause) return false;
     const void *b = chr_lookup_varient(d, 0x17, d->state, (uint16_t)(d->varient | 0x200));
@@ -253,7 +253,7 @@ static void attack_lands(Character *x, Character *d, const uint8_t *e, uint32_t 
         unstoppable = true;
     } else if (!(aflags & 1)) {
         bool high, low;
-        blocked = could_block(d, x, &high, &low);
+        blocked = chr_could_block(d, x, &high, &low);
         if (blocked && (aflags & 2) && !low) blocked = false;
         if (blocked && (aflags & 4) && !high) blocked = false;
         if (blocked && d->ai && chr_block_hook) blocked = chr_block_hook(d);

@@ -565,6 +565,36 @@ bool local_try_movement(const float from[3], const float to[3], int tolerance, b
     return true;
 }
 
+bool local_find_path(const float from[3], float dist, float angle, float step, unsigned n, uint8_t threshold,
+                     int tolerance, bool *reached, float out[3], uint8_t *kind, bool *crossed_blocked)
+{
+    *reached = false;
+    if (!start_at(from)) return false;
+    N.threshold = threshold;
+    N.tolerance = tolerance;
+    for (unsigned k = 0; k <= n; k++) {
+        for (int side = 0; side < (k ? 2 : 1); side++) {
+            float a = k ? (side ? -1.0f : 1.0f) * (float)k * step + angle : angle;
+            if (a < 0.0f) a += 6.2831854820251465f;
+            else if (a >= 6.2831854820251465f) a -= 6.2831854820251465f;
+            N.to[0] = from[0] + sinf(a) * dist;
+            N.to[1] = from[1];
+            N.to[2] = from[2] + cosf(a) * dist;
+            N.crossings = 0;
+            float at[3];
+            uint8_t kd;
+            bool cr;
+            if (local_movement(at, &kd, &cr)) {
+                memcpy(out, N.to, sizeof N.to);
+                *kind = kd, *crossed_blocked = cr, *reached = true;
+                return true;
+            }
+            if (!k) memcpy(out, at, sizeof at), *kind = kd, *crossed_blocked = cr;
+        }
+    }
+    return true;
+}
+
 bool local_find_nearby_point(const float from[3], float dist, float min, float angle, float step, unsigned n,
                              uint8_t threshold, int tolerance, float out[3])
 {

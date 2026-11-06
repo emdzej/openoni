@@ -5,11 +5,9 @@
    0x4a7060) and attacks, which press the attack's keys through the executor's override
    (AI2rExecutor_AttackOverride 0x498bb0) as a player would. Notes: docs/re/ai.md, "Melee".
 
-   Stand-ins until their ports: the technique weighting's prediction of what an attack would do to
-   the target (AI2iMelee_WeightTechnique 0x4a2580: the base weight stays), the positions' prediction
-   of the attack reaching (TRrIntersectAnimations: the profile's distances and the attack's reach),
-   evades and the dodge chance, throws, jumps and crouches, and the circling's check of the other
-   attackers. */
+   Techniques are weighed by AI2iMelee_WeightTechnique 0x4a2580 (the attack's timing and turn
+   predicted with TRrCheckAnimationBounds). Stand-ins until their ports: the positions' update
+   (AI2iMelee_Position_Update 0x4a6040), and the shield charge's wait. */
 #pragma once
 #include "ai.h"
 
@@ -80,7 +78,8 @@ typedef struct MeleeProfile {
     float factor[6];        /* +0x9c..+0xb0: the weighting's factors for an attack the target couldn't
                                block, blocks at the other height, unblockable, stagger, block stun,
                                blocked */
-    uint32_t extra[2];      /* +0xb4, +0xb8 */
+    float throw_danger;     /* +0xb4: the factor for a throw whose victim lands toward a danger */
+    uint32_t extra;         /* +0xb8 */
     uint32_t nattack, nevade, nmaneuver, nmoves;
     MeleeTech tech[MELEE_TECH_MAX];
     MeleeMove move[MELEE_MOVE_MAX];

@@ -182,12 +182,12 @@ int main(void)
        damage (its flag 0x1000, being thrown, lasts until its AI asks for an animation: the same tick) */
     /* the fight next to her may have hit her and left her facing off the way she wants to face, and its
        survivor would go for the (Syndicate) dummy, hitting her too: where it ended is chance, so the
-       throw starts with her standing (a player knocked down lies, state 18, until a key: forward gets her
-       up), her facing settled and the survivor far away */
+       throw starts with her standing (a player knocked down lies, on her back or front, states 0x12 and 0x32,
+       until a key: forward gets her up), her facing settled and the survivor far away */
     if (d2 && d3) ((d2->c.flags & 1) ? d3 : d2)->c.pos[0] += 1000.0f;
     for (int k = 0, stood = 0; k < 900 && stood < 60; k++) {
         stood = p->c.state == CHR_STATE_STANDING ? stood + 1 : 0;
-        chars_update(&(CharacterInput){ .forward = p->c.state == 18 }, NULL);
+        chars_update(&(CharacterInput){ .forward = p->c.state == 0x12 || p->c.state == 0x32 }, NULL);
         sl_update();
     }
     p->c.facing = p->c.desired_facing;
