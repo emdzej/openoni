@@ -1437,8 +1437,17 @@ static bool cmd_wait_animation(SlThread *t, int c, const SlValue *v, SlValue *r,
     return false;
 }
 
+/* The characters' contexts (the callbacks 0x5ec918), for the others' searches. */
+static int ctx_count(void) { return chars_slots(); }
+static bool ctx_get(int i, PhysCtx *out)
+{
+    Chr *ch = chars_get(i);
+    return ch && chars_in_use(ch) && physics_ctx(&ch->c, out);
+}
+
 void chars_register_commands(void)
 {
+    physctx_add_source((PhysSource){ ctx_count, ctx_get });
     sl_register("chr_wait_animation", cmd_wait_animation, NULL);
     sl_register("ai2_spawn", cmd_spawn, NULL);
     sl_register("chr_create", cmd_chr_create, NULL);

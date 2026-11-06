@@ -4,11 +4,14 @@
    docs/re/physics.md.
 
    chars_update runs every character's physics after all the frames and contacts, as the original
-   (chr_physics_later). Stand-ins until their ports: the physics objects' own collisions (0x4ecb40,
-   0x43a9a0) and the AI's wall notice. */
+   (chr_physics_later). Its context meets the others' (physctx.h). Stand-in until its port: the AI's
+   wall notice. */
 #pragma once
 #include "character.h"
+#include "physctx.h"
 
+/* The character's context as the others' searches see it (false: none, no physics). */
+bool physics_ctx(Character *c, PhysCtx *out);
 /* The context for a character made active (FUN_004dc2b0): at its position, its tree built. */
 void physics_start(Character *c);
 /* 0x4e9210: the character put at pos, the physics' position and the old one with it. */

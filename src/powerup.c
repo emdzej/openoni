@@ -226,7 +226,7 @@ static void deviate_xz(float v[3], float scale)
 
 static const void *update_env;
 
-/* 0x51c0a0, after the collisions: the first wall met faster than 0.35 into it plays the fall's impact;
+/* 0x51c0a0, after the collisions (of the walls only): the first wall met faster than 0.35 into it plays the fall's impact;
    a floor (a normal over 0.5 up) marks it 6 (on a floor), else the mark 4 goes. */
 static void post_collision(PhysObject *o, const PhysHit *hits, unsigned n)
 {
@@ -234,6 +234,7 @@ static void post_collision(PhysObject *o, const PhysHit *hits, unsigned n)
     bool played = false;
     p->flags &= 0xfffb;
     for (unsigned i = 0; i < n; i++) {
+        if (hits[i].kind != 0) continue;    /* the walls' only */
         const float *nm = hits[i].plane;
         if (!played && fabsf(nm[1] * o->vel[1] + nm[0] * o->vel[0] + o->vel[2] * nm[2]) > 0.35f) {   /* 0x52adb8 */
             static int type = -2;   /* the "Powerup" impact type (0x627dc0, WPrInitialize 0x51b0f0) */
@@ -243,6 +244,30 @@ static void post_collision(PhysObject *o, const PhysHit *hits, unsigned n)
         }
         if (nm[1] > 0.5f) p->flags |= 6;    /* 0x529560 */
     }
+}
+
+/* 0x51c080: the characters left out of the search. */
+static bool skip_other(const PhysCtx *self, const PhysCtx *o)
+{
+    (void)self;
+    return o->kind == PHYS_KIND_CHARACTER;
+}
+
+/* 0x51c140: pushed by anything but a character. */
+static void receive_force(const PhysCtx *self, const PhysCtx *from, const float force[3])
+{
+    if (from->kind == PHYS_KIND_CHARACTER) return;
+    Powerup *p = self->owner;
+    physobj_push(&p->phys, force);
+}
+
+static int ctx_count(void) { return count; }
+static bool ctx_get(int i, PhysCtx *out)
+{
+    if (!powerups[i].has_phys) return false;
+    powerups[i].phys.owner = &powerups[i];
+    physobj_ctx(&powerups[i].phys, out);
+    return true;
 }
 
 /* WPrPowerup_Drop 0x51bd80: a new powerup (not placed) at c's pelvis (the location, C+0x160, raised by
@@ -262,7 +287,10 @@ void powerup_drop(const Character *c, int type, uint16_t amount, bool ahead)
     physobj_init(o);
     o->flags |= 0x5000u;
     o->owner = u;
+    o->kind = PHYS_KIND_POWERUP;    /* the callbacks 0x620100 */
     o->post_collision = post_collision;
+    o->skip = skip_other;
+    o->receive_force = receive_force;
     o->friction_sub = 0.0025f;      /* 0x3b23d70a */
     o->friction_mul = 0.75f;
     float r = 2.0f, box[6], sphere[4];
@@ -360,5 +388,6 @@ static bool cmd_give(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 void powerup_register_commands(void)
 {
     sl_register("powerup_spawn", cmd_spawn, NULL);
+    physctx_add_source((PhysSource){ ctx_count, ctx_get });
     sl_register("give_powerup", cmd_give, NULL);
 }

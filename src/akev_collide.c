@@ -137,6 +137,9 @@ static bool inside(float c[4][3], int axis, const float p[3])
     return e[0] < EPS && e[1] < EPS && e[2] < EPS && e[3] < EPS;
 }
 
+bool akev_corners_inside(float c[4][3], int axis, const float p[3]) { return inside(c, axis, p); }
+int akev_corners_axis(float c[4][3]) { return axis_of(c); }
+
 bool akev_point_in_quad(const void *env, uint32_t quad, int axis, const float p[3])
 {
     Env v;

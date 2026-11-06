@@ -3,20 +3,14 @@
    gravity, slid along the environment's walls and slowed while touching them (OBiPhysics_Update 0x43af50
    with the generic callbacks). Notes: docs/re/physics.md "The other objects".
 
-   Stand-ins until their ports: the collisions with the other contexts (the callback +8,
-   PHrPhysics_Callback_FindPhyCollisions 0x43be20, and 0x43a9a0), so the characters neither stop nor push
-   (WPiReceiveForce 0x518b80) them. */
+   The other contexts (physctx.h) through the callback +8 (PHrPhysics_Callback_FindPhyCollisions
+   0x43be20), those the callback +0xc skips left out. */
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
 
-/* A hit on the environment (the 0x28-byte records 0x43a710 sorts: kind 0). */
-typedef struct {
-    uint32_t quad;          /* +0x04 */
-    float plane[4];         /* +0x08: the normal first */
-    float point[3];         /* +0x18 */
-    float d2;               /* +0x24: from the sphere's centre, the sort's key */
-} PhysHit;
+#include "physctx.h"
+
 
 typedef struct PhysObject {
     float sphere[4];        /* +0x00's sphere (0x43b310): centre, radius */
@@ -31,6 +25,11 @@ typedef struct PhysObject {
     /* the callbacks' +0x18 (after the collisions, with all the hits) */
     void (*post_collision)(struct PhysObject *o, const PhysHit *hits, unsigned n);
     void *owner;            /* +0x14c */
+    int kind;               /* the callbacks' +0 (PHYS_KIND_*) */
+    /* +0xc: another context left out of the search (NULL none) */
+    bool (*skip)(const PhysCtx *self, const PhysCtx *other);
+    /* +0x20: pushed by another's move (NULL none) */
+    void (*receive_force)(const PhysCtx *self, const PhysCtx *from, const float force[3]);
 } PhysObject;
 
 enum {
@@ -44,6 +43,10 @@ enum {
     PHYS_TWICE = 0x8000,
 };
 
+/* The context as the searches see it (type 2, the sphere its tree). */
+void physobj_ctx(PhysObject *o, PhysCtx *out);
+/* 0x43beb0, the generic receive force: into the acceleration. */
+void physobj_push(PhysObject *o, const float force[3]);
 /* PHrPhysics_Init 0x43b5e0: zeroed, gravity 0.294, active; the matrix the identity. */
 void physobj_init(PhysObject *o);
 /* PHrPhysics_MaintainMatrix 0x43b410 for type 2: the place, the identity turn, the scale 1. */

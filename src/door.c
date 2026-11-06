@@ -7,6 +7,7 @@
 #include "graph.h"
 #include "knowledge.h"
 #include "oban.h"
+#include "physctx.h"
 #include "objc.h"
 #include "object.h"
 #include "sl.h"
@@ -50,7 +51,9 @@ typedef struct {
     const uint8_t *element;
     bool live;
     ObanPlayer anim;
-    uint16_t ctx_flags;
+    uint16_t anim_flags;            /* its animation context's flags (CTX_*), not the physics' */
+    float sphere[4];                /* the context's sphere and box (physctx.h) */
+    PhysBox box;
 } Panel;
 enum { CTX_HALF_TURNS = 0x20, CTX_FOLLOW = 0x40 };
 
@@ -399,12 +402,22 @@ static void open_door(int i, const Chr *who)
             p->live = true;
             oban_player_init(&p->anim, tm_link(p->element + OBOA_ANIMATION));
             p->anim.frame = 0;
-            p->ctx_flags = 0;
+            p->anim_flags = 0;
+            const uint8_t *ga = tm_link(p->element + OBOA_GEOMETRY);
+            const void *geoms[16];
+            int ng = 0;
+            for (uint32_t g = 0; ga && g < rd32(ga + 0x14) && ng < 16; g++) geoms[ng++] = tm_link(ga + 0x18 + 4 * g);
+            for (int j = 0; j < 3; j++) p->sphere[j] = rdf(p->element + OBOA_POSITION + 4 * j);
+            physctx_box_make(&p->box, geoms, ng, p->sphere, &p->sphere[3]);
         }
-        if (d->panel[0].live && (d->flags & DOOR_MIRROR)) d->panel[0].ctx_flags |= CTX_HALF_TURNS;
+        if (d->panel[0].live && (d->flags & DOOR_MIRROR)) d->panel[0].anim_flags |= CTX_HALF_TURNS;
         if (d->panel[1].live) {
-            d->panel[1].ctx_flags |= CTX_FOLLOW;
-            if (!(d->flags & DOOR_MIRROR)) d->panel[1].ctx_flags |= CTX_HALF_TURNS;
+            d->panel[1].anim_flags |= CTX_FOLLOW;
+            if (!(d->flags & DOOR_MIRROR)) d->panel[1].anim_flags |= CTX_HALF_TURNS;
+        }
+        for (int k = 0; k < 2; k++) {
+            float m[12];
+            if (d->panel[k].live && door_panel(i, k, m)) physctx_box_place(&d->panel[k].box, m);
         }
     } else if (d->panel[0].live) {
         /* closing: the same place of the opening (the original reads the first panel without a test) */
@@ -458,6 +471,29 @@ void door_physics(uint32_t now)
     for (int i = 0; i < ndoors; i++)
         for (int k = 0; k < 2; k++)
             if (doors[i].panel[k].live) oban_update(&doors[i].panel[k].anim, now);
+    /* PHrPhysics_MaintainMatrix 0x43b410: the panels' boxes where their frames put them */
+    for (int i = 0; i < ndoors; i++)
+        for (int k = 0; k < 2; k++) {
+            float m[12];
+            if (doors[i].panel[k].live && door_panel(i, k, m)) physctx_box_place(&doors[i].panel[k].box, m);
+        }
+}
+
+/* The panels' contexts while they move (kind 2, type 3, a box: the setup's flags 0x1200; 0x4c26c0 sets the
+   physics flags 0x82). */
+static int ctx_count(void) { return 2 * ndoors; }
+static bool ctx_get(int i, PhysCtx *out)
+{
+    Panel *p = &doors[i / 2].panel[i % 2];
+    if (!p->live) return false;
+    memset(out, 0, sizeof *out);
+    out->kind = PHYS_KIND_OBJECT;
+    out->type = 3;
+    out->flags = 0x82u | PHYS_VOLUME;
+    out->tree.s = (const float (*)[4])p->sphere;
+    out->box = &p->box;
+    out->owner = p;
+    return true;
 }
 
 /* OBJrDoor_Update 0x4c44f0 */
@@ -588,14 +624,14 @@ const void *door_panel(int i, int k, float m[12])
     if (!p->live || !p->anim.oban) return NULL;
     /* PHrPhysics_MaintainMatrix's animated case: the frame (of the first panel's animation for
        CTX_FOLLOW), under the element's placement for the doors' animations, then the half turns */
-    const ObanPlayer *a = (p->ctx_flags & CTX_FOLLOW) ? &d->panel[0].anim : &p->anim;
+    const ObanPlayer *a = (p->anim_flags & CTX_FOLLOW) ? &d->panel[0].anim : &p->anim;
     if (!oban_matrix(a->oban, a->frame, false, m)) return NULL;
     if (rd32((const uint8_t *)a->oban + OBAN_FLAGS) & OBAN_Z_UP) {
         float place[12];
         for (int j = 0; j < 12; j++) place[j] = rdf(p->element + OBOA_MATRIX + 4 * j);
         mul(place, m, m);
     }
-    if (p->ctx_flags & CTX_HALF_TURNS) {
+    if (p->anim_flags & CTX_HALF_TURNS) {
         const float pi = 3.14159274f;   /* 0x40490fdb */
         float c = cosf(pi), s = sinf(pi);
         const float ry[12] = { c, 0, -s, 0, 1, 0, s, 0, c, 0, 0, 0 };    /* 0x434a80 */
@@ -652,6 +688,7 @@ static bool cmd_unlock(SlThread *t, int c, const SlValue *v, SlValue *r, void *u
 
 void door_register_commands(void)
 {
+    physctx_add_source((PhysSource){ ctx_count, ctx_get });
     sl_register("door_open", cmd_open, NULL);
     sl_register("door_close", cmd_close, NULL);
     sl_register("door_lock", cmd_lock, NULL);

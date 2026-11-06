@@ -4,6 +4,7 @@
 
 #include "body.h"
 #include "oban.h"
+#include "physctx.h"
 #include "sl.h"
 #include "tm.h"
 
@@ -26,6 +27,10 @@ typedef struct {
     uint16_t flags;             /* +0x12: 0x8 always drawn (obj_force_draw), 0x8000 its own shade */
     uint32_t shade;             /* +0x20: the shade OBiDraw lights it with (the port's draw has no lights
                                    yet, so neither is applied) */
+    /* its physics context (+0x18): the flags (+0x128), the sphere (centre the position) and the box */
+    uint32_t ctx_flags;
+    float sphere[4];
+    PhysBox box;
 } Object;
 
 /* The level's array (its elements made into objects by obj_create, 0x4bc690), and the objects there are:
@@ -85,6 +90,7 @@ static bool create(const uint8_t *e)
     for (int k = 0; k < 4; k++) o->rot[k] = rdf(e + OBOA_ROTATION + 4 * k);
     o->scale = rdf(e + OBOA_SCALE);
     for (int k = 0; k < 12; k++) o->place[k] = rdf(e + OBOA_MATRIX + 4 * k);
+    o->flags = (uint16_t)rd32(e + OBOA_FLAGS);
     const void *oban = tm_link(e + OBOA_ANIMATION);
     oban_player_init(&o->anim, oban);
     o->physics = oban ? PHYSICS_ANIMATED : rd32(e + OBOA_PHYSICS);
@@ -93,6 +99,20 @@ static bool create(const uint8_t *e)
         oban_start(&o->anim, now_ticks);
         o->anim.state &= (uint16_t)~OBAN_PLAYING;
     }
+    /* the context: the box from the geometries' bounds and the sphere (physctx_box_make); flag 0x1000
+       a box (0x200), else 0x400 no collisions (4); 0x800 no gravity (0x40) */
+    const void *geoms[64];
+    int ng = 0;
+    for (uint32_t k = 0; o->geometry && k < rd32(o->geometry + 0x14) && ng < 64; k++) geoms[ng++] = tm_link(o->geometry + 0x18 + 4 * k);
+    memcpy(o->sphere, o->pos, sizeof o->pos);
+    physctx_box_make(&o->box, geoms, ng, o->pos, &o->sphere[3]);
+    o->ctx_flags = 2u;
+    if (o->flags & OBOA_FLAG_BOX_PLANES) o->ctx_flags |= PHYS_VOLUME;
+    else if (o->flags & OBOA_FLAG_PHYS_4) o->ctx_flags |= 4u;
+    if (o->flags & OBOA_FLAG_PHYS_40) o->ctx_flags |= 0x40u;
+    float m[12];
+    object_matrix(nobjs - 1, m);
+    physctx_box_place(&o->box, m);
     return true;
 }
 
@@ -158,7 +178,28 @@ void object_update(uint32_t now)
 {
     now_ticks = now;
     for (int i = 0; i < nobjs; i++)
-        if (objs[i].physics == PHYSICS_ANIMATED) oban_update(&objs[i].anim, now);
+        if (objs[i].physics == PHYSICS_ANIMATED) {
+            oban_update(&objs[i].anim, now);
+            float m[12];
+            object_matrix(i, m);    /* PHrPhysics_MaintainMatrix 0x43b410's box */
+            physctx_box_place(&objs[i].box, m);
+        }
+}
+
+/* The contexts (the callbacks 0x5cb4e0, kind 2; 0x43b820, the push, moves only types 2 and 4, which no
+   object the port makes is). */
+static int ctx_count(void) { return nobjs; }
+static bool ctx_get(int i, PhysCtx *out)
+{
+    Object *o = &objs[i];
+    memset(out, 0, sizeof *out);
+    out->kind = PHYS_KIND_OBJECT;
+    out->type = (int)o->physics;
+    out->flags = o->ctx_flags;
+    out->tree.s = (const float (*)[4])o->sphere;
+    out->box = &o->box;
+    out->owner = o;
+    return true;
 }
 
 /* ---- env_setanim id name, env_anim from [to], and their _block forms (AIiScript_EnvSetAnim_Internal
@@ -248,7 +289,13 @@ static bool cmd_kill(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 static bool show(int c, const SlValue *v, bool on)
 {
     int ids[128], n = objects_of(c, v, ids, 128);
-    for (int k = 0; k < n; k++) objs[ids[k]].shown = on;
+    for (int k = 0; k < n; k++) {
+        Object *o = &objs[ids[k]];
+        o->shown = on;
+        /* OBrShow 0x438d20: hidden, no collisions (4); shown, back unless the setup's 0x400 */
+        if (!on) o->ctx_flags |= 4u;
+        else if (!(o->flags & OBOA_FLAG_PHYS_4)) o->ctx_flags &= ~4u;
+    }
     return true;
 }
 /* obj_force_draw from [to] (AIiScript_ForceDraw 0x4bc2c0): the objects are drawn whatever their visibility (+0x12 bit 8). */
@@ -277,6 +324,7 @@ static bool cmd_hide(SlThread *t, int c, const SlValue *v, SlValue *r, void *u) 
 void object_register_commands(void)
 {
     sl_register("obj_create", cmd_create, NULL);
+    physctx_add_source((PhysSource){ ctx_count, ctx_get });
     sl_register("obj_kill", cmd_kill, NULL);
     sl_register("obj_show", cmd_show, NULL);
     sl_register("obj_hide", cmd_hide, NULL);

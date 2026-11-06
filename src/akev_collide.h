@@ -28,5 +28,8 @@ unsigned akev_collide_point(const void *env, const float p[3], const float v[3],
 bool akev_quad_sphere_vector(const void *env, uint32_t quad, const float sphere[4], const float move[3], float at[3]);
 /* 0x43e3b0: whether p, on the quad's plane, is inside the quad (axis: its projection, 0 to work it out). */
 bool akev_point_in_quad(const void *env, uint32_t quad, int axis, const float p[3]);
+/* The same for four corners of anything (a box's face). */
+bool akev_corners_inside(float c[4][3], int axis, const float p[3]);
+int akev_corners_axis(float c[4][3]);
 /* 0x43ddd0: the quad's projection axis: 1 drops z, 2 drops y, 3 drops x, 0 none. */
 int akev_quad_axis(const void *env, uint32_t quad);

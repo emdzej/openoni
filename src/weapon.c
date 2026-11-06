@@ -7,6 +7,7 @@
 #include "chars.h"
 #include "chr_anim.h"
 #include "chr_hit.h"
+#include "combat.h"
 #include "exe.h"
 #include "impact.h"
 #include "knowledge.h"
@@ -57,6 +58,7 @@ enum { EV_PULSE = 1, EV_START = 2, EV_STOP = 3, EV_BG_START = 4, EV_BG_STOP = 5,
 static Weapon weapons[WEAPONS_MAX];
 static uint32_t now;            /* the game time (GS+0x144): the weapons' updates */
 static bool no_fade;            /* wp_disable_fade (0x627dcc) */
+static bool kickable;           /* wp_kickable (0x620131): the player pushes the weapons on the ground */
 
 static uint16_t shooters(const Weapon *w) { return rd16(w->cls + ONWC_SHOOTERS); }
 static const uint8_t *shooter(const Weapon *w, unsigned k) { return w->cls + ONWC_SHOOTER + SH_SIZE * k; }
@@ -614,6 +616,11 @@ static void post_collision(PhysObject *o, const PhysHit *hits, unsigned n)
 {
     Weapon *w = o->owner;
     for (unsigned i = 0; i < n; i++) {
+        if (hits[i].kind == 1 && hits[i].other.kind == PHYS_KIND_CHARACTER) continue;
+        if (hits[i].kind != 0) {
+            w->flags |= 2;
+            continue;
+        }
         const float *nm = hits[i].plane;
         float d = nm[1] * o->vel[1] + nm[0] * o->vel[0] + o->vel[2] * nm[2];
         static int type = -2;   /* the "Weapon" impact type (0x622194, WPrInitialize 0x51b0f0) */
@@ -621,6 +628,40 @@ static void post_collision(PhysObject *o, const PhysHit *hits, unsigned n)
         if (fabsf(d) > 0.35f) weapon_fall_impact(type, &hits[i], update_env);     /* 0x52adb8 */
         w->flags |= 2;
     }
+}
+
+/* WPiWeaponPhysics_SkipPhyCollisions_Callback 0x518a80: another weapon, when either has flag 0x2000. */
+static bool skip_other(const PhysCtx *self, const PhysCtx *o)
+{
+    if (o->kind != PHYS_KIND_WEAPON) return false;
+    const Weapon *a = self->owner, *b = o->owner;
+    return (a->flags & 0x2000u) || (b->flags & 0x2000u);
+}
+
+/* WPiReceiveForce 0x518b80: pushed by a context's move, but by a character only once on the ground
+   (flag 2) and unowned: the player's only with wp_kickable, and not an AI's going for this one (the
+   combat state's gun maneuver). */
+static void receive_force(const PhysCtx *self, const PhysCtx *from, const float force[3])
+{
+    Weapon *w = self->owner;
+    if (from->kind == PHYS_KIND_CHARACTER && !w->owner) {
+        if (!(w->flags & 2)) return;
+        const Chr *ch = from->owner;     /* (a Chr's first member) */
+        if (!ch->c.ai) {
+            if (!kickable) return;
+        } else if (ch->ai.state == AI_STATE_COMBAT && ch->ai.combat.maneuver == COMBAT_MANEUVER_GUN && ch->ai.combat.gun == w)
+            return;
+    }
+    physobj_push(&w->phys, force);
+}
+
+static int ctx_count(void) { return WEAPONS_MAX; }
+static bool ctx_get(int i, PhysCtx *out)
+{
+    Weapon *w = &weapons[i];
+    if (!(w->flags & WEAPON_IN_USE) || !w->has_phys) return false;
+    physobj_ctx(&w->phys, out);
+    return true;
 }
 
 /* WPiWeapon_CreatePhysics 0x518e10: a context of type 2 (flags 0x5400: the walls of flag 0x4000 skipped,
@@ -632,7 +673,10 @@ static void create_physics(Weapon *w)
     physobj_init(o);
     o->flags |= 0x5400u;
     o->owner = w;
+    o->kind = PHYS_KIND_WEAPON;     /* the callbacks 0x6200d0 */
     o->post_collision = post_collision;
+    o->skip = skip_other;
+    o->receive_force = receive_force;
     o->friction_sub = 0.0025f;  /* 0x3b23d70a */
     o->friction_mul = 0.75f;
     uint32_t n = 0;
@@ -1510,4 +1554,6 @@ void weapons_register_commands(void)
     sl_register("chr_has_lsi", cmd_has_lsi, NULL);
     sl_register("ai2_barabbas_retrievegun", cmd_barabbas_retrievegun, NULL);
     sl_register_bool("wp_disable_fade", &no_fade);
+    sl_register_bool("wp_kickable", &kickable);
+    physctx_add_source((PhysSource){ ctx_count, ctx_get });
 }

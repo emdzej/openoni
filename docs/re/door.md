@@ -116,11 +116,12 @@ position plus R·(0,0,0), R·(1,0,0) and R·(0,1,0) (`MUrVector_PlaneFromPoints`
 
 `src/door.c` has the level's start, open, close, the side, the update and the six commands. The panels
 are drawn from their elements' geometry under the matrix above. They step with the physics update
-(before the characters); the doors update after them.
+(before the characters); the doors update after them. A panel blocks the characters (a box of type 3,
+`src/physctx.c`; an open swinging door stands across the room it opens into), but its blocked counter
+(+0x140) stays 0 as in the original (physics.md), so the stuck logic never starts.
 
 Not yet:
 
-- The panels' physics: characters walk through a moving panel, so the stuck logic never starts.
 - Keys, the door's events, the AI's sound, the pathfinding notice.
 - The sounds' place: they play as plain impulses.
 - `door_is_locked` and the lock lights.

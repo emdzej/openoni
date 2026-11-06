@@ -29,6 +29,22 @@ void physobj_matrix(PhysObject *o)
     memcpy(o->m + 9, o->pos, 3 * sizeof(float));
 }
 
+void physobj_ctx(PhysObject *o, PhysCtx *out)
+{
+    memset(out, 0, sizeof *out);
+    out->kind = o->kind;
+    out->type = 2;
+    out->flags = o->flags;
+    out->tree.s = (const float (*)[4])o->sphere;
+    out->owner = o->owner;
+    out->receive_force = o->receive_force;
+}
+
+void physobj_push(PhysObject *o, const float force[3])
+{
+    for (int k = 0; k < 3; k++) o->accel[k] += force[k];
+}
+
 /* PHrPhysics_Callback_FindEnvCollisions 0x43b870: the sphere moving by mv through the octree (the walls
    with the flags 0x44800 skipped, and 0x4000 with PHYS_ENV_SKIP); a quad of flags 0x2a0 (two-sided) a
    second hit with the plane turned. */
@@ -39,6 +55,7 @@ static unsigned find_env(const PhysObject *o, const void *env, const float mv[3]
     unsigned n = akev_collide_sphere(env, o->sphere, mv, skip, 0xff, hits), k = 0;
     for (unsigned i = 0; i < n && k + 2 <= HITS_MAX; i++) {
         PhysHit *h = &out[k++];
+        h->kind = 0;
         h->quad = hits[i].quad;
         memcpy(h->plane, hits[i].plane, sizeof h->plane);
         memcpy(h->point, hits[i].point, sizeof h->point);
@@ -50,6 +67,21 @@ static unsigned find_env(const PhysObject *o, const void *env, const float mv[3]
         }
     }
     return k;
+}
+
+/* PHiRemoveBackfacingCollisions 0x43a9a0: the hits kept: not those the move leaves, nor those whose
+   plane the sphere's centre is behind. */
+static unsigned keep_facing(PhysHit *h, unsigned n, const float mv[3], const float centre[3])
+{
+    for (unsigned i = 0; i < n;) {
+        const float *pl = h[i].plane;
+        float dv = mv[0] * pl[0] + mv[1] * pl[1] + mv[2] * pl[2];
+        float dp = (h[i].point[0] - centre[0]) * pl[0] + (h[i].point[1] - centre[1]) * pl[1] +
+                   (h[i].point[2] - centre[2]) * pl[2];
+        if (dv > 0.0f || dp > 0.0f) h[i] = h[--n];
+        else i++;
+    }
+    return n;
 }
 
 static int by_d2(const void *a, const void *b)
@@ -68,12 +100,21 @@ static void into(const float v[3], const float n[3], float out[3])
 
 static bool big(const float d[3]) { return EPS <= fabsf(d[0]) || EPS <= fabsf(d[1]) || EPS <= fabsf(d[2]); }
 
-/* PHiPhysics_FindCollisions 0x43a710: the hits nearest first; unless PHYS_NO_RESPOND the move slid along
+/* PHiPhysics_FindCollisions 0x43a710: the hits (but those 0x43a9a0 drops, unless flag 0x100) nearest first; unless PHYS_NO_RESPOND the move slid along
    them until one takes some of it (PHYS_TOUCHED, the hit). The post-collision callback sees them all. */
+/* The callbacks +4 and +8: the walls, then the other contexts. */
+static unsigned find_all(PhysObject *o, const void *env, const float mv[3], PhysHit *h, PhysCtx *me)
+{
+    physobj_ctx(o, me);
+    return physctx_find(me, mv, o->skip, h, find_env(o, env, mv, h), HITS_MAX);
+}
+
 static bool slide(PhysObject *o, const void *env, float mv[3])
 {
     static PhysHit h[HITS_MAX];
-    unsigned n = find_env(o, env, mv, h);
+    PhysCtx me;
+    unsigned n = find_all(o, env, mv, h, &me);
+    if (!(o->flags & 0x100u)) n = keep_facing(h, n, mv, o->sphere);
     for (unsigned i = 0; i < n; i++) {
         float x = o->sphere[0] - h[i].point[0], y = o->sphere[1] - h[i].point[1], z = o->sphere[2] - h[i].point[2];
         h[i].d2 = z * z + x * x + y * y;
@@ -87,7 +128,8 @@ static bool slide(PhysObject *o, const void *env, float mv[3])
             for (int k = 0; k < 3; k++) mv[k] -= d[k];
             if (big(d)) {
                 hit = true;
-                o->flags |= PHYS_TOUCHED;   /* (the callbacks +0x1c, +0x14 and the other's +0x20: none) */
+                o->flags |= PHYS_TOUCHED;   /* (the callbacks +0x1c and +0x14: none) */
+                if (h[i].kind == 1 && !(o->flags & 8u) && h[i].other.receive_force) h[i].other.receive_force(&h[i].other, &me, d);
                 break;
             }
         }
@@ -99,7 +141,8 @@ static bool slide(PhysObject *o, const void *env, float mv[3])
 static void respond(PhysObject *o, const void *env, float mv[3])
 {
     static PhysHit h[HITS_MAX];
-    unsigned n = find_env(o, env, mv, h);
+    PhysCtx me;
+    unsigned n = keep_facing(h, find_all(o, env, mv, h, &me), mv, o->sphere);
     for (unsigned i = 0; i < n; i++) {
         float d[3];
         into(mv, h[i].plane, d);

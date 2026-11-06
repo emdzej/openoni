@@ -111,8 +111,48 @@ void physics_take(Character *c, const float w[3])
 
 /* ---- the walls ---- */
 
-typedef struct { uint32_t quad; float plane[4]; float point[3]; float d2; } Hit;
+typedef PhysHit Hit;
 enum { HITS_MAX = 64 };
+
+/* ---- the context (the character's callbacks, 0x5ec918) ---- */
+
+/* The tree's links (0x4dc160): the root over the two middles, each over two leaves. */
+static const int8_t tree_links[7][2] = {
+    [SPH_ROOT] = { SPH_MID + 1, -1 },
+    [SPH_MID + 1] = { SPH_LEAF + 3, SPH_MID }, [SPH_MID] = { SPH_LEAF + 1, -1 },
+    [SPH_LEAF + 3] = { -1, SPH_LEAF + 2 }, [SPH_LEAF + 2] = { -1, -1 },
+    [SPH_LEAF + 1] = { -1, SPH_LEAF }, [SPH_LEAF] = { -1, -1 },
+};
+
+/* 0x4ecab0: pushed by another context's move: into the knockback, but not by a weapon. */
+static void receive_force(const PhysCtx *self, const PhysCtx *from, const float force[3])
+{
+    if (from->kind == PHYS_KIND_WEAPON) return;
+    Character *c = self->owner;
+    for (int k = 0; k < 3; k++) c->knockback[k] += force[k];
+}
+
+bool physics_ctx(Character *c, PhysCtx *out)
+{
+    if (!c->has_physics) return false;
+    memset(out, 0, sizeof *out);
+    out->kind = PHYS_KIND_CHARACTER;
+    /* active; chr_nocollision and the animated ones 0x44 (0x4ed080) */
+    out->flags = 2u | ((c->flags & 0x20000u) || c->envanim.oban ? 0x44u : 0u);
+    out->tree.s = (const float (*)[4])c->spheres;
+    out->tree.links = tree_links;
+    out->tree.root = SPH_ROOT;
+    out->owner = c;
+    out->receive_force = receive_force;
+    return true;
+}
+
+/* 0x4ecb40's rules: not the other characters nor the powerups, and not the weapons for the player. */
+static bool skip_other(const PhysCtx *mover, const PhysCtx *o)
+{
+    const Character *c = mover->owner;
+    return o->kind == PHYS_KIND_CHARACTER || (!c->ai && o->kind == PHYS_KIND_WEAPON) || o->kind == PHYS_KIND_POWERUP;
+}
 
 /* 0x43bfa0: a tree sphere moving by mv against the quad; down to the leaves. */
 static bool tree_node(const float s[7][4], const void *env, uint32_t quad, int node, const float mv[3])
@@ -149,6 +189,7 @@ static unsigned find_env(Character *c, const void *env, const float mv[3], Hit *
     for (unsigned i = 0; i < n && k + 2 <= HITS_MAX; i++) {
         if (!tree_hits(c, env, hits[i].quad, SPH_ROOT, mv)) continue;
         Hit *h = &out[k++];
+        h->kind = 0;
         h->quad = hits[i].quad;
         memcpy(h->plane, hits[i].plane, sizeof h->plane);
         memcpy(h->point, hits[i].point, sizeof h->point);
@@ -178,17 +219,45 @@ static void into(const float v[3], const float n[3], float out[3])
 
 static bool big(const float d[3]) { return EPS <= fabsf(d[0]) || EPS <= fabsf(d[1]) || EPS <= fabsf(d[2]); }
 
+/* PHiRemoveBackfacingCollisions 0x43a9a0: the hits kept: not those the move leaves (move·n > 0), nor
+   those whose plane the sphere's centre is behind (the point beyond it along n), so of a two-sided
+   quad's pair only the face toward the centre counts. */
+static unsigned keep_facing(Hit *h, unsigned n, const float mv[3], const float centre[3])
+{
+    for (unsigned i = 0; i < n;) {
+        const float *pl = h[i].plane;
+        float dv = mv[0] * pl[0] + mv[1] * pl[1] + mv[2] * pl[2];
+        float dp = (h[i].point[0] - centre[0]) * pl[0] + (h[i].point[1] - centre[1]) * pl[1] +
+                   (h[i].point[2] - centre[2]) * pl[2];
+        if (dv > 0.0f || dp > 0.0f) h[i] = h[--n];     /* the last moved into its place */
+        else i++;
+    }
+    return n;
+}
+
 /* 0x4ecb20, the character's "on a hit": no move down after a hit. */
 static void on_hit(float mv[3])
 {
     if (mv[1] < 0.0f) mv[1] = 0.0f;
 }
 
-/* 0x43a710: the collisions, nearest first, slid along until the first that takes something off. */
+/* The callbacks +4 and +8: the walls (0x4ebd70), then the other contexts (0x4ecb40, unless C+4 flag 2). */
+static unsigned find_all(Character *c, const void *env, const float mv[3], Hit *h, bool first, PhysCtx *me)
+{
+    unsigned n = find_env(c, env, mv, h);
+    physics_ctx(c, me);
+    if (first) me->flags |= PHYS_FIRST_PASS;
+    if (!(c->flags & 0x2u)) n = physctx_find(me, mv, skip_other, h, n, HITS_MAX);
+    return n;
+}
+
+/* 0x43a710: the collisions, nearest first, slid along until the first that takes something off (another
+   context's hit pushes it by that, its +0x20). */
 static bool slide(Character *c, const void *env, float mv[3])
 {
     Hit h[HITS_MAX];
-    unsigned n = find_env(c, env, mv, h);
+    PhysCtx me;
+    unsigned n = keep_facing(h, find_all(c, env, mv, h, true, &me), mv, c->spheres[SPH_ROOT]);
     for (unsigned i = 0; i < n; i++) {
         float x = c->phys_pos[0] - h[i].point[0], y = c->phys_pos[1] - h[i].point[1], z = c->phys_pos[2] - h[i].point[2];
         h[i].d2 = z * z + x * x + y * y;
@@ -200,6 +269,7 @@ static bool slide(Character *c, const void *env, float mv[3])
         for (int k = 0; k < 3; k++) mv[k] -= d[k];
         if (big(d)) {
             on_hit(mv);
+            if (h[i].kind == 1 && h[i].other.receive_force) h[i].other.receive_force(&h[i].other, &me, d);
             return true;
         }
     }
@@ -210,7 +280,8 @@ static bool slide(Character *c, const void *env, float mv[3])
 static void respond(Character *c, const void *env, float mv[3])
 {
     Hit h[HITS_MAX];
-    unsigned n = find_env(c, env, mv, h);
+    PhysCtx me;
+    unsigned n = keep_facing(h, find_all(c, env, mv, h, false, &me), mv, c->spheres[SPH_ROOT]);
     bool hit = false;
     for (unsigned i = 0; i < n; i++) {
         float d[3];

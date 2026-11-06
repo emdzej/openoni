@@ -24,7 +24,8 @@ array at `*0x5cb520`, its count first):
 
 **The collisions** (0x43a710, confirmed in outline): the callback table's +4 finds the environment's
 (`PHrPhysics_Callback_FindEnvCollisions` 0x43b870) for types 2 and 4, its +8 the other objects'; unless
-bit 0x100, 0x43a9a0 adds more. Each is 0x28 bytes: the kind (0 environment, 1 an object), the quad or
+bit 0x100, `PHiRemoveBackfacingCollisions` 0x43a9a0 drops those the move leaves (move·n > 0) and those whose plane the sphere's centre is
+behind ((point − centre)·n > 0), each replaced by the last (confirmed; the response always applies it). Each is 0x28 bytes: the kind (0 environment, 1 an object), the quad or
 object, the plane (a, b, c, d), the point. They are sorted by the squared distance from the object's
 position to the point (qsort, 0x43aa90). Unless bit 0x800, for each in turn: the part of the move into the
 plane (0x433da0: when move·n < 0, (move·n) n) is taken off the move; if that part reaches 1/1024
@@ -42,13 +43,10 @@ quad's plane (negated when the plane index has bit 31); two-sided quads (flags 0
 the plane times −1 (0x529804). The character's callback (0x4ebd70) does the same, unconditionally
 (confirmed).
 
-A consequence the port shows (observed, not yet checked against the original running): a character whose
-sphere straddles a two-sided quad can move only along it, the one plane or the other taking any part
-across, and one overlapping several of a box's quads can be held still. On level 11 the "dog" cutscene
-(`chr_nocollision`, the film DogKonokoSet and the console animations) leaves Konoko among the console's
-quads (21741..21765) this way; its last line, `playback DogKonokoEnd`, has no character and fails the
-command's parameters, so no film moves her out. `--param physlog=1` logs the player's blocked moves with
-the hits.
+Of a two-sided quad's pair 0x43a9a0 keeps only the plane facing the sphere's centre, so a sphere
+straddling one is pushed out of its front, not held. (Without that filter the port once held Konoko still
+among level 11's console quads after the "dog" cutscene.) `--param physlog=1` logs the player's moves the
+walls stop, with the hits.
 
 **`AKrCollision_Sphere`** 0x441cb0: the hits go to a list of up to 255 (0x48 bytes each: the distance as
 float and as an integer, the kind, the plane, the point, the quad), sorted by 0x441b40 (by distance; with a
@@ -186,7 +184,8 @@ its centre the position) moving by the move through `AKrCollision_Sphere` 0x441c
 each hit a record of kind 0 (the gunk quad, the plane, turned for a quad of negative index, the point),
 and a second record with the plane turned (x -1, 0x529804) for a quad of flags 0x2a0.
 `PHrPhysics_Callback_FindPhyCollisions` 0x43be20 tests every other active context not flagged 0x10 at
-+0x134 through the callback +0xc (skip) and `PHrPhysics_Single_PhyCollision` 0x43ba70 (not ported).
++0x134 through the callback +0xc (skip) and `PHrPhysics_Single_PhyCollision` 0x43ba70 (below, "The
+contexts' collisions").
 `PHrPhysics_Callback_Friction` 0x43bee0 (types other than 0, 1 and 3): the speed s = |v|; under 1/1024
 the velocity stops; else it is scaled to min(max(s - f1, 0), s f2) / s, f1 at +0x114, f2 at +0x118.
 With flag 0x1000 the friction is only taken on a tick with flag 0x2000 (something met).
@@ -253,5 +252,75 @@ and the powerup's place the position, the velocity's y no more than 2.25; with f
 1/144 (0x52b8d0) +0x28 counts up, else it is 0; at 120 the context goes and flag 1 with it. Without flag
 1 the fade counts +0x24 (to set +0x26 to 600) and +0x26 (to delete it) run, but nothing sets them.
 
-Not ported: the contexts' collisions with each other (FindPhyCollisions, 0x43a9a0, the receive-force
-callbacks): the characters neither stop nor push the weapons and powerups.
+## The contexts' collisions
+
+The port: `src/physctx.c`. Each owner (the level's objects, the weapons, the powerups, the characters)
+gives the search its contexts; the original walks its one array in the order they were made.
+
+The callback tables (confirmed): the character's 0x5ec918 (kind 1; +8 0x4ecb40, +0x14 0x4ecb20, +0x20
+0x4ecab0), an object's 0x5cb4e0 (kind 2; +8 0x43be20, no skip, +0x20 0x43b820: the acceleration for
+types 2 and 4 only), a weapon's 0x6200d0 (kind 5; +0xc 0x518a80, +0x20 0x518b80), a powerup's 0x620100
+(kind 7; +0xc 0x51c080, +0x20 0x51c140).
+
+- **The searches.** 0x43be20: every other context with flag 2, not 0x10, that the mover's +0xc doesn't
+  skip, through 0x43ba70. The character's 0x4ecb40 (unless C+4 flag 2): the same, skipping the
+  characters (kind 1), the powerups (7), and for the player (C+0x1e8 0) the weapons (5); the count of
+  its hits at A+0xb2.
+- **Skips.** 0x518a80: another weapon, when either weapon has flag 0x2000. 0x51c080: the characters.
+- **`PHrPhysics_Single_PhyCollision` 0x43ba70** (mover a, other b): nothing unless both have flag 2,
+  a is not b, b has no 0x10 and neither has 4. flag = b of type 3 (animated) and a on its first pass
+  (0x10000, set around the first slide of `OBiPhysics_Update`). a's flag 0x20 tests a point
+  (0x43a240; nothing sets it). b with 0x200 (a box): when (r_a + r_b)^2 >= |a - b|^2 of the roots,
+  `PHrCollision_Volume_SphereTree` 0x43a2d0 adds the box's hits. Else
+  `PHrCollision_SphereTree_SphereTree` 0x43a560 and, on a meeting, one record of kind 1 (+4 b): the
+  normal n the roots' a - b made unit (0x4340f0: under 2^-20 squared, the plane (0, 1, 0, -a.y) and the
+  point a's centre), the point ((b + r_b n) + (a - r_a n)) / 2, d = -point.n. `OBrNotifyPhysicsCollision`
+  follows for a kind 2 object of flag 0x80 (none in the data).
+- **0x43a560**: 0x43f680 (a moving by mv meets b: `CLrSphere_Line` 0x43c7a0 of a to a + mv with b's
+  radius alone, or either end strictly within r_a + r_b of b); then down a's children (+0x10, siblings
+  +0x14) until one meets, or with none down b's, or with neither the pair.
+- **`CLrSphere_Line` 0x43c7a0**: an end strictly within r, or t = (s - a).(b - a) / |b - a|^2 strictly
+  in (0, 1) and that point strictly within r.
+- **0x43a2d0** (box, mv, flag, the node): s = |mv|; with flag and |s| under 1/150 (the double
+  0x529da8) no face is skipped, else s 0 returns false and mv is made unit. Each of the six faces
+  through 0x43db00 (|n.c + d| <= r; then a corner strictly within r, the projection c - (n.c + d) n
+  inside the face (0x43e3b0 with the face's axis), or an edge (0-1, 1-2, 2-3, 3-0) within r by
+  `CLrSphere_Line`; the point that projection); a face skipped when the angle (0x433e00, acos of the
+  dot clamped to [-1, 1]) from mv is under pi/2 (0x529cd0); each other one a record (kind 1, +4 the
+  box's context, the face's plane, the point). Any: with children, down them until one returns true;
+  none does, the count goes back to the node's entry and false.
+- **The slide** (0x43a710): the first record that takes something off the move calls, for kind 1
+  and a mover without flag 8, the other's +0x20 with that part. The respond (0x43aac0) doesn't.
+- **Receiving.** The character's 0x4ecab0: into its knockback (A+0xb8), unless pushed by a weapon.
+  A weapon's 0x518b80: by a character only when unowned and flagged 2 (it has landed); the player
+  (C+0x1e8 0) only with `wp_kickable` (0x620131, off); an AI (2) in combat (C+0x1f8 5) whose maneuver
+  (+0x18c) is the gun's (3) and whose gun (+0x1d8) this is, never; else `PHrPhysics_Callback_
+  ReceiveForce` 0x43beb0 (the acceleration +0x11c). A powerup's 0x51c140: anything but a character.
+- **After.** The weapon's post-collision 0x518930 marks it 2 for any record but a character's, the
+  fall's impact only for kind 0; the powerup's 0x51c0a0 reads kind 0 only.
+
+So the player stops at the level's boxes and a dropped weapon, falling, stops on a character. The AI's
+characters run into the weapons on the ground and push them, but not the one they go for. Weapons
+don't push the characters (0x4ecab0 refuses them), and nothing pushes a powerup but a weapon.
+
+### An object's context
+
+0x439910 (confirmed): the object's flags +0x12 the setup's (OBOA +0xc); the context's: 0x1000 a box
+(0x200), else 0x400 no collisions (4); 0x800 no gravity (0x40); type the setup's (+0x18), or 3 with an
+animation. The box (0x174 bytes at +0x64): the geometries' PNTA bounds (+0xc..+0x20, the first's then
+the min and max), but a geometry of exactly one face normal sets the low x to -(n.p) of that normal and
+its first point (0x41f0e0 makes a slab of it in the corners, which 0x41efc0 then overwrites with the
+bounds' corners: x slowest, then y, then z). The sphere: centre the setup's position; radius from
+-1e9 (0x52963c), for each point and coordinate, when |p - pos| beats it, |p| (the point's own
+coordinate); at least 1. 0x41f050: the faces (the exe's 0x529660, four corner indices each) and their
+normals (0x433bd0: (b - a) x (c - a) unit, (1, 0, 0) for none). `PHrPhysics_MaintainMatrix` 0x43b410 for
+a box: the corners through the matrix, each face's normal through its 3x3 part made unit (0x433050),
+d = -n.(its first corner), and its axis (0x43e3a0). The sphere stays at the position.
+`OBrShow` 0x438d20: hiding sets 4; showing clears it unless the setup has 0x400.
+
+A door's panels get the same setup while they move (0x4c26c0: the element's flags set to 0x1200,
+then the object's +0x12 or 0x8000; `src/door.c`): boxes of type 3, placed each tick by their
+animation's frame. `OBrNotifyPhysicsCollision` 0x439f10 would set an animated context's count +0x140
+to 5 (`OBiPhysics_Update` then pauses its animation, +0x134 flag 0x10, while it counts down, the
+doors' stuck logic reading it), but it runs only for an object of flag 0x80 (+0x12), which neither
+the panels nor the level's objects have: the count stays 0.
