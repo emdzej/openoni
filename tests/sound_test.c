@@ -109,6 +109,7 @@ int main(void)
     SoundStats st = sound_stats();
     printf("databases: groups=%u ambients=%u impulses=%u permutations=%u unresolved=%u\n", st.groups, st.ambients,
            st.impulses, st.permutations, st.unresolved);
+    printf("sound objects: spheres=%u volumes=%u unresolved=%u\n", st.spheres, st.volumes, st.objects_unresolved);
 
     /* The level's folder, from its ONLV (as app.c finds it). */
     TmFile *f = tm_file_at(tm_file_slots() - 1);
@@ -160,6 +161,24 @@ int main(void)
        dialog's 433 ticks; "pause" waits for the second. */
     if (nmarks != 3 || marks[0] != 1 || marks[1] < 400 || marks[2] <= marks[1] || rms < 1e-4) {
         fprintf(stderr, "sound_test: the dialogs didn't play as they should\n");
+        failed++;
+    }
+    /* The level's sound objects: in one of its volumes (indus_light1's) and near a sphere (Truck1's) their
+       ambients play; far from every one none do, once the volume has faded out. */
+    static const float spots[2][3] = { { -344.0f, 71.7f, -640.3f }, { 387.6f, 18.7f, -79.0f } }, away[3] = { 0, -10000, 0 };
+    static const float dir[3] = { 1, 0, 0 };
+    uint32_t in[2];
+    for (int k = 0; k < 2; k++) {
+        sound_set_listener(spots[k], dir);
+        for (int i = 0; i < 130; i++) sound_update(), sound_mix(buf, PER_TICK);
+        in[k] = sound_stats().objects_playing;
+    }
+    sound_set_listener(away, dir);
+    for (int i = 0; i < 200; i++) sound_update(), sound_mix(buf, PER_TICK);
+    uint32_t out = sound_stats().objects_playing;
+    printf("sound objects playing: in a volume %u, near a sphere %u, away %u\n", in[0], in[1], out);
+    if (!in[0] || !in[1] || out) {
+        fprintf(stderr, "sound_test: the sound objects didn't play as they should\n");
         failed++;
     }
     sound_terminate();

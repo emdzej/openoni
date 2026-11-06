@@ -1071,7 +1071,11 @@
 004c9440	OBJiPatrolPath_Read	OBJ	low	the Patrol Path type's read method: name, count, id, then the waypoints, their size by the type
 004ca0d0	OBJrSound_DrawInitialize	OBJ	med	name from the Intel Mac build (neighbours:0.80)
 004ca3a0	OBJrSound_GetAmbient	OBJ	med	name from the Intel Mac build (neighbours:1.00)
+004ca3c0	OBJrSound_GetMinMaxDistances	OBJ	med	the Intel Mac build's name: the sphere's radii (read)
+004ca3f0	OBJrSound_GetType	OBJ	med	the Intel Mac build's name: SPHR or VLME (read)
+004ca400	OBJrSound_GetVolume	OBJ	med	the Intel Mac build's name (read)
 004ca410	OBJrSound_Initialize	OBJ	med	name from the Intel Mac build (strings:3)
+004ca7d0	OBJiSound_CalcBoundingVolume	OBJ	med	the Intel Mac build's name: the volume's box (read)
 004ca900	OSiScriptAmbient_Start	OS	med	name from the Intel Mac build (neighbours:1.00)
 004cada0	OBJrSound_PointIn	OBJ	med	name from the Intel Mac build (neighbours:1.00)
 004cae40	OBJrTrigger_Reset	OBJ	med	name from the Intel Mac build (neighbours:1.00)
@@ -1460,8 +1464,10 @@
 00512700	OSrMusic_Halt	OS	med	name from the Intel Mac build (neighbours:1.00)
 00512730	OSrMusic_SetVolume	OS	med	name from the Intel Mac build (neighbours:1.00)
 00512a10	OSrSA_ListBrokenSounds	OS	med	name from the Intel Mac build (strings:1)
+00512b30	OSiPlayList_AddSound	OS	low	made up: a playlist entry for a Sound object
 00512cb0	OSiScriptCommands_Initialize	OS	med	name from the Intel Mac build (strings:1)
 00514320	OSrListBrokenSounds	OS	med	name from the Intel Mac build (strings:1)
+005146d0	OSiPlayList_Rebuild	OS	low	made up: the playing entries stop, the list is made again (a script command)
 005147b0	OSiBinaryData_ProcHandler	OS	med	name from the Intel Mac build (neighbours:0.83)
 00514970	OSrLevel_Load	OS	med	name from the Intel Mac build (neighbours:1.00)
 00514d20	OSrUpdateImpulsePointers	OS	med	name from the Intel Mac build (neighbours:0.75)
@@ -1469,6 +1475,8 @@
 00514e60	OSrSetScriptOnly	OS	med	name from the Intel Mac build (neighbours:1.00)
 00514f20	OSrUpdate	OS	low	the listener (0x61fa18 and the sound system's), the placed ambients updated, the flybys, the sound objects
 00515120	OSiPlayList_Update_Spheres	OS	med	name from the Intel Mac build (neighbours:1.00)
+005152c0	OSiPlayList_EaseVolume	OS	low	made up: the sphere's loudness eased 0.05
+00515480	OSiPlayList_Update_Volumes	OS	low	made up, after OSiPlayList_Update_Spheres
 00515a70	OSrVariant_SoundAnimation_Add	OS	med	name from the Intel Mac build (neighbours:1.00)
 00515c90	OSrVariantList_Initialize	OS	med	name from the Intel Mac build (strings:1)
 00516670	OSiVariant_Impulse_Get	OS	med	name from the Intel Mac build (strings:1)

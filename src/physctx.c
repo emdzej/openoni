@@ -282,6 +282,39 @@ void physctx_box_make(PhysBox *box, const void *const *geometries, int n, const 
         tri_normal(box->local[box->faces[f][0]], box->local[box->faces[f][1]], box->local[box->faces[f][2]], box->normals[f]);
 }
 
+void physctx_box_bounds(PhysBox *box, const float b[6], const float pos[3])
+{
+    memset(box, 0, sizeof *box);
+    for (int i = 0; i < 8; i++) {      /* 0x41efc0, then moved (0x433b40) */
+        box->local[i][0] = (i & 4) ? b[3] : b[0];
+        box->local[i][1] = (i & 2) ? b[4] : b[1];
+        box->local[i][2] = (i & 1) ? b[5] : b[2];
+        for (int k = 0; k < 3; k++) box->corners[i][k] = box->local[i][k] + pos[k];
+    }
+    const uint8_t *ft = exe_data(0x529660, sizeof box->faces);
+    for (int f = 0; f < 6; f++)
+        for (int k = 0; k < 4; k++) box->faces[f][k] = ft ? (int32_t)rd32(ft + 16 * f + 4 * k) & 7 : 0;
+    for (int f = 0; f < 6; f++) {
+        tri_normal(box->corners[box->faces[f][0]], box->corners[box->faces[f][1]], box->corners[box->faces[f][2]], box->normals[f]);
+        float *pl = box->planes[f];
+        memcpy(pl, box->normals[f], 3 * sizeof *pl);
+        const float *q = box->corners[box->faces[f][0]];
+        pl[3] = -(pl[0] * q[0] + pl[1] * q[1] + pl[2] * q[2]);
+        float c[4][3];
+        for (int k = 0; k < 4; k++) memcpy(c[k], box->corners[box->faces[f][k]], sizeof c[k]);
+        box->axis[f] = (uint16_t)akev_corners_axis(c);
+    }
+}
+
+bool physctx_box_contains(const PhysBox *box, const float p[3])
+{
+    for (int f = 0; f < 6; f++) {
+        const float *pl = box->planes[f];
+        if (p[1] * pl[1] + pl[0] * p[0] + pl[2] * p[2] + pl[3] > 0.0f) return false;
+    }
+    return true;
+}
+
 void physctx_box_place(PhysBox *box, const float m[12])
 {
     for (int i = 0; i < 8; i++)

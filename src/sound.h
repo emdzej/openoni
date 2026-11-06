@@ -84,8 +84,12 @@ void sound_ambient_stop(uint32_t id);
 void sound_event_play(int index);
 float sound_volume(void);       /* SS2rVolume_Get 0x483df0: the overall volume's target */
 
-/* What the databases hold, for tests. */
-typedef struct { uint32_t groups, ambients, impulses, permutations, unresolved; } SoundStats;
+/* What the databases hold, for tests; and the level's sound objects (spheres, volumes, those whose
+   ambient isn't there, and those playing now). */
+typedef struct {
+    uint32_t groups, ambients, impulses, permutations, unresolved;
+    uint32_t spheres, volumes, objects_unresolved, objects_playing;
+} SoundStats;
 SoundStats sound_stats(void);
 bool sound_has_ambient(const char *name);           /* the scripts' lookup (case-insensitive) */
 bool sound_has_impulse(const char *name);

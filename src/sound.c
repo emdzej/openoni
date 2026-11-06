@@ -8,6 +8,8 @@
 #include "sound.h"
 #include "akev.h"
 #include "akev_collide.h"
+#include "objc.h"
+#include "physctx.h"
 #include "persist.h"
 #include "text.h"
 #include "ui.h"
@@ -1350,6 +1352,195 @@ static void os_update_all(void)
         if (os_amb[i].used && os_amb[i].has_pos) os_update(&os_amb[i], NULL);
 }
 
+/* ---- the level's sound objects (OBJ type "Sound", docs/formats/objc.md "SNDG"): the playlist
+   (0x620078, entries of 0x3c bytes made by 0x512b30 at the end of OSrLevel_Load 0x514970). A sphere plays
+   its ambient at its place while the listener is within three times its max radius; a volume plays it
+   everywhere while the listener is inside its box, fading in and out. ---- */
+
+enum { SHAPE_SPHERE = 0x53504852, SHAPE_VOLUME = 0x564c4d45 };     /* 'SPHR', 'VLME' */
+typedef struct {
+    char name[NAME + 1];        /* the object's +0x30 */
+    const Ambient *amb;         /* +0x50 (OBJrSound_GetAmbient 0x4ca3a0: looked up until found) */
+    uint32_t shape;             /* +0x2c */
+    float pos[3];               /* +0x0c */
+    float min, max;             /* +0x5c, +0x60: the sphere's */
+    float base;                 /* +0x58 (0x4ca400) */
+    PhysBox box;                /* +0x74: the volume's */
+    /* the entry */
+    uint32_t id;                /* +0x04: the sound system's ambient, UINT32_MAX none */
+    float volume;               /* +0x08 */
+    float loud;                 /* +0x0c: the sphere's loudness, eased */
+    uint32_t state;             /* +0x14: the volume's: 0 off, 1 on, 2 fading in, 4 fading out */
+    uint32_t time;              /* +0x18: the fade's start (the sixtieths clock) */
+    OsAmbient cache;            /* +0x1c: the walls' (AKrCollision_InitializeSpatialCache) */
+} SoundObj;
+
+static SoundObj *sobjs;
+static uint32_t nsobjs;
+
+static bool sobj_add(const ObjcObject *o, void *user)       /* 0x512b30 */
+{
+    (void)user;
+    if (o->size < 0x2c) return true;
+    SoundObj *n = realloc(sobjs, (nsobjs + 1) * sizeof *sobjs);
+    if (!n) return false;
+    sobjs = n;
+    SoundObj *e = &sobjs[nsobjs];
+    memset(e, 0, sizeof *e);
+    memcpy(e->name, o->data, NAME);
+    e->shape = rd32(o->data + 0x20);
+    memcpy(e->pos, o->pos, sizeof e->pos);
+    uint32_t tail = 0x24;
+    if (e->shape == SHAPE_SPHERE) {
+        e->min = rdf(o->data + 0x24), e->max = rdf(o->data + 0x28);
+        tail = 0x2c;
+    } else if (e->shape == SHAPE_VOLUME && o->size >= 0x3c) {
+        float b[6];
+        for (int k = 0; k < 6; k++) b[k] = rdf(o->data + 0x24 + 4 * k);
+        physctx_box_bounds(&e->box, b, e->pos);     /* OBJiSound_CalcBoundingVolume 0x4ca7d0 */
+        tail = 0x3c;
+    }
+    e->base = o->size >= tail + 8 ? rdf(o->data + tail + 4) : 1.0f;
+    e->id = UINT32_MAX;
+    e->cache.phase = nsobjs % 12;
+    e->cache.cached = 1.0f;
+    nsobjs++;
+    return true;
+}
+
+static const Ambient *sobj_ambient(SoundObj *e)
+{
+    if (!e->amb) e->amb = ambient_named(e->name);
+    return e->amb;
+}
+
+/* OBJrSound_PointIn 0x4cada0 */
+static bool sobj_point_in(const SoundObj *e, const float p[3])
+{
+    if (e->shape == SHAPE_SPHERE) {
+        float dx = p[0] - e->pos[0], dy = p[1] - e->pos[1], dz = p[2] - e->pos[2];
+        return (dx * dx + dy * dy + dz * dz) * 0.11111112f <= e->max * e->max;     /* 0x52b134 */
+    }
+    return e->shape == SHAPE_VOLUME && physctx_box_contains(&e->box, p);
+}
+
+/* 0x5152c0: the loudness steps toward the walls' by 0.05 at most, held to 0..1; the volume is the
+   object's times it. */
+static void sobj_ease(SoundObj *e, float target)
+{
+    float d = e->loud - target;
+    if (d > 0.0f) d = d < 0.05f ? d : 0.05f;        /* 0x52a02c */
+    else if (d < 0.0f) d = d < -0.05f ? -0.05f : d;   /* 0x52a31c */
+    float t = e->loud - d;
+    e->loud = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
+    e->volume = e->base * e->loud;
+}
+
+/* OSiPlayList_Update_Spheres 0x515120 */
+static void sobj_sphere(SoundObj *e)
+{
+    if (script_only) return;
+    if (!sobj_point_in(e, listener)) {
+        if (e->id != UINT32_MAX) ambient_stop(e->id), e->id = UINT32_MAX;
+        return;
+    }
+    Ambient *amb = (Ambient *)sobj_ambient(e);
+    if (!amb) return;
+    amb->priority = 0;
+    float vol;
+    if (e->id == UINT32_MAX) {
+        if (!occlusion(e->pos, e->max, amb->min_occlusion, &vol, true, &e->cache)) return;
+        sobj_ease(e, vol);
+        float zero = 0.0f;
+        e->id = ambient_start(amb, e->pos, e->min, e->max, &zero);
+        ambient_set_volume(e->id, e->volume, 0.25f);
+        return;
+    }
+    if (!ambient_alive(e->id)) {
+        e->id = UINT32_MAX;
+        return;
+    }
+    if (!occlusion(e->pos, e->max, amb->min_occlusion, &vol, true, &e->cache)) return;
+    sobj_ease(e, vol);
+    ambient_set_volume(e->id, e->volume, 0.0f);
+}
+
+/* 0x515480: a volume. Entering one starts its ambient (no place), fading in over 120 sixtieths
+   (1 - (t - 120)^2 / 14400), or takes it over from another volume playing the same ambient, its fade
+   carried on from that one's volume; leaving fades it out (1 - t^2 / 14400) and halts it. */
+static void sobj_volume(SoundObj *e)
+{
+    uint32_t t0 = now;
+    double t = (double)(uint32_t)(t0 - e->time);
+    if (script_only) return;
+    if (e->state == 0) {
+        if (!sobj_point_in(e, listener)) return;
+        Ambient *amb = (Ambient *)sobj_ambient(e);
+        if (!amb) return;
+        for (uint32_t i = 0; i < nsobjs; i++) {
+            SoundObj *o = &sobjs[i];
+            if (o->shape != SHAPE_VOLUME || o->id == UINT32_MAX || sobj_ambient(o) != amb) continue;
+            e->state = 2;
+            e->id = o->id;
+            e->volume = o->volume;
+            e->time = (uint32_t)fround(sqrt((double)(1.0f - o->volume)) * 120.0 - 120.0) + t0;   /* 0x4264e0 */
+            o->id = UINT32_MAX, o->state = 0, o->volume = 0.0f;
+            return;
+        }
+        amb->priority = 0;
+        e->state = 2;
+        e->volume = 0.0f;
+        e->id = ambient_start(amb, NULL, 0, 0, NULL);       /* 0x4823a0 */
+        e->time = t0;
+        return;
+    }
+    if (e->state == 2) {
+        if (t > 120.0) t = 120.0;      /* 0x52adcc */
+        double v = 1.0 - (t - 120.0) * (t - 120.0) * (double)6.9444446e-05f;      /* 0x52b88c */
+        e->volume = (float)v;
+        if (v >= 1.0) e->volume = 1.0f, e->state = 1;
+    } else if (e->state == 4) {
+        if (t > 120.0) t = 120.0;
+        double v = 1.0 - t * t * (double)6.9444446e-05f;
+        e->volume = (float)v;
+        if (v <= 0.0) {
+            e->volume = 0.0f, e->state = 0;
+            ambient_halt(e->id);
+            e->id = UINT32_MAX;
+        }
+    }
+    if (!ambient_alive(e->id)) {
+        e->volume = 0.0f, e->state = 0, e->id = UINT32_MAX;
+        return;
+    }
+    ambient_set_volume(e->id, e->base * e->volume, 0.0f);
+    if (!e->state) return;
+    if (!sobj_point_in(e, listener)) {
+        if (e->state != 4) e->time = t0;
+        e->state = 4;
+    } else if (e->state == 4)
+        e->state = 2;
+}
+
+static void sobj_update_all(void)
+{
+    for (uint32_t i = 0; i < nsobjs; i++) {
+        if (sobjs[i].shape == SHAPE_SPHERE) sobj_sphere(&sobjs[i]);
+        else if (sobjs[i].shape == SHAPE_VOLUME) sobj_volume(&sobjs[i]);
+    }
+}
+
+/* The playlist's end (OSrLevel_Unload 0x514d60, and 0x5146d0 before it makes the list again): the
+   playing ones stop. */
+static void sobj_clear(void)
+{
+    for (uint32_t i = 0; i < nsobjs; i++)
+        if (sobjs[i].id != UINT32_MAX && (sobjs[i].shape == SHAPE_SPHERE || sobjs[i].shape == SHAPE_VOLUME)) ambient_stop(sobjs[i].id);
+    free(sobjs);
+    sobjs = NULL;
+    nsobjs = 0;
+}
+
 /* 0x514160 (the Mac build's OSiDialog_Start): returns true while another dialog plays and the call doesn't
    interrupt; then nothing starts. The dialog is an ambient at priority 3 at full volume. It counts as
    playing until its ambient ends or, sooner, the length of base track 1's first resolved sound (2 s if the
@@ -1620,6 +1811,8 @@ bool sound_level_load(int level)
     resolve_sounds();
     if (level == 0) resolve_pointers();
     loaded = true;
+    sobj_clear();
+    objc_each("Sound", sobj_add, NULL);
     for (int i = 0; i < 7; i++) if (!(stereo[i].flags & CH_PLAYING)) ds_volume(&stereo[i], 0);    /* 0x483540 */
     for (int i = 0; i < CHANNELS - 7; i++) if (!(mono[i].flags & CH_PLAYING)) ds_volume(&mono[i], 0);
     return ambients.n || groups.n;
@@ -1627,6 +1820,7 @@ bool sound_level_load(int level)
 
 void sound_level_unload(void)
 {
+    sobj_clear();
     memset(os_amb, 0, sizeof os_amb);
     os_env = NULL;
     stop_all();
@@ -1674,12 +1868,13 @@ static void ss2_update(void)
     for (int i = 0; i < PLAYING_MAX; i++) if (playing[i].state != PA_FREE) machine(&playing[i]);
 }
 
-/* OSrUpdate 0x514f20: the placed ambients again (for the listener sound_set_listener was given), then
-   the scripts' part: slots of ended ambients are freed, the dialog ends. Still to come with the level's
-   sound objects: the sound spheres and volumes (0x620078) and the projectiles' flybys (0x62009c). */
+/* OSrUpdate 0x514f20: the placed ambients again (for the listener sound_set_listener was given), the
+   level's sound spheres and volumes, then the scripts' part: slots of ended ambients are freed, the
+   dialog ends. Still to come: the projectiles' flybys (0x62009c). */
 void sound_update(void)
 {
     os_update_all();
+    sobj_update_all();
     ticks++;
     now++;
     for (int i = 0; i < 16; i++) if (slots[i].id != UINT32_MAX && !ambient_alive(slots[i].id)) slots[i].id = UINT32_MAX;
@@ -1694,7 +1889,13 @@ void sound_update(void)
 
 SoundStats sound_stats(void)
 {
-    SoundStats s = { groups.n, ambients.n, impulses.n, 0, 0 };
+    SoundStats s = { groups.n, ambients.n, impulses.n, 0, 0, 0, 0, 0, 0 };
+    for (uint32_t i = 0; i < nsobjs; i++) {
+        s.spheres += sobjs[i].shape == SHAPE_SPHERE;
+        s.volumes += sobjs[i].shape == SHAPE_VOLUME;
+        s.objects_unresolved += !ambient_named(sobjs[i].name);
+        s.objects_playing += sobjs[i].id != UINT32_MAX && ambient_alive(sobjs[i].id);
+    }
     for (uint32_t i = 0; i < groups.n; i++) {
         const Group *g = groups.v[i];
         s.permutations += g->nperms;

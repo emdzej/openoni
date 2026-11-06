@@ -184,15 +184,16 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   round their corners; they fade, and the oldest give way to new ones as the original's do.
 - **Sound** from the game's own sound groups: the music, the dialog and speech, the impacts, and the
   particles' sounds (the gunshots, the rockets' roar, the level's hissing steam and sparks), placed
-  where they play and following the particles that carry them. They are heard from Konoko's ears
-  (from the camera when it isn't following her), muffled by the walls between, and not at all from
-  three times their reach.
+  where they play and following the particles that carry them, and the level's own sound places: the
+  hums and room tones around the machines and lights, and the rooms' ambiences fading in as she
+  enters and out as she leaves. They are heard from Konoko's ears (from the camera when it isn't
+  following her), muffled by the walls between, and not at all from three times their reach.
 - **The movies**: the intro before the main menu and the outro at the game's end, decoded from the
   game's own Bink files the way RAD's player shipped with the game does, with their sound.
 
 ## Not yet
 
-- The level's sound spheres and volumes, and the bullets' flybys.
+- The bullets' flybys.
 - Of the graphics quality: the environment's visibility rays, the directional lights, the reflection
   maps and the corpses (none of which the port's draw has yet).
 

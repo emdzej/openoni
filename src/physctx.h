@@ -80,3 +80,8 @@ unsigned physctx_find(const PhysCtx *mover, const float mv[3], bool (*skip)(cons
 void physctx_box_make(PhysBox *box, const void *const *geometries, int n, const float pos[3], float *radius);
 /* PHrPhysics_MaintainMatrix 0x43b410's box part: the corners and the planes through the matrix. */
 void physctx_box_place(PhysBox *box, const float m[12]);
+/* A box from its bounds (min x, y, z, max x, y, z) moved to pos without turning, its normals made from
+   the placed corners (a sound volume's, 0x4ca7d0). */
+void physctx_box_bounds(PhysBox *box, const float b[6], const float pos[3]);
+/* 0x43f910: p is in front of none of the box's planes. */
+bool physctx_box_contains(const PhysBox *box, const float p[3]);

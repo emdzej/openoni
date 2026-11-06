@@ -292,6 +292,36 @@ counts the delay down first, then the ticks, a tick only once the aim is done (A
 while it lasts the movement's look (0x4aa250) takes the glance's kind and place instead of its own
 (C+0x1584, C+0x1588).
 
+## SNDG
+
+A `Sound` object (`OBJrSound_Initialize` 0x4ca410 registers the type, its OSD 0x1bc bytes; the reader is
+`OBJiSound_Read`, read from the Intel Mac build): an ambient sound played where the listener is.
+
+| Offset (in the type's data) | What |
+|---|---|
+| 0x00 | The ambient's name (32 bytes; `OSrAmbient_GetByName`, kept at OSD +0x24 on first use, 0x4ca3a0) |
+| 0x20 | The shape (from version 0x1e; older ones are spheres with the radii here): `SPHR` or `VLME` (a big-endian tag read as a u32) |
+| 0x24 | `SPHR`: the min and max radius (2 floats). `VLME`: a box, min x, y, z then max x, y, z (6 floats) |
+| then | From version 0x21: two floats, the pitch (OSD +0x28, `OBJrSound_GetPitch`; not used by the playing code) and the volume (OSD +0x2c, `OBJrSound_GetVolume` 0x4ca400); 1 before |
+
+The volume's box is placed at the object's position (no rotation) with the same faces and planes as
+an object's physics box (`OBJiSound_CalcBoundingVolume`: the 0x174 bytes at OSD +0x48, as
+`physctx_box_make`'s). `OBJrSound_PointIn` 0x4cada0: a sphere holds the listener out to three times its
+max radius (`d² / 9 <= max²`); a volume when no plane of its box has the point in front (0x43f910).
+
+`OSrUpdate` 0x514f20, with flag 0x620078 set: for each sound object, `SPHR` 0x515120, `VLME` 0x515480.
+The sphere: outside, its ambient stops; inside, started (at the volume 0.25, `0x482000`) or kept,
+its loudness the walls' (0x511a00) and its distance's (0x5152c0). The volume: a state of 0 none, 1
+on, 2 fading in, 4 fading out, over 120 ticks of the frame clock (`1 − (t − 120)² / 14400` in,
+`1 − t² / 14400` out); entering one takes over the same ambient from a volume already playing it
+(`EMLV` entries of the playlist), its fade carried on: the start set back by `120 √(1 − v) − 120`
+for the other's volume v. The volume's clock is the sixtieths (`UUrMachineTime_Sixtieths`), the
+sphere's walls cached every 12 ticks at the entry's index mod 12. Every level object is `0x44` bytes of
+data, a sphere's tail padded. The playlist is made at the end of `OSrLevel_Load` 0x514970 (0x512b30 for
+each object, in the type's list order) and dropped, its playing ones stopped (0x4823c0), at the level's
+end (0x514d60); a script command (0x5146d0) makes it again. Ported in `src/sound.c` (`sobj_*`); the box
+by `physctx_box_bounds` and `physctx_box_contains`.
+
 ## TRGV
 
 The trigger volume type's data, read by 0x4cced0 (registered by `OBJrTriggerVolume_Initialize` 0x4cc960).
