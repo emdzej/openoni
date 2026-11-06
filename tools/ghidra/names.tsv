@@ -629,7 +629,10 @@
 004879f0	MAiImpacts_Traverse	MA	med	name from the Intel Mac build (strings:1)
 00487aa0	MArMaterials_PreProcess	MA	med	name from the Intel Mac build (strings:1)
 00487f50	MAiMaterials_Traverse	MA	med	name from the Intel Mac build (strings:2)
+00488080	ONiBink_PlayMovie	ON	low	read: the BinkBuffer player (open for the size, close, open, BinkBuffer centred, Wait/DoFrame/CopyToBuffer/blit until the last frame); name made up
+004883e0	ONiBink_BlitBuffer	ON	low	read: BinkGetRects then BinkBufferBlit; name made up
 00488410	gl_texture_list_add	-	med	name from the Intel Mac build (neighbours:1.00)
+00488ff0	ONiBink_PlayMovie_InGame	ON	low	read: the player in the 3D display: BinkBuffer under an S3 driver, else GL textures; a key or button ends it; name made up
 00489d20	AI2rTerminate	AI2	med	name from the Intel Mac build (neighbours:1.00)
 00489d40	AI2rUpdateAI	AI2	med	name from the Intel Mac build (strings:1)
 0048a3a0	AI2iEnumCallback_SpawnPlayer	AI2	med	name from the Intel Mac build (neighbours:1.00)
@@ -1121,6 +1124,8 @@
 004d5150	AMrRayToCharacter	AM	med	name from the Intel Mac build (neighbours:1.00)
 004d5280	PHrCollision_Point	PH	med	name from the Intel Mac build (neighbours:1.00)
 004d52c0	AMrRayToObject	AM	med	name from the Intel Mac build (neighbours:1.00)
+004d5580	ONiPlayMovie	ON	low	read: the movie by name (the game data folder) through 0x488080; name made up
+004d56f0	ONiPlayMovie_InGame	ON	low	read: the movie by name through 0x488ff0; name made up
 004d59a0	CArEnableJello	CA	med	name from the Intel Mac build (neighbours:1.00)
 004d59b0	CArBuildUpVector	CA	med	name from the Intel Mac build (neighbours:1.00)
 004d5a30	CArInitialize	CA	med	name from the Intel Mac build (strings:6)

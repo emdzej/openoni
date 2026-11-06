@@ -1074,12 +1074,53 @@ static void mix_channel(Chan *c, float *out, unsigned frames)
     }
 }
 
+/* ---- a movie's sound: Bink's own DirectSound buffer (BinkOpenDirectSound), beside the game's channels,
+   fed as the frames decode ---- */
+static struct {
+    int16_t ring[1 << 17];      /* interleaved */
+    uint32_t head, tail;        /* samples (all channels) */
+    unsigned channels;
+    float gain;
+    bool on;
+} movie;
+
+void sound_stream_start(unsigned channels, float gain)
+{
+    movie.head = movie.tail = 0;
+    movie.channels = channels ? channels : 1;
+    movie.gain = gain;
+    movie.on = true;
+}
+
+void sound_stream_push(const int16_t *s, uint32_t count)
+{
+    const uint32_t mask = (uint32_t)(sizeof movie.ring / sizeof movie.ring[0]) - 1;
+    for (uint32_t i = 0; i < count && movie.head - movie.tail <= mask; i++) movie.ring[movie.head++ & mask] = s[i];
+}
+
+void sound_stream_stop(void) { movie.on = false; }
+
+static void mix_movie(float *out, unsigned frames)
+{
+    const uint32_t mask = (uint32_t)(sizeof movie.ring / sizeof movie.ring[0]) - 1;
+    float k = movie.gain / 32768.0f;
+    for (unsigned f = 0; f < frames && movie.head - movie.tail >= movie.channels; f++) {
+        float l = movie.ring[movie.tail++ & mask] * k, r = l;
+        if (movie.channels > 1) {
+            r = movie.ring[movie.tail++ & mask] * k;
+            for (unsigned c = 2; c < movie.channels; c++) movie.tail++;
+        }
+        out[2 * f] += l, out[2 * f + 1] += r;
+    }
+}
+
 void sound_mix(float *out, unsigned frames)
 {
     memset(out, 0, (size_t)frames * 2 * sizeof *out);
     if (!enabled) return;
     for (int i = 0; i < 7; i++) mix_channel(&stereo[i], out, frames);
     for (int i = 0; i < CHANNELS - 7; i++) mix_channel(&mono[i], out, frames);
+    if (movie.on) mix_movie(out, frames);
     for (unsigned i = 0; i < frames * 2; i++) out[i] = out[i] > 1.0f ? 1.0f : out[i] < -1.0f ? -1.0f : out[i];
 }
 

@@ -70,7 +70,7 @@ outro on the crane, and level 18 begins.
 Level 18, the compound, plays through too: the consoles' rounds against the zombie pit, the base's
 cutscene, Griffin, and level 19 begins. Level 19, the final level, plays through to the end: the
 parking lot and the truck, the LSI, the dish that lifts Konoko to the arena, Griffin's squad and Muro,
-whose death ends the game (the game won is kept in persist.dat).
+whose death ends the game (the game won is kept in persist.dat), and the outro movie plays.
 
 It can be tried in the browser on the <a href="/play/" target="_self">play page</a>, with your own copy of the game.
 
@@ -187,14 +187,14 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   where they play and following the particles that carry them. They are heard from Konoko's ears
   (from the camera when it isn't following her), muffled by the walls between, and not at all from
   three times their reach.
+- **The movies**: the intro before the main menu and the outro at the game's end, decoded from the
+  game's own Bink files the way RAD's player shipped with the game does, with their sound.
 
 ## Not yet
 
 - The level's sound spheres and volumes, and the bullets' flybys.
-- The Bink movies.
 - Of the graphics quality: the environment's visibility rays, the directional lights, the reflection
   maps and the corpses (none of which the port's draw has yet).
-- The intro and outro movies.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked
 against the original.

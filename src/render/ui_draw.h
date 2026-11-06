@@ -10,6 +10,9 @@ float ui_draw_text(const void *font, float x, float y, float scale, const char *
 /* splash_screen_internal 0x4f5220: the big texture (TXMB) at its size, as at 640x480 scaled and centred
    (inferred: 0x41f6e0's placement isn't decoded), under a black blanket of that alpha. */
 void ui_draw_splash(int w, int h, const char *name, float blanket);
+/* A movie's frame (the texture, mw × mh pixels) centred on black, as on a 640x480 screen scaled (the
+   BinkBuffer's offset, 0x488080; the GL player's scale 1, 0x488ff0). */
+void ui_draw_movie(int w, int h, unsigned tex, int mw, int mh);
 /* The HUD (ONrInGameUI_Display 0x4fff50) of the player: the left element (the ammo, the cells, the
    compass), the right (the "right" element, then ONiInGameUI_DisplayHealth 0x500970); time in ticks for
    the low-health pulse. */

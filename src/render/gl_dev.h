@@ -35,6 +35,10 @@ unsigned gl_dev_white(void);
 /* A texture of white texels with the given alpha (w * h bytes), kept under key (a glyph, say) and
    uploaded on first use. */
 unsigned gl_dev_texture_alpha(const void *key, int w, int h, const uint8_t *alpha);
+/* A texture of w × h RGBA pixels the caller refreshes (a movie's frames): made when *name is 0, its
+   pixels replaced by rgba. gl_dev_texture_free deletes it. */
+unsigned gl_dev_texture_rgba(unsigned *name, int w, int h, const uint8_t *rgba);
+void gl_dev_texture_free(unsigned *name);
 /* Screen space for the 2D path: x right and y down in pixels of a w by h drawable, z ignored. */
 void gl_dev_screen(int w, int h);
 /* Frees every texture uploaded (when a level goes). */

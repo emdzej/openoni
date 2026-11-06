@@ -38,6 +38,10 @@ void sound_level_unload(void);
 void sound_update(void);
 /* The mix: frames x 2 floats (left, right) at SOUND_RATE. */
 void sound_mix(float *stereo, unsigned frames);
+/* A movie's sound (at SOUND_RATE, interleaved, 16-bit), mixed in at gain until stopped. */
+void sound_stream_start(unsigned channels, float gain);
+void sound_stream_push(const int16_t *samples, uint32_t count);
+void sound_stream_stop(void);
 
 /* The level's environment for the walls that muffle the placed ambients (NULL none: all muffled). */
 void sound_set_environment(const void *env);

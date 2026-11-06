@@ -324,6 +324,36 @@ unsigned gl_dev_texture_alpha(const void *key, int w, int h, const uint8_t *alph
     return texs[k].name;
 }
 
+unsigned gl_dev_texture_rgba(unsigned *name, int w, int h, const uint8_t *rgba)
+{
+    if (dry || w <= 0 || h <= 0) return *name ? *name : white;
+    GLuint t = *name;
+    if (!t) {
+        glGenTextures(1, &t);
+        glBindTexture(GL_TEXTURE_2D, t);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        *name = t;
+    }
+    glBindTexture(GL_TEXTURE_2D, t);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    return t;
+}
+
+void gl_dev_texture_free(unsigned *name)
+{
+    if (*name) {
+        GLuint t = *name;
+        glDeleteTextures(1, &t);
+    }
+    *name = 0;
+}
+
 void gl_dev_screen(int w, int h)
 {
     if (dry) return;

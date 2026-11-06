@@ -173,6 +173,17 @@ static uint16_t rd16b(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }
 
 /* TXMB (instance data): +0x08 width, +0x0a height, +0x10 the tiles across, +0x12 down, +0x14 their
    count, +0x18 the TXMPs, by rows. */
+void ui_draw_movie(int w, int h, unsigned tex, int mw, int mh)
+{
+    gl_dev_begin(w, h, 0.0f, 0.0f, 0.0f);
+    gl_dev_screen(w, h);
+    if (!tex) return;
+    static const uint8_t white[4] = { 255, 255, 255, 255 };
+    float scale = (float)h / 480.0f, bw = (float)mw * scale, bh = (float)mh * scale;
+    float x0 = ((float)w - bw) / 2, y0 = ((float)h - bh) / 2;
+    quad(x0, y0, x0 + bw, y0 + bh, 0, 0, 1, 1, white, tex);
+}
+
 void ui_draw_splash(int w, int h, const char *name, float blanket)
 {
     gl_dev_begin(w, h, 0.0f, 0.0f, 0.0f);

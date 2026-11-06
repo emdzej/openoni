@@ -4,6 +4,7 @@
    do: draw, plat_wait_frame, until Esc. The bars are the level files' sizes, read through the file layer. */
 #include "app.h"
 #include "akev.h"
+#include "bink.h"
 #include "akev_collide.h"
 #include "body.h"
 #include "camera.h"
@@ -1313,6 +1314,147 @@ static void splash_screen(const char *name)
     for (int t = 0; t < 120; t++) splash_frame(name, powf((float)t * (1.0f / 120.0f), 1.9f));
 }
 
+/* ---- the movies (docs/formats/bink.md "The player") ---- */
+
+/* The movie's volume (0x488080): BinkSetVolume of 32768 times the overall volume (clamped to 0..1,
+   MUrUnsignedSmallFloat_To_Uns_Round); the DirectSound backend (0x1002ad40) caps it at 0x7fff and looks
+   up its hundredths of a dB at (v × 127 / 0x7fff) in the DLL's table at 0x1003e820. */
+static float movie_gain(void)
+{
+    float v = persist_volume();
+    v = v < 0.0f ? 0.0f : v > 1.0f ? 1.0f : v;
+    uint32_t vol = (uint32_t)lrintf(v * 32768.0f);
+    if (vol > 0x7fff) vol = 0x7fff;
+    const uint8_t *t = dll_data(0x1003e820 + 2 * (vol * 127 / 0x7fff), 2);
+    int16_t att = t ? (int16_t)(t[0] | t[1] << 8) : 0;
+    return att <= -10000 ? 0.0f : powf(10.0f, (float)att / 2000.0f);
+}
+
+typedef struct {
+    BinkMovie *m;
+    uint8_t *rgba;
+    unsigned tex;
+    bool fresh;             /* rgba not yet uploaded */
+    uint64_t t0;            /* ms, the first frame's end (0x10009b90) */
+    uint32_t done;          /* frames decoded (+0x200) */
+} Movie;
+
+static bool movie_open(Movie *mv, const char *name)
+{
+    char rel[64], err[256], msg[320];
+    memset(mv, 0, sizeof *mv);
+    if (!dll_loaded() && !dll_init(err, sizeof err)) {
+        snprintf(msg, sizeof msg, "OpenOni: %s", err);
+        plat_log(msg);
+        return false;
+    }
+    snprintf(rel, sizeof rel, "GameDataFolder/%s", name);
+    mv->m = bink_open(rel, err, sizeof err);
+    if (!mv->m) {
+        snprintf(msg, sizeof msg, "bink movie file (%s) does not exist (%s)", name, err);   /* 0x53e7f0 */
+        plat_log(msg);
+        return false;
+    }
+    mv->rgba = malloc((size_t)bink_width(mv->m) * bink_height(mv->m) * 4);
+    if (!mv->rgba) {
+        bink_close(mv->m);
+        return false;
+    }
+    sound_stream_start(bink_audio_channels(mv->m), movie_gain());
+    return true;
+}
+
+static void movie_close(Movie *mv)
+{
+    sound_stream_stop();
+    gl_dev_texture_free(&mv->tex);
+    free(mv->rgba);
+    bink_close(mv->m);
+}
+
+/* BinkWait 0x1000a3c0 on the frame clock: true until the next frame's time, frames done × 1000 × den / num
+   ms after the first frame's end. (With its sound track the DLL waits on the sound buffer
+   instead, which the frame clock keeps in step with.) */
+static bool movie_wait(const Movie *mv)
+{
+    if (!mv->done) return false;
+    uint32_t num, den;
+    bink_rate(mv->m, &num, &den);
+    uint64_t target = (uint64_t)mv->done * 1000u * den / (num ? num : 1);
+    return plat_time_us() / 1000 - mv->t0 < target;
+}
+
+/* BinkDoFrame and BinkCopyToBuffer: the frame's sound to the stream, its picture to RGBA. */
+static void movie_frame(Movie *mv)
+{
+    bink_do_frame(mv->m);
+    uint32_t n;
+    const int16_t *a = bink_audio(mv->m, &n);
+    if (a && n) sound_stream_push(a, n);
+    bink_copy_rgba(mv->m, mv->rgba);
+    mv->fresh = true;
+    if (!mv->done++) mv->t0 = plat_time_us() / 1000;     /* 0x10009b90 */
+}
+
+static void movie_show(Movie *mv)
+{
+    if (!plat_frame_shown()) return;
+    int w, h;
+    plat_display_size(&w, &h);
+    if (mv->fresh) {
+        gl_dev_texture_rgba(&mv->tex, (int)bink_width(mv->m), (int)bink_height(mv->m), mv->rgba);
+        mv->fresh = false;
+    }
+    ui_draw_movie(w, h, mv->tex, (int)bink_width(mv->m), (int)bink_height(mv->m));
+}
+
+/* The movie player before the 3D display, 0x488080 (through 0x4d5580; ONiMain's intro.bik): a BinkBuffer
+   centred on the screen; until the last frame, the events pumped (and dropped: no key ends it), BinkWait,
+   BinkDoFrame, BinkCopyToBuffer, the blit, BinkNextFrame. Its first pass (opened for the window's size and
+   closed again) changes nothing here. The last frame stays on the screen till something else draws. */
+static void movie_play(const char *name)
+{
+    Movie mv;
+    if (!movie_open(&mv, name)) return;
+    for (;;) {
+        while (movie_wait(&mv)) {
+            movie_show(&mv);
+            plat_wait_frame();
+            splash_frames++;
+        }
+        movie_frame(&mv);
+        if (bink_frame(mv.m) == bink_frames(mv.m) - 1) break;
+        bink_next_frame(mv.m);
+    }
+    movie_show(&mv);
+    plat_wait_frame();
+    splash_frames++;
+    movie_close(&mv);
+}
+
+/* The movie player in the 3D display, 0x488ff0 (through 0x4d56f0; the outro at the game's end, the
+   renderer not 3Dfx): its OpenGL path (a driver not S3's): the frames as GL textures at scale 1, centred;
+   a key or a mouse button (events 2, 9) ends it; the last frame is never shown (the loop ends on it,
+   tested before BinkWait). */
+static void movie_play_in_game(const char *name)
+{
+    Movie mv;
+    if (!movie_open(&mv, name)) return;
+    for (;;) {
+        if (any_press()) break;
+        bool last = bink_frame(mv.m) == bink_frames(mv.m) - 1;
+        if (!movie_wait(&mv)) {
+            movie_frame(&mv);
+            bink_next_frame(mv.m);
+        }
+        movie_show(&mv);
+        plat_wait_frame();
+        splash_frames++;
+        if (last) break;
+    }
+    movie_close(&mv);
+}
+
 /* One level, until it ends (*next: the level to load then, 0 none) or the player quits (Esc). */
 /* ONiGameState_Display_Reflectable 0x4fb480: the level, its characters, particles and lasers, the HUD and
    the screen's layer; also the WM's dialogs' draw callback (WMrDialog_SetDrawCallback, set at the level's
@@ -1653,14 +1795,15 @@ static int play(int level, int *next)
         }
         /* ONiRunGame 0x4d4640: won, the next level; lost, this one again, from the save point (its
            scripts restore it). Level 19 won is the game's end: the game won noted (0x50f620) and the
-           game quits (0x630ffd), the outro movie played on the way out (0x4d56f0, or 0x4d5580 from
-           ONiMain's exit 0x4d3180 under 3Dfx: the movies are not ported). */
+           game quits (0x630ffd), the outro movie played first (0x4d56f0; under 3Dfx, 0x4d5580 from
+           ONiMain's exit 0x4d3180 instead). */
         if (ui_level_end() == 1) {
             *next = level == 19 ? 0 : next_level(level);
             save_clear();       /* 0x4fda80 */
             if (level == 19) {
                 persist_set_won_game();
                 plat_log("OpenOni: level 19 ends, the game won");
+                movie_play_in_game("outro.bik");
             }
             return 0;
         }
@@ -1697,14 +1840,15 @@ static void blank_display(void)
     ui_draw_wm_begin(w, h, &dw, &dh);
 }
 
-/* ONiMain 0x4d3280 after the start-up: the Oni window (WMrInitialize, the desktop), the main menu
-   (OWrOniWindow_Startup 0x4bebd0), then unless the player quit, the game from level 1. Not ported yet:
-   the intro's movies and splash screens before the menu. */
+/* ONiMain 0x4d3280 after the start-up: the intro movie (0x4d33a4), the Oni window (WMrInitialize, the
+   desktop), the main menu (OWrOniWindow_Startup 0x4bebd0), then unless the player quit, the game from
+   level 1. Not ported yet: the splash screen before the menu (0x4cae10). */
 static void front_end(void)
 {
     int w, h;
     plat_display_size(&w, &h);
     if (!gl_dev_init()) return;
+    movie_play("intro.bik");
     wm_initialize(h ? w * 480 / h : 640, 480);
     wm_set_draw_callback(blank_display);
     wm_set_frame_hook(modal_frame);
@@ -1742,6 +1886,8 @@ int app_main(void)
     impact_effects_load();      /* the ONIE block */
     char viewer[32], lv[16];
     if (plat_param("keys", modal_keys, sizeof modal_keys)) modal_key = modal_keys;
+    char movie[64];
+    if (plat_param("movie", movie, sizeof movie) && gl_dev_init()) movie_play_in_game(movie);     /* a check: the outro's player */
     if (plat_param("play", viewer, sizeof viewer)) {
         int r = run_game(plat_param("level", lv, sizeof lv) ? atoi(lv) : 1);
         trac_forget();
