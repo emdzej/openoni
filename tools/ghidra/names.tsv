@@ -252,6 +252,9 @@
 00433270	MUrPoint_Distance	MU	med	name from the Intel Mac build (neighbours:0.75)
 004332b0	ONrCharacter_SetHand	ON	med	name from the Intel Mac build (neighbours:1.00)
 00433360	MUrQuat_Lerp	MU	med	name from the Intel Mac build (neighbours:1.00)
+00433490	MUrQuat_GetValue	MU	high	read: the quaternion's axis (its vector over its length squared) and angle (2 acos w); about z by 0 when no turn
+00433530	MUrQuat_SetValue	MU	high	read: the rotation about the (normalised) axis by the angle
+00433590	MUrQuat_SetFromTwoVectors	MU	high	read: both vectors normalised, then 0x433670 (identity past 0.99999, a half turn when opposite)
 004338c0	MUrQuatToMatrix	MU	med	name from the Intel Mac build (neighbours:1.00)
 004339e0	MUrMatrix_MultiplyPoint	MU	med	name from the Intel Mac build (neighbours:0.91)
 00433a40	MUrMatrix3x3_MultiplyPoint	MU	med	name from the Intel Mac build (neighbours:0.75)
@@ -299,13 +302,20 @@
 0043aac0	PHiPhysics_Respond	PH	low	the search again after the slide; a significant hit stops the move
 0043ac80	PHrPhysicsContext_New	PH	med	name from the Intel Mac build (neighbours:1.00)
 0043ad60	PHrPhysicsContext_Delete	PH	med	name from the Intel Mac build (neighbours:1.00)
+0043adf0	PHrPhysicsContext_Add	PH	med	Mac name: a free context of the array (*0x5cb520), NULL with none
+0043aef0	PHrPhysicsContext_Remove	PH	med	Mac name: the context taken off the array
 0043af50	OBiPhysics_Update	OB	high	the physics contexts' tick: gravity, acceleration, the collisions slid along, the move, the callbacks
+0043b310	PHrSphereTree_New	PH	med	Mac name: a sphere (tree node) made, centre and radius 0
 0043b3e0	PHiSphereTree_Draw	PH	med	name from the Intel Mac build (neighbours:1.00)
 0043b410	PHrPhysics_MaintainMatrix	PH	med	name from the Intel Mac build (neighbours:0.83)
+0043b5e0	PHrPhysics_Init	PH	high	Mac name: zeroed, the quaternions the identity, gravity 0.294, scale 1, flags 2 (active), the matrices the identity
 0043b680	PHrPhysics_Initialize	PH	med	name from the Intel Mac build (strings:6)
 0043b6e0	PHrStatus	PH	med	name from the Intel Mac build (strings:5)
 0043b870	PHrPhysics_Callback_FindEnvCollisions	PH	med	name from the Intel Mac build (neighbours:1.00)
 0043ba70	PHrPhysics_Single_PhyCollision	PH	med	name from the Intel Mac build (neighbours:1.00)
+0043be20	PHrPhysics_Callback_FindPhyCollisions	PH	med	Mac name: every other active context (not +0x134 flag 0x10) not skipped by the callback +0xc, through PHrPhysics_Single_PhyCollision
+0043beb0	PHrPhysics_Callback_ReceiveForce	PH	med	Mac name
+0043bee0	PHrPhysics_Callback_Friction	PH	high	Mac name: types other than 0, 1 and 3: the speed less +0x114, held to 0..+0x118 of it; under 1/1024 stopped
 0043bfa0	PHrCollision_Quad_SphereTreeVector	PH	med	a sphere tree moving by a vector against a quad, down to its leaves
 0043c050	PHrGridToWorldSpace	PH	med	name from the Intel Mac build (callee): a cell's middle
 0043c0c0	PHrWorldToGridSpace	PH	med	name from the Intel Mac build (neighbours:1.00)
@@ -392,10 +402,23 @@
 00461d20	P3rDisplayClass_Contrail	P3	med	name from the Intel Mac build (strings:3)
 00462a50	P3rEmitterSubsection	P3	med	name from the Intel Mac build (strings:5)
 00462bf0	P3iDamageQuad	P3	high	read: a particle's damage at a quad (breakable glass), the side from the point, then the glass pieces (0x508f10)
+00462f20	P3rDecodeAttractorIndex	P3	high	read: an attractor's place (and velocity): a particle (bit 31, its handle) or a character (0x40000000 | slot, bone 8 or the pelvis)
 004630c0	P3rIterateAttractors	P3	med	name from the Intel Mac build (neighbours:0.80)
+00463430	P3rFindAttractor	P3	high	read: the class's iterator (0x53b714) through its selector (0x53b75c) when due; the next search the delay on (+ up to 10 ticks while none)
+004635b0	P3iAttractorIterator_Link	P3	high	read: the linked particle (+0x30) once, within the distance
+004636a0	P3iAttractorIterator_Class	P3	med	name from the Intel Mac build (the iterator table 0x53b714)
+004637a0	P3iAttractorIterator_Tag	P3	med	name from the Intel Mac build (the iterator table 0x53b714)
+004638b0	P3iAttractorIterator_Character	P3	high	read: the living characters within the distance (kinds 4 characters, 5 hostiles, 8 all), the owner's left out
 00463ab0	P3iAttractorSelector_Distance	P3	med	name from the Intel Mac build (neighbours:0.75)
 00463be0	P3iAttractorSelector_Conical	P3	med	name from the Intel Mac build (neighbours:0.75)
 00465f30	P3iAction_DamageBlast	P3	high	read: the particle action Blast Damage: the glass in the radius, then WPrBlast (not a function in the listing)
+004675a0	P3iAction_AmbientSound	P3	high	Mac name: the one playing stopped, the payload's ambient started at the real place (OSrAmbient_Start, with the orientation's direction and the velocity); P_SOUND
+00467660	P3iAction_EndAmbientSound	P3	high	Mac name: OSrAmbient_Stop of the particle's, P_SOUND cleared
+00467690	P3iAction_ImpulseSound	P3	high	Mac name: the payload's impulse at the real place (OSrImpulse_Play); true if the particle died
+00467720	P3iAction_FindAttractor	P3	high	read: P3rFindAttractor every p0 seconds; event 13 (new attractor) when it finds one
+004677a0	P3iAction_AttractGravity	P3	high	read: velocity += offset * min(100 g / d^2, max) (y left out with p2)
+00467920	P3iAction_AttractHoming	P3	high	read: the velocity turned towards the attractor (led by its velocity, at most 1 s) by up to p0 degrees a second
+00467c50	P3iAction_AttractSpring	P3	high	read: velocity += dir * min((d - rest) k dt, max); a random direction when on it
 00468650	P3iAction_SuperParticle	P3	med	name from the Intel Mac build (neighbours:1.00)
 00468770	WMiCursor_Draw	WM	low	the cursor's part spec, 32 by 32 over the mouse, while the WM takes input
 004687d0	WMrCursor_Get	WM	med	name from the Intel Mac build (strings:1)
@@ -1284,6 +1307,10 @@
 00500640	ONiInGameUI_DrawArc	ON	low	an arc as two triangles a segment
 005007d0	ONiInGameUI_ArcPoints	ON	low	an arc's outer and inner points and their ring texture coordinates between two angles
 00500970	ONiInGameUI_DisplayHealth	ON	med	name from the Intel Mac build (neighbours:0.75)
+00500db0	ONiInGameUI_DisplayHits	ON	med	name from the Intel Mac build (neighbours: between DisplayHealth and DisplayShield, the four hit arcs)
+00500ea0	ONiInGameUI_DisplayInGun	ON	high	Mac name: the hand's (else the stowed) weapon's ammo icon (class +0x50) at the left ring's centre and its ammo ring (+0x54, radii 44 and 30, 24 segments)
+00501080	ONiInGameUI_DisplayShield	ON	med	name from the Intel Mac build (neighbours: the shield arcs)
+00501240	ONiInGameUI_DisplayWeaponIcon	ON	high	Mac name: the hand's weapon's picture (class +0x4c), 54 square at the left ring's centre, flashing by the weapon bit
 00501330	ONiInGameUI_DisplayLSIIcon	ON	med	name from the Intel Mac build (neighbours:1.00)
 00501440	ONiInGameUI_DisplayHelp	ON	med	name from the Intel Mac build (neighbours:1.00)
 005018c0	ONrPauseScreen_Display	ON	med	name from the Intel Mac build (strings:2)
@@ -1304,6 +1331,7 @@
 00504270	ONrInGameUI_SetArcPoints	ON	med	name from the Intel Mac build (neighbours:1.00)
 005045a0	ONiInGameUI_NewArc	ON	low	allocates an arc (radii, segments + 1 points, centre, texture) and fills it
 00504780	ONrInGameUI_Update	ON	med	name from the Intel Mac build (strings:1)
+005048e0	ONiInGameUI_UpdateDamageMeter	ON	med	name from the Intel Mac build (after ONrInGameUI_Update, its two calls)
 005049a0	ONiInGameUI_TextConsole_Callback	ON	low	the text console dialog: pages, Next and Close, space and Escape
 00504c30	ONrInGameUI_TextConsole_Display	ON	med	name from the Intel Mac build (neighbours:0.75)
 00504cf0	ONrInGameUI_EnableHelpDisplay	ON	med	name from the Intel Mac build (neighbours:1.00)
@@ -1425,10 +1453,14 @@
 005182c0	WPiNewParticles	WP	med	name from the Intel Mac build (strings:1)
 00518650	WPrGetPickupPosition	WP	med	name from the Intel Mac build (re/mac-matches.tsv)
 00518690	WPrNew	WP	low	a new weapon of a class (a free slot, else the oldest unowned)
+00518930	WPiWeaponPhysics_PostCollision_Callback	WP	high	Mac name: a wall met faster than 0.35 into it plays the fall impact (0x5189c0); any hit but a character's sets the weapon's flag 2
 005189c0	WPiGenerateFallImpact	WP	med	name from the Intel Mac build (neighbours:1.00)
+00518a80	WPiWeaponPhysics_SkipPhyCollisions_Callback	WP	med	Mac name: weapon against weapon skipped unless either has word flag 0x2000
+00518b80	WPiWeaponPhysics_Callback_ReceiveForce	WP	med	Mac name: a character pushes an unowned weapon (conditions on C+0x1e8 and the AI's melee target)
 00518c00	WPiInit	WP	med	name from the Intel Mac build (re/mac-matches.tsv); a new weapon of a class at a place (weapon_spawn's)
 00518e10	WPiWeapon_CreatePhysics	WP	med	name from the Intel Mac build (neighbours:1.00)
 00518f90	WPrDelete	WP	low	the shooters stopped, the particles and physics gone
+005190f0	WPiPowerup_Update	WP	high	Mac name: the moving powerups' places from their physics; resting (flag 4) or slow (|v|^2 < 1/144) 120 ticks: the physics removed; the fade countdowns +0x24, +0x26
 005192b0	WPiUpdate	WP	med	name from the Intel Mac build (re/mac-matches.tsv)
 00519680	WPiCreateParticles	WP	med	name from the Intel Mac build (neighbours:1.00)
 00519710	WPrDisplay	WP	med	name from the Intel Mac build (neighbours:1.00)
@@ -1459,6 +1491,10 @@
 0051bc70	WPrSlot_FindLastStowed	WP	med	name from the Intel Mac build (re/mac-matches.tsv)
 0051bd00	WPrSlot_Swap	WP	med	name from the Intel Mac build (re/mac-matches.tsv)
 0051bd80	WPrPowerup_Drop	WP	med	name from the Intel Mac build (the same drop calls as _ONiCharacter_DropInventoryItems)
+0051c080	WPiPowerupPhysics_SkipPhyCollisions_Callback	WP	med	Mac name: the characters (callback table kind 1) skipped
+0051c0a0	WPiPowerupPhysics_PostCollision_Callback	WP	high	Mac name: the first wall met faster than 0.35 plays the Powerup impact; a floor (normal y > 0.5) sets flags 6
+0051c140	WPiPowerupPhysics_Callback_ReceiveForce	WP	med	Mac name: not from a character
+0051c160	WPrPowerup_New	WP	high	Mac name: the next slot, or the oldest not placed (its physics removed); its type, amount, place, facing, time
 0051c560	WPrTryReload	WP	med	name from the Intel Mac build (strings:1)
 0051c730	ONrCharacter_InventoryCount	ON	low	the clips, cells or hypos of the type (name made up)
 0051c8f0	WPiCommand_GivePowerup	WP	med	read: give_powerup type [amount [player]]; the Mac build's name
@@ -1469,16 +1505,3 @@
 0051d080	WPrOutOfAmmoSound	WP	med	name from the Intel Mac build (neighbours:1.00)
 0051d180	WPrInventory_Weapon_Purge_Magic	WP	med	name from the Intel Mac build (strings:1)
 0051d1c0	TMrTemplate_SetupLayouts	TM	low	read: stores each template's layout pointer, then the table base (compiler-generated; name made up)
-00433490	MUrQuat_GetValue	MU	high	read: the quaternion's axis (its vector over its length squared) and angle (2 acos w); about z by 0 when no turn
-00433530	MUrQuat_SetValue	MU	high	read: the rotation about the (normalised) axis by the angle
-00433590	MUrQuat_SetFromTwoVectors	MU	high	read: both vectors normalised, then 0x433670 (identity past 0.99999, a half turn when opposite)
-00462f20	P3rDecodeAttractorIndex	P3	high	read: an attractor's place (and velocity): a particle (bit 31, its handle) or a character (0x40000000 | slot, bone 8 or the pelvis)
-00463430	P3rFindAttractor	P3	high	read: the class's iterator (0x53b714) through its selector (0x53b75c) when due; the next search the delay on (+ up to 10 ticks while none)
-004635b0	P3iAttractorIterator_Link	P3	high	read: the linked particle (+0x30) once, within the distance
-004636a0	P3iAttractorIterator_Class	P3	med	name from the Intel Mac build (the iterator table 0x53b714)
-004637a0	P3iAttractorIterator_Tag	P3	med	name from the Intel Mac build (the iterator table 0x53b714)
-004638b0	P3iAttractorIterator_Character	P3	high	read: the living characters within the distance (kinds 4 characters, 5 hostiles, 8 all), the owner's left out
-00467720	P3iAction_FindAttractor	P3	high	read: P3rFindAttractor every p0 seconds; event 13 (new attractor) when it finds one
-004677a0	P3iAction_AttractGravity	P3	high	read: velocity += offset * min(100 g / d^2, max) (y left out with p2)
-00467920	P3iAction_AttractHoming	P3	high	read: the velocity turned towards the attractor (led by its velocity, at most 1 s) by up to p0 degrees a second
-00467c50	P3iAction_AttractSpring	P3	high	read: velocity += dir * min((d - rest) k dt, max); a random direction when on it

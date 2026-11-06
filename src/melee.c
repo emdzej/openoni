@@ -2,6 +2,7 @@
 #include "melee.h"
 
 #include "chars.h"
+#include "cheat.h"
 #include "chr_anim.h"
 #include "exe.h"
 #include "localpath.h"
@@ -987,7 +988,8 @@ static bool attack_update(AiState *a, Character *c)
     const AttackMove *am = attack_of(mv->type);
     if (mv->invalid || !am) return true;    /* (AI2rError 0x4936b0) */
     uint32_t to = state_of(c->anim ? tr_to(c->anim) : 0, a->held), from = state_of(c->from_state, a->held);
-    if (!m->committed && m->face != 1000.0f) {
+    /* (committed, it isn't aimed again, unless in the ultra mode, 0x5eb849, or with C+8 bit 2) */
+    if ((!m->committed || cheat_ultra_mode) && m->face != 1000.0f) {
         int r = -1;
         if (m->face_off > 1.0471975803375244f) return abort_technique(m);
         ChrIntersect x;
@@ -1153,14 +1155,16 @@ static bool maneuver_update(AiState *a, Character *c)
     return true;
 }
 
-/* AI2iMelee_Maneuver_Start 0x4a6f20: a pause (4) only for the debugging; "random stop" (8) ends the
-   technique by its chance (the first number, %); the others start their update. */
+/* AI2iMelee_Maneuver_Start 0x4a6f20: in the ultra mode (0x5eb849, or with C+8 bit 2, a debugging
+   switch nothing sets) a pause (4) is skipped for the next move; "random stop" (8) ends the technique
+   by its chance (the first number, %); the others start their update. */
 static bool maneuver_start(AiState *a, Character *c)
 {
     MeleeState *m = &a->melee;
     const MeleeMove *mv = m->mv;
     uint32_t idx = mv->type & 0xfffffffu;
     if (category(mv) != MELEE_MANEUVER || idx > 0xd) return false;
+    if (cheat_ultra_mode && idx == 4) return start_next_move(a, c);
     if (idx == 8) {
         if ((float)trac_random() * 1.5259021893143654e-05f * 100.0f < mv->p[0]) return abort_technique(m);
         return start_next_move(a, c);
@@ -2463,8 +2467,9 @@ bool melee_update(AiState *a, Character *c, const Character *target)
     Weighing w[MELEE_TECH_MAX];
     int picked = -1;
     memset(w, 0, sizeof w);
-    /* (also with C+8 bit 2 or 0x5eb849, debugging switches nothing sets) */
-    if (!m->tech || !m->committed) {
+    /* chosen again unless committed to one, or always in the ultra mode (0x5eb849, "killmequick"; also
+       with C+8 bit 2, a debugging switch nothing sets) */
+    if (!m->tech || !m->committed || cheat_ultra_mode) {
         m->angle = angle_to_target(m, c);
         float narrow[6], wide[6];
         direction_weights(m->angle, c->facing, narrow, wide);

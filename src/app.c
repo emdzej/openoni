@@ -26,6 +26,7 @@
 #include "laser.h"
 #include "turret.h"
 #include "persist.h"
+#include "physics.h"
 #include "save.h"
 #include "laser_draw.h"
 #include "env_draw.h"
@@ -194,17 +195,29 @@ static void draw_objects(void)
             const void *g = laser_emitter(i, k, m);
             if (g) geom_draw(g, m, NULL);
         }
-    /* the weapons (WPrDisplay 0x519710: those in the world; the hands' with their characters; the
-       stowed ones not drawn) */
+    /* the weapons (WPrDisplay 0x519710: those in the world, turned by their facing, fading; the hands'
+       with their characters; the stowed ones not drawn), their glows first */
     for (int i = 0; i < weapon_slots(); i++) {
         const Weapon *w = weapon_get(i);
-        if (w && (!w->owner || w->owner->weapon == w)) geom_draw(weapon_geometry(w), w->m, NULL);
+        if (!w) continue;
+        if (!w->owner) {
+            float m[12], gp[3], gs[2];
+            const void *gt[2];
+            uint8_t a = weapon_world_matrix(w, m), ga;
+            if (weapon_glow(w, m, a, gt, gp, gs, &ga))
+                for (int k = 0; k < 2; k++) sprite_draw_flat(gt[k], gp, m, gs[0], gs[1], ga, p3_tick());
+            if (a < 0xff) geom_draw_alpha(weapon_geometry(w), m, NULL, a);
+            else geom_draw(weapon_geometry(w), m, NULL);
+        } else if (w->owner->weapon == w)
+            geom_draw(weapon_geometry(w), w->m, NULL);
     }
-    /* the powerups (0x51c2b0: their geometry turned by their facing; the glow sprite with the sprites) */
+    /* the powerups (0x51c2b0: the glow lying under each, then its geometry turned by its facing) */
     for (int i = 0; i < powerup_count(); i++) {
         const Powerup *p = powerup_get(i);
         float m[12];
         powerup_matrix(p, m);
+        float gp[3];
+        if (powerup_glow(p, gp)) sprite_draw_flat(p->glow, gp, m, p->glow_size[0], p->glow_size[1], 0x55, p3_tick());
         if (p->geometry) geom_draw(p->geometry, m, NULL);
     }
     /* the turrets' heads and barrels (0x4ce300) */
@@ -1380,6 +1393,7 @@ static int play(int level, int *next)
     }
     chars_load();
     if (plat_param("ailog", at_dummy, sizeof at_dummy)) combat_log = plat_log;
+    if (plat_param("physlog", at_dummy, sizeof at_dummy)) physics_debug_log = plat_log;
     Chr *player = chars_player();
     if (!player) {
         plat_log("OpenOni: no player character");
@@ -1523,10 +1537,13 @@ static int play(int level, int *next)
             object_update(++ticks);
             door_physics(ticks);
             ui_update();
-            igui_update(ui_time());
+            igui_update(chars_player() ? &chars_player()->c : NULL, ui_time());
             cinematic_update();
             chars_update(&in, env);
             weapons_update(env);    /* WPrUpdate, after the characters */
+            powerups_update();      /* 0x5190f0 */
+            weapons_physics(env);   /* OBiPhysics_Update 0x43af50: the weapons' and powerups' contexts */
+            powerups_physics(env);
             door_update();      /* the objects' update 0x507880, after the characters */
             laser_update();     /* the triggers' (0x4cb100), the same mechanics update */
             turret_update(env); /* OBJiTurretCombat_Update 0x4cf140, the mechanics' update too */
@@ -1555,6 +1572,13 @@ static int play(int level, int *next)
                 if (fabsf(d[0] - konoko->pos[0]) + fabsf(d[2] - konoko->pos[2]) > 40.0f) continue;
                 snprintf(m, sizeof m, "OpenOni:   door %u: %.1f %.1f %.1f flags %04x state %d frame %d", door_id(i), d[0], d[1], d[2],
                          door_flags(i), door_state(i), door_frame(i));
+                plat_log(m);
+            }
+            for (int i = 0; i < weapon_slots(); i++) {
+                const Weapon *w = weapon_get(i);
+                if (!w || w->owner || fabsf(w->m[9] - konoko->pos[0]) + fabsf(w->m[11] - konoko->pos[2]) > 100.0f) continue;
+                snprintf(m, sizeof m, "OpenOni:   weapon %d: %.1f %.1f %.1f facing %.2f fade %u/%u", i, w->m[9], w->m[10], w->m[11],
+                         w->facing, w->fade_delay, w->fade);
                 plat_log(m);
             }
             for (int i = 0; i < chars_slots(); i++) {

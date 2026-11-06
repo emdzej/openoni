@@ -88,6 +88,8 @@ typedef struct Character {
     int32_t poison_count;           /* C+0x167c: the poison's ticks counted */
     float super_level;              /* C+0x1668: the value shown, moved toward it each tick; Mutant Muro's
                                        shield (a class with ONCC+0xc8e is shielded above 0.5) */
+    uint8_t hit_flash[4];           /* C+0x166c: the HUD's hit arcs (the ring's right, bottom, left and top
+                                       quarters), 255 at a hit from that side, fading by 3 a tick */
     float facing_offset;            /* C+0x174: the diagonal or sideways run's turn, undone each tick */
     float pelvis_height;            /* C+0x18c */
     float scale;                    /* C+0x34: the body's size, random in the class's range */
@@ -136,6 +138,7 @@ typedef struct Character {
     /* the inventory (C+0x1a2..0x1ba, WPrInventory) */
     uint16_t ammo, hypos, cells;    /* C+0x1a2, 0x1a4, 0x1a6: ballistic clips, hypos, energy cells (6 at most) */
     uint16_t shield, invisibility;  /* C+0x1b8, 0x1ba: what is left of them */
+    uint16_t shield_shown;          /* C+0x1b6: the shield's part the HUD shows, toward shield 2 a tick */
     uint16_t hypo_heal;             /* C+0x1ae: the hypo's healing still to come */
     uint16_t heal_wait;             /* C+0x1b0: ticks to the next point healed (or lost over the maximum) */
     uint32_t invisible_ticks;       /* C+0x1bc: ticks invisible since the last hit (the AI sees through
@@ -198,6 +201,7 @@ typedef struct Character {
     uint32_t hit_points;            /* C+0x38 */
     uint32_t max_hit_points;        /* C+0x3c */
     float knockback[3];             /* A+0xb8, in the world */
+    float hit_velocity[3];          /* A+0xd4: the last hit's direction times its damage (5 to 15) */
     uint16_t knockdown_type;        /* A+0x1b06: the reaction asked by a hit, played after the contacts */
     uint16_t hit_list[8];           /* A+0x1eb8: who the current animation's attacks have hit */
     /* the body and the physics (docs/re/physics.md) */

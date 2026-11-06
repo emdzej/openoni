@@ -81,6 +81,7 @@ int main(void)
         ui_update();
         chars_update(&(CharacterInput){ 0 }, env);
         weapons_update(env);
+        weapons_physics(env);
         if (combat_at < 0 && t->ai.state == AI_STATE_COMBAT) combat_at = k;
         if (getenv("GUN_TRACE") && k % 20 == 0) {
             float h[3];

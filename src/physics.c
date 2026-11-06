@@ -10,6 +10,7 @@
 #include "ui.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -367,6 +368,8 @@ static void after_move(Character *c, const void *env)
     if (c->no_ground_ticks > 11) c->start_falling = true;
 }
 
+void (*physics_debug_log)(const char *msg);
+
 void physics_update(Character *c, const void *env)
 {
     if (!c->has_physics || !env) return;
@@ -384,7 +387,21 @@ void physics_update(Character *c, const void *env)
     /* chr_nocollision (C+4 0x20000) sets the context's flags 0x44 (0x4ed080): PHrPhysics_Update 0x43af50
        skips the walls (0x43a710) for flag 4, and 0x4eca00 the floor for flag 0x40 */
     bool through = (c->flags & 0x20000u) != 0;
+    float mv0[3] = { mv[0], mv[1], mv[2] };
     if (!through && slide(c, env, mv)) respond(c, env, mv);
+    if (physics_debug_log && !c->ai && (fabsf(mv0[0]) + fabsf(mv0[2]) > 0.05f) && fabsf(mv[0]) + fabsf(mv[2]) < 0.01f) {
+        Hit h[HITS_MAX];
+        uint16_t wh = c->wall_hits;
+        unsigned n = find_env(c, env, mv0, h);
+        c->wall_hits = wh;
+        char b[1600];
+        int o = snprintf(b, sizeof b, "physlog pos %.2f %.2f %.2f mv %.2f %.2f %.2f sph %.2f %.2f %.2f r %.2f hits %u:", c->phys_pos[0], c->phys_pos[1], c->phys_pos[2],
+                         mv0[0], mv0[1], mv0[2], c->spheres[SPH_ROOT][0], c->spheres[SPH_ROOT][1], c->spheres[SPH_ROOT][2], c->spheres[SPH_ROOT][3], n);
+        for (unsigned i = 0; i < n && o < 1450; i++)
+            o += snprintf(b + o, sizeof b - o, " q%u f%x n(%.2f %.2f %.2f %.1f) vn %.2f", h[i].quad, quad_flags(env, h[i].quad), h[i].plane[0], h[i].plane[1], h[i].plane[2], h[i].plane[3],
+                          mv0[0] * h[i].plane[0] + mv0[1] * h[i].plane[1] + mv0[2] * h[i].plane[2]);
+        physics_debug_log(b);
+    }
     for (int k = 0; k < 3; k++) c->phys_pos[k] += mv[k];
     if (!through) after_move(c, env);
 }

@@ -58,10 +58,13 @@ bool ui_message_print(const char *id, int32_t timer);
    squared within which the arc is whole, the distance squared when it was set), false none. */
 bool ui_element_shown(int right);
 uint8_t ui_flash_alpha(uint32_t bit);
+bool ui_flashing(uint32_t bit);
 bool ui_target(float pos[3], float *r2, float *d0);
 /* The splash screen a script asked for (G+0x118), taken (cleared); false none. */
 bool ui_splash_take(char name[32]);
 /* The timer's text now (timer_start), false when off or blinked out. */
 bool ui_timer_text(char out[32]);
+/* 0x4fd360: the timer's state (GS+0) is on. */
+bool ui_timer_running(void);
 /* fade_in, fade_out, letterbox, input, message, message_remove, win, lose, timer_start, timer_stop. */
 void ui_register_commands(void);

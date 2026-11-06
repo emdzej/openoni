@@ -10,3 +10,8 @@ void particle_draw(const float view[16], uint32_t now);
 /* The lens flares (0x460660 with its argument 1, from ONi_GameState_Display_All_UI_Elements 0x4fbaa0),
    after the scene, through walls; near is the projection's near plane. */
 void particle_draw_flares(const float view[16], float near, uint32_t now);
+/* M3rSprite_Draw 0x41a830 in the sprite mode 4 (M3rGeom_State_Set 6, as WPrDisplay 0x519710 and the
+   powerups' 0x51c2b0 set it): a quad lying along the matrix's x and z columns about pos, sx and sy out
+   each way, white, at alpha (0..255), the texture animated by the game time. */
+void sprite_draw_flat(const void *txmp, const float pos[3], const float m[12], float sx, float sy, uint8_t alpha,
+                      uint32_t now);

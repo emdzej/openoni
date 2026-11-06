@@ -136,6 +136,25 @@ no_fade:
     gl_dev_draw(q, 4, idx, 6, gl_dev_texture(t), mode);
 }
 
+void sprite_draw_flat(const void *txmp, const float pos[3], const float m[12], float sx, float sy, uint8_t alpha,
+                      uint32_t now)
+{
+    if (!txmp) return;
+    View v;
+    memset(&v, 0, sizeof v);
+    v.now = now;
+    P3Draw d;
+    memset(&d, 0, sizeof d);
+    memcpy(d.pos, pos, sizeof d.pos);
+    d.orient = m;
+    d.scale = sx, d.yscale = sy;
+    d.alpha = (float)alpha * (1.0f / 255.0f);
+    d.tint = 0xffffff;
+    d.texture = txmp;
+    d.mode = 4;
+    sprite(&v, &d);
+}
+
 static void geometry(const P3Draw *d)
 {
     if (!d->texture) return;

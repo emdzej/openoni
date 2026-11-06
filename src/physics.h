@@ -24,3 +24,6 @@ void physics_update(Character *c, const void *env);
 /* PHrCollision_Quad_SphereTreeVector 0x43bfa0: a sphere tree (the root, 4 leaves, 2 middles) moving by mv
    against the quad, down to its leaves. */
 bool physics_tree_hits(const float spheres[7][4], const void *env, uint32_t quad, const float mv[3]);
+
+/* A debug log of the player's blocked moves (--param physlog=1); NULL off. */
+extern void (*physics_debug_log)(const char *msg);

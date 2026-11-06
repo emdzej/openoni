@@ -231,6 +231,7 @@ int main(void)
         in.fire = k == 30;
         chars_update(&in, NULL);
         weapons_update(NULL);
+        weapons_physics(NULL);
         Character *pl = &p->c;
         p3_update(300 + (uint32_t)k, true, &pl, 1);
         if (k == 29) shooters = p3_live_count();
@@ -264,6 +265,7 @@ int main(void)
             in.swap = k == 0;
             chars_update(&in, NULL);
             weapons_update(NULL);
+            weapons_physics(NULL);
             sl_update();
         }
         clips = p->c.ammo;
@@ -273,6 +275,7 @@ int main(void)
             in.reload = k == 0;
             chars_update(&in, NULL);
             weapons_update(NULL);
+            weapons_physics(NULL);
             sl_update();
             if (p->c.weapon->ammo == full) reloaded = k;
         }

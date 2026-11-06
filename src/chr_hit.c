@@ -117,7 +117,13 @@ void chr_take_damage(Character *c, uint32_t damage, float knockback, const float
         if (chr_script_hook) chr_script_hook(c, CHR_SCRIPT_DEFEATED);
         return;
     }
-    /* A+0xd4, the hit's direction for the body's fall: with the physics */
+    /* A+0xd4: the hit's direction times its damage held to 5..15 (the kind's bits counted too), what a
+       weapon thrown from the hand takes a part of (WPrRelease 0x51a550) */
+    if (!dir) c->hit_velocity[0] = c->hit_velocity[1] = c->hit_velocity[2] = 0.0f;
+    else {
+        float k = (float)(damage < 5 ? 5 : damage > 15 ? 15 : damage);
+        for (int i = 0; i < 3; i++) c->hit_velocity[i] = k * dir[i];
+    }
     if (!(chr_cheat_invincible && !c->ai) && !(c->flags & 0x2000000)) {      /* not invincible */
         if (chr_script_hook) chr_script_hook(c, CHR_SCRIPT_HURT);   /* once (C+0x44 bit 0x10) */
         if ((c->flags & 0x20) && c->hit_points <= damage) {
@@ -142,7 +148,15 @@ void chr_take_damage(Character *c, uint32_t damage, float knockback, const float
     }
     if (!chr_is_unstoppable(c) && knockback != 0.0f && dir)
         for (int k = 0; k < 3; k++) c->knockback[k] += dir[k] * knockback;
-    /* C+0x166c, the HUD's hit direction: with the HUD */
+    /* the HUD's hit arc on the side the hit came from: the direction turned by the facing wanted, less
+       the run's turn (wrapped once into [0, 2 pi)), into the quarter around front, right, back or left */
+    if (dir) {
+        float a = wrap_2pi(c->desired_facing - c->facing_offset);
+        float co = cosf(a), si = sinf(a);
+        float x = co * dir[2] + si * dir[0], z = co * dir[0] - si * dir[2];
+        int side = z <= x ? (-z <= x ? 1 : 2) : (-z <= x ? 0 : 3);
+        c->hit_flash[side] = 0xff;
+    }
 }
 
 /* The angle from d's facing to the direction of x, in (-pi, pi]. */

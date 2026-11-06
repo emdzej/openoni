@@ -80,6 +80,7 @@ int main(void)
         ui_update();
         chars_update(&(CharacterInput){ 0 }, env);
         weapons_update(env);
+        weapons_physics(env);
         const ActionMarker *m = console_marker(t->ai.alarm_marker);
         if (m && d0 < 0) d0 = sqrtf((m->pos[0] - t->c.pos[0]) * (m->pos[0] - t->c.pos[0]) + (m->pos[2] - t->c.pos[2]) * (m->pos[2] - t->c.pos[2]));
         if (getenv("ALARM_TRACE") && k % 30 == 0)

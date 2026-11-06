@@ -7,9 +7,11 @@
 #include "exe.h"
 #include "font.h"
 #include "gl_dev.h"
+#include "igui.h"
 #include "tm.h"
 #include "txmp.h"
 #include "ui.h"
+#include "weapon.h"
 #include "wm.h"
 
 #include <math.h>
@@ -260,9 +262,39 @@ static void sprite(float x0, float y0, float x1, float y1, bool flip, const void
    the flag's bearing from the player's facing, pi either side within the target's radius, else
    narrowing with the distance from pi / 2 (as far as when it was set) to 0.349; then the "arrow" up
    (the flag more than 10 above) or upside down (more than 10 below), 36.5 right of the centre.
-   Each flashes by its ui_flash_element bit (ballistic, energy, compass, arrow). Not ported: the
-   tutorial's forced elements (0x5ed09c, 0x5ed098) and the weapon and inventory displays after it
-   (0x500ea0, 0x501240). */
+   Each flashes by its ui_flash_element bit (ballistic, energy, compass, arrow). Then the weapon's
+   displays (draw_weapon). Not ported: the tutorial's forced elements (0x5ed09c, 0x5ed098). */
+static void draw_compass(const Character *c, float cx, float cy, const void *ring, const void *arrow, float scale);
+
+/* At the left element's centre: the ammo (0x500ea0) of the hand's weapon, else of the stowed one
+   (WPrSlot_FindLastStowed 0x51bc70): its class's icon (+0x50) at its size and, with ammo, the ring
+   (class +0x54; radii 44 and 30, 24 segments, from pi / 12 (0x52a75c) on by the ammo's share of 5.76,
+   0x52b40c), flashing by the ammo bit; then (0x501240) the hand's weapon's picture (class +0x4c), 54
+   square from 27 up and left of the centre, flashing by the weapon bit. An owner of unlimited ammo
+   (C+0x04 0x40) shows it full: the original's getter (0x517850) fills it there. */
+static void draw_weapon(const Character *c, float cx, float cy, float scale)
+{
+    const Weapon *w = c->weapon ? c->weapon : chr_slot(c, 1) ? chr_slot(c, 1) : chr_slot(c, 2);
+    const void *icon = w ? tm_link(w->cls + 0x50) : NULL;
+    if (icon) {
+        float iw = (float)(tx16(icon, TXMP_WIDTH) >> 1) * scale, ih = (float)(tx16(icon, TXMP_HEIGHT) >> 1) * scale;
+        float x0 = cx - iw, y0 = cy - ih;
+        sprite(x0, y0, x0 + (float)tx16(icon, TXMP_WIDTH) * scale, y0 + (float)tx16(icon, TXMP_HEIGHT) * scale, false,
+               icon, 255, GL_DEV_SCREEN);
+        unsigned full = (unsigned)(w->cls[0xc0] | w->cls[0xc1] << 8);
+        unsigned ammo = (w->owner && (w->owner->flags & 0x40)) ? full : w->ammo;
+        const void *ring = tm_link(w->cls + 0x54);
+        if (ammo && full && ring)
+            arc(cx, cy, 0.2617994f, (float)ammo / (float)full * 5.7595863f + 0.2617994f, 44.0f, 30.0f, 24, ring, scale,
+                0xffffffffu, ui_flash_alpha(0x40));
+    }
+    const void *pic = c->weapon ? tm_link(c->weapon->cls + 0x4c) : NULL;
+    if (pic) {
+        float x0 = cx - 27.0f * scale, y0 = cy - 27.0f * scale;     /* 0x52b41c, 0x52b418 */
+        sprite(x0, y0, x0 + 54.0f * scale, y0 + 54.0f * scale, false, pic, ui_flash_alpha(0x20), GL_DEV_SCREEN);
+    }
+}
+
 static void draw_left(int w, int h, const Character *c, float scale)
 {
     (void)w;
@@ -280,6 +312,12 @@ static void draw_left(int w, int h, const Character *c, float scale)
     if (cells)
         arc(cx, cy, 3.1415927f, 3.1415927f + (1.5707964f - 3.1415927f) * (float)cells / 6.0f, 64.0f, 51.5f,
             (int)cells, ring, scale, 0xffffffffu, ui_flash_alpha(0x400));
+    draw_compass(c, cx, cy, ring, arrow, scale);
+    draw_weapon(c, cx, cy, scale);
+}
+
+static void draw_compass(const Character *c, float cx, float cy, const void *ring, const void *arrow, float scale)
+{
     float tp[3], r2, d0;
     if (!ui_target(tp, &r2, &d0)) return;
     float dx = tp[0] - c->pos[0], dy = tp[1] - c->pos[1], dz = tp[2] - c->pos[2];
@@ -307,10 +345,55 @@ static void draw_left(int w, int h, const Character *c, float scale)
     }
 }
 
+/* The right element after the health (ONrInGameUI_Display 0x4fff50): the invisibility's arc (radii 63
+   and 51, 8 segments, from -0.0349 (0x52b3e0) by its share of 1800 ticks of -1.518, 0x52b3b8 and
+   0x52b3e4; the invis bit flashing); the shield's (ONiInGameUI_DisplayShield 0x501080: igui_hud's two,
+   radii 63 and 51, 8 segments, the eased part at 0x7f; flashing by the shield bit, the eased part then
+   at the flash squared over 127, cut to a byte, as the original); the hypos (ONiInGameUI_DisplayHypos
+   0x500e30: one arc of a segment each, radii 63 and 51, up to 6, their angles the exe's table at
+   0x555480; the hypo bit); the hits' (0x500db0: a side's arc at its fading C+0x166c, radii 37 and 30,
+   4 segments, the angles the exe's table at 0x5554b0; the hits bit); the LSI's icon
+   (ONiInGameUI_DisplayLSIIcon 0x501330: "lsi_icon", 54 square from 27 up and left of the centre, at
+   0x55 while the timer runs (0x4fd360), the lsi bit). Not ported: the tutorial's forced arcs
+   (0x5ed09c). */
+static void draw_inventory(const Character *c, const IguiHud *hud, float cx, float cy, const void *ring, float scale)
+{
+    if (c->invisibility)
+        arc(cx, cy, -0.034906585f, (float)c->invisibility * 0.00055555557f * -1.5184364f - 0.034906585f, 63.0f, 51.0f,
+            8, ring, scale, 0xffffffffu, ui_flash_alpha(0x4));
+    unsigned s1 = 0xff, s2 = 0x7f;
+    if (ui_flashing(0x8)) {
+        unsigned fl = ui_flash_alpha(0x8);
+        s1 = fl, s2 = (fl * fl / 127u) & 0xffu;
+    }
+    for (int i = 0; i < 2; i++)
+        if (hud->shield[i].on)
+            arc(cx, cy, hud->shield[i].a0, hud->shield[i].a1, 63.0f, 51.0f, 8, ring, scale, 0xffffffffu,
+                (uint8_t)(i ? s2 : s1));
+    unsigned hypos = c->hypos < 6 ? c->hypos : 6;
+    for (unsigned i = 0; i < hypos; i++) {
+        const uint8_t *t = exe_data(0x555480 + 8 * i, 8);
+        if (t) arc(cx, cy, rdfp(t), rdfp(t + 4), 63.0f, 51.0f, 1, ring, scale, 0xffffffffu, ui_flash_alpha(0x10));
+    }
+    for (unsigned i = 0; i < 4; i++) {
+        unsigned a = c->hit_flash[i];
+        const uint8_t *t = exe_data(0x5554b0 + 8 * i, 8);
+        if (!a || !t) continue;
+        if (ui_flashing(0x2)) a = a * ui_flash_alpha(0x2) / 255u;
+        arc(cx, cy, rdfp(t), rdfp(t + 4), 37.0f, 30.0f, 4, ring, scale, 0xffffffffu, (uint8_t)a);
+    }
+    const void *lsi = c->lsi ? tm_instance_get(TM_TAG("TXMP"), exe_str(0x555c18)) : NULL;
+    if (lsi) {
+        unsigned a = ui_timer_running() ? 0x55 : 0xff;
+        a = a * ui_flash_alpha(0x800) / 255u;
+        float x0 = cx - 27.0f * scale, y0 = cy - 27.0f * scale;
+        sprite(x0, y0, x0 + 54.0f * scale, y0 + 54.0f * scale, false, lsi, (uint8_t)a, GL_DEV_SCREEN);
+    }
+}
+
 void ui_draw_hud(int w, int h, const Character *c, uint32_t time)
 {
     const void *right = tm_instance_get(TM_TAG("TXMP"), "right"), *ring = tm_instance_get(TM_TAG("TXMP"), "rightRing");
-    const uint8_t *gs = tm_instance_get(TM_TAG("ONGS"), "game_settings");
     uint32_t hp = c->hit_points, max = c->max_hit_points;
     gl_dev_screen(w, h);
     /* the original draws at the display's pixels; the port as at 640x480, scaled */
@@ -331,25 +414,28 @@ void ui_draw_hud(int w, int h, const Character *c, uint32_t time)
     };
     static const uint16_t bi[6] = { 0, 1, 2, 0, 2, 3 };
     gl_dev_draw(bg, 4, bi, 6, gl_dev_texture(right), GL_DEV_SCREEN_ADD);
-    /* DisplayHealth: the health from pi round to -pi/2 when full (-3 pi / 2 of the fraction, 0x52b408),
-       the overhealth on from -pi/2 by 1.396 a maximum (0x52b404), up to the settings' cap (ONGS+0).
-       Under 30% (3.33, 0x52b3fc) the arcs pulse. Not ported: the displayed health's easing toward the
-       real one (0x630fc4) and the damage arcs (0x630fcc, 0x630fcd). */
-    float f = (float)hp / (float)max, cap = gs ? rdfp(gs) : 2.0f;
-    uint32_t col = chr_health_colour((float)hp / (float)max);     /* 0x4ef450 */
-    float alpha = 255.0f;
-    float low = f * 3.3333333f;
-    if (low < 1.0f) {
-        float period = low * 35.0f + 40.0f;
-        float t = fmodf((float)time, low * 100.0f + 40.0f);
-        if (t < period) alpha *= 1.0f - (0.5f - low * 0.2f) * sinf(t * 3.1415927f / period);
+    /* DisplayHealth 0x500970: igui_hud's arcs (radii 50 and 40, the overhealth's 55, 24 segments) in
+       the health's colour (0x4ef450, of the part shown while it falls), the eased parts at 0x50 (0x7f
+       falling); unless rising, under 30% (3.33, 0x52b3fc) the health's arcs pulse. All by the health's
+       flash bit. */
+    const IguiHud *hud = igui_hud(c);
+    const IguiBar *hb = &hud->health_bar;
+    uint32_t v = hb->down ? (uint32_t)lrintf(hb->shown) : hp;
+    uint32_t col = chr_health_colour((float)v / (float)max);
+    unsigned a = ui_flash_alpha(0x1), a2 = (hb->down ? 0x7fu : 0x50u) * a / 255u;
+    if (!hb->up) {
+        float low = (float)hp / (float)max * 3.3333333f;
+        if (low < 1.0f) {
+            float period = low * 35.0f + 40.0f;
+            float t = fmodf((float)time, low * 100.0f + 40.0f);
+            if (t < period) a = (unsigned)lrintf((1.0f - (0.5f - low * 0.2f) * sinf(t * 3.1415927f / period)) * (float)a);
+        }
     }
-    uint8_t a = (uint8_t)lrintf(alpha);
-    if (hp) arc(cx, cy, 3.1415927f, (f < 1.0f ? f : 1.0f) * -4.712389f + 3.1415927f, 50.0f, 40.0f, 24, ring, scale, col, a);
-    if (f > 1.0f) {
-        float over = (f < cap ? f : cap) - 1.0f;
-        arc(cx, cy, -1.5707964f, over * -1.3962632f - 1.5707964f, 55.0f, 40.0f, 24, ring, scale, col, a);
-    }
+    for (int i = 0; i < 4; i++)
+        if (hud->health[i].on)
+            arc(cx, cy, hud->health[i].a0, hud->health[i].a1, (i & 1) ? 55.0f : 50.0f, 40.0f, 24, ring, scale, col,
+                (uint8_t)(i < 2 ? a : a2));
+    draw_inventory(c, hud, cx, cy, ring, scale);
 }
 
 /* ---- the window manager's drawing ---- */

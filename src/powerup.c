@@ -3,6 +3,7 @@
 #include "chars.h"
 
 #include "exe.h"
+#include "impact.h"
 #include "m3gm.h"
 #include "objc.h"
 #include "persist.h"
@@ -10,6 +11,7 @@
 #include "sound.h"
 #include "tm.h"
 #include "trac.h"
+#include "weapon.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -98,7 +100,7 @@ Powerup *powerup_new(int type, uint16_t amount, const float pos[3], float facing
             if (!(powerups[i].flags & 8) && powerups[i].time < oldest) oldest = powerups[i].time, p = &powerups[i];
         if (!p) return NULL;
     }
-    memset(p, 0, sizeof *p);
+    memset(p, 0, sizeof *p);        /* (a recycled one's context removed, 0x43aef0) */
     if (!set_type(p, type)) return NULL;
     p->amount = amount;
     memcpy(p->pos, pos, sizeof p->pos);
@@ -192,6 +194,15 @@ uint16_t powerup_give(Character *c, int type, uint16_t amount, bool force, bool 
     return amount;
 }
 
+bool powerup_glow(const Powerup *p, float pos[3])
+{
+    if (!p->glow) return false;
+    memcpy(pos, p->pos, 3 * sizeof(float));
+    float box[6], sphere[4];
+    if (p->geometry && m3gm_bounds(p->geometry, box, sphere)) pos[1] += box[1] + 0.1f;    /* 0x529cc4 */
+    return true;
+}
+
 void powerup_matrix(const Powerup *p, float m[12])
 {
     float co = cosf(p->facing), si = sinf(p->facing);
@@ -203,20 +214,103 @@ void powerup_matrix(const Powerup *p, float m[12])
 
 static int32_t num(const SlValue *v) { return v->type == SL_FLOAT ? (int32_t)v->f : v->i; }
 
-/* WPrPowerup_Drop 0x51bd80 (the port's stand-in: placed on the floor, no fall): the amount of the type
-   at c's feet, deviated up to 1 in x and z (AUrDeviateXZ 0x4380e0), 10 ahead if asked (0x52a190), facing
-   anywhere. */
-void powerup_drop(const Character *c, int type, uint16_t amount, bool ahead)
+/* AUrDeviateXZ 0x4380e0: x and z each moved by up to scale, either way. */
+static void deviate_xz(float v[3], float scale)
 {
     const float r = 1.0f / 65535.0f;    /* 0x529d74 */
-    float p[3] = { c->pos[0], c->pos[1], c->pos[2] };
-    float dx = (float)trac_random() * r, dz = (float)trac_random() * r;
+    float dx = (float)trac_random() * r * scale, dz = (float)trac_random() * r * scale;
     if ((uint16_t)(trac_random() * 100u >> 16) < 50) dx = -dx;
     if ((uint16_t)(trac_random() * 100u >> 16) < 50) dz = -dz;
-    p[0] += dx, p[2] += dz;
+    v[0] += dx, v[2] += dz;
+}
+
+static const void *update_env;
+
+/* 0x51c0a0, after the collisions: the first wall met faster than 0.35 into it plays the fall's impact;
+   a floor (a normal over 0.5 up) marks it 6 (on a floor), else the mark 4 goes. */
+static void post_collision(PhysObject *o, const PhysHit *hits, unsigned n)
+{
+    Powerup *p = o->owner;
+    bool played = false;
+    p->flags &= 0xfffb;
+    for (unsigned i = 0; i < n; i++) {
+        const float *nm = hits[i].plane;
+        if (!played && fabsf(nm[1] * o->vel[1] + nm[0] * o->vel[0] + o->vel[2] * nm[2]) > 0.35f) {   /* 0x52adb8 */
+            static int type = -2;   /* the "Powerup" impact type (0x627dc0, WPrInitialize 0x51b0f0) */
+            if (type == -2) type = impact_type_by_name(exe_str(0x54e6fc));
+            weapon_fall_impact(type, &hits[i], update_env);
+            played = true;
+        }
+        if (nm[1] > 0.5f) p->flags |= 6;    /* 0x529560 */
+    }
+}
+
+/* WPrPowerup_Drop 0x51bd80: a new powerup (not placed) at c's pelvis (the location, C+0x160, raised by
+   C+0x18c), moved up to 1 in x and z, 10 ahead if asked (0x52a190), facing anywhere; its physics (type
+   2, flags 0x5000, the characters not met (0x51c080); a sphere of the geometry's depth below its
+   origin, at least 1, or 2 without one) starting still, moved up to 0.1 in x and z; dropped where it
+   stands, a part of c's last hit (A+0xd4, 0.055) and 1.5 up. */
+void powerup_drop(const Character *c, int type, uint16_t amount, bool ahead)
+{
+    float p[3] = { c->pos[0], c->pos[1] + c->pelvis_height, c->pos[2] };
+    deviate_xz(p, 1.0f);
     if (ahead) p[0] += sinf(c->facing) * 10.0f, p[2] += cosf(c->facing) * 10.0f;
-    float facing = (float)trac_random() * 6.2831855f * r;   /* 0x529548, 0x5294fc */
-    powerup_place(type, amount, p, facing);
+    float facing = (float)trac_random() * 6.2831855f * (1.0f / 65535.0f);   /* 0x529548, 0x5294fc */
+    Powerup *u = powerup_new(type, amount, p, facing);
+    if (!u) return;
+    PhysObject *o = &u->phys;
+    physobj_init(o);
+    o->flags |= 0x5000u;
+    o->owner = u;
+    o->post_collision = post_collision;
+    o->friction_sub = 0.0025f;      /* 0x3b23d70a */
+    o->friction_mul = 0.75f;
+    float r = 2.0f, box[6], sphere[4];
+    if (u->geometry && m3gm_bounds(u->geometry, box, sphere)) {
+        r = fabsf(box[1]);
+        if (r <= 1.0f) r = 1.0f;    /* 0x529508 */
+    }
+    memcpy(o->pos, u->pos, sizeof o->pos);
+    memcpy(o->sphere, u->pos, sizeof u->pos);
+    o->sphere[3] = r;
+    physobj_matrix(o);
+    u->has_phys = true;
+    u->flags |= 1;
+    deviate_xz(o->vel, 0.1f);       /* 0x3ccccccd */
+    if (!ahead) {
+        for (int k = 0; k < 3; k++) o->vel[k] += c->hit_velocity[k] * 0.055f;  /* 0x52b8dc */
+        o->vel[1] += 1.5f;          /* 0x52a774 */
+    }
+}
+
+void powerups_update(void)
+{
+    for (int i = 0; i < count; i++) {
+        Powerup *p = &powerups[i];
+        if (!p->has_phys) continue;
+        memcpy(p->phys.sphere, p->phys.pos, sizeof p->phys.pos);
+        memcpy(p->pos, p->phys.sphere, sizeof p->pos);
+        if (p->phys.vel[1] > 2.25f) p->phys.vel[1] = 2.25f;     /* 0x52b8d4 */
+        const float *v = p->phys.vel;
+        if ((p->flags & 4) || v[0] * v[0] + v[1] * v[1] + v[2] * v[2] < 0.0069444445f) {     /* 0x52b8d0 */
+            if (++p->still >= 120) {
+                p->has_phys = false;    /* (0x43aef0) */
+                p->flags &= 0xfffe;
+            }
+        } else
+            p->still = 0;
+        /* the fading (+0x24, +0x26) of one at rest: nothing sets its time */
+    }
+}
+
+void powerups_physics(const void *env)
+{
+    update_env = env;
+    for (int i = 0; i < count; i++)
+        if (powerups[i].has_phys) {
+            powerups[i].phys.owner = &powerups[i];  /* (the slot may have moved: powerup_delete) */
+            physobj_update(&powerups[i].phys, env);
+        }
 }
 
 /* powerup_spawn type flag [amount] (AI2iScript_PowerupSpawn 0x4b85e0): a placed powerup at the flag. */

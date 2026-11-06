@@ -45,7 +45,7 @@ Steps 4 (renderer), 6 (character) and 7 (scripts) have begun:
   `src/knowledge.c` (sight, hurts, the alert), `src/combat.c` (the combat settings, behaviours,
   maneuvers, the gun pickup, targeting and the executor's aim) `src/melee.c` (the melee profiles and techniques), `src/neutral.c` (the neutral characters'
   conversations and the characters' speech) and `src/panic.c` (the non-combatants' panic; all
-  in [docs/re/ai.md](docs/re/ai.md)) move the others; `--param ailog=1` logs each fighter once a second.
+  in [docs/re/ai.md](docs/re/ai.md)) move the others; `--param ailog=1` logs each fighter once a second, `--param physlog=1` the player's moves the walls stop.
   `--param call=<function>[,...]` runs level functions at the start (e.g. `spawn_top,final_striker_attack` on level 1).
 - `src/character.c`: a first playable. `--param play=1 --param level=1` runs Konoko through level 1
   (`--param at=x,y,z,deg` starts her elsewhere); `--param viewer=level` flies through a level. `--param
@@ -59,8 +59,10 @@ Steps 4 (renderer), 6 (character) and 7 (scripts) have begun:
   unstoppable=1` keeps her on her feet (the game's cheat switches), for runs of a level's scripts).
 - `src/throw.c`: throws (the player's; the victim's part and its own damage), in
   [docs/re/character.md](docs/re/character.md) "Throws".
-- `src/weapon.c`: weapons (spawn, pickup, the trigger and shots, drop, the slots and holstering; the shots' particles are
-  stand-ins), [docs/formats/onwc.md](docs/formats/onwc.md). Route keys `q` swap, `g` fire, `e` drop.
+- `src/weapon.c`: weapons (spawn, pickup, the trigger and shots, drop and the throw, the slots and holstering),
+  [docs/formats/onwc.md](docs/formats/onwc.md). Route keys `q` swap, `g` fire, `e` drop. `src/physobj.c`: the
+  physics of the weapons and powerups in the world (gravity, the walls, friction; [docs/re/physics.md](docs/re/physics.md)
+  "The other objects").
 - `src/sl.c`: the BSL engine, running the level's scripts. `src/trigger.c` (trigger volumes),
   `src/object.c` (the level's objects, `obj_*` and `env_*anim`) and `src/env.c` (`env_show`) are its
   first commands; `src/laser.c` the laser triggers (`trig_*`), `src/envparticle.c` the level's
@@ -82,7 +84,7 @@ near them, and the `door_*` commands ([docs/re/door.md](docs/re/door.md)). `src/
   (`src/env.c`, with the textures' materials: `src/material.c`) run on it. `src/render/particle_draw.c` draws the sprites,
   geometry, vectors, contrails and lens flares; `src/decal.c` the decals (bullet holes, cut to the walls'
   quads and folded over their edges, [docs/re/decal.md](docs/re/decal.md)), drawn by
-  `src/render/decal_draw.c`; the attractors (homing) in `src/particle.c`; particle sounds are stand-ins. `src/impact.c`: the impact effects (the Impt and Mtrl
+  `src/render/decal_draw.c`; the attractors (homing) and the sounds in `src/particle.c`. `src/impact.c`: the impact effects (the Impt and Mtrl
   trees, the ONIE table, ONrImpactEffect) the particles' impact action plays ([docs/re/impact.md](docs/re/impact.md)).
 - Aiming (the aiming screens in `src/chr_anim.c`, the recoil in `src/character.c`), reloading
   (`src/weapon.c`) and powerups (`src/powerup.c`): level 1's training plays through to its end.

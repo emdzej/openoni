@@ -52,7 +52,7 @@ picks the message:
 | 17 | moonshadow | the invisibility C+0x1ba: 0xffff (for good), or 0 | yes |
 | 18 | munitionfrenzy | every ONWC (`TMrInstance_GetDataPtr_List`) as a new weapon, the i-th of n at the angle 2π i / n on a circle of 8 about the player, 10 up, facing along it (the angle + π/2) | yes |
 | 19 | fistsoflegend | 0x5ece8f: the player's blows land with the reaction 0xd6 (0x4e7740) | yes |
-| 20 | killmequick | 0x5eb849: the melee AI chooses again whatever it is doing (`AI2rMelee_Update` 0x4a01f0) and skips a maneuver of type 4 (0x4a6f20) | the switch only |
+| 20 | killmequick | 0x5eb849, the melee AI's debugging switch (as C+8 bit 2): it chooses its technique again every tick even when committed (`AI2rMelee_Update` 0x4a01f0, 0x4a09b5), a committed attack is aimed again (`AI2iMelee_Attack_Update` 0x4a5500, 0x4a5748), and a pause maneuver (4) starts the next move at once (`AI2iMelee_Maneuver_Start` 0x4a6f20) | ported (`src/melee.c`) |
 | 21 | carousel | G+0x104: `ONrGameState_UpdateServerTime` 0x4fbeb0 takes two of the machine's 60ths a tick (as with G+0x108 above 0) | a tick every other frame |
 
 `ONrCharacter_LevelBegin` 0x4d87b0 clears 0x5ece90 to 0x5ece93 and 0x5ece8f at each level's start; the

@@ -3,12 +3,12 @@
    the delays, the recoil overlay). Format of the class (ONWC): docs/formats/onwc.md.
 
    A weapon's shooters are particles (the class's 16 slots at +0x1d0 name a BINA 3RAP particle class):
-   the events of WPiDoEvent 0x519f70 go to them and they emit the projectiles. The port has no particle
-   system yet: a shooter's particle is a stand-in that exists when its class does, takes the events and
-   emits nothing. Not ported either: the physics of a weapon in the world (the port rests it on the
-   floor below), the AI's use, the noise of a shot (AI2rKnowledge_Sound). */
+   the events of WPiDoEvent 0x519f70 go to them and they emit the projectiles. A weapon in the world
+   falls, slides and comes to rest through its physics context (src/physobj.c); it is drawn turned by
+   its facing and fades once dropped. */
 #pragma once
 #include "character.h"
+#include "physobj.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -39,7 +39,8 @@ typedef struct Weapon {
     const uint8_t *cls;             /* +0x04: the ONWC */
     Character *owner;               /* +0x08 */
     float m[12];                    /* +0x0c: 3x3 by columns, then the place (+0x30) */
-    bool resting;                   /* +0x3c: its physics (the port's: on the floor) */
+    bool has_phys;                  /* +0x3c: its physics context (none while owned) */
+    PhysObject phys;
     float facing;                   /* +0x40 */
     uint16_t fade;                  /* +0x44: ticks until it goes, once fading */
     uint16_t fade_delay;            /* +0x46: ticks until it fades */
@@ -79,6 +80,18 @@ const void *weapon_geometry(const Weapon *w);
 
 /* WPiUpdate 0x5192b0, every weapon once a tick (after the characters). env: the floor's. */
 void weapons_update(const void *env);
+/* WPiGenerateFallImpact 0x5189c0, a weapon's or powerup's fall: ONrImpactEffect 0x4fe5b0 of the type
+   (-1 none) on the material of the wall's texture, at the hit with its normal. */
+void weapon_fall_impact(int type, const PhysHit *h, const void *env);
+/* OBiPhysics_Update 0x43af50 for the weapons in the world (after weapons_update and the powerups'). */
+void weapons_physics(const void *env);
+/* WPrDisplay 0x519710: the matrix of a weapon in the world (not owned) and its alpha (255 unless fading). */
+uint8_t weapon_world_matrix(const Weapon *w, float out[12]);
+/* Its glow (class +0x6f4; +0x6f8 too with ammo): flat sprites at the bottom of its bounds through m,
+   the bounds' x and z spans by the class's scales (+0x6fc, +0x700) and 1.1, at a third of alpha. False
+   without one. */
+bool weapon_glow(const Weapon *w, const float m[12], uint8_t alpha, const void *tex[2], float pos[3], float size[2],
+                 uint8_t *glow_alpha);
 
 /* The character side (ONrCharacter_*): installs the hooks of character.c and chr_anim.c. */
 void weapons_install(void);
@@ -121,6 +134,9 @@ bool weapon_loaded(Weapon *w);
 bool chr_has_ammo_for(const Character *c, const Weapon *w);
 /* 0x4e4ab0 (c, 0, 0): the weapon in the hand dropped. */
 void chr_drop_weapon(Character *c);
+/* ONrCharacter_DropWeapon 0x51b590 (slot 0, thrown), as ONrCharacter_Die_1_Animating_Hook 0x4eb550 and
+   NewAnimationHook 0x4e97a0 (an animation of TRAM flag 5) do: the hand's weapon thrown (WPrRelease). */
+void chr_throw_weapon(Character *c);
 
 /* weapon_spawn, chr_inv_reset, chr_giveweapon, wp_disable_fade. */
 void weapons_register_commands(void);

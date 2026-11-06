@@ -4,9 +4,10 @@
    smoke are all particles; so are the animations' own (docs/re/character.md, "The animation's particles").
 
    The attractors (homing: P3rFindAttractor, the iterators and selectors, the attract actions and the
-   emitters' aim at them) are ported. Not ported yet (stand-ins marked in the code): the particles'
-   sounds, the AI's knowledge of dangerous projectiles and the flyby sounds (the callbacks of
-   ONrParticle3_Initialize), the physics objects other than the characters and the detail levels. */
+   emitters' aim at them) and the sounds (the ambient and impulse actions, src/sound.c) are ported. Not
+   ported yet (stand-ins marked in the code): the AI's knowledge of dangerous projectiles and the flyby
+   sounds (the callbacks of ONrParticle3_Initialize), the particles' collisions with the physics
+   objects other than the characters and the detail levels. */
 #pragma once
 #include "character.h"
 

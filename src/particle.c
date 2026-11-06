@@ -17,6 +17,7 @@
 #include "decal.h"
 #include "impact.h"
 #include "knowledge.h"
+#include "sound.h"
 #include "material.h"
 #include "exe.h"
 #include "m3gm.h"
@@ -560,14 +561,35 @@ static void default_param(uint32_t type, uint8_t *v)
     else if (type & 0x1000) wr32(v, 10);    /* the enum's default (0x53a400): its first value, 0 */
 }
 
-/* P3rUpdateActionData 0x457240: an action's payload: the sound (not ported), the class an effect
-   creates, the impact type (0xffff none). */
+/* The sounds the actions' payloads name: the original keeps the ambient's or impulse's pointer there,
+   the port its place here, plus one (0 none). */
+enum { SOUND_REFS_MAX = 512 };
+static const void *sound_refs[SOUND_REFS_MAX];
+static uint32_t nsound_refs;
+
+static uint32_t sound_ref(const void *snd)
+{
+    if (!snd) return 0;
+    for (uint32_t i = 0; i < nsound_refs; i++) if (sound_refs[i] == snd) return i + 1;
+    if (nsound_refs >= SOUND_REFS_MAX) return 0;
+    sound_refs[nsound_refs++] = snd;
+    return nsound_refs;
+}
+static const void *sound_of(uint32_t ref) { return ref && ref <= nsound_refs ? sound_refs[ref - 1] : NULL; }
+
+/* P3rUpdateActionData 0x457240: an action's payload: the sound (OSrAmbient_GetByName 0x511670,
+   OSrImpulse_GetByName 0x512440: the class then plays sounds), the class an effect creates, the impact
+   type (0xffff none). */
 static void update_action_data(P3Class *c, uint8_t *a)
 {
     wr32(a + A_PAYLOAD, 0);
     uint32_t t = rd32(a + A_TYPE);
     if ((t == A_AMB_SOUND || t == A_IMPULSE_SOUND) && rd32(param(a, 0)) == 6) {
-        c->flags |= C_SOUNDS;   /* OSrAmbient_GetByName 0x511670, OSrImpulse_GetByName 0x512440 */
+        char n[17];
+        memcpy(n, param(a, 0) + 4, 16);
+        n[16] = 0;
+        wr32(a + A_PAYLOAD, sound_ref(t == A_AMB_SOUND ? sound_ambient_find(n) : sound_impulse_find(n)));
+        c->flags |= C_SOUNDS;
     } else if (t == A_CREATE_EFFECT && rd32(param(a, 0)) == 6) {
         char n[17];
         memcpy(n, param(a, 0) + 4, 16);
@@ -941,6 +963,7 @@ static void end_particle(P3Class *c, P3Particle *p)
         if (db) decal_delete(rd32(db));
     }
     if (p->flags & P_SOUND) {           /* OSrAmbient_Stop 0x511e40 */
+        sound_ambient_stop((uint32_t)p->sound);
         p->sound = -1;
         p->flags &= ~(uint32_t)P_SOUND;
     }
@@ -2124,7 +2147,11 @@ static void process_class(P3Class *c, uint32_t tick)
         if (gone || (p->flags & P_DEAD)) continue;
         p->tick = tick;
         p->time = tnow;
-        /* the update callback (none registered) and the ambient sound's place (OSrAmbient_Update: not ported) */
+        /* the update callback (none registered); a moved or attached one's ambient sound to its real
+           place (OSrAmbient_Update 0x511ec0) */
+        float sp[3];
+        if ((p->flags & P_SOUND) && (p->flags & (P_MOVED | P_ATTACHED)) && p3_real_position(c, p, sp))
+            sound_ambient_move((uint32_t)p->sound, sp);
         p->flags &= ~(uint32_t)P_MOVED;
     }
     hit.hit = false;
@@ -2246,6 +2273,7 @@ void p3_reset(void)
     nattach = 0;
     last_tick = 0;
     hit.hit = last_hit.hit = false;
+    nsound_refs = 0;
 }
 
 /* The classes of every loaded file's BINA "3RAP" instances (the binary data's loader for the PAR3 class,
@@ -2531,9 +2559,33 @@ static bool do_action(Act *x)
         /* the original returns the last one's death as the particle's own */
         return run_event(lc, l, P3_EV_EXPLODE, lc->def + D_EVENTS + 4 * P3_EV_EXPLODE, x->time, 0.0f, false);
     }
-    case A_AMB_SOUND: case A_IMPULSE_SOUND:     /* OSrAmbient_Start 0x511730, OSrImpulse_Play 0x512480: not ported */
+    case A_AMB_SOUND: {
+        /* P3iAction_AmbientSound 0x4675a0: the one playing stopped, the payload's started at the real
+           place (the orientation's direction and the velocity it passes the sound go unused) */
+        const void *amb = sound_of(rd32(a + A_PAYLOAD));
+        if (!amb) return false;
+        if (p->flags & P_SOUND) {
+            sound_ambient_stop((uint32_t)p->sound);
+            p->sound = -1;
+            p->flags &= ~(uint32_t)P_SOUND;
+        }
+        float sp[3];
+        if (p3_real_position(c, p, sp)) p->sound = (int32_t)sound_ambient_start_at(amb, sp);
+        if (p->sound != -1) p->flags |= P_SOUND;
         return false;
+    }
+    case A_IMPULSE_SOUND: {
+        /* P3iAction_ImpulseSound 0x467690: the payload's played at the real place; gone if it died */
+        const void *imp = sound_of(rd32(a + A_PAYLOAD));
+        if (!imp) return false;
+        float sp[3];
+        if (!p3_real_position(c, p, sp)) return true;
+        sound_impulse_play_at(imp, sp, NULL);   /* OSrImpulse_Play 0x512480 */
+        return false;
+    }
     case A_END_AMB_SOUND:
+        /* P3iAction_EndAmbientSound 0x467660 */
+        if (p->sound != -1) sound_ambient_stop((uint32_t)p->sound);
         p->sound = -1;
         p->flags &= ~(uint32_t)P_SOUND;
         return false;

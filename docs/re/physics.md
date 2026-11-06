@@ -1,7 +1,7 @@
 # Physics and collision
 
 How objects and characters move and collide with the environment. Read in the Windows exe; the character's part
-is ported in `src/physics.c` (tested by `physics_test`), the other objects' is not.
+is ported in `src/physics.c` (tested by `physics_test`), the weapons' and powerups' in `src/physobj.c`.
 Confirmed means read in the exe; inferred means from the context.
 
 ## The update
@@ -39,7 +39,16 @@ plane (0x433da0: when move·n < 0, (move·n) n) is taken off the move; if that p
 the environment, skipping quads with the flags 0x44800 (and 0x4000 with the context's bit 0x4000):
 `AKrCollision_Sphere` 0x441cb0, or the point's 0x441c80 with bit 0x20. Each hit gives a record with the
 quad's plane (negated when the plane index has bit 31); two-sided quads (flags 0x2a0) give a second with
-the plane times −1 (0x529804).
+the plane times −1 (0x529804). The character's callback (0x4ebd70) does the same, unconditionally
+(confirmed).
+
+A consequence the port shows (observed, not yet checked against the original running): a character whose
+sphere straddles a two-sided quad can move only along it, the one plane or the other taking any part
+across, and one overlapping several of a box's quads can be held still. On level 11 the "dog" cutscene
+(`chr_nocollision`, the film DogKonokoSet and the console animations) leaves Konoko among the console's
+quads (21741..21765) this way; its last line, `playback DogKonokoEnd`, has no character and fails the
+command's parameters, so no film moves her out. `--param physlog=1` logs the player's blocked moves with
+the hits.
 
 **`AKrCollision_Sphere`** 0x441cb0: the hits go to a list of up to 255 (0x48 bytes each: the distance as
 float and as an integer, the kind, the plane, the point, the quad), sorted by 0x441b40 (by distance; with a
@@ -158,3 +167,91 @@ The block form only waits (the command retried) while an earlier one plays: fram
   character's facing is dropped.
 
 The port: `chr_envanim_start`, `chr_root_matrix` (character.c), `physics_take` and `physics_update`.
+
+## The other objects
+
+The weapons and the powerups dropped make contexts of type 2 (`src/physobj.c`). Offsets here are the
+context's own, 8 less than the array-relative ones above (the flags +0x128, the gravity +0x108).
+
+`PHrPhysics_Init` 0x43b5e0 (confirmed): the 0x150 bytes zeroed; the quaternions +0x74 and +0x90 the
+identity (0x529898); the gravity +0x108 0.294; the scale +0xa0 and +0x104 1; the flags 2 (active); the
+matrices +0xa4 and +0xd4 the identity. `PHrPhysics_MaintainMatrix` 0x43b410 for types 0, 1, 2 and 4
+(the jump table 0x43b5cc): the matrix +0xa4 is the translation to the position +0x84, times the turn of
+the quaternion +0x90, times the scale +0xa0. Nothing turns a weapon's or a powerup's quaternion, so
+their matrices are the place; their draws turn them by their facing.
+
+The generic callbacks (confirmed): `PHrPhysics_Callback_FindEnvCollisions` 0x43b870, the sphere (+0x00,
+its centre the position) moving by the move through `AKrCollision_Sphere` 0x441cb0 (`AKrCollision_Point`
+0x441c80 with flag 0x20), the quads with the flags 0x44800 skipped, with 0x4000 too for flag 0x4000;
+each hit a record of kind 0 (the gunk quad, the plane, turned for a quad of negative index, the point),
+and a second record with the plane turned (x -1, 0x529804) for a quad of flags 0x2a0.
+`PHrPhysics_Callback_FindPhyCollisions` 0x43be20 tests every other active context not flagged 0x10 at
++0x134 through the callback +0xc (skip) and `PHrPhysics_Single_PhyCollision` 0x43ba70 (not ported).
+`PHrPhysics_Callback_Friction` 0x43bee0 (types other than 0, 1 and 3): the speed s = |v|; under 1/1024
+the velocity stops; else it is scaled to min(max(s - f1, 0), s f2) / s, f1 at +0x114, f2 at +0x118.
+With flag 0x1000 the friction is only taken on a tick with flag 0x2000 (something met).
+
+### Weapons
+
+`WPiWeapon_CreatePhysics` 0x518e10 (confirmed; `WPiInit` 0x518c00 and `WPrRelease` 0x51a550 make it):
+type 2, flags | 0x5400, the owner +0x14c the weapon, the callback table 0x6200d0 (filled at 0x518721:
+kind 5, +4 FindEnvCollisions, +8 FindPhyCollisions, +0xc `WPiWeaponPhysics_SkipPhyCollisions_Callback`
+0x518a80, +0x18 `WPiWeaponPhysics_PostCollision_Callback` 0x518930, +0x20
+`WPiWeaponPhysics_Callback_ReceiveForce` 0x518b80, +0x24 Friction, +0x2c 0x4eb540), f1 0.0025 and f2
+0.75; the geometry's bounds (0x41efc0) to +0x04; the sphere (`PHrSphereTree_New` 0x43b310) of a quarter
+of the largest coordinate of the geometry's points (0x5296c4), about the weapon's place (+0x30).
+`WPiInit` then puts the context 2 above the place (0x529818) and keeps the facing (+0x40); its matrix
+follows on the next physics.
+
+`WPiUpdate` 0x5192b0, for one in the world: the sphere's centre the position; the velocity's y no more
+than 2.25 (0x52b8d4); the fade: +0x46 counts down to set +0x44 to 600, +0x44 down to `WPrDelete`
+(unless `wp_disable_fade`); the weapon's matrix (+0x0c) the context's. `WPrDisplay` 0x519710 draws the
+context's matrix (else the weapon's) turned about y by the facing (`MUrMatrix3x3_RotateY` 0x434e70: the
+turn on the left), raised by the class's +0x710, with alpha +0x44/600 (0x52b8d8) while fading. First
+its glows (class +0x6f4, and +0x6f8 with ammo): `M3rSprite_Draw` 0x41a830 in the sprite mode 4 (geom
+state 6, set at the display's start), lying along that matrix's x and z columns at the bounds' bottom
+middle 0.1 up, the bounds' x and z spans times the class's +0x6fc and +0x700 and 1.1 (0x5295a0), white,
+at a third of the alpha (x 255 x 2/3 / 2 / 256). The powerups' (0x51c2b0) alike: their ONGS glow at
+alpha 0x55, their glow sizes, the geometry's bottom 0.1 up, along their matrix (the place turned by
+the facing).
+
+The post-collision callback (0x518930): for each record of kind 0, |n·v| over 0.35 (0x52adb8) plays
+the fall impact (0x5189c0: `ONrImpactEffect` 0x4fe5b0 of the impact type "Weapon", found by
+`WPrInitialize` 0x51b0f0 into 0x622194, on the material of the quad's texture, at the point with the
+normal, modifier 0, AI scale 1); any record but a character's (the other's table kind 1) sets the
+weapon's flag 2.
+
+`WPrRelease` 0x51a550 (confirmed): the context made if none; with an owner, the matrix's place kept out of
+the walls (`WPrNotThroughWall` 0x51b690: the line from 7.5 above the character's location to the place,
+lengthened by 6, through `AKrCollision_Point` with the flags 0x40800; a hit puts the place 6 short of
+it), the position that place, the facing atan2 of the weapon node's matrix (A+0x2608, `0x4f13e0(c,
+19)`) x column's x and z, less pi/2, wrapped to [0, 2 pi); without one a random facing. The velocity
+zero; thrown (dl): 1.5 up and, with an owner, its A+0xd4 times 0.07 (class +0xcc & 3), 0.1 (& 8) or
+0.12. The owner, the waits (+0x4c, +0x50, +0x52, +0x54, +0xfc, the shooters' +0x5a) and +0x44 cleared,
+flags 0xc000 set, +0x46 4800 (0 for a class with +0xcc & 0x80000).
+
+A+0xd4 (confirmed, `ONrCharacter_TakeDamage` 0x4e65f0 for the living): the hit's direction times its
+damage held to 5..15, zero without a direction. `ONrCharacter_DropWeapon` 0x51b590 throws (dl = 1) from
+`ONrCharacter_Die_1_Animating_Hook` 0x4eb550 (the hand's weapon) and from
+`ONrCharacter_NewAnimationHook` 0x4e97a0 for an animation of TRAM flag 5; the pickups, the drop key, the
+holster and `ONrCharacter_LetGoWeapon` 0x4e4ab0 (the death's stage 2, all of an AI's slots) don't.
+
+### Powerups
+
+`WPrPowerup_Drop` 0x51bd80 (confirmed; the Mac build's `WPrPowerup_AddPhysics` inlined): the place is
+the character's location raised by C+0x18c, `AUrDeviateXZ` 0x4380e0 by 1, 10 ahead (0x52a190) if asked;
+a random facing; `WPrPowerup_New` 0x51c160 (not placed). Its context: type 2, flags | 0x5000, the table
+0x620100 (kind 7, +0xc 0x51c080 skips the characters, +0x18 0x51c0a0, +0x20 0x51c140, +0x24 Friction),
+f1 0.0025, f2 0.75; the sphere's radius |the geometry's lowest y| (PNTA +0x10), at least 1, or 2 with no
+geometry; at the powerup's place, still, then `AUrDeviateXZ` of the velocity by 0.1; unless dropped
+ahead, A+0xd4 times 0.055 (0x52b8dc) added and 1.5 (0x52a774) up. The powerup's flag 1 set.
+
+`WPiPowerupPhysics_PostCollision_Callback` 0x51c0a0: flag 4 cleared; the first record of kind 0 met
+faster than 0.35 plays the fall impact with the type "Powerup" (0x627dc0); a normal over 0.5 up
+(0x529560) sets the flags 6. `WPiPowerup_Update` 0x5190f0: for one with a context the sphere's centre
+and the powerup's place the position, the velocity's y no more than 2.25; with flag 4 or |v|^2 under
+1/144 (0x52b8d0) +0x28 counts up, else it is 0; at 120 the context goes and flag 1 with it. Without flag
+1 the fade counts +0x24 (to set +0x26 to 600) and +0x26 (to delete it) run, but nothing sets them.
+
+Not ported: the contexts' collisions with each other (FindPhyCollisions, 0x43a9a0, the receive-force
+callbacks): the characters neither stop nor push the weapons and powerups.

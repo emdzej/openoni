@@ -65,6 +65,13 @@ void sound_impulse_play(const char *name, float volume);
 const void *sound_impulse_find(const char *name);
 float sound_impulse_impact_velocity(const void *impulse);
 void sound_impulse_play_at(const void *impulse, const float pos[3], const float *volume);
+/* An ambient by name (OSrAmbient_GetByName 0x511670), NULL if none. OSrAmbient_Start 0x511730 at pos (the
+   particles'): its id, UINT32_MAX if none started. OSrAmbient_Update 0x511ec0: moved, whether it plays.
+   OSrAmbient_Stop 0x511e40. */
+const void *sound_ambient_find(const char *name);
+uint32_t sound_ambient_start_at(const void *amb, const float pos[3]);
+bool sound_ambient_move(uint32_t id, const float pos[3]);
+void sound_ambient_stop(uint32_t id);
 /* ONrGameState_EventSound_Play 0x4fdac0: the game's event sound of that index (the impulse named in
    the game settings, ONGS+0x7d0, 32 bytes each, 18 of them; SSrImpulse_UpdateGroupPointers 0x4f49b0),
    not placed. */

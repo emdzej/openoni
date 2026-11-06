@@ -243,6 +243,8 @@ static void diary_load(int16_t page)
 
 bool igui_help_shown(void) { return help_on; }
 
+static void hud_arcs_reset(void);
+
 void igui_level_load(int level)
 {
     memset(&ps, 0, sizeof ps);
@@ -263,10 +265,126 @@ void igui_level_load(int level)
         }
     diary_load(-1);
     key_icons = tm_instance_get(TM_TAG("KeyI"), "keyicons");
+    hud_arcs_reset();
 }
 
-void igui_update(uint32_t time)
+/* ---- the HUD's bars and arcs ---- */
+
+static IguiHud hud;     /* the bars and the arcs' on flags kept from level to level */
+
+/* ONrInGameUI_SetArcPoints 0x504270's angles (at the level's load): each arc full. */
+static void hud_arcs_reset(void)
 {
+    static const float PI = 3.1415927f, HALF = 1.5707964f;
+    for (int i = 0; i < 4; i += 2) {
+        hud.health[i].a0 = PI, hud.health[i].a1 = -HALF;
+        hud.health[i + 1].a0 = -HALF, hud.health[i + 1].a1 = -2.9670596f;     /* 0xc03de44e */
+    }
+    for (int i = 0; i < 2; i++) hud.shield[i].a0 = 0.034906585f, hud.shield[i].a1 = 1.553343f;
+}
+
+/* ONiInGameUI_UpdateDamageMeter 0x5048e0: a bar toward value; a target over it rises (the part shown is
+   the target), else a fall shows the old value going down by rate a tick until it reaches the new. */
+static void bar_update(IguiBar *b, uint32_t value, uint32_t target, float rate)
+{
+    if (b->down) {
+        b->shown -= rate;
+        if (b->shown <= (float)b->value) b->down = false;
+        b->dirty = true;
+    }
+    if (target > value) {
+        b->down = false;
+        b->up = true;
+        if (b->target != target) {
+            b->target = target;
+            b->shown = (float)target;
+            b->dirty = true;
+        }
+    } else {
+        b->target = value;
+        if (b->up) {
+            b->up = false;
+            b->dirty = true;
+        }
+    }
+    if (value > b->value) {
+        if (b->down) b->down = false;
+        b->dirty = true;
+    } else if (value < b->value) {
+        if (!b->down && !b->up) {
+            b->shown = (float)b->value;
+            b->down = true;
+        }
+        b->dirty = true;
+    }
+    b->value = value;
+}
+
+static float minf(float a, float b) { return a < b ? a : b; }
+
+const IguiHud *igui_hud(const Character *c)
+{
+    static const float PI = 3.1415927f, HALF = 1.5707964f, TURN = 4.712389f, OVER = 1.3962634f;
+    const uint8_t *gs = tm_instance_get(TM_TAG("ONGS"), "game_settings");
+    float cap = 2.0f;
+    if (gs) memcpy(&cap, gs, 4);    /* the health's cap, of the maximum */
+    IguiBar *b = &hud.health_bar;
+    IguiArc *h = hud.health;
+    if (b->dirty && c->max_hit_points) {
+        /* DisplayHealth: the health from pi round by 3 pi / 2 of its part, the overhealth from -pi/2
+           by 1.396 of its part, up to the cap; the eased parts beyond them: the health's to the part
+           shown (none while over the maximum), the overhealth's from the overhealth's end */
+        float max = (float)c->max_hit_points, f = 0.0f, over = 0.0f;
+        if (b->value == 0) {
+            h[0].on = h[1].on = false;
+        } else {
+            f = (float)b->value / max;
+            h[0] = (IguiArc){ true, PI, minf(f, 1.0f) * -TURN + PI };
+            if (f > 1.0f) {
+                over = minf(f, cap) - 1.0f;
+                h[1] = (IguiArc){ true, -HALF, over * -OVER - HALF };
+            } else {
+                h[1].on = false;
+            }
+        }
+        if (b->down || b->up) {
+            float s = b->shown / max;
+            if (f > 1.0f) h[2].on = false;
+            else h[2] = (IguiArc){ true, PI - f * TURN, PI - minf(s, 1.0f) * TURN };
+            if (s > 1.0f) h[3] = (IguiArc){ true, over > 0.0f ? -HALF - over * OVER : -HALF,
+                                            (minf(s, cap) - 1.0f) * -OVER - HALF };
+            else h[3].on = false;
+        } else {
+            h[2].on = h[3].on = false;
+        }
+        b->dirty = false;
+    }
+    b = &hud.shield_bar;
+    h = hud.shield;
+    if (b->dirty) {
+        /* DisplayShield: from 0.035 by 1.518 of the part left (of 100), the eased part beyond it */
+        static const float START = 0.034906585f, SPAN = 1.5184364f;
+        float frac = 0.0f;
+        if (b->value == 0) h[0].on = false;
+        else {
+            frac = (float)b->value * 0.01f;
+            h[0] = (IguiArc){ true, START, minf(frac, 1.0f) * SPAN + START };
+        }
+        if (b->up || b->down) h[1] = (IguiArc){ true, frac * SPAN + START, minf(b->shown * 0.01f, 1.0f) * SPAN + START };
+        else h[1].on = false;
+        b->dirty = false;
+    }
+    return &hud;
+}
+
+void igui_update(Character *player, uint32_t time)
+{
+    if (!player) return;
+    /* the hit arcs fade by 3 a tick */
+    for (int i = 0; i < 4; i++) player->hit_flash[i] = player->hit_flash[i] < 3 ? 0 : (uint8_t)(player->hit_flash[i] - 3);
+    bar_update(&hud.health_bar, player->hit_points, player->hit_points + player->hypo_heal,
+               (float)player->max_hit_points * 0.0055555557f);
+    bar_update(&hud.shield_bar, player->shield_shown, player->shield, 0.5555556f);
     if (suppress_prompt || (!objective_new && !diary_new)) return;
     if (!prompt_now && time - prompt_time <= 0x708) return;
     const char *m = diary_new ? "new_move" : "new_objective";

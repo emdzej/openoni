@@ -298,8 +298,10 @@ damage and hit reactions, power-ups, inventory, HUD.
 Progress: melee hits (`src/chr_hit.c`): the parts' contact, the attacks that land, reactions, damage,
 knockback, death, blocking. `tests/hit_test.c`. The HUD's health ring (`ui_draw_hud`:
 `ONrInGameUI_Display` 0x4fff50's "right" element, `ONiInGameUI_DisplayHealth` 0x500970, the arcs of
-`ONrInGameUI_SetArcPoints` 0x504270, the colours of the `game_settings` ONGS). Weapons and particles
-are next.
+`ONrInGameUI_SetArcPoints` 0x504270, the colours of the `game_settings` ONGS), with its easing
+(`ONiInGameUI_UpdateDamageMeter` 0x5048e0, from `ONrInGameUI_Update` 0x504780), the shield's arcs
+(`ONiInGameUI_DisplayShield` 0x501080) and the hits' (`ONiInGameUI_DisplayHits` 0x500db0, set in
+`ONrCharacter_TakeDamage` by the hit's side). Weapons and particles are next.
 
 ## 9. AI
 

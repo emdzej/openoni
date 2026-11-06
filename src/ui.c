@@ -77,6 +77,8 @@ uint8_t ui_flash_alpha(uint32_t bit)
     return (uint8_t)lrintf(expf(-0.03f * (float)((now - flash_since) % 60u)) * 255.0f);
 }
 
+bool ui_flashing(uint32_t bit) { return (flash_bits & bit) != 0; }
+
 bool ui_target(float pos[3], float *r2, float *d0)
 {
     if (!target.on) return false;
@@ -280,6 +282,8 @@ static bool cmd_lose(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 
 /* timer_start seconds function (0x4bd270): the seconds as ticks, 0 to an hour, then 0x4fd370 starts
    the timer. */
+bool ui_timer_running(void) { return timer.state != 0; }
+
 static bool cmd_timer_start(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;

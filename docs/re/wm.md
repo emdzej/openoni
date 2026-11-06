@@ -358,6 +358,44 @@ length (0x78 ticks without a sound) and 60 more, white (0x533f70) on dark grey (
 letterbox's console when the letterbox is on. The inverted mouse: the input's y axis (0x403220) is the
 move times -0.125 with it (the default), 0.125 without.
 
+## The HUD's right ring
+
+Not the WM's, but drawn with it on the in-game UI's screen (`ONrInGameUI_Display` 0x4fff50; the port's
+`src/render/ui_draw.c`, its state in `src/igui.c`). Confirmed from the code:
+
+- **The arcs** are made at the level's load (`ONrInGameUI_SetArcPoints` 0x504270, from 0x503eb0) by
+  `ONiInGameUI_NewArc` 0x5045a0 (start and end angle, outer and inner radius, segments in `edx`, the
+  ring texture), each full: the health's four at 0x5ed080..0x5ed08c (radii 50/40, the overhealth's 55/40,
+  24 segments; full pi to -pi/2, and -pi/2 to -2.967), the invisibility's at 0x5ed004, the shield's two
+  at 0x5ecfbc and 0x5ecfc0 (63/51, 8 segments, 0.0349 to 1.5533), the hypos' six at 0x5ed0e0 (63/51, 1
+  segment, the table at 0x555480) and the hits' four at 0x5ecf84 (37/30, 4 segments, the table at
+  0x5554b0: the ring's right, bottom, left and top quarters). Their points change later only through
+  0x5007d0 (an arc's angles); 0x500640 draws one with a colour (0 untinted, else render state 7) and
+  an alpha (cut to a byte, state 9).
+- **The bars** (`ONiInGameUI_UpdateDamageMeter` 0x5048e0, a 0x14-byte record: +0 dirty, +4 value, +8
+  target, +0xc rising, +0xd falling, +0x10 the shown value, a float) are moved each tick by
+  `ONrInGameUI_Update` 0x504780 for the player: the health's (0x630fc0) with the hit points, a target of
+  the hit points plus the hypo's healing to come (C+0x1ae) and a fall of the maximum times 1/180 a
+  tick; the shield's (0x630fe0) with C+0x1b6 (the shown shield, up 2 a tick toward C+0x1b8 in
+  `WPrInventory_Update` 0x51bad0, down at once) and a target of C+0x1b8, falling 0.5556 a tick. A fall
+  starts the shown value at the old value; a target over the value shows the target. The bars and the
+  arcs' on flags (0x630fd4..0x630fd7, 0x630ff4/5) are never reset: from a level to the next a bar that
+  sees no change leaves the arcs at SetArcPoints' full angles with the flags of before.
+- **DisplayHealth** 0x500970 sets the arcs again only when its bar is dirty: the health from pi by
+  -3 pi / 2 of its share of the maximum, the overhealth from -pi/2 by -1.396 of its share (to the
+  ONGS cap); while rising or falling the eased parts: from the health's end to the shown share (none
+  over the maximum) and, the shown share over the maximum, from the overhealth's end (or -pi/2) on. All
+  four in the health's colour (0x4ef450) of the shown value while falling, else of the health; the
+  eased parts at 0x50 (0x7f falling) times the flash; unless rising, under 30% the pulse.
+- **DisplayShield** 0x501080: from 0.0349 by 1.518 of the shown shield's share of 100, the eased part
+  from there to the bar's shown value; drawn at 255 and 0x7f, or while its flash bit (8) is on at the
+  flash and the flash squared over 127 (cut to a byte: an original quirk, kept).
+- **DisplayHits** 0x500db0: each side's arc at C+0x166c+side, set to 255 in `ONrCharacter_TakeDamage`
+  0x4e65f0 from the hit's direction turned by the desired facing less the run's turn (C+0x170 - C+0x174)
+  and faded by 3 a tick in the update; the flash bit 2 scales them.
+- The draw order: health, invisibility, shield, hypos, hits, the LSI's icon. Not ported: the
+  tutorial's forced arcs (0x5ed09c bits 1, 2, 4, 8).
+
 ## The port
 
 `src/wm.c` (the core, the DC, part specs, text, the classes), `src/igui.c` (the pages, the text

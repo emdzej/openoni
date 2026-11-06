@@ -23,5 +23,5 @@ extern bool cheat_change_characters;    /* 0x5ece6f, shapeshifter: the player's 
    one on through the classes (ONCC, in the instances' order), or one back (the input's 0x10000000:
    Shift, inferred), wrapping; ONrCharacter_SetCharacterClass. Whether it changed. */
 bool cheat_shapeshift(Character *c, bool back);
-extern bool cheat_ultra_mode;           /* 0x5eb849, killmequick: the melee AI's choice (not ported) */
+extern bool cheat_ultra_mode;           /* 0x5eb849, killmequick: the melee AI chooses again every tick */
 extern bool cheat_slow_motion;          /* G+0x104, carousel: the game's clock at half speed */

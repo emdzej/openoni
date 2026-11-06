@@ -81,6 +81,7 @@ int main(void)
         knowledge_update(env);
         chars_update(&(CharacterInput){ 0 }, env);
         weapons_update(env);
+        weapons_physics(env);
         AiState *a = &b->ai;
         if (a->state == AI_STATE_COMBAT) {
             if (combat_at < 0) combat_at = k;
@@ -213,6 +214,7 @@ int main(void)
         knowledge_update(env);
         chars_update(&(CharacterInput){ 0 }, env);
         weapons_update(env);
+        weapons_physics(env);
         Character *both[2] = { &p->c, &n->c };
         p3_update(ui_time() + 1, true, both, 2);
         p3_update(ui_time(), false, both, 2);      /* the decorative ones */

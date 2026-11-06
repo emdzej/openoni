@@ -100,9 +100,11 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   the original's positions do, and stopped by the bodies they run into), and with a gun lead
   their target, aim from the weapon's muzzle and fire within their class's shooting skill. Knocked
   down, they lie dazed for their class's time and then get up. They start
-  with the weapons and the inventory the level gives them, and drop what they were to drop when they die
-  (clips, cells, hypos, a shield, invisibility, the LSI), and without one they may go for a gun lying nearby, by their
-  class's chance. They run to alarm consoles when their scripts or combat settings say so, and an
+  with the weapons and the inventory the level gives them. When they die their gun flies from their
+  hand and what they were to drop (clips, cells, hypos, a shield, invisibility, the LSI) tumbles out;
+  a dropped weapon or power-up falls, lands with the sound of the floor's material, slides to rest
+  and, a weapon, fades away a minute and a half later; both lie on their glows. Without a gun they may go for one lying
+  nearby, by their class's chance. They run to alarm consoles when their scripts or combat settings say so, and an
   alarm alerts the guards of its group. A guard that hears or glimpses Konoko pursues her: it goes
   to where she was, glances or looks around there, and gives up as the trail goes cold, by the
   character's own pursuit settings. Barabbas fights as his own behaviours say: he shoots, closes in firing his gun's second mode, fights
@@ -119,9 +121,11 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - **The level chain**: a level's `win` loads the next level and its `lose` plays the same level again,
   as the original's game loop does, from the last save point the level's scripts made (`save_game`,
   `restore_game`: health, place, inventory and weapon put back). The mission timer counts down and runs its script at zero.
-- **The HUD**: the health ring, and the left ring with the ballistic clips, the energy cells and the
-  compass toward the objective's flag (`target_set`), its arrow up or down; the scripts show, hide and
-  flash its elements.
+- **The HUD**: the health ring, its loss shown fading down to the new health and the healing to come
+  ahead of it, the shield's arc and the arcs on the side each hit came from; the left ring with the
+  ballistic clips, the energy cells and the compass toward the objective's flag (`target_set`), its
+  arrow up or down, and in its middle the weapon in hand with its ammo's icon and ring; the right
+  ring's invisibility and hypos and the LSI's icon; the scripts show, hide and flash its elements.
 - **Saved games**: each save point is kept in `persist.dat` (the original's own layout), with the levels
   reached; the main menu's Load Game lists them and starts the level from the one picked, in a later
   session too.
@@ -174,15 +178,16 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   material.
 - **Decals**: the bullet holes, scorch marks and the characters' shadows, laid on the walls, cut to their shapes and folded
   round their corners; they fade, and the oldest give way to new ones as the original's do.
-- **Sound** from the game's own sound groups.
+- **Sound** from the game's own sound groups: the music, the dialog and speech, the impacts, and the
+  particles' sounds (the gunshots, the rockets' roar, the level's hissing steam and sparks), placed
+  where they play and following the particles that carry them.
 
 ## Not yet
 
-- The particles' sounds.
-- The weapons' physics (they rest where they drop) and their falls' impact effects. The power-ups' physics and glow, and the
-  HUD's weapon and inventory displays.
+- The sounds' muffling by walls and their range culling (the game's own ambient layer over the sound
+  system); the characters pushing the weapons and power-ups about; the tutorial's forced HUD arcs.
 - The Bink movies; the graphics quality and gamma settings applied.
-- The intro and outro movies. Of the cheat codes, the ultra mode's melee (it waits for the melee AI).
+- The intro and outro movies.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked
 against the original.

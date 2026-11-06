@@ -1168,6 +1168,30 @@ uint32_t sound_speech_play(const char *name, const float pos[3], uint32_t *ticks
 bool sound_speech_playing(uint32_t id) { return id != UINT32_MAX && ambient_alive(id); }
 void sound_speech_stop(uint32_t id) { if (id != UINT32_MAX) ambient_stop(id); }
 
+/* OSrAmbient_Start 0x511730 for a particle (P3iAction_AmbientSound 0x4675a0): the ambient at pos, its
+   own distances, full volume; none while the impulses are the scripts' only. As the speech's: the OS
+   layer's table (1024 records of 0x4c bytes), its range test and the walls' muffling (0x511a00) aren't
+   ported, it starts at once. */
+uint32_t sound_ambient_start_at(const void *amb, const float pos[3])
+{
+    if (!amb || script_only) return UINT32_MAX;
+    const Ambient *a = amb;
+    float vol = 1.0f;
+    return ambient_start(a, pos, a->min_dist, a->max_dist, &vol);
+}
+
+/* OSrAmbient_Update 0x511ec0: the ambient moved to pos; whether it still plays. */
+bool sound_ambient_move(uint32_t id, const float pos[3])
+{
+    Playing *pa = enabled ? playing_of(id) : NULL;
+    if (!pa) return false;
+    if (pa->has_pos) memcpy(pa->pos, pos, sizeof pa->pos);
+    return true;
+}
+
+void sound_ambient_stop(uint32_t id) { if (id != UINT32_MAX) ambient_stop(id); }     /* OSrAmbient_Stop 0x511e40 */
+const void *sound_ambient_find(const char *name) { return name ? ambient_named(name) : NULL; }
+
 bool sound_dialog_play(const char *name) { return !dialog_start(name, false); }
 void sound_dialog_interrupt(const char *name) { dialog_start(name, true); }
 bool sound_dialog_playing(void) { return dialog_on; }

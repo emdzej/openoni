@@ -63,7 +63,9 @@ void inventory_update(Character *c)
         }
         if (!waited) c->heal_wait = 10;
     }
-    /* the shield's shown part (C+0x1b6) toward what is left, 2 a tick: with the shield's display */
+    /* the shield's shown part toward what is left: up 2 a tick, down at once */
+    if (c->shield_shown < c->shield) c->shield_shown += 2;
+    if (c->shield_shown > c->shield) c->shield_shown = c->shield;
     if (c->invisibility == 0) c->invisible_ticks = 0;
     else c->invisible_ticks++;
 }

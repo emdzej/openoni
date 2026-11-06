@@ -2,12 +2,16 @@
 #include "weapon.h"
 #include "inventory.h"
 
+#include "akev.h"
 #include "akev_collide.h"
 #include "chars.h"
 #include "chr_anim.h"
 #include "chr_hit.h"
+#include "exe.h"
+#include "impact.h"
 #include "knowledge.h"
 #include "m3gm.h"
+#include "material.h"
 #include "objc.h"
 #include "particle.h"
 #include "persist.h"
@@ -329,7 +333,7 @@ bool weapon_has_empty(Character *c)
 
 /* ---- the slots: the hand (C+0x194) and the two stowed (C+0x198, 0x19c) ---- */
 
-static void release(Weapon *w);
+static void release(Weapon *w, bool thrown);
 static Weapon *slot_get(const Character *c, int i) { return i == 0 ? c->weapon : c->stowed[i - 1]; }
 static void slot_put(Character *c, int i, Weapon *w) { if (i == 0) c->weapon = w; else c->stowed[i - 1] = w; }
 
@@ -433,14 +437,15 @@ void chr_hide_weapon(Character *c, bool hide)
     chr_hand_varient(c);
 }
 
-/* The hand's weapon dropped, as 0x4ed770 and the holster do (0x51b590, the hand's firing cleared). */
-static void drop_hand(Character *c)
+/* The hand's weapon dropped (ONrCharacter_DropWeapon 0x51b590, slot 0), thrown or not, then the hand's
+   firing cleared and its variant (0x4ecec0). */
+static void drop_hand(Character *c, bool thrown)
 {
     Weapon *old = c->weapon;
     if (!old) return;
     old->flags = (uint16_t)((old->flags & 0xf7ff) | 0xc000);
     c->weapon = NULL;
-    release(old);
+    release(old, thrown);
     c->varient &= 0x87ff;
     c->fire_down = c->fire2_down = c->fire_again = c->fire_empty = false;
 }
@@ -455,7 +460,7 @@ void chr_stow(Character *c, bool force)
             slot_swap(c, idx, 0);
             chr_set_weapon(c, NULL);
         } else
-            drop_hand(c);
+            drop_hand(c, false);
         return;
     }
     Weapon *w = find_last_stowed(c, 0, &idx);
@@ -481,7 +486,7 @@ static void overlay_action(Character *c, const void *anim)
                 slot_swap(c, idx, 0);
                 chr_set_weapon(c, NULL);
             } else
-                drop_hand(c);
+                drop_hand(c, false);
         } else {
             Weapon *w = find_last_stowed(c, 0, &idx);
             slot_swap(c, idx, 0);
@@ -583,10 +588,53 @@ static void delete_particles(Weapon *w)
 
 /* ---- in the world ---- */
 
-/* The port's stand-in for the weapon's physics (WPiWeapon_CreatePhysics 0x518e10: a sphere of a quarter
-   of the geometry's largest coordinate, gravity, the walls): the sphere rests on the floor below. */
-static void rest(Weapon *w, const void *env)
+void weapon_fall_impact(int type, const PhysHit *h, const void *env)
 {
+    if (type < 0) return;
+    P3EffectLoc loc;
+    memset(&loc, 0, sizeof loc);
+    loc.tick = p3_tick();
+    memcpy(loc.pos, h->point, sizeof loc.pos);
+    memcpy(loc.normal, h->plane, sizeof loc.normal);
+    loc.kind = P3_HIT_WALL, loc.quad = h->quad;
+    int material = 0;
+    AkevQuad q;
+    if (env && akev_quad(env, h->quad, &q) && (q.texture & 0xffff) != 0xffff) {
+        int mi = impact_material_index(material_of_texture(akev_texture(env, q.texture & 0xffff)));
+        if (mi >= 0) material = mi;     /* the texture's material (TXMP+0x98) */
+    }
+    impact_effect(type, material, 0, &loc, 1.0f, NULL, NULL);
+}
+
+static const void *update_env;
+
+/* WPiPostCollision 0x518930: a wall met faster than 0.35 into it plays the fall's impact; any hit but a
+   character's marks the weapon (flag 2). */
+static void post_collision(PhysObject *o, const PhysHit *hits, unsigned n)
+{
+    Weapon *w = o->owner;
+    for (unsigned i = 0; i < n; i++) {
+        const float *nm = hits[i].plane;
+        float d = nm[1] * o->vel[1] + nm[0] * o->vel[0] + o->vel[2] * nm[2];
+        static int type = -2;   /* the "Weapon" impact type (0x622194, WPrInitialize 0x51b0f0) */
+        if (type == -2) type = impact_type_by_name(exe_str(0x54c520));
+        if (fabsf(d) > 0.35f) weapon_fall_impact(type, &hits[i], update_env);     /* 0x52adb8 */
+        w->flags |= 2;
+    }
+}
+
+/* WPiWeapon_CreatePhysics 0x518e10: a context of type 2 (flags 0x5400: the walls of flag 0x4000 skipped,
+   friction only touching; friction 0.0025 and 0.75), its sphere a quarter of the geometry's largest
+   coordinate about the place (+0x30). */
+static void create_physics(Weapon *w)
+{
+    PhysObject *o = &w->phys;
+    physobj_init(o);
+    o->flags |= 0x5400u;
+    o->owner = w;
+    o->post_collision = post_collision;
+    o->friction_sub = 0.0025f;  /* 0x3b23d70a */
+    o->friction_mul = 0.75f;
     uint32_t n = 0;
     const uint8_t *p = m3gm_points(weapon_geometry(w), &n);
     float big = -1e9f;      /* 0x52963c */
@@ -594,11 +642,11 @@ static void rest(Weapon *w, const void *env)
         float a = fabsf(rdf(p + 4 * i));
         if (a > big) big = a;
     }
-    float r = big * 0.25f;  /* 0x5296c4 */
-    static AkevHit hit[AKEV_HITS_MAX];
-    const float down[3] = { 0.0f, -100.0f, 0.0f };
-    if (env && akev_collide_point(env, w->m + 9, down, 0x48800, 1, hit)) w->m[10] = hit[0].point[1] + r;
-    w->resting = true;
+    o->sphere[0] = o->sphere[1] = o->sphere[2] = 0.0f;
+    o->sphere[3] = big * 0.25f;     /* 0x5296c4 */
+    memcpy(o->pos, w->m + 9, sizeof o->pos);
+    physobj_matrix(o);              /* PHrPhysics_MaintainMatrix 0x43b410 */
+    w->has_phys = true;
 }
 
 static void identity(float m[12])
@@ -606,8 +654,6 @@ static void identity(float m[12])
     static const float id[12] = { 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0 };   /* 0x529d10 */
     memcpy(m, id, sizeof id);
 }
-
-static const void *update_env;
 
 Weapon *weapon_new(const void *onwc, const float pos[3], float facing)
 {
@@ -627,12 +673,16 @@ Weapon *weapon_new(const void *onwc, const float pos[3], float facing)
     w->flags = WEAPON_IN_USE;
     fill_ammo(w);
     w->time = now;
-    identity(w->m);
-    w->m[9] = pos[0];
-    w->m[10] = pos[1] + 2.0f;   /* 0x529818 */
-    w->m[11] = pos[2];
+    /* the context made, then put 2 above the place (its matrix and the weapon's follow on the next
+       physics and update); without one the weapon's matrix there */
+    create_physics(w);
+    float at[3] = { pos[0], pos[1] + 2.0f, pos[2] };    /* 0x529818 */
+    if (w->has_phys) memcpy(w->phys.pos, at, sizeof at);
+    else {
+        identity(w->m);
+        memcpy(w->m + 9, at, sizeof at);
+    }
     w->facing = facing;
-    rest(w, update_env);
     w->flags |= 0x80;
     return w;
 }
@@ -667,6 +717,7 @@ void weapon_delete(Weapon *w)
         every_shooter(w, EV_BG_STOP);
     }
     if (w->owner && w->owner->weapon == w) w->owner->weapon = NULL;
+    w->has_phys = false;            /* (0x43aef0) */
     w->flags &= (uint16_t)~WEAPON_IN_USE;
 }
 
@@ -676,7 +727,7 @@ static void set_owner(Weapon *w, Character *c)
     w->owner = c;
     w->reload_wait = 0;
     w->flags &= 0xfff1;
-    w->resting = false;
+    w->has_phys = false;            /* the context removed (0x43aef0) */
     w->fade_delay = w->fade = 0;
     uint16_t old = w->flags;
     w->flags = (uint16_t)((old & 0x77ff) | WEAPON_OWNED);
@@ -686,15 +737,64 @@ static void set_owner(Weapon *w, Character *c)
     }
 }
 
-/* 0x51a550: let go, into the world (the original throws it with the hand's velocity, turned to the
-   hand's facing; the port rests it). */
-static void release(Weapon *w)
+/* WPrNotThroughWall 0x51b690: the place p moved back to 6 short of a wall between it and 7.5 above the
+   character's feet (the line from there lengthened by 6). */
+static void not_through_wall(const Character *c, float p[3])
 {
+    float from[3] = { c->pos[0], c->pos[1] + 7.5f, c->pos[2] };     /* 0x52a5bc */
+    float d[3] = { p[0] - from[0], p[1] - from[1], p[2] - from[2] };
+    float l = sqrtf(d[2] * d[2] + d[1] * d[1] + d[0] * d[0]);
+    float k = (l + 6.0f) / l;       /* 0x5297f8, MUrVector_SetLength 0x433d60 */
+    for (int i = 0; i < 3; i++) d[i] *= k;
+    static AkevHit hit[AKEV_HITS_MAX];
+    if (!update_env || !akev_collide_point(update_env, from, d, 0x40800, 1, hit)) return;
+    l = sqrtf(d[2] * d[2] + d[1] * d[1] + d[0] * d[0]);
+    k = 6.0f / l;
+    for (int i = 0; i < 3; i++) p[i] = hit[0].point[i] - d[i] * k;
+}
+
+/* WPrRelease 0x51a550: let go, into the world. Its physics made where it is (kept out of the walls from
+   the owner), facing the way the weapon node's x axis points (a random way without an owner), still or,
+   thrown, rising 1.5 with a part of the owner's last hit (A+0xd4: 0.07 for a pistol (class +0xcc & 3),
+   0.1 for a rifle (8), else 0.12). It fades after 4800 ticks, unless the class has 0x80000. */
+static void release(Weapon *w, bool thrown)
+{
+    if (!(w->flags & WEAPON_IN_USE)) return;
+    if (!w->has_phys) create_physics(w);
+    PhysObject *o = &w->phys;
+    Character *c = w->owner;
+    float m19[12];
+    if (c) {
+        not_through_wall(c, o->m + 9);
+        memcpy(o->pos, o->m + 9, sizeof o->pos);
+        if (chr_weapon_matrix(c, m19)) {
+            float a = atan2f(m19[0], m19[2]) - 1.5707964f;     /* 0x529cd0 */
+            if (a < 0.0f) a += 6.2831855f;                  /* 0x529548 */
+            w->facing = a;
+        } else
+            c = NULL;
+    }
+    if (!c) w->facing = (float)trac_random() * 6.2831855f * 1.5259022e-05f;     /* UUrRandom 0x426e10 */
+    o->vel[0] = o->vel[1] = o->vel[2] = 0.0f;
+    if (thrown) {
+        o->vel[1] = 1.5f;
+        if (w->owner) {
+            uint32_t k = options(w);
+            float f = (k & 3) ? 0.07f : (k & ONWC_RIFLE) ? 0.1f : 0.12f;  /* 0x52b2e0, 0x529cc4, 0x52b1a4 */
+            for (int i = 0; i < 3; i++) o->vel[i] += f * w->owner->hit_velocity[i];
+        }
+    }
     w->flags &= (uint16_t)~WEAPON_OWNED;
     w->owner = NULL;
     w->fire_min = 0;
     w->reload_wait = 0;
-    rest(w, update_env);
+    w->sound_wait = 0;
+    w->delay = 0;
+    w->pause = 0;
+    for (unsigned k = 0; k < shooters(w) && k < WEAPON_SHOOTERS; k++) w->shooter_delay[k] = 0;
+    w->fade = 0;
+    w->flags |= WEAPON_DROPPED_STOP | WEAPON_DROPPED;
+    w->fade_delay = (options(w) & 0x80000) ? 0 : 4800;
 }
 
 /* WPiUpdate 0x5192b0. */
@@ -722,11 +822,17 @@ void weapons_update(const void *env)
         }
         if (!w->owner) {
             delete_particles(w);
-            /* fading: once still (its physics), +0x46 counts down to the 600 ticks of +0x44 */
+            /* the sphere at the place, the rise no faster than 2.25 (0x52b8d4) */
+            if (w->has_phys) {
+                memcpy(w->phys.sphere, w->phys.pos, sizeof w->phys.pos);
+                if (w->phys.vel[1] > 2.25f) w->phys.vel[1] = 2.25f;
+            }
+            /* fading: +0x46 (4800 from the release) counts down to the 600 ticks of +0x44 */
             if (!no_fade) {
                 if (w->fade_delay && !--w->fade_delay) w->fade = 600;
                 if (w->fade && !--w->fade) { weapon_delete(w); continue; }
             }
+            if (w->has_phys) memcpy(w->m, w->phys.m, sizeof w->m);
             continue;
         }
         if (w->owner->weapon == w) {
@@ -753,6 +859,53 @@ void weapons_update(const void *env)
             for (unsigned k = 0; k < shooters(w) && k < WEAPON_SHOOTERS; k++)
                 if (w->shooter_delay[k] && !--w->shooter_delay[k]) do_event(w, EV_START, k);
     }
+}
+
+/* OBiPhysics_Update 0x43af50 for the weapons' contexts (after WPiUpdate and the powerups'). */
+void weapons_physics(const void *env)
+{
+    update_env = env;
+    for (int i = 0; i < WEAPONS_MAX; i++)
+        if ((weapons[i].flags & WEAPON_IN_USE) && weapons[i].has_phys) physobj_update(&weapons[i].phys, env);
+}
+
+/* WPrDisplay 0x519710's matrix and alpha for a weapon in the world: its context's matrix (else its own)
+   turned about y by its facing (MUrMatrix3x3_RotateY 0x434e70) and raised by the class's +0x710;
+   fading, the alpha the part of 600 ticks left. */
+uint8_t weapon_world_matrix(const Weapon *w, float out[12])
+{
+    const float *m = w->has_phys ? w->phys.m : w->m;
+    float c = cosf(w->facing), s = sinf(w->facing);
+    for (int j = 0; j < 3; j++) {
+        const float *col = m + 3 * j;
+        out[3 * j] = c * col[0] + s * col[2];
+        out[3 * j + 1] = col[1];
+        out[3 * j + 2] = c * col[2] - s * col[0];
+    }
+    memcpy(out + 9, m + 9, 3 * sizeof(float));
+    out[10] += rdf(w->cls + 0x710);
+    if (!w->fade) return 0xff;
+    float a = (float)w->fade * 0.0016666667f;   /* 0x52b8d8 */
+    if (a < 0.0f) a = 0.0f;
+    if (a > 1.0f) a = 1.0f;
+    return (uint8_t)lrintf(a * 255.0f);        /* 0x4264e0 */
+}
+
+bool weapon_glow(const Weapon *w, const float m[12], uint8_t alpha, const void *tex[2], float pos[3], float size[2],
+                 uint8_t *glow_alpha)
+{
+    tex[0] = tm_link(w->cls + 0x6f4);
+    tex[1] = w->ammo ? tm_link(w->cls + 0x6f8) : NULL;
+    float box[6], sphere[4];
+    if (!tex[0] || !m3gm_bounds(weapon_geometry(w), box, sphere)) return false;
+    size[0] = (box[3] - box[0]) * rdf(w->cls + 0x6fc) * 1.1f;     /* 0x5295a0 */
+    size[1] = (box[5] - box[2]) * rdf(w->cls + 0x700) * 1.1f;
+    /* the bottom's middle, 0.1 up (0x529cc4), through the matrix (MUrMatrix_MultiplyPoint 0x4339e0) */
+    float p[3] = { (box[3] + box[0]) * 0.5f, box[1] + 0.1f, (box[5] + box[2]) * 0.5f };
+    for (int k = 0; k < 3; k++) pos[k] = m[k] * p[0] + m[3 + k] * p[1] + m[6 + k] * p[2] + m[9 + k];
+    uint32_t a = (uint32_t)alpha * 255u;
+    *glow_alpha = (uint8_t)(((uint32_t)(((uint64_t)a * 0xaaaaaaabu) >> 32) >> 1) >> 8);    /* a third */
+    return true;
 }
 
 /* ---- the character's side ---- */
@@ -811,7 +964,8 @@ void weapon_pickup_position(const Weapon *w, float out[3])
 uint32_t weapon_options(const Weapon *w) { return options(w); }
 bool weapon_loaded(Weapon *w) { return has_ammo(w); }
 bool chr_has_ammo_for(const Character *c, const Weapon *w) { return inventory(c, ammo_type(w)) != 0; }
-void chr_drop_weapon(Character *c) { drop_hand(c); }
+void chr_drop_weapon(Character *c) { drop_hand(c, false); }
+void chr_throw_weapon(Character *c) { drop_hand(c, true); }
 
 void (*weapon_new_hook)(const void *onwc);
 
@@ -854,7 +1008,7 @@ static void pickup_weapon(Character *c, Weapon *w)
         Weapon *old = c->weapon;
         old->flags = (uint16_t)((old->flags & 0xf7ff) | 0xc000);
         c->weapon = NULL;
-        release(old);
+        release(old, false);
         c->varient &= 0x87ff;
     }
     chr_set_weapon(c, w);
@@ -943,7 +1097,7 @@ static void weapon_input(Character *c, const ChrInput *in)
         Weapon *w = c->weapon;
         w->flags = (uint16_t)((w->flags & 0xf7ff) | 0xc000);
         c->weapon = NULL;
-        release(w);
+        release(w, false);
         c->varient &= 0x87ff;
         c->fire_down = c->fire2_down = c->fire_again = c->fire_empty = false;
     } else if ((in->down & CHR_KEY_HYPO) && inventory_use_hypo(c)) {
@@ -1201,6 +1355,7 @@ void weapons_install(void)
     character_weapon_input_hook = weapon_input;
     character_frame_hook = frame;
     chr_overlay_hook = overlay_action;
+    chr_drop_hook = chr_throw_weapon;
 }
 
 /* ---- the commands ---- */

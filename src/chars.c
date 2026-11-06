@@ -455,6 +455,7 @@ static void died(Character *c)
     /* C+0x1644: the body stays the class's time (ONCC+0xc8a) */
     const uint8_t *k = (const uint8_t *)c->oncc + 0xc8a;
     ch->corpse_time = (uint16_t)(k[0] | k[1] << 8);
+    chr_throw_weapon(c);        /* (Die_1) the hand's weapon thrown (0x51b590) */
     /* (ONrCharacter_Die_1_Animating_Hook 0x4eb550) an AI's inventory: the clips, cells and hypos it drops, one each, a
        shield and an invisibility; then (unless C+4 0x4000000, not kept) what is left of its own shield
        and invisibility, and the LSI */
