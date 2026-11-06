@@ -4,6 +4,7 @@
 
 #include "body.h"
 #include "chr_anim.h"
+#include "impact.h"
 #include "m3gm.h"
 
 #include <math.h>
@@ -216,7 +217,7 @@ static bool could_block(const Character *d, const Character *x, bool *high, bool
 /* HandleAttackMask 0x4e7740, the hit that isn't blocked: once per animation and character; the reaction
    (+0x12), heavier when the stun (+0x14) is over 20; from behind; the defender turned to the attacker;
    the damage (+0xc) and knockback (+0x4, along the attacker's facing); then the stun. */
-static void attack_lands(Character *x, Character *d, const uint8_t *e)
+static void attack_lands(Character *x, Character *d, const uint8_t *e, uint32_t amask, uint32_t dmask)
 {
     int slot = 0;
     for (; slot < 8 && x->hit_list[slot]; slot++)
@@ -249,6 +250,10 @@ static void attack_lands(Character *x, Character *d, const uint8_t *e)
     inventory_reveal(x, true);
     inventory_reveal(d, false);
     if (blocked) {
+        /* the impact of a blocked blow: a shield's (2) and a blocked one's (1) the same, one that hurts
+           through the block (flag 8) a hit's */
+        bool shielded = ((const uint8_t *)d->oncc)[0xc8e] && d->super_level > 0.5f;
+        int outcome = shielded ? 2 : (aflags & 8) ? 0 : 1;
         float a = angle_to(d, x);
         d->facing = wrap_2pi(d->facing + a);
         if (aflags & 8) chr_take_damage(d, (damage & ~1u) < 2 ? 1 : damage >> 1, knock * 0.5f, dir, 0, x);
@@ -261,6 +266,7 @@ static void attack_lands(Character *x, Character *d, const uint8_t *e)
             d->flags |= 0x80;
             d->stun_pause = rd16(e + 0x16);
         }
+        impact_melee(x, d, e, outcome, amask, dmask);
         return;
     }
     bool staggered = d->countdown_1c98 || d->countdown_1c9a;
@@ -297,10 +303,12 @@ static void attack_lands(Character *x, Character *d, const uint8_t *e)
             if (is_from_behind(r)) d->facing = wrap_2pi(d->facing + PI);
         }
     }
-    if (d->hit_points <= damage) d->flags |= 0x20000000;   /* killed by a blow */
+    bool killed = d->hit_points <= damage;
+    if (killed) d->flags |= 0x20000000;   /* killed by a blow */
     chr_take_damage(d, damage, knock, dir, 0, x);
     if (heavy) d->countdown_1c9a = stun;
     else d->block_pause = stun;
+    impact_melee(x, d, e, killed ? 3 : 0, amask, dmask);
 }
 
 /* ---- the contacts ---- */
@@ -356,11 +364,13 @@ bool chr_weapon_matrix(const Character *c, float out[12])
 
 /* 0x4e8e70: of a's attacks at its frame, those whose parts touch one of b's (touch_b: per part of b,
    the parts of a it touches). Returns the landed attacks' bits (over the attacks' order), the entries,
-   and the highest priority (+0x1a). */
-static uint32_t landed(const Character *a, const Spheres *sb, const uint32_t *touch_b, const uint8_t **entries, uint16_t *prio)
+   and the highest priority (+0x1a); amask: the landed attacks' parts, dmask: b's part each touched first. */
+static uint32_t landed(const Character *a, const Spheres *sb, const uint32_t *touch_b, const uint8_t **entries, uint16_t *prio,
+                       uint32_t *amask, uint32_t *dmask)
 {
     uint32_t bits = 0;
     *prio = 0;
+    *amask = *dmask = 0;
     const uint8_t *t = a->anim;
     for (unsigned i = 0; i < t[TRAM_ATTACK_COUNT] && i < 32; i++) {
         const uint8_t *e = tr_attack(t, i);
@@ -371,6 +381,8 @@ static uint32_t landed(const Character *a, const Spheres *sb, const uint32_t *to
             if (touch_b[j] & rd32(e)) {
                 bits |= 1u << i;
                 if (rd16(e + 0x1a) >= *prio) *prio = rd16(e + 0x1a);
+                *amask |= rd32(e);
+                *dmask |= 1u << j;
                 break;
             }
     }
@@ -401,14 +413,15 @@ static void collide_two(Character *a, Character *b)
     if (!any) return;
     const uint8_t *ea[32], *eb[32];
     uint16_t pa, pb;
-    uint32_t la = landed(a, &sb, tb, ea, &pa), lb = landed(b, &sa, ta, eb, &pb);
+    uint32_t ama, dma, amb, dmb;
+    uint32_t la = landed(a, &sb, tb, ea, &pa, &ama, &dma), lb = landed(b, &sa, ta, eb, &pb, &amb, &dmb);
     if (pb <= pa) {
         for (unsigned i = 0; i < 32; i++)
-            if (la >> i & 1) attack_lands(a, b, ea[i]);
+            if (la >> i & 1) attack_lands(a, b, ea[i], ama, dma);
         if (pb < pa) return;
     }
     for (unsigned i = 0; i < 32; i++)
-        if (lb >> i & 1) attack_lands(b, a, eb[i]);
+        if (lb >> i & 1) attack_lands(b, a, eb[i], amb, dmb);
 }
 
 void chr_collide_all(Character **chars, int n)

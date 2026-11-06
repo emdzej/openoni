@@ -119,6 +119,8 @@ bool chr_is_victim_type(uint16_t type);
 /* The AI's part of the new-animation hook (AI2rMelee_NotifyAnimation 0x49fd10, for AI characters): set
    by the AI's side (chars.c). */
 extern void (*chr_animation_hook)(Character *c);
+/* A sound the AI hears (AI2rKnowledge_Sound 0x49a8a0) of c at target: set by the AI's side (chars.c). */
+extern void (*chr_sound_hook)(Character *c, int type, const float pos[3], float radius, Character *target);
 /* The throws' hooks (throw.c sets them): the animation about to start, which a throw may replace
    (RemapAnimationHook 0x4ea550), and a throw's start (its part of NewAnimationHook 0x4e97a0). */
 /* ONrOverlay_Set 0x4d7b80. */
@@ -144,3 +146,8 @@ void chr_bone_matrices(Character *c);
    end (OldAnimationHook 0x4ead30, the character's deletion). */
 void chr_anim_particles_frame(Character *c);
 void chr_anim_particles_stop(Character *c);
+/* HandleAttackMask 0x4e84f6: a landed blow pulses (event 1) the attacker's live animation particles in
+   their frames on its attacking parts (a bone mask). */
+void chr_anim_particles_pulse(Character *c, uint32_t parts);
+/* 0x4ef450: the colour of the character's health. */
+uint32_t chr_health_tint(const Character *c);

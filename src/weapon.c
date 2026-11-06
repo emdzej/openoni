@@ -146,8 +146,19 @@ static void pulse(Weapon *w, const uint8_t *sh)
     float kick = rdf(w->cls + ONWC_RECOIL);
     if (gatling && rd16(sh + SH_DELAY)) kick = kick * (float)rd16(sh + SH_DELAY_GATLING) / (float)rd16(sh + SH_DELAY);
     c->aim_kick += kick;
-    /* the shot's noise (AI2rKnowledge_Sound, class +0x128) every 30 ticks: with the AI's hearing */
-    if (!w->sound_wait) w->sound_wait = 30;
+    /* the shot's noise, at most every 30 ticks: a gunfire sound within the class's radius (+0x128 for
+       trigger 0, +0x1a8 for the others), from the owner's pelvis, of the owner at its combat target (an
+       AI's in combat, 0x48b5f0) */
+    if (!w->sound_wait) {
+        float radius = rdf(w->cls + (rd16(sh + SH_TRIGGER) ? 0x1a8 : 0x128));
+        if (radius > 0.0f) {
+            Chr *ch = (Chr *)c;
+            float at[3] = { c->pos[0], c->pos[1] + c->pelvis_height, c->pos[2] };
+            Chr *target = !ch->player && ch->ai.state == AI_STATE_COMBAT ? ch->ai.target : NULL;
+            knowledge_sound(KNOW_SOUND_GUNFIRE, at, radius, ch, target);
+        }
+        w->sound_wait = 30;
+    }
 }
 
 /* WPiFireShooter 0x51a220: the first shooter of the trigger that takes ammo; with enough ammo the

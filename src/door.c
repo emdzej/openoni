@@ -5,6 +5,7 @@
 #include "chars.h"
 #include "event.h"
 #include "graph.h"
+#include "knowledge.h"
 #include "oban.h"
 #include "objc.h"
 #include "object.h"
@@ -36,6 +37,7 @@ enum {
 enum {
     DOOR_CLASS_OBAN = 0x08,
     DOOR_CLASS_AI_SOUND = 0x14,     /* i32: the AI's sound type, -1 none */
+    DOOR_CLASS_AI_RADIUS = 0x18,    /* float: its radius */
     DOOR_CLASS_OPEN_SOUND = 0x1c,   /* 32: the impulse sound's name */
     DOOR_CLASS_CLOSE_SOUND = 0x3c,
 };
@@ -366,7 +368,7 @@ bool door_near(int i, const float p[3])
     return dx * dx + dy * dy + dz * dz < d->radius2;
 }
 
-static void play_sound(const Door *d, unsigned name_at)
+static void play_sound(const Door *d, unsigned name_at, const Chr *who)
 {
     /* the class's sound (UpdateSoundPointers 0x4c4ce0 looks it up), played at the door (0x512480): the
        port's impulse has no place yet */
@@ -374,6 +376,12 @@ static void play_sound(const Door *d, unsigned name_at)
     memcpy(name, d->cls + name_at, 32);
     name[32] = 0;
     if (name[0] && sound_has_impulse(name)) sound_impulse_play(name, 1.0f);
+    /* then the class's AI sound (+0x14, -1 none; its radius +0x18), of who opens it */
+    int32_t type;
+    memcpy(&type, d->cls + DOOR_CLASS_AI_SOUND, 4);
+    float radius;
+    memcpy(&radius, d->cls + DOOR_CLASS_AI_RADIUS, 4);
+    if (type != -1) knowledge_sound(type, d->pos, radius, (Chr *)who, NULL);
 }
 
 /* OBJrDoor_Open with the character that opens it (NULL for a script) */
@@ -416,7 +424,7 @@ static void open_door(int i, const Chr *who)
     }
     show_gunk(d, false);
     event_list_run(d->events, who ? who->name : NULL);     /* 0x4f3cc0 */
-    play_sound(d, DOOR_CLASS_OPEN_SOUND);
+    play_sound(d, DOOR_CLASS_OPEN_SOUND, who);
 }
 
 void door_open(int i) { open_door(i, NULL); }
@@ -442,7 +450,7 @@ void door_close(int i)
             for (int k = 0; k < 2; k++)
                 if (d->panel[k].live) play(&d->panel[k], d->oban, d->panel[k].anim.frame, (int16_t)frame_count(d));
     }
-    play_sound(d, DOOR_CLASS_CLOSE_SOUND);
+    play_sound(d, DOOR_CLASS_CLOSE_SOUND, NULL);
 }
 
 void door_physics(uint32_t now)

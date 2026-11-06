@@ -2,6 +2,8 @@
 #include "impact.h"
 
 #include "character.h"
+#include "chr_anim.h"
+#include "exe.h"
 #include "sound.h"
 #include "tm.h"
 
@@ -93,6 +95,7 @@ static int index_of(const Tree *t, const void *data)
     return -1;
 }
 
+int impact_type_of(const void *impt) { return index_of(&impacts, impt); }
 int impact_type_by_name(const char *name) { return name ? index_of(&impacts, tm_instance_get(TM_TAG("Impt"), name)) : -1; }
 int impact_material_index(const void *mtrl) { return index_of(&materials, mtrl); }
 int impact_material_by_name(const char *name) { return name ? index_of(&materials, tm_instance_get(TM_TAG("Mtrl"), name)) : -1; }
@@ -322,7 +325,8 @@ void impact_lookup(int type, int material, int modifier, int32_t out[3])
     }
 }
 
-void impact_effect(int type, int material, int modifier, const P3EffectLoc *loc, float ai_scale)
+void impact_effect(int type, int material, int modifier, const P3EffectLoc *loc, float ai_scale, Character *source,
+                   Character *target)
 {
     (void)ai_scale;
     if (type < 0 || material < 0) return;
@@ -343,12 +347,110 @@ void impact_effect(int type, int material, int modifier, const P3EffectLoc *loc,
                 }
                 sound_impulse_play_at(s->impulse, loc->pos, pv);
             }
-            /* s->flags & 1: AI2rKnowledge_Sound 0x49a8a0 (the type at +0x2a, the radius +0x2c times
-               ai_scale): the AI's hearing is not ported */
+            /* heard by the AI: the type at +0x2a, the radius +0x2c times ai_scale */
+            if ((s->flags & 1) && chr_sound_hook) chr_sound_hook(source, s->ai_type, loc->pos, ai_scale * s->ai_radius, target);
         }
         for (int j = 0; j < e->nparticles; j++) {
             const Particle *p = &E.particles[e->first + (uint32_t)j];
             if (p->spec.cls) p3_create_effect(&p->spec, loc);
         }
     }
+}
+
+/* ---- the melee's impact (HandleAttackMask 0x4e7740's end) ---- */
+
+/* The highest part of a mask, from the body's part count (19) down; 0 for none. */
+static unsigned highest_part(uint32_t mask)
+{
+    for (int k = CHR_BONES; k >= 0; k--)
+        if (mask >> k & 1) return (unsigned)k;
+    return 0;
+}
+
+/* An attack impact (ONIA +0x18, 0xa4 each: the attack's name, the impact type's (+0x10) and the
+   modifier's (+0x90) names) as the class's preprocess (0x4d8410, from SetCharacterClass) resolves it:
+   the type by its name (MArImpactType_GetByName), the modifier by its place among 0x554a04's four
+   names (none: 0). */
+static int onia_modifier(const uint8_t *r)
+{
+    for (uint32_t k = 0; k < 4; k++) {
+        const char *m = exe_str(exe_u32(0x554a04 + 4 * k));
+        if (m && !strncmp((const char *)r + 0x90, m, 16)) return (int)k;
+    }
+    return 0;
+}
+
+int impact_melee_type(const Character *x, const char *attack_name, int outcome, uint32_t attack, int *modifier,
+                      bool pulse)
+{
+    const uint8_t *xc = x->oncc;
+    int type = -1;
+    *modifier = 0;
+    if (outcome == 0 || outcome == 3) {
+        /* a hit: the attacker's class's attack impacts (ONIA, ONCC +0x434) by the animation's attack
+           name (TRAM +0x138, TRrAnimation_GetAttackName 0x429210), if it has one */
+        const uint8_t *onia = tm_link(xc + 0x434);
+        if (onia && attack_name && attack_name[0]) {
+            uint32_t n = rd32(onia + 0x14);
+            for (uint32_t i = 0; i < n; i++) {
+                const uint8_t *r = onia + 0x18 + i * 0xa4;
+                if (strncmp((const char *)r, attack_name, 16)) continue;
+                char impt[129];
+                memcpy(impt, r + 0x10, 128);
+                impt[128] = 0;
+                type = impact_type_by_name(impt);
+                if (type >= 0) *modifier = onia_modifier(r);
+                break;
+            }
+        }
+        /* and the attacker's animation particles on the attacking parts pulse */
+        if (pulse) chr_anim_particles_pulse((Character *)x, attack);
+    }
+    if (type < 0) {
+        /* else "Melee" (0x53ed2c), or the class's body part impacts (CBPI, ONCC +0xc40: links to the
+           types for the hit, the blocked from +0x4c and the killed from +0x98) by the highest attacking
+           part */
+        type = impact_type_by_name(exe_str(0x53ed2c));
+        const uint8_t *cbpi = attack ? tm_link(xc + 0xc40) : NULL;
+        if (cbpi) {
+            const uint8_t *row = cbpi + (outcome == 0 ? 0 : outcome == 3 ? 0x98 : 0x4c);
+            const void *impt = tm_link(row + 4 * highest_part(attack));
+            if (impt) type = impact_type_of(impt);
+        }
+    }
+    return type;
+}
+
+void impact_melee(Character *x, Character *d, const uint8_t *e, int outcome, uint32_t attack, uint32_t defend)
+{
+    const uint8_t *dc = d->oncc;
+    /* the material: a super shield's over 0.5 by its name (0x550f28), else the defender's at the
+       highest part touched, its shield aside (ONrCharacter_GetMaterialType with 1) */
+    unsigned part = highest_part(defend);
+    int material = dc[0xc8e] && d->super_level > 0.5f ? impact_material_by_name(exe_str(0x550f28))
+                                                      : impact_character_material(d, (int)part, true);
+    if (material < 0) material = 0;
+    int modifier;
+    int type = impact_melee_type(x, x->anim ? (const char *)x->anim + 0x138 : NULL, outcome, attack, &modifier, true);
+    if (type < 0) return;
+    /* without one, the modifier by the attack's damage (+0xc): 15 heavy, 10 medium, light, 0 any */
+    if (modifier == 0) {
+        uint16_t dmg = rd16(e + 0xc);
+        modifier = dmg >= 15 ? 1 : dmg >= 10 ? 2 : dmg ? 3 : 0;
+    }
+    float scale = modifier == 1 ? 2.0f : modifier == 2 ? 1.5f : 1.0f;
+    /* at the defender's part (A+0x229c), facing back along the blow, owned by the attacker's melee
+       (0x2000000 | its id, WPrOwner_MakeMeleeDamageFromCharacter 0x51ce00); the particles in the
+       defender's health colour */
+    P3EffectLoc loc;
+    memset(&loc, 0, sizeof loc);
+    loc.tick = p3_tick();
+    loc.owner = 0x2000000u | x->id;
+    memcpy(loc.pos, &d->bone_world[part][9], sizeof loc.pos);
+    loc.normal[0] = -sinf(x->facing), loc.normal[2] = -cosf(x->facing);
+    loc.dir = loc.normal;
+    loc.kind = P3_HIT_MELEE;
+    p3_global_tint(true, chr_health_tint(d));
+    impact_effect(type, material, modifier, &loc, scale, x, d);
+    p3_global_tint(false, 0);
 }

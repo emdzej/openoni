@@ -4,7 +4,8 @@
    0x49b3f0) told to the state (C+0xf80: AI2rAlert_NotifyKnowledge 0x48ecc0 for the calm states), and
    forgotten with time (AI2rKnowledge_Update 0x499e80). Notes: docs/re/ai.md.
 
-   Not ported yet: sounds (AI2rKnowledge_Sound 0x49a8a0), projectiles and firing spreads to dodge, the
+   Sounds (AI2rKnowledge_Sound 0x49a8a0) are heard through the walls' gaps and the rooms. Not ported
+   yet: projectiles and firing spreads to dodge, the
    alarm, the combat state's notifications, cloaked characters, aiming's view direction. */
 #pragma once
 #include "ai.h"
@@ -50,6 +51,10 @@ uint32_t knowledge_now(void);
 /* AI2iKnowledge_AddPending 0x49b300 (immediate posts: 0x49b3f0): owner learns of target at pos. */
 void knowledge_post(struct Chr *owner, int type, int strength, const float pos[3], struct Chr *target,
                     uint32_t value, bool silent, bool force_hostile);
+/* AI2rKnowledge_Sound 0x49a8a0: a sound of a type (KNOW_SOUND_*) at pos, heard within radius (times
+   each listener's class's hearing) by the AIs, of its maker (source; none: of the place) and the one it
+   was made at (target), each as the listener holds them. */
+void knowledge_sound(int type, const float pos[3], float radius, struct Chr *source, struct Chr *target);
 /* AI2rKnowledge_HurtBy 0x49a7f0. */
 void knowledge_hurt_by(struct Chr *victim, struct Chr *attacker, uint32_t damage, bool melee);
 /* A character leaves (AI2rKnowledge_ThisCharacterWasDeleted, AI2rKnowledge_Delete 0x49b990): the

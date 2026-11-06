@@ -92,7 +92,8 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   power-ups. Hypos (Tab) heal her, past her maximum too, and invisibility fades her out of sight and out
   of the enemies' view.
 - **The other characters**: they spawn from the level's objects and scripts, follow their patrol paths,
-  and see, hear and react to the player. In combat they pick a behaviour for the range to their target
+  and see, hear and react to the player: they hear the shots, the hits, the throws, the slides and
+  the doors within each sound's reach, where it carries through the rooms. In combat they pick a behaviour for the range to their target
   from the level's combat settings, hold, advance or back off, fight hand to hand, and with a gun lead
   their target, aim from the weapon's muzzle and fire within their class's shooting skill. Knocked
   down, they lie dazed for their class's time and then get up. They start
@@ -162,7 +163,8 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   teleports.
 - **The impact effects**: what a hit makes, picked by the game's own table from the kind of blow or
   shot and the material it meets (stone, metal, glass, flesh, the shields). The bullets' sparks,
-  dust and sounds on the walls and on the characters come from it.
+  dust and sounds on the walls and on the characters come from it, and the blows' flashes and sounds,
+  by the attack and the body part that lands it.
 - **Decals**: the bullet holes and scorch marks, laid on the walls, cut to their shapes and folded
   round their corners; they fade, and the oldest give way to new ones as the original's do.
 - **Sound** from the game's own sound groups.
@@ -170,7 +172,7 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 ## Not yet
 
 - The particles' homing and their sounds; the characters' decals.
-- The melee's impact effects, and the guards hearing the impacts. The power-ups' physics and glow, and the
+- The footsteps' and the weapons' falls' impact effects. The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.
 - The intro and outro movies. Of the cheat codes: the shapeshifter's class change, behemoth's reactions

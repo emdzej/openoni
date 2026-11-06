@@ -1,6 +1,7 @@
 /* The AI's knowledge (OPENONI_DATA=<dir>, default ./game; skipped without it): on level 1, a thug on
    the training room's floor facing Konoko 60 away sees her (centrally: strength 4) within a second
-   and goes to combat; turned away, it doesn't; punched from behind, it knows of her. */
+   and goes to combat; turned away, it doesn't; punched from behind, it knows of her; turned away, it
+   hears her shot within the sound's radius. */
 #include "akev.h"
 #include "chars.h"
 #include "exe.h"
@@ -107,6 +108,22 @@ int main(void)
     e = knowledge_find(t, p);
     printf("after 400 ticks away: strength %d (was %d)\n", e ? e->strength : 0, s0);
     if (!e || e->strength != 3) failed |= 8;
+    /* heard (AI2rKnowledge_Sound): turned away, it forgets her; her shot within 10 (times its class's
+       hearing, ONCC +0x428) of 60 away goes unheard, within 120 it is heard: a gunfire contact, strong
+       (beyond 40) */
+    knowledge_forget_contacts(t, NULL);
+    place(p, t, 3.14159265f);
+    float scale;
+    memcpy(&scale, (const uint8_t *)t->c.oncc + 0x428, 4);
+    knowledge_sound(KNOW_SOUND_GUNFIRE, p->c.pos, 10.0f, p, NULL);
+    chars_update(&(CharacterInput){ 0 }, env);
+    KnowEntry *near = knowledge_find(t, p);
+    knowledge_sound(KNOW_SOUND_GUNFIRE, p->c.pos, 120.0f, p, NULL);
+    chars_update(&(CharacterInput){ 0 }, env);
+    e = knowledge_find(t, p);
+    printf("hearing %.2f: within 10 %s, within 120 strength %d, type %d\n", scale, near ? "heard" : "unheard",
+           e ? e->strength : 0, e ? e->type : -1);
+    if (near || !e || e->strength != KNOW_STRONG || e->type != KNOW_SOUND_GUNFIRE) failed |= 16;
     chars_unload();
     tm_terminate();
     exe_free();

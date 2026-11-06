@@ -63,7 +63,7 @@ typedef struct {
     bool decal_static, decal_random_rotation;   /* +0x0c, +0x0d for a decal (the same bytes) */
 } P3EffectSpec;
 /* Where (the location, 0x6c bytes): the kinds of what was hit. */
-enum { P3_HIT_NONE = 0, P3_HIT_WALL = 1, P3_HIT_CHARACTER = 2, P3_HIT_NONE_ATTACHED = 4 };
+enum { P3_HIT_NONE = 0, P3_HIT_WALL = 1, P3_HIT_CHARACTER = 2, P3_HIT_MELEE = 3 /* a blow (HandleAttackMask) */, P3_HIT_NONE_ATTACHED = 4 };
 typedef struct {
     uint32_t tick;              /* +0x00: when */
     uint32_t owner;             /* +0x04: the damage's owner (P3_X_OWNER) */

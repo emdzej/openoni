@@ -358,6 +358,18 @@ static P3Particle *anim_particle_live(Character *c, unsigned i)
     return p && pc == c->anim_particle[i].cls ? p : NULL;
 }
 
+uint32_t chr_health_tint(const Character *c) { return health_colour_of(c); }
+
+void chr_anim_particles_pulse(Character *c, uint32_t parts)
+{
+    float time = (float)ui_time() * (1.0f / 60.0f);
+    for (unsigned i = 0; i < c->anim_particles; i++) {
+        if (!(c->anim_particles_on >> i & 1) || !(parts >> c->anim_particle[i].bone & 1)) continue;
+        P3Particle *p = anim_particle_live(c, i);
+        if (p) p3_send_event(c->anim_particle[i].cls, p, P3_EV_PULSE, time);
+    }
+}
+
 void chr_anim_particles_stop(Character *c)
 {
     float time = (float)ui_time() * (1.0f / 60.0f);
@@ -437,8 +449,8 @@ static void old_animation_hook(Character *c, const void *next)
 /* ONrCharacter_NewAnimationHook 0x4e97a0, the parts that touch the animation state, and the teleport: a
    type 0xdf with one set puts the character there (its position, the last one, the physics', the
    ground's; the location, C+0x160, isn't kept apart in the port; the room, 0x4e91c0, is found from the
-   position), facing as given; an AI's path is made anew (chars.c). Not ported: the
-   sound serial and vocalization (C+0x1dc, 0x428970),
+   position), facing as given; an AI's path is made anew (chars.c). The sound serial (C+0x1dc)
+   counts up. Not ported: the vocalization (0x428970),
    dropping the weapon (flag 5), an attack's turn toward its target, and dying. The animation's
    particles are made last. A throw (TRAM flag 15) starts its target's part through chr_throw_hook
    (throw.c); any other animation forgets the target. */
@@ -447,6 +459,7 @@ void (*chr_animation_hook)(Character *c);
 static void new_animation_hook(Character *c)
 {
     const void *t = c->anim;
+    c->sound_serial++;
     bool fight = (tr_varient(t) & 0x200) != 0;
     if (c->teleport && tr_type(t) == 0xdf) {
         c->facing = c->desired_facing = c->teleport_facing;
@@ -968,8 +981,25 @@ void chr_frame_motion(const Character *c, float v[3])
     }
 }
 
+void (*chr_sound_hook)(Character *c, int type, const float pos[3], float radius, Character *target);
+
+/* DoCharacterFrame's noise (0x4e003c), once an animation (its serial) is half through: types 4 and
+   0x90..0x93 a sound of type 0 (unimportant) within 60, 0x5e one of type 1 (interesting) within 150,
+   of the character at its place */
+static void animation_noise(Character *c)
+{
+    if (c->sound_serial == c->sound_heard || c->frame < tr_duration(c->anim) >> 1) return;
+    int type = -1;
+    float radius = 0.0f;
+    if (c->type == 4 || (c->type >= 0x90 && c->type <= 0x93)) type = 0, radius = 60.0f;
+    else if (c->type == 0x5e) type = 1, radius = 150.0f;
+    if (type >= 0 && chr_sound_hook) chr_sound_hook(c, type, c->pos, radius, NULL);
+    c->sound_heard = c->sound_serial;
+}
+
 void chr_frame_advance(Character *c)
 {
+    animation_noise(c);
     c->frame = (uint16_t)(c->frame + 1);
     if (c->interpolating && ++c->interp_tick == c->interp_length) c->interpolating = false;
     if (c->fight_timer) c->fight_timer--;

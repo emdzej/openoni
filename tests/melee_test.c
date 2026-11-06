@@ -7,6 +7,7 @@
 #include "ui.h"
 #include "chr_anim.h"
 #include "exe.h"
+#include "impact.h"
 #include "melee.h"
 #include "persist.h"
 #include "physics.h"
@@ -37,6 +38,7 @@ int main(void)
         return 1;
     }
     prepare();
+    impact_types_load();        /* the impact types' and materials' trees, as at the start */
     trac_set_level(1);
     if (!tm_level_load(1, err, sizeof err)) {
         fprintf(stderr, "melee_test: %s\n", err);
@@ -117,6 +119,22 @@ int main(void)
         t->ai.flags &= ~AI_FLAG_PASSIVE;
     } else {
         failed |= 4;
+    }
+    /* the blows' impact types (HandleAttackMask): Konoko's "konflash1" hit by its class's attack impacts
+       (Kon_Super_Punch, heavy); a right fist's (part 18) hit, block and kill by her body part impacts;
+       a blocked "konflash1" by the body parts too */
+    {
+        int m1, m2, m3, m4, m5;
+        int super = impact_melee_type(&p->c, "konflash1", 0, 1u << 18, &m1, false);
+        int hit = impact_melee_type(&p->c, "", 0, 1u << 18, &m2, false);
+        int block = impact_melee_type(&p->c, "", 1, 1u << 18, &m3, false);
+        int kill = impact_melee_type(&p->c, "", 3, 1u << 18, &m4, false);
+        int blocked_super = impact_melee_type(&p->c, "konflash1", 1, 1u << 18, &m5, false);
+        printf("impacts: konflash1 %d (Kon_Super_Punch %d) modifier %d; fist hit %d, blocked %d, killed %d; "
+               "konflash1 blocked %d\n", super, impact_type_by_name("Kon_Super_Punch"), m1, hit, block, kill, blocked_super);
+        if (super < 0 || super != impact_type_by_name("Kon_Super_Punch") || m1 != 1 || hit < 0 || block < 0 || kill < 0 ||
+            blocked_super != block || m3 != 0)
+            failed |= 16;
     }
     chars_unload();
     tm_terminate();

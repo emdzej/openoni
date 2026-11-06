@@ -54,8 +54,9 @@ For each component with an entry:
 
 - the impulse sound plays at the location's position (0x512480). Its volume is 0.7·|v|²/iv² + 0.3
   when the speed is under the impulse's +0x84 (iv), full otherwise;
-- with the sound's flag bit 0, an AI sound (`AI2rKnowledge_Sound` 0x49a8a0) the guards can hear (**not ported**: no
-  hearing yet);
+- with the sound's flag bit 0, an AI sound (`AI2rKnowledge_Sound` 0x49a8a0) the guards can hear: its type
+  at +0x2a, its radius +0x2c times the caller's scale, of the caller's two characters (see
+  [ai.md](ai.md) "Hearing");
 - each particle's spec is created with P3rCreateEffect at the location.
 
 ## P3rCreateEffect (0x456030)
@@ -103,6 +104,38 @@ Super_Shield for a character with flags bit 0x40000000, or with its class's supe
 over 0.5. Shield while the force shield is up (unless ignored). Otherwise the body's material for the
 part (the CBPM linked at ONCC+0xc3c, one Mtrl link a part), and "Character" if none.
 
+## A blow's impact (HandleAttackMask 0x4e7740's end)
+
+Once a blow lands (`src/chr_hit.c`, `impact_melee` in `src/impact.c`), its outcome is 0 for a hit (or a
+blow through the block, attack flag 8), 1 blocked, 2 against a super shield (the port takes it as
+blocked) and 3 when it kills. The two part masks come from 0x4e8e70, over every attack of the attacker
+that lands: the attacks' own parts (attack +0), and for each the first of the defender's parts it
+touches.
+
+- **The material.** It is the super shield's (by the name at 0x550f28) when the defender's class has one
+  and is over 0.5. Otherwise it is the defender's material at its highest touched part, its force
+  shield aside (0x4e6200 with 1).
+- **The type, for a hit or a kill.** The attacker's class's attack impacts (`ONIA`, ONCC +0x434: +0x14
+  the count, then 0xa4-byte rows from +0x18) are searched for the animation's attack name (TRAM +0x138,
+  `TRrAnimation_GetAttackName` 0x429210), unless it is empty. A row holds the attack's name (+0x00, 16),
+  an impact type's name (+0x10, 128) and a modifier's (+0x90, 16). The class's preprocess (0x4d8410,
+  from `SetCharacterClass`) turns them into the type (+0xa0, `MArImpactType_GetByName`, −1 none) and the
+  modifier (+0xa2, the place among 0x554a04's four names Any, Heavy, Medium and Light; 0 none). The
+  attacker's live animation particles in their frames on the attacking parts are then pulsed (event 1).
+- **The fallback.** Otherwise, or for a blocked blow, the type is "Melee" (0x53ed2c). With attacking
+  parts, the class's body part impacts (`CBPI`, ONCC +0xc40) replace it: three rows of 19 Impt links,
+  for the hit (+0), the blocked (+0x4c) and the killed (+0x98). The one taken is at the highest
+  attacking part.
+- **The modifier.** Without one from ONIA, it comes from the attack's damage (+0xc): 15 and up heavy
+  (1), 10 and up medium (2), light (3) above 0, any (0) at 0. The AI sound's scale is 2 for heavy, 1.5
+  for medium and 1 otherwise.
+- **The location.** The defender's part position (A+0x229c, the part's matrix row), the normal back
+  along the attacker's facing (also the location's direction), kind 3, and the owner the attacker's
+  melee (0x2000000 | its id, `WPrOwner_MakeMeleeDamageFromCharacter` 0x51ce00).
+- **The effect.** It plays in the defender's health colour (0x4ef450, then `P3rSetGlobalTint`
+  0x456f90 and 0x456fa0), the attacker heard at the defender.
+
 ## Not yet
 
-- The melee's impacts (ONrCharacter_PlayAnimationImpact) and the AI's hearing of the impact sounds.
+- The impacts of `ONrCharacter_PlayAnimationImpact` (0x4f0e80), the footsteps' (DoCharacterFrame
+  0x4df7d8) and the weapons' falls (`WPiGenerateFallImpact` 0x5189c0).

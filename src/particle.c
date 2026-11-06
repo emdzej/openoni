@@ -12,6 +12,7 @@
 #include "akev.h"
 #include "akev_collide.h"
 #include "body.h"
+#include "chars.h"
 #include "chr_hit.h"
 #include "decal.h"
 #include "impact.h"
@@ -2413,8 +2414,15 @@ static bool do_action(Act *x)
             eloc.kind = (p->flags & P_EXPIRING) ? P3_HIT_NONE_ATTACHED : P3_HIT_NONE;
             if (!p3_real_position(c, p, eloc.pos)) return true;
         }
-        /* the owner's character (WPrOwner_GetCharacter 0x51cda0), for the AI's sound: not ported */
-        impact_effect(type, material, (int)(uint32_t)m, &eloc, 1.0f);
+        /* the AI hears it of the owner's character (WPrOwner_GetCharacter 0x51cda0) */
+        Character *by = NULL;
+        const uint8_t *ob = block(c, p, P3_X_OWNER);
+        uint32_t owner = ob ? rd32(ob) : 0, kind = owner & 0xff000000u;
+        for (int i = 0; (kind == 0x1000000u || kind == 0x2000000u) && i < chars_slots(); i++) {
+            Chr *ch = chars_get(i);
+            if (ch && chars_in_use(ch) && ch->c.id == (owner & 0xffffff)) { by = &ch->c; break; }
+        }
+        impact_effect(type, material, (int)(uint32_t)m, &eloc, 1.0f, by, NULL);
         return false;
     }
     case A_UNHIDE: p->flags &= ~(uint32_t)P_HIDDEN; return false;

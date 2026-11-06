@@ -190,6 +190,8 @@ static void throw_starts(Character *c)
     /* both seen again if invisible, and shown to at least 0.6 */
     inventory_reveal(c, true);
     inventory_reveal(t, true);
+    /* a melee sound within 150, of the thrower at its victim */
+    if (chr_sound_hook) chr_sound_hook(c, 3, c->pos, 150.0f, t);
     chr_set_animation_external(t, t->state, c->throw_victim_anim, 6);
     hold_victim(c, t);
     c->threw = t;

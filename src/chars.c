@@ -490,12 +490,18 @@ static void script(Character *c, int which)
     ch->script_flags |= bit;
 }
 
+static void sound(Character *c, int type, const float pos[3], float radius, Character *target)
+{
+    knowledge_sound(type, pos, radius, (Chr *)c, (Chr *)target);
+}
+
 void chars_update(const CharacterInput *player_in, const void *env)
 {
     chr_hurt_hook = hurt;
     chr_die_hook = died;
     chr_script_hook = script;
     chr_animation_hook = new_animation;
+    chr_sound_hook = sound;
     character_action_frame_hook = action_frame;
     chr_block_hook = block;
     chr_knockdown_hook = knocked_down;

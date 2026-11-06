@@ -77,6 +77,11 @@ bit 1, which `AI2rInitializeCharacter` sets):
    points (C+0x3c) while a hostile contact is within C+0x1014 of the owner. The port has no C+0x1014
    yet, so it always makes the entry hostile. With hostility already set, the entry is hostile for
    good.
+   A melee or gunfire sound (3, 4) of the target fighting another character (the post's value, a
+   character for the sounds) takes sides: an entry with no hostility yet, at strength 4, whose owner is
+   neutral to the target (`AI2rTeam_FriendOrFoe` 1) and a friend of the other (0), gets hostility 1 and
+   is hostile for 900 ticks. When the other is an AI, it must hold its own entry of the target hostile
+   (+0x4b, or hostility 2 or more), and the 900 ticks end no later than that entry's.
 5. **Re-sort.** The entry moves up past every entry that doesn't rank above it (0x49ba10 ≤ 0).
 6. **Notify.** Unless the post is silent, the state's handler runs.
 
@@ -172,7 +177,48 @@ passive, 0x48b480 clears the vocalization delay (C+0xf8c). It then resolves the 
 
 `HurtBy` posts on the victim, about the attacker, at the attacker's position, with the damage. It
 posts only when the two aren't friends. Melee posts type 8 at strength 4; other damage posts type 7
-at strength 3. Non-melee damage also makes a sound of 120 (`AI2rKnowledge_Sound`, not ported).
+at strength 3. Non-melee damage also makes a gunfire sound of 120 at the victim, of the attacker at the
+victim (without an attacker, of the victim).
+
+### Hearing
+
+`AI2rKnowledge_Sound` (0x49a8a0, fastcall: ECX the type, EDX the place, then the radius, the maker and
+the one it was made at; `src/knowledge.c`) tells the AIs of a sound. It keeps the last 20 in a debug
+list (0x63abc0) and does nothing while 0x5ec0c1 or the all-passive switch 0x5ec0c4 is set (neither is
+ported). For each AI character (C+0x1e8 2) neither passive nor deaf (C+0x1f0 bits 2, 0x1000):
+
+- **Of whom.** The maker and the target are each heard of, or not. Neither the listener itself, a
+  dead one, nor one not in use (C+4 0x8000) is. The player is, unless the listener ignores it (C+0x1f0
+  0x2000, or the cheat 0x5ec0c2). Another AI is heard of only when one of the two takes the other for an
+  enemy (0x48b1d0, counting past hits), and never by a combat sound (types 2..4), so an AI hearing a
+  fight between AIs learns of the one fought. A sound with no maker is heard of its place.
+- **Within reach.** The listener is within the radius times its class's hearing (ONCC +0x428).
+- **Heard.** A line from the sound to the head (`AKrLineOfSight` 0x4410a0: the walls, skipping
+  0x42080, then the objects; the port has the walls only, as for the sight) is clear. Otherwise a way
+  through the rooms (`PHrPathDistance` 0x50edb0) runs from the sound to the listener's node (C+0x188)
+  within the radius. The original hands the sound's type to the search as its door key, where −1 is
+  usual; the port's search keeps −1 (*a deviation*).
+- **Posted.** The maker at its location (C+0x160; the sound's place without a maker) with the
+  target as the value, at strength 3, or 4 for a sound of type 3 or 4 within 40 of the head (1600
+  squared, 0x52a92c). The target at its location, strength 3, with the maker as the value.
+
+The sounds made:
+
+| Where | Type | Radius | Of, at |
+|---|---|---|---|
+| `HurtBy`, not melee | 4 | 120 | the attacker, the victim |
+| A throw starting (`NewAnimationHook` 0x4e9ce7) | 3 | 150 | the thrower, the victim |
+| An animation half through (`DoCharacterFrame` 0x4e003c, once by the serial C+0x1dc, kept in A+0x1c9c): types 4 and 0x90..0x93 | 0 | 60 | the character |
+| The same, type 0x5e | 1 | 150 | the character |
+| A shot (`WPiPulseShooter` 0x519c50), at most every 30 ticks (weapon +0xfc), from the pelvis | 4 | ONWC +0x128 (trigger 0) or +0x1a8 | the owner, an AI's combat target |
+| A door opening or closing (`OBJrDoor_Open` 0x4c26c0, `_Close` 0x4c2590) | DOOR +0x14 (−1 none) | +0x18 | who opens it |
+| An impact effect's sound with flag 1 (`ONrImpactEffect` 0x4fe5b0) | +0x2a | +0x2c × the caller's scale | the caller's |
+| `ai2_makesound` (`AI2iScript_Debug_MakeSound` 0x4b5c10, not ported) | its argument | | |
+
+The particles' impact action passes the owner's character (`WPrOwner_GetCharacter` 0x51cda0) and
+scale 1. A blow's (`HandleAttackMask` 0x4e8946) passes scale 2, 1.5 or 1 by the modifier, of the
+attacker at the defender ([impact.md](impact.md)). The other impact effects' callers (the footsteps,
+animation impacts and weapons' falls) aren't ported yet.
 
 ### Teams
 

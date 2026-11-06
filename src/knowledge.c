@@ -8,6 +8,7 @@
 #include "chr_anim.h"
 #include "chr_hit.h"
 #include "exe.h"
+#include "graph.h"
 #include "pursuit.h"
 
 #include <math.h>
@@ -29,10 +30,12 @@ typedef struct {
     float pos[3];
     int type;
     uint32_t value;
+    Chr *other;                 /* a sound's other character (the value, for the sounds) */
     bool silent, force_hostile;
 } Pending;
 static Pending pending[PENDING_MAX];       /* DAT_0063a2a0, 0x24 bytes each */
 static int npending;                       /* DAT_0063b340 */
+static const void *sound_env;              /* the AKEV knowledge_update was last given */
 
 static uint32_t now;                       /* stand-in for the game time (GS+0x144) */
 
@@ -364,15 +367,34 @@ static void post_now(const Pending *p)
             e->hostile_until = 0xffffffffu;
         }
     }
-    /* types 3 and 4 with a source (sounds of a fight between others): with the sounds */
+    /* a melee or gunfire sound of target fighting other: heard by one neutral to the target and a
+       friend of the other, a definite contact not yet taken sides on is taken against the target
+       (hostility 1, for 900 ticks) when the other, an AI, holds it hostile, no longer than the other
+       does */
+    else if ((type == KNOW_SOUND_MELEE || type == KNOW_SOUND_GUNFIRE) && e->target && p->other &&
+             e->hostility == 0 && e->strength == KNOW_DEFINITE && ai_team_relation(o->team, e->target->team) == 1 &&
+             ai_team_relation(o->team, p->other->team) == 0) {
+        const KnowEntry *k = NULL;
+        bool take = true;
+        if (is_ai(p->other)) {
+            k = knowledge_find(p->other, e->target);
+            take = k && (k->hostile || k->hostility >= 2);
+        }
+        if (take) {
+            e->hostility = 1;
+            e->hostile = true;
+            e->hostile_until = e->posted + 900;
+            if (k && k->hostile && k->hostile_until < e->hostile_until) e->hostile_until = k->hostile_until;
+        }
+    }
     while (e->prev && compare(e, e->prev, false, o) <= 0) move_up(o, e);
     e->updated = now;
     if (!p->silent) notify(o, e, false);
     e->last_strength = e->strength;
 }
 
-void knowledge_post(Chr *owner, int type, int strength, const float pos[3], Chr *target, uint32_t value, bool silent,
-                    bool force_hostile)
+static void add_pending(Chr *owner, int type, int strength, const float pos[3], Chr *target, uint32_t value, Chr *other,
+                        bool silent, bool force_hostile)
 {
     Pending *p = NULL;
     for (int i = 0; i < npending; i++)
@@ -391,8 +413,70 @@ void knowledge_post(Chr *owner, int type, int strength, const float pos[3], Chr 
     memcpy(p->pos, pos, sizeof p->pos);
     p->type = type;
     p->value = value;
+    p->other = other;
     p->silent = silent;
     p->force_hostile = force_hostile;
+}
+
+void knowledge_post(Chr *owner, int type, int strength, const float pos[3], Chr *target, uint32_t value, bool silent,
+                    bool force_hostile)
+{
+    add_pending(owner, type, strength, pos, target, value, NULL, silent, force_hostile);
+}
+
+/* A sound's maker or the one it was made at, as one listener hears of them (AI2rKnowledge_Sound): none
+   (or itself, a dead one, one not in use) is not heard of; the player is, unless the listener ignores
+   it; another AI only when one of the two takes the other for an enemy, and never by a combat sound
+   (2..4: what an AI hears of a fight between AIs is the one fought) */
+static bool unheard(const Chr *listener, const Chr *who, bool combat)
+{
+    if (!who || who == listener || !alive(who) || !chars_in_use(who)) return true;
+    if (!is_ai(who)) return (listener->ai.flags & AI_FLAG_IGNORE_PLAYER) != 0;     /* (or the cheat 0x5ec0c2) */
+    return combat || (!ai_is_hostile(listener, who, true) && !ai_is_hostile(who, listener, true));
+}
+
+/* AI2rKnowledge_Sound 0x49a8a0 (the debug list of the last 20 sounds, 0x63abc0, and the all-deaf and
+   all-passive switches, 0x5ec0c1 and 0x5ec0c4, left out). */
+void knowledge_sound(int type, const float pos[3], float radius, Chr *source, Chr *target)
+{
+    bool combat = type >= KNOW_SOUND_DANGER && type <= KNOW_SOUND_GUNFIRE;     /* 0x49ad70 */
+    float at_source[3], at_target[3] = { 0, 0, 0 };
+    /* the places posted: the maker's location (C+0x160; the port keeps none apart), else the sound's */
+    memcpy(at_source, source ? source->c.pos : pos, sizeof at_source);
+    if (target) memcpy(at_target, target->c.pos, sizeof at_target);
+    for (int i = 0; i < chars_slots(); i++) {
+        Chr *c = chars_get(i);
+        if (!c || !is_ai(c) || (c->ai.flags & (AI_FLAG_PASSIVE | AI_FLAG_DEAF))) continue;
+        bool no_source = source && unheard(c, source, combat), no_target = unheard(c, target, combat);
+        if (no_source && no_target) continue;
+        /* within the radius times the class's hearing (ONCC +0x428) */
+        float r = radius * oncc_float(c, 0x428);
+        float dx = pos[0] - c->c.pos[0], dy = pos[1] - c->c.pos[1], dz = pos[2] - c->c.pos[2];
+        if (dx * dx + dy * dy + dz * dz > r * r) continue;
+        /* heard in a line to the head (AKrLineOfSight 0x4410a0: the walls skipping 0x42080; its
+           objects' part, as the sight's, not ported), or by a way through the rooms no longer than the
+           radius (PHrPathDistance 0x50edb0, from the sound's room to the listener's node, C+0x188; the
+           original hands the sound's type to the search as its door key, which the port's search
+           doesn't take: it keeps the key -1) */
+        float head[3];
+        knowledge_head_point(c, head);
+        float v[3] = { head[0] - pos[0], head[1] - pos[1], head[2] - pos[2] };
+        bool heard = !sound_env || !akev_segment_hits(sound_env, pos, v, 0x42080);
+        if (!heard) {
+            int from = graph_room_at(pos), to = graph_room_at(c->c.pos);
+            float d = r;
+            heard = from >= 0 && to >= 0 && graph_find_path_within(from, pos, to, head, false, NULL, &d) != 0;
+        }
+        if (!heard) continue;
+        /* a hint is strong; a fight's sound within 40 of the head definite */
+        int strength = KNOW_STRONG;
+        if (type >= KNOW_SOUND_MELEE) {
+            float hx = head[0] - pos[0], hy = head[1] - pos[1], hz = head[2] - pos[2];
+            if (hx * hx + hy * hy + hz * hz < 1600.0f) strength = KNOW_DEFINITE;     /* 0x52a92c */
+        }
+        if (!no_source) add_pending(c, type, strength, at_source, source, 0, target, false, false);
+        if (!no_target) add_pending(c, type, KNOW_STRONG, at_target, target, 0, source, false, false);
+    }
 }
 
 void knowledge_hurt_by(Chr *victim, Chr *attacker, uint32_t damage, bool melee)
@@ -400,7 +484,9 @@ void knowledge_hurt_by(Chr *victim, Chr *attacker, uint32_t damage, bool melee)
     if (attacker && ai_team_relation(victim->team, attacker->team) != 0)
         knowledge_post(victim, melee ? KNOW_HURT_MELEE : KNOW_HURT, melee ? 4 : 3, attacker->c.pos, attacker, damage,
                        false, false);
-    /* not melee: a sound of 120 (AI2rKnowledge_Sound): with the sounds */
+    /* not melee: a gunfire sound of 120 at the victim, of the attacker at the victim (without one, of
+       the victim) */
+    if (!melee) knowledge_sound(KNOW_SOUND_GUNFIRE, victim->c.pos, 120.0f, attacker ? attacker : victim, attacker ? victim : NULL);
 }
 
 void knowledge_forget(Chr *c)
@@ -412,7 +498,10 @@ void knowledge_forget(Chr *c)
     }
     for (int i = 0; i < npending;)
         if (pending[i].owner == c || pending[i].target == c) pending[i] = pending[--npending];
-        else i++;
+        else {
+            if (pending[i].other == c) pending[i].other = NULL;
+            i++;
+        }
 }
 
 void knowledge_forget_contacts(Chr *owner, const Chr *target)
@@ -518,6 +607,7 @@ static void check_visible(Chr *looker, const void *env)
 void knowledge_update(const void *env)
 {
     /* the pending posts of last tick */
+    sound_env = env;
     for (int i = 0; i < npending; i++) post_now(&pending[i]);
     npending = 0;
     now++;

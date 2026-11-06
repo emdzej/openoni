@@ -93,6 +93,8 @@ typedef struct Character {
     float scale;                    /* C+0x34: the body's size, random in the class's range */
     uint32_t last_action;           /* C+0x1e0, game time */
     uint32_t idle_delay;            /* C+0x1e4 */
+    uint32_t sound_serial;          /* C+0x1dc: counts the animations started */
+    uint32_t sound_heard;           /* A+0x1c9c: the serial of the last animation's noise */
 
     const void *anim;               /* A+0x1af8, TRAM */
     uint16_t state;                 /* A+0x1afc: the current animation's end state */
