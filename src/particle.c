@@ -1837,6 +1837,8 @@ void p3_update(uint32_t tick, bool gameplay, Character **chars, int nchars)
     after_update();
 }
 
+const void *p3_environment(void) { return env; }
+
 void p3_set_environment(const void *e)
 {
     env = e;

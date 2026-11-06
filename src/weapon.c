@@ -418,7 +418,7 @@ void chr_force_draw(Character *c)
 Weapon *chr_slot(const Character *c, int i) { return i >= 0 && i < 3 ? slot_get(c, i) : NULL; }
 
 /* The varient of the hand from the weapon, as ONrCharacter_SetWeapon makes it (the holster's again). */
-static void hand_varient(Character *c)
+void chr_hand_varient(Character *c)
 {
     c->varient &= 0x87ff;
     if (!c->weapon || (c->flags & 0x2000)) return;
@@ -430,7 +430,7 @@ void chr_hide_weapon(Character *c, bool hide)
 {
     if (hide) c->flags |= 0x2000;
     else c->flags &= ~0x2000u;
-    hand_varient(c);
+    chr_hand_varient(c);
 }
 
 /* The hand's weapon dropped, as 0x4ed770 and the holster do (0x51b590, the hand's firing cleared). */
@@ -488,7 +488,7 @@ static void overlay_action(Character *c, const void *anim)
             chr_set_weapon(c, w);
         }
         if (!c->weapon) return;
-        hand_varient(c);
+        chr_hand_varient(c);
         Weapon *w = c->weapon;
         bool attack = tr_is_attack(c->anim), blocked = holster_blocked(c->type);
         c->last_action = c->time;

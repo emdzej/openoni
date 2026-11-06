@@ -2,6 +2,7 @@
 #include "chr_anim.h"
 
 #include "body.h"
+#include "impact.h"
 #include "m3gm.h"
 #include "particle.h"
 #include "ui.h"
@@ -389,7 +390,7 @@ void chr_anim_particles_stop(Character *c)
    (0x4288c0: first <= frame <= last), when that changes: each live one tinted the health colour, started
    (event 2) as it comes in, stopped (3) as it goes out. An impact one (0x8000) coming in on a throw whose
    victim is dead (this one's target, or this one thrown) goes instead: its particle killed and, once a
-   victim (C+4 0x20000000), the impact effect (ONrImpactEffect 2 with the material; not ported). */
+   victim (C+4 0x20000000), the impact effect (impact_throw_killed). */
 void chr_anim_particles_frame(Character *c)
 {
     if (!c->anim_particles || !c->anim) return;
@@ -412,7 +413,8 @@ void chr_anim_particles_frame(Character *c)
                 if (p) p3_kill(c->anim_particle[i].cls, p);
                 c->anim_particle[i].handle = 0;
                 c->anim_particle[i].cls = NULL;
-                if (!(victim->flags & 0x20000000u)) victim->flags |= 0x20000000u;  /* (the impact effect) */
+                if (!(victim->flags & 0x20000000u))
+                    impact_throw_killed(c, c->anim_particle[i].bone, victim, c->throw_target ? c : c->thrown_by);
                 continue;
             }
         }
@@ -997,8 +999,39 @@ static void animation_noise(Character *c)
     c->sound_heard = c->sound_serial;
 }
 
+/* TRrAnimation_GetFootstep 0x42bb60: the footstep at a frame (TRAM +0x20's .raw, the count the byte at
+   +0x17e: u16 frame, u16 kind; the last that matches), 0 none. */
+static uint16_t footstep_at(const void *t, uint16_t frame)
+{
+    uint16_t kind = 0;
+    unsigned n = ((const uint8_t *)t)[0x17e];
+    for (unsigned i = 0; i < n; i++) {
+        const uint8_t *f = raw_block(t, 0x20, 4u * i, 4);
+        if (f && rd16(f) == frame) kind = rd16(f + 2);
+    }
+    return kind;
+}
+
+/* DoCharacterFrame's footsteps (0x4dff65): a footstep at the frame, on the ground (A+0xf6 0), plays the
+   animation's impact; with 0x54e154 (1, the port keeps it so) the left (1) and right (2) at the foot's
+   bone (3, 6: A+0x232c, A+0x23bc) half a unit above the location's height, the others at the location. */
+static void footsteps(Character *c)
+{
+    uint16_t kind = footstep_at(c->anim, (uint16_t)c->frame);
+    if (!kind || c->air_ticks) return;
+    float p[3];
+    if (kind == 1 || kind == 2) {
+        const float *m = c->bone_world[kind == 1 ? 3 : 6];
+        p[0] = m[9], p[1] = c->pos[1] + 0.5f, p[2] = m[11];
+    } else {
+        memcpy(p, c->pos, sizeof p);
+    }
+    impact_animation(c, p);
+}
+
 void chr_frame_advance(Character *c)
 {
+    footsteps(c);
     animation_noise(c);
     c->frame = (uint16_t)(c->frame + 1);
     if (c->interpolating && ++c->interp_tick == c->interp_length) c->interpolating = false;

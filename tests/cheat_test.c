@@ -97,6 +97,18 @@ int main(void)
     for (int i = 0; i < 600; i++) ui_update(), inventory_update(c);
     check(c->hit_points == c->max_hit_points - 10, "regeneration: ten points in ten seconds");
 
+    /* shapeshifter: F8 steps the class through the ONCC instances, Shift+F8 back */
+    const void *k0 = c->oncc;
+    check(!cheat_shapeshift(c, false) && c->oncc == k0, "no shapeshifting without the code");
+    type("shapeshifter");
+    check(cheat_change_characters, "shapeshifter");
+    bool next = cheat_shapeshift(c, false);
+    const void *k1 = c->oncc;
+    bool back = cheat_shapeshift(c, true);
+    printf("cheat_test: shapeshifter: %s -> %s -> %s\n", tm_handle_instance(tm_handle_of(k0))->name,
+           tm_handle_instance(tm_handle_of(k1))->name, tm_handle_instance(tm_handle_of(c->oncc))->name);
+    check(next && k1 != k0 && back && c->oncc == k0 && c->anim, "the class one on and back");
+
     cheat_message_clear();
     check(!cheat_message(), "the message cleared");
     if (!failed) printf("cheat_test: ok\n");

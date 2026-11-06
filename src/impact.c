@@ -2,8 +2,10 @@
 #include "impact.h"
 
 #include "character.h"
+#include "akev.h"
 #include "chr_anim.h"
 #include "exe.h"
+#include "material.h"
 #include "sound.h"
 #include "tm.h"
 
@@ -371,11 +373,11 @@ static unsigned highest_part(uint32_t mask)
    modifier's (+0x90) names) as the class's preprocess (0x4d8410, from SetCharacterClass) resolves it:
    the type by its name (MArImpactType_GetByName), the modifier by its place among 0x554a04's four
    names (none: 0). */
-static int onia_modifier(const uint8_t *r)
+static int modifier_by_name(const uint8_t *name)     /* 0x4d7f30 */
 {
     for (uint32_t k = 0; k < 4; k++) {
         const char *m = exe_str(exe_u32(0x554a04 + 4 * k));
-        if (m && !strncmp((const char *)r + 0x90, m, 16)) return (int)k;
+        if (m && !strncmp((const char *)name, m, 16)) return (int)k;
     }
     return 0;
 }
@@ -399,7 +401,7 @@ int impact_melee_type(const Character *x, const char *attack_name, int outcome, 
                 memcpy(impt, r + 0x10, 128);
                 impt[128] = 0;
                 type = impact_type_by_name(impt);
-                if (type >= 0) *modifier = onia_modifier(r);
+                if (type >= 0) *modifier = modifier_by_name(r + 0x90);
                 break;
             }
         }
@@ -453,4 +455,113 @@ void impact_melee(Character *x, Character *d, const uint8_t *e, int outcome, uin
     p3_global_tint(true, chr_health_tint(d));
     impact_effect(type, material, modifier, &loc, scale, x, d);
     p3_global_tint(false, 0);
+}
+
+/* ---- the animations' impacts (ONrCharacter_PlayAnimationImpact 0x4f0e80) ---- */
+
+/* 0x4f04f0's table, the animation types' impacts (one of the class's 15, 0xffff none, 0x5ec984): the
+   function builds it on its stack from its instructions' operands, (type, impact) pairs ended by
+   0xffff. The port reads the pairs out of those instructions: registers loaded with constants
+   (mov r32, imm32; xor r32, r32) and stored as words (mov word [esp + d], r16 | imm16). */
+enum { ANIM_TYPES = 0x1d2 };
+static uint16_t anim_impact[ANIM_TYPES];
+static bool anim_impact_read;
+
+static void read_anim_impacts(void)
+{
+    anim_impact_read = true;
+    memset(anim_impact, 0xff, sizeof anim_impact);
+    const uint32_t from = 0x4f04f9, to = 0x4f0e28;      /* past the prologue, to the build's branch */
+    const uint8_t *code = exe_data(from, to - from);
+    if (!code) return;
+    uint32_t reg[8] = { 0 };
+    static uint16_t stack[0x228 / 2];
+    memset(stack, 0, sizeof stack);
+    size_t i = 0, n = to - from;
+    while (i < n) {
+        const uint8_t *c = code + i;
+        if (c[0] >= 0xb8 && c[0] <= 0xbf) {                         /* mov r32, imm32 */
+            reg[c[0] - 0xb8] = rd32(c + 1), i += 5;
+        } else if ((c[0] == 0x31 || c[0] == 0x33) && (c[1] & 0xc0) == 0xc0 && (c[1] >> 3 & 7) == (c[1] & 7)) {
+            reg[c[1] & 7] = 0, i += 2;                              /* xor r32, r32 */
+        } else if (c[0] == 0xa0) {
+            i += 5;                                                 /* mov al, [abs]: the build's flag */
+        } else if (c[0] == 0x3a && (c[1] & 0xc0) == 0xc0) {
+            i += 2;                                                 /* cmp r8, r8: its test */
+        } else if (c[0] == 0x89 && (c[1] & 0xc7) == 0x84 && c[2] == 0x24) {
+            i += 7;                                                 /* mov [esp + d32], r32: the argument kept */
+        } else if (c[0] == 0x66 && (c[1] == 0x89 || c[1] == 0xc7) && (c[2] & 0x07) == 4 && c[3] == 0x24 &&
+                   ((c[2] & 0xc0) == 0x40 || (c[2] & 0xc0) == 0x80)) {
+            bool d32 = (c[2] & 0xc0) == 0x80;
+            uint32_t d = d32 ? rd32(c + 4) : c[4];
+            size_t len = 4 + (d32 ? 4 : 1);
+            uint16_t v;
+            if (c[1] == 0x89) v = (uint16_t)reg[c[2] >> 3 & 7];     /* mov word [esp + d], r16 */
+            else v = rd16(c + len), len += 2;                       /* mov word [esp + d], imm16 */
+            /* the locals from esp + 0xc (the three registers pushed) */
+            if (d >= 0xc && (d - 0xc) / 2 < sizeof stack / 2) stack[(d - 0xc) / 2] = v;
+            i += len;
+        } else {
+            return;     /* an instruction the reader doesn't know: no table */
+        }
+    }
+    for (unsigned k = 0; k + 1 < sizeof stack / 2 && stack[k] != 0xffff && k / 2 < 1000; k += 2)
+        if (stack[k] < ANIM_TYPES) anim_impact[stack[k]] = stack[k + 1];
+}
+
+int impact_animation_index(uint16_t anim_type)
+{
+    if (!anim_impact_read) read_anim_impacts();
+    return anim_type < ANIM_TYPES && anim_impact[anim_type] != 0xffff ? anim_impact[anim_type] : -1;
+}
+
+void impact_animation(Character *c, const float *pos)
+{
+    /* the floor's quad (A+0x128), else "failed to find floor" */
+    const void *env = p3_environment();
+    AkevQuad q;
+    if (c->ground_quad < 0 || !env || !akev_quad(env, (uint32_t)c->ground_quad, &q)) return;
+    int k = impact_animation_index(c->type);
+    if (k < 0) return;      /* "this animtype cannot play impacts" */
+    /* a run's (1) in the variant 0x100's animations is the class's 14th */
+    if (k == 1 && (tr_varient(c->anim) & 0x100)) k = 0xe;
+    /* the class's animation impact (ONCC +0x44c, 0x82 each: the type's name, its index at +0x80 once
+       SetCharacterClass resolves it), its modifier (+0x43a, by the name at +0x43c), on the floor's
+       material (its texture's, 0x41eed0) */
+    const uint8_t *oc = c->oncc, *e = oc + 0x44c + 0x82 * (unsigned)k;
+    char name[129];
+    memcpy(name, e, 128);
+    name[128] = 0;
+    int type = impact_type_by_name(name);
+    if (type < 0) return;
+    int material = -1;
+    if ((q.texture & 0xffff) != 0xffff) material = impact_material_index(material_of_texture(akev_texture(env, q.texture & 0xffff)));
+    if (material < 0) material = 0;
+    /* at pos, else the location (C+0x160; the port keeps none apart), owned by its melee */
+    P3EffectLoc loc;
+    memset(&loc, 0, sizeof loc);
+    loc.tick = p3_tick();
+    loc.owner = 0x2000000u | c->id;
+    memcpy(loc.pos, pos ? pos : c->pos, sizeof loc.pos);
+    impact_effect(type, material, modifier_by_name(oc + 0x43c), &loc, 1.0f, c, NULL);
+}
+
+void impact_throw_killed(Character *c, unsigned bone, Character *victim, Character *other)
+{
+    /* "Self_Damage_Killed" (0x550da8; type 0 counts as none) on c's material at the particle's part
+       (its shield aside), medium (2), at that part (A+0x229c), along C+0x178 (never written: zero),
+       c's melee its owner; of the victim at the other (c, or its thrower) */
+    int type = impact_type_by_name(exe_str(0x550da8));
+    if (type <= 0) return;
+    int material = impact_character_material(c, (int)bone, true);
+    if (material < 0) material = 0;
+    P3EffectLoc loc;
+    memset(&loc, 0, sizeof loc);
+    loc.tick = p3_tick();
+    loc.owner = 0x2000000u | c->id;
+    memcpy(loc.pos, &c->bone_world[bone < CHR_BONES ? bone : 0][9], sizeof loc.pos);
+    loc.dir = loc.normal;
+    loc.kind = P3_HIT_MELEE;
+    impact_effect(type, material, 2, &loc, 1.0f, victim, other);
+    victim->flags |= 0x20000000u;
 }

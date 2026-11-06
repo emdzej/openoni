@@ -99,6 +99,7 @@ bool p3_set_tint(P3Class *c, P3Particle *p, uint32_t tint);
 uint32_t p3_tick(void);
 /* The level's environment the particles collide with (AKEV). */
 void p3_set_environment(const void *env);
+const void *p3_environment(void);
 
 /* A particle's handle (+0x2c) and the particle a handle names while it lives (NULL else). */
 uint32_t p3_handle(const P3Particle *p);

@@ -35,6 +35,16 @@ void impact_melee(Character *x, Character *d, const uint8_t *e, int outcome, uin
 int impact_melee_type(const Character *x, const char *attack_name, int outcome, uint32_t attack, int *modifier,
                       bool pulse);
 
+/* 0x4f04f0: the class's animation impact (0..14) of an animation type, -1 none. */
+int impact_animation_index(uint16_t anim_type);
+/* ONrCharacter_PlayAnimationImpact 0x4f0e80: the character's animation impact (a footstep) on its floor,
+   at pos (NULL: its place). */
+void impact_animation(Character *c, const float *pos);
+
+/* DoCharacterFrame 0x4df6d2: a throw's impact particle coming in with its victim dead (C+4 1) and not
+   yet so struck (0x20000000): the "Self_Damage_Killed" impact at c's bone, then the victim marked. */
+void impact_throw_killed(Character *c, unsigned bone, Character *victim, Character *other);
+
 /* ONrCharacter_GetMaterialType 0x4e6200: the material of the character's body part (0..18). */
 int impact_character_material(const Character *c, int part, bool ignore_shield);
 

@@ -51,7 +51,7 @@ typedef struct {
     uint16_t frame;
     uint32_t flags;
 } ChrOverlay;
-enum { CHR_OVERLAYS = 4, CHR_OVERLAY_RECOIL = 0, CHR_OVERLAY_WEAPON = 1 };
+enum { CHR_OVERLAYS = 4, CHR_OVERLAY_RECOIL = 0, CHR_OVERLAY_WEAPON = 1, CHR_OVERLAY_HIT = 2 };
 
 /* The input block of the active record (A+0x2158): the mouse, then the action bits (u64) held, not held,
    gone down this tick and gone up. */
@@ -231,6 +231,8 @@ typedef struct Character {
 } Character;
 
 bool character_init(Character *c, const void *oncc, const float pos[3], float facing);
+/* ONrCharacter_SetCharacterClass 0x4d7c30, for a living character: false if the class lacks its parts. */
+bool chr_set_class(Character *c, const void *oncc);
 /* The weapons' parts (weapon.c): HandleStartPickup (true if it took the input), the weapon's keys of
    HandleHeartbeatInput, and two steps of DoCharacterFrame: the pickup animation's action frame (at the
    start) and the trigger (after the overlays). */

@@ -3,7 +3,7 @@
    their branches), the ONIE block read at its exact size with every name in it found, its particle
    classes (but three the data hasn't) and impulses found once the level's classes are loaded, and a lookup that climbs the trees:
    a pistol's bullet on stone finds its effects, and on a material below another it finds the parent's
-   for what the material has none of. */
+   for what the material has none of; and the animation types' impacts read from the exe's code. */
 #include "exe.h"
 #include "impact.h"
 #include "particle.h"
@@ -82,6 +82,14 @@ int main(void)
     }
     printf("impact_test: Bullet: %d effects over the materials, %d of them a parent's\n", found, inherited);
     check(found > 0 && inherited > 0, "the lookup climbs the materials");
+    /* the animation types' impacts, read out of 0x4f04f0's instructions: 136 pairs; a run (3) the
+       class's impact 1, the turns (7, 8) 9 */
+    int nanim = 0;
+    for (int t = 0; t < 0x1d2; t++) nanim += impact_animation_index((uint16_t)t) >= 0;
+    printf("impact_test: %d animation types with impacts; run %d, turns %d %d\n", nanim, impact_animation_index(3),
+           impact_animation_index(7), impact_animation_index(8));
+    check(nanim == 136 && impact_animation_index(3) == 1 && impact_animation_index(7) == 9 && impact_animation_index(8) == 9,
+          "the animation types' impacts");
     if (!failed) printf("impact_test: ok\n");
     return failed ? 1 : 0;
 }

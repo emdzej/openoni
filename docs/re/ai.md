@@ -217,8 +217,8 @@ The sounds made:
 
 The particles' impact action passes the owner's character (`WPrOwner_GetCharacter` 0x51cda0) and
 scale 1. A blow's (`HandleAttackMask` 0x4e8946) passes scale 2, 1.5 or 1 by the modifier, of the
-attacker at the defender ([impact.md](impact.md)). The other impact effects' callers (the footsteps,
-animation impacts and weapons' falls) aren't ported yet.
+attacker at the defender ([impact.md](impact.md)). The footsteps' (`PlayAnimationImpact`) are of the
+character, scale 1; the weapons' falls (scale 1, no one) wait for the weapons' physics.
 
 ### Teams
 

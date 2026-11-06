@@ -940,6 +940,31 @@ bool character_init(Character *c, const void *oncc, const float pos[3], float fa
     return true;
 }
 
+bool chr_set_class(Character *c, const void *oncc)
+{
+    /* ONrCharacter_SetCharacterClass 0x4d7c30: a class with its variant (+0x42c), animations and body
+       set (+0xc34), else nothing ("had a NULL ..."); the old class's animation particles go */
+    const uint8_t *k = oncc;
+    if (!k || !tm_link(k + 0x42c) || !tm_link(k + ONCC_ANIMATIONS) || !tm_link(k + 0xc34)) return false;
+    chr_anim_particles_stop(c);
+    const void *old = c->oncc;
+    c->oncc = oncc;
+    /* another animation collection: its first animation (0x4d7f90, standing) */
+    if (!old || tm_link((const uint8_t *)old + ONCC_ANIMATIONS) != tm_link(k + ONCC_ANIMATIONS)) {
+        c->varient &= 0x87ff;
+        c->type = c->queued = CHR_TYPE_STAND;
+        c->state = CHR_STATE_STANDING;
+        const void *t = lookup(c, CHR_TYPE_STAND);
+        if (t) chr_set_animation(c, t);
+        chr_build_quaternions(c);
+    }
+    /* the hand's variant from the weapon again, and a size of the class's range */
+    chr_hand_varient(c);
+    float lo = rdf(k + 0xc58), hi = rdf(k + 0xc5c);
+    c->scale = (hi - lo) * (float)trac_random() * 1.5259022e-05f + lo;
+    return true;
+}
+
 void character_update(Character *c, const CharacterInput *ci, const void *env)
 {
     character_update_aim(c, chr_input_bits(ci), ci->turn, ci->pitch, env);

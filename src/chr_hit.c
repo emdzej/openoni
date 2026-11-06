@@ -217,6 +217,18 @@ static bool could_block(const Character *d, const Character *x, bool *high, bool
 /* HandleAttackMask 0x4e7740, the hit that isn't blocked: once per animation and character; the reaction
    (+0x12), heavier when the stun (+0x14) is over 20; from behind; the defender turned to the attacker;
    the damage (+0xc) and knockback (+0x4, along the attacker's facing); then the stun. */
+/* 0x4e8b80: a behemoth's reaction: the light hits (0x4c..0x4e, 0x52, 0x7e, 0x7f, 0xd4) a flinch (0x39),
+   the heavy ones (0x4f..0x51, 0x53, 0xd6) a knockdown (0xc6), and a knockdown a hit (0x4d). */
+static uint16_t behemoth_reaction(uint16_t r)
+{
+    switch (r) {
+    case 0x4c: case 0x4d: case 0x4e: case 0x52: case 0x7e: case 0x7f: case 0xd4: return 0x39;
+    case 0x4f: case 0x50: case 0x51: case 0x53: case 0xd6: return 0xc6;
+    case 0xc6: return 0x4d;
+    default: return r;
+    }
+}
+
 static void attack_lands(Character *x, Character *d, const uint8_t *e, uint32_t amask, uint32_t dmask)
 {
     int slot = 0;
@@ -292,8 +304,31 @@ static void attack_lands(Character *x, Character *d, const uint8_t *e, uint32_t 
         react = 0xc6;
     if (!unstoppable && react) {
         uint16_t r = react;
+        /* a behemoth (a class with ONCC +0xc8f, or the player with the cheat, 0x5ece90) */
+        bool behemoth = ((const uint8_t *)d->oncc)[0xc8f] || (!d->ai && chr_cheat_unthrowable);
         if (!(chr_is_victim_type(react) && d->air_ticks)) {
             if (d->state == 0x12 || d->state == 0x32) r = 0x54;
+            if (behemoth) r = behemoth_reaction(r);
+        }
+        if (r == 0x39) {
+            /* a behemoth's flinch: no reaction but the hit overlay (A+0x1c70) of type 0xe8 for an AI, 0x139
+               else, or 0x39, from state 1 in its variant (the original first clears C+0x1640 or, for
+               C+2 0, calls 0x4f10f0: not ported) */
+            const void *o = chr_lookup_varient(d, d->ai ? 0xe8 : 0x139, 1, d->varient);
+            if (!o) o = chr_lookup_varient(d, 0x39, 1, d->varient);
+            if (o) chr_overlay_set(d, CHR_OVERLAY_HIT, o, 0);
+            goto hurt;
+        }
+        if (behemoth) {
+            /* knocked down by what didn't knock it down, heavily, for at least 30 */
+            if (r == 0xc6) {
+                if (react != 0xc6) {
+                    heavy = true;
+                    if (stun < 0x1f) stun = 30;
+                }
+            } else {
+                heavy = false;
+            }
         }
         float a = angle_to(d, x);
         if (fabsf(a) > 1.5707964f) r = from_behind(r);
@@ -303,6 +338,7 @@ static void attack_lands(Character *x, Character *d, const uint8_t *e, uint32_t 
             if (is_from_behind(r)) d->facing = wrap_2pi(d->facing + PI);
         }
     }
+hurt:;
     bool killed = d->hit_points <= damage;
     if (killed) d->flags |= 0x20000000;   /* killed by a blow */
     chr_take_damage(d, damage, knock, dir, 0, x);

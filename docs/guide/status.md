@@ -164,7 +164,8 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - **The impact effects**: what a hit makes, picked by the game's own table from the kind of blow or
   shot and the material it meets (stone, metal, glass, flesh, the shields). The bullets' sparks,
   dust and sounds on the walls and on the characters come from it, and the blows' flashes and sounds,
-  by the attack and the body part that lands it.
+  by the attack and the body part that lands it, and the footsteps' dust and sounds by the floor's
+  material.
 - **Decals**: the bullet holes and scorch marks, laid on the walls, cut to their shapes and folded
   round their corners; they fade, and the oldest give way to new ones as the original's do.
 - **Sound** from the game's own sound groups.
@@ -172,11 +173,10 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 ## Not yet
 
 - The particles' homing and their sounds; the characters' decals.
-- The footsteps' and the weapons' falls' impact effects. The power-ups' physics and glow, and the
+- The weapons' physics (they rest where they drop) and their falls' impact effects. The power-ups' physics and glow, and the
   HUD's weapon and inventory displays.
 - The Bink movies; the graphics quality and gamma settings applied.
-- The intro and outro movies. Of the cheat codes: the shapeshifter's class change, behemoth's reactions
-  and the ultra mode's melee.
+- The intro and outro movies. Of the cheat codes, the ultra mode's melee (it waits for the melee AI).
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked
 against the original.

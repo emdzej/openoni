@@ -135,7 +135,36 @@ touches.
 - **The effect.** It plays in the defender's health colour (0x4ef450, then `P3rSetGlobalTint`
   0x456f90 and 0x456fa0), the attacker heard at the defender.
 
+## The animations' impacts (ONrCharacter_PlayAnimationImpact 0x4f0e80)
+
+DoCharacterFrame (0x4dff65, `src/chr_anim.c`) plays one for a footstep on the ground (A+0xf6 0). The
+footsteps are the TRAM's `.raw` at +0x20, u16 frame and u16 kind pairs, the count the byte at +0x17e
+(`TRrAnimation_GetFootstep` 0x42bb60, the last match). With 0x54e154 set (1 in the exe), the left (1) and
+right (2) steps are at their foot's bone (3, A+0x232c; 6, A+0x23bc), x and z, half a unit above the
+location's height; the others at the location.
+
+- It needs the floor's quad (A+0x128), else "failed to find floor".
+- The animation type maps to one of the class's 15 animation impacts (0x4f04f0, a table of 0x1d2 u16s at
+  0x5ec984, 0xffff none). The function builds the (type, impact) pairs on its stack from its
+  instructions' operands, ended by 0xffff; the port decodes those instructions out of the exe
+  (`mov r32, imm32`, `xor`, `mov word [esp + d], r16 | imm16`, from 0x4f04f9 to 0x4f0e28): 136 pairs.
+- Impact 1 (the runs) is 14 in an animation of variant 0x100.
+- The class's animation impacts are at ONCC +0x44c, 0x82 bytes each: the type's name and, from
+  `SetCharacterClass`'s preprocess, its index at +0x80. Their modifier is ONCC +0x43a, by the name at
+  +0x43c (0x4d7f30, among 0x554a04's names).
+- The material is the floor quad's texture's (0x41eed0). The location is the place given (or the
+  location), owned by the character's melee, kind 0. The scale is 1; the character makes the sound.
+
+## A thrown victim's impact (DoCharacterFrame 0x4df6d2)
+
+An impact animation particle (0x8000) coming in on a throw, with the victim dead and not yet marked
+(C+4 0x20000000), is killed. Then "Self_Damage_Killed" (0x550da8) plays, unless its index is 0, and the
+victim is marked. The material is the character's at the particle's part (its shield aside), the
+modifier medium (2), at the part (A+0x229c), along C+0x178 (nothing in v1.0 writes it: zero), kind 3,
+the character's melee its owner; of the victim at the other (the character, or its thrower).
+
 ## Not yet
 
-- The impacts of `ONrCharacter_PlayAnimationImpact` (0x4f0e80), the footsteps' (DoCharacterFrame
-  0x4df7d8) and the weapons' falls (`WPiGenerateFallImpact` 0x5189c0).
+- The weapons' falls (`WPiGenerateFallImpact` 0x5189c0, from the weapon's physics' collision 0x51c0a0
+  when the speed into the wall is over 0.35: the type 0x622194, the wall's texture's material, modifier 0,
+  kind 1): the weapons' physics is a stand-in.

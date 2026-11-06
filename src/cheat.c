@@ -25,6 +25,20 @@ enum { TABLE = 0x5533f8, ENTRY = 16 };
 static char typed[21];          /* 0x5ecea4: the last 20 letters, the newest last */
 static const char *message;     /* 0x5ed00c */
 
+bool cheat_shapeshift(Character *c, bool back)
+{
+    if (!cheat_change_characters || !c) return false;
+    static void *all[512];
+    int n = tm_instance_list(TM_TAG("ONCC"), all, 512);
+    if (n <= 0) return false;
+    /* the number of its class (the port finds it in the list: C+0x10 is kept as it) */
+    int k = 0;
+    while (k < n && all[k] != c->oncc) k++;
+    if (k == n) k = 0;
+    k = back ? (k + n - 1) % n : (k + 1) % n;
+    return chr_set_class(c, all[k]);
+}
+
 const char *cheat_message(void) { return message; }
 void cheat_message_clear(void) { message = NULL; }
 

@@ -34,7 +34,7 @@ picks the message:
 
 | Id | Code | What it does | Port |
 |---|---|---|---|
-| 0 | shapeshifter | 0x5ece6f: debug key 0x29 (LI 0x88 with a modifier) steps the player's class through every ONCC (0x4f6200) | the switch only |
+| 0 | shapeshifter | 0x5ece6f: debug key 0x29 steps the player's class number (C+0x10) one on through every ONCC, or one back with the input's 0x10000000 (0x4f6200), and `ONrCharacter_SetCharacterClass` 0x4d7c30 takes it. The key's row (0x52b434 + 0x14 × 0x29: enabled, any modifiers, LI 0x88) is F8 | yes: F8, Shift+F8 back (the bit as Shift: *inferred*) |
 | 1 | liveforever | 0x5ece92, invincible | yes |
 | 2 | touchofdeath | 0x5ece93, omnipotent | yes |
 | 3 | canttouchthis | 0x5ece91, unstoppable | yes |
@@ -47,7 +47,7 @@ picks the message:
 | 12 | reservoirdogs | 0x5eb848: `AI2rTeam_FriendOrFoe` 0x48b2c0 answers 2 (foes) for any two teams | yes |
 | 13 | roughjustice | 0x620133: the player's shots wait the shooter's +0x48 instead of +0x46 (`WPiPulseShooter` 0x519c50, also 0x5192b0 and `WPrOutOfAmmoSound` 0x51d080), the kick scaled by +0x48 / +0x46 | the pulse's delay and kick |
 | 14 | chenille | C+0x1664 (the super value) at most 1: to 10 and C+4 bit 0x40000000; else both off | yes |
-| 15 | behemoth | 0x5ece90 (unthrowable, and the reactions of 0x4e7740 as for a class with ONCC+0xc8f); the scale 1.8, or back to a random one in the class's range (ONCC+0xc58..0xc5c, `UUrRandom`) | unthrowable and the size, not the reactions |
+| 15 | behemoth | 0x5ece90 (unthrowable, and the player's reactions in `HandleAttackMask` 0x4e7740 as a class's with ONCC+0xc8f: on the ground, 0x4e8b80 makes the light hits a flinch, 0x39: the hit overlay, A+0x1c70, of type 0xe8 for an AI or 0x139, else 0x39; the heavy ones a knockdown, which is then heavy and stuns for at least 30; a knockdown a hit, 0x4d); the scale 1.8, or back to a random one in the class's range (ONCC+0xc58..0xc5c, `UUrRandom`) | yes (the flinch's clearing of C+0x1640, or 0x4f10f0's call, not) |
 | 16 | elderrune | 0x620134: with no hypo healing, the player under the maximum gains a point on each game tick that is a multiple of 60 (`WPrInventory_Update` 0x51bad0) | yes |
 | 17 | moonshadow | the invisibility C+0x1ba: 0xffff (for good), or 0 | yes |
 | 18 | munitionfrenzy | every ONWC (`TMrInstance_GetDataPtr_List`) as a new weapon, the i-th of n at the angle 2π i / n on a circle of 8 about the player, 10 up, facing along it (the angle + π/2) | yes |
