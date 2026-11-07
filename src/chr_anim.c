@@ -2,6 +2,7 @@
 #include "chr_anim.h"
 
 #include "body.h"
+#include "graph.h"
 #include "impact.h"
 #include "m3gm.h"
 #include "particle.h"
@@ -473,6 +474,7 @@ static void new_animation_hook(Character *c)
             memcpy(c->phys_pos, c->teleport_to, sizeof c->phys_pos);
             c->ground_height = c->teleport_to[1];
         }
+        c->room = graph_room_at(c->teleport_to);    /* 0x4e91c0 */
     }
     if (!tr_test_flag(t, TRAM_FLAG_THROW_SOURCE)) c->throw_target = NULL, c->throw_victim_anim = NULL;
     if (tr_test_flag(t, 5) && c->weapon && chr_drop_hook) chr_drop_hook(c);    /* 0x51b590 (slot 0, thrown) */

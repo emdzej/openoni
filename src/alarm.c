@@ -60,13 +60,14 @@ int alarm_find_console(const AiState *a, const Character *c)
     /* OBJrObjectType_EnumerateObjects over the consoles, 0x48ebc0 for each */
     int best = -1;
     float best_d = 0.0f;
-    int from = graph_room_at(c->pos);
+    float loc[3];
+    int from = chr_room(c, loc);
     for (int i = 0; i < console_marker_count(); i++) {
         const ActionMarker *m = console_marker(i);
         if (!m || !usable(m->console)) continue;
         float d = a->combat_set.alarm_find;
         int to = graph_room_at(m->pos);
-        if (from < 0 || to < 0 || !graph_find_path_within(from, c->pos, to, m->pos, true, -1, NULL, &d)) continue;   /* PHrPathDistance */
+        if (from < 0 || to < 0 || !graph_find_path_within(from, loc, to, m->pos, true, -1, NULL, &d)) continue;   /* PHrPathDistance */
         if (best >= 0 && best_d <= d) continue;
         best = i, best_d = d;
     }

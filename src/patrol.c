@@ -142,9 +142,10 @@ void patrol_nearest(AiState *a)
         uint16_t id;
         ObjcObject f;
         if (!point_flag(&pa->p[i], &id) || !objc_flag_find(id, &f)) continue;     /* ONrLevel_Flag_ID_To_Flag */
-        int from = graph_room_at(c->pos), to = graph_room_at(f.pos);
+        float loc[3];
+        int from = chr_room(c, loc), to = graph_room_at(f.pos);
         float d = 0.0f;
-        if (from < 0 || to < 0 || !graph_find_path_within(from, c->pos, to, f.pos, true, -1, NULL, &d)) continue;
+        if (from < 0 || to < 0 || !graph_find_path_within(from, loc, to, f.pos, true, -1, NULL, &d)) continue;
         if (d < best) best = d, at = i;
     }
     if (at >= 0) a->point = at;

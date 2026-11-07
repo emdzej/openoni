@@ -477,7 +477,8 @@ void knowledge_sound(int type, const float pos[3], float radius, Chr *source, Ch
         float v[3] = { head[0] - pos[0], head[1] - pos[1], head[2] - pos[2] };
         bool heard = !sound_env || !akev_segment_hits(sound_env, pos, v, 0x42080);
         if (!heard) {
-            int from = graph_room_at(pos), to = graph_room_at(c->c.pos);
+            float loc[3];
+            int from = graph_room_at(pos), to = chr_room(&c->c, loc);
             float d = r;
             heard = from >= 0 && to >= 0 && graph_find_path_within(from, pos, to, head, false, type, NULL, &d) != 0;
         }

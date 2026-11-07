@@ -300,12 +300,27 @@ static void path_arrived(AiState *a)
     clear_local(a);
 }
 
+/* AI2rPath_FindGhostWaypoint 0x4aea60: the crossing of the link out of room `seg`, looked for from 4
+   links ahead: that link's crossing near the character (or, the path ending sooner, the destination)
+   brought back link by link, each the point where the line from the character to it crosses the link
+   before (PHrProjectOntoConnection 0x50e9a0). So the way through a run of rooms keeps straight. */
+static void ghost_waypoint(const AiState *a, const float near[3], int seg, float out[3])
+{
+    int i = seg + 4;
+    if (i > a->path_n - 1) {    /* the count (C+0x114c) less 2 */
+        i = a->path_n;
+        memcpy(out, a->goal, 12);
+    } else {
+        graph_waypoint(graph_link(a->path[i])->quad, near, out);
+    }
+    for (int j = i - 1; j >= seg; j--) graph_project_onto_link(a->path[j], near, out);
+}
+
 /* AI2rMovementState_MakePath 0x4a9f20 (AI2iMovementState_SetupPath 0x4a9d70) for the global path's room
    `seg` (path_n: the destination's): from the character (in the first room) or the crossing of the
    link before (PHrWaypointFromGunk, near the character), to the crossing of the link out
-   (AI2rPath_FindGhostWaypoint 0x4aea60, without its look ahead along the links after) or the
-   destination, through the room's grid. The next waypoint is the second, the first being the start's
-   cell. False with no path (its stops cleared). */
+   (ghost_waypoint) or the destination, through the room's grid. The next waypoint is the second, the
+   first being the start's cell. False with no path (its stops cleared). */
 static bool make_local(AiState *a, const Character *c, const void *env, int seg)
 {
     MoveState *m = &a->move;
@@ -322,7 +337,9 @@ static bool make_local(AiState *a, const Character *c, const void *env, int seg)
         memcpy(end, a->goal, sizeof end);
         room = a->path_to;
     } else {
-        graph_waypoint(graph_link(a->path[seg])->quad, start, end);
+        float near[3];
+        chr_location(c, near);  /* C+0x160 */
+        ghost_waypoint(a, near, seg, end);
         room = graph_link(a->path[seg])->from;
     }
     if (room < 0) return false;
@@ -341,13 +358,15 @@ static bool make_local(AiState *a, const Character *c, const void *env, int seg)
 
 /* AI2iPath_MakePath 0x4aeb10: the path kept while it goes between the same rooms to within 20 of the
    same point (400 squared, 0x529dec), is younger than 90 ticks and isn't arrived; else the rooms' A*
-   again (the character's room, C+0x188, found here from its place). Then the local path of the room
+   again, from the character's room (C+0x188, no other) and location (C+0x160). Then the local path of the room
    it is in; none: arrived (and the failure's time kept). */
 static bool make_path(AiState *a, const Character *c, const void *env, bool force)
 {
     if (a->path_type == 2 && a->follow) chr_location(a->follow, a->goal);
     float g[3] = { a->goal[0], a->goal[1] + 0.5f, a->goal[2] };
-    int from = graph_room_at(c->pos), to = graph_room_at(g);
+    float loc[3];
+    chr_location(c, loc);
+    int from = c->room, to = graph_room_at(g);
     float dx = a->path_goal[0] - a->goal[0], dy = a->path_goal[1] - a->goal[1], dz = a->path_goal[2] - a->goal[2];
     bool keep = !force && a->path_made && !a->turned && a->ticks < a->path_time + 90 &&
                 dz * dz + dy * dy + dx * dx < 400.0f && from == a->path_from && to == a->path_to;
@@ -362,7 +381,7 @@ static bool make_path(AiState *a, const Character *c, const void *env, bool forc
         a->path_from = from, a->path_to = to;
         memcpy(a->path_goal, a->goal, sizeof a->path_goal);
         if (from != to) {
-            int n = graph_find_path(from, c->pos, to, a->goal, true, a->path);
+            int n = graph_find_path(from, loc, to, a->goal, true, a->path);
             if (n < 2) {
                 a->path_made = false;
                 a->fail_set = true, a->fail_time = a->ticks;

@@ -497,8 +497,9 @@ static bool try_path_to_gun(AiState *a, const Character *c, const void *env, flo
 {
     CombatState *s = &a->combat;
     if (!env || !graph_for(env)) return false;
-    int from = graph_room_at(c->pos), dest = graph_room_at(to);
-    if (from < 0 || dest < 0 || !graph_find_path_within(from, c->pos, dest, to, true, -1, NULL, best)) return false;
+    float loc[3];
+    int from = chr_room(c, loc), dest = graph_room_at(to);
+    if (from < 0 || dest < 0 || !graph_find_path_within(from, loc, dest, to, true, -1, NULL, best)) return false;
     ai_move_near(a, to, 8.0f, false, 0.0f);     /* (its failures, through 0x49e370, aren't the stand-in's) */
     float f = (*best - s->gun_near) / (s->gun_far - s->gun_near);
     if (f <= 0.0f) f = 0.0f;

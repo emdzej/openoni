@@ -427,6 +427,58 @@ void graph_waypoint(uint32_t quad, const float *near, float out[3])
     }
 }
 
+/* PHrProjectOntoConnection 0x50e9a0: the line from near to p (in x and z) crossed with the link's edge
+   (its corners by the flags' bits 16..19); along the edge, kept 10 from an end the flags 4, 8 mark (0
+   from the others), and out of a blocked run (the side with room, or the nearer); a parallel line, or
+   an edge too short for its margins, the edge's middle. */
+void graph_project_onto_link(int link, const float near[3], float p[3])
+{
+    if (link < 0 || link >= nlinks) return;
+    const GraphLink *l = &links[link];
+    float a[3], b[3];
+    point_of(quad_point(l->quad, (int)(l->flags >> 16 & 3)), a);
+    point_of(quad_point(l->quad, (int)(l->flags >> 18 & 3)), b);
+    float nx = a[2] - b[2], nz = b[0] - a[0];
+    float sp = (p[0] - a[0]) * nx + (p[2] - a[2]) * nz;
+    float sn = (near[0] - a[0]) * nx + (near[2] - a[2]) * nz;
+    float d = sp - sn;
+    if (fabs((double)d) < 0.001 /* 0x529810 */) {
+        for (int k = 0; k < 3; k++) p[k] = (b[k] + a[k]) * 0.5f;
+        return;
+    }
+    float tn = sp / d, tp = -(sn / d), x[3];
+    for (int k = 0; k < 3; k++) x[k] = tn * near[k] + tp * p[k];
+    float s = ((x[0] - a[0]) * nz + (b[2] - a[2]) * (x[2] - a[2])) / l->width;
+    float lo = (l->flags & 4) ? 10.0f : 0.0f;   /* 0x52a190, 0x529514 */
+    float hi = l->width - ((l->flags & 8) ? 10.0f : 0.0f);
+    if (hi < lo) {
+        for (int k = 0; k < 3; k++) p[k] = (b[k] + a[k]) * 0.5f;
+        return;
+    }
+    bool moved = false;
+    if (s < lo) s = lo, moved = true;
+    else if (hi < s) s = hi, moved = true;
+    if (l->blocks > 0) {
+        float f = s / l->width, flo = lo / l->width, fhi = hi / l->width;
+        for (int i = 0; i < l->blocks; i++) {
+            /* the runs as the original keeps them: 16 bit fractions (0x5294f8, 0x5294fc) */
+            float b0 = (float)lrintf(l->block[i][0] * 65535.0f) * 1.5259022e-05f;
+            float b1 = (float)lrintf(l->block[i][1] * 65535.0f) * 1.5259022e-05f;
+            if (f < b0 || b1 < f) continue;
+            if (b0 - flo < 0.01f) s = b1 * l->width;                                   /* 0x5295bc */
+            else if (fhi - b1 < 0.01f || !((b1 + b0) * 0.5f < f)) s = b0 * l->width;
+            else s = b1 * l->width;
+            moved = true;
+            break;
+        }
+    }
+    if (moved) {
+        float t = s / l->width, u = 1.0f - t;
+        for (int k = 0; k < 3; k++) x[k] = t * b[k] + u * a[k];
+    }
+    memcpy(p, x, sizeof x);
+}
+
 const uint8_t *graph_room_grid(int room, uint32_t *w, uint32_t *h)
 {
     Grid g;

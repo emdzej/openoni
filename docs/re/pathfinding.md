@@ -267,6 +267,34 @@ Not ignored, the cell is impassable and blocked (9). The modes: the local path (
 with 2; the local movement's tests (`AI2rTryLocalMovement`, `AI2rFindLocalPath`, `AI2rFindNearbyPoint`)
 with 1 (0x5eb860, 0x5eb864), for the character moved.
 
+**`PHrProjectOntoConnection`** 0x50e9a0 (graph, link; the near point, the point moved): the line from
+the near point to the point, in x and z, crossed with the link's edge (its corners by the link's bits
+16..19; the normal (a.z − b.z, b.x − a.x)). Parallel (the two sides' difference under 0.001,
+0x529810): the edge's middle. The crossing's distance along the edge (its dot with b − a over the
+link's width, +0x20) is kept in from the ends by 10 (0x52a190) at an end the link's flag 4 (the first)
+or 8 (the second) marks, else 0 (0x529514); an edge too short for both, the middle. Inside a blocked
+run (+0x40 the first of +0x42 runs in the graph's table, a u32 each: the run's start and end fractions
+in the high and low 16 bits, over 65535, `MUrUnsignedSmallFloat_To_Uns_Round` 0x4340a0 when the graph
+is built): to its end if its start is within 0.01 (0x5295bc) of the low margin; else to its start if
+its end is within 0.01 of the high one or the point is in its first half; else to its end. Moved, the
+point is the edge's at that distance (its height too); else the crossing (the height on the line).
+
+`AI2rPath_FindGhostWaypoint` 0x4aea60 (the character, the near point: its location C+0x160, the
+room's index k): from link k + 4, its `PHrWaypointFromGunk` near the character, or, when k + 4 is past
+the path's count less 2 (C+0x114c), the destination (C+0x1160) from the path's last link; then
+projected onto each link back to k. The way out of a room so aims at the rooms ahead.
+`AI2iMovementStub_SetupPath` 0x4ac4d0's caller (the stub's, not ported) does the same.
+
+**The character's room** C+0x188 (`PHrNodeFromBNV` 0x50c9c0: the BNV's +0x18 graph node; the BNV
+C+0x184 from `AKrNodeFromPoint`): set from the location in `ONrGameState_NewCharacter` (0x4db713,
+before the movement's start) and in `ONrGameState_UpdateCharacters` once a tick (0x4dda33, after the
+characters' collisions, before the physics' forces; 0x4e91c0 for the animations' teleport), and from
+the new place in `ONrCharacter_Teleport` 0x4e9210, `ONiCharacter_MoveThroughPhysics` 0x4e9330 and
+`iSetAnyCharacterLocation` 0x4da020 (0x4da260, 0x4da800 alike). `AI2iPath_MakePath` takes it as it is
+(none: error 3) and the location as the start; `PHrPathDistance`'s callers pass it and the location
+(without it, the room is found from the point). The run-time obstacle layer adds the characters whose
+C+0x184 is the room. Port: `Character.room`, `chr_room`.
+
 ## The clear point
 
 `AI2rMovementState_Initialize` 0x4a8d60, from `ONrGameState_NewCharacter` 0x4dac50 for a character the AI
@@ -317,9 +345,10 @@ rate (0x498520) exceeds 0.9 of that radius, it stops and turns (+0x898) until it
 (0x52af50).
 
 The port (`src/movement.c`) has the turns, the obstacle list's 40 degrees and the turning-circle test.
-Stand-ins left: the ghost waypoint's look ahead; the character's node looked up from its position each
-time. The doors' danger factors, the grids' run-time obstacle layer and the clear point are ported
-(above, "The run-time obstacles" and "The clear point"). Keys need nothing: none are ever given ([door.md](door.md)).
+The ghost waypoint (`ghost_waypoint`, `graph_project_onto_link`), the character's room kept as the
+original keeps it (below), the doors' danger factors, the grids' run-time obstacle layer and the clear
+point are ported (above, "The run-time obstacles" and "The clear point"). Stand-in left: a link counts
+as passed in the room beyond or within 2 of its middle. Keys need nothing: none are ever given ([door.md](door.md)).
 
 `tests/graph_test.c`: level 1's 240 rooms and 528 links, each with one back, 32 blocked; the training
 room apart from the warehouse; a 68-room path across the warehouse. `tests/ai_test.c` walks a thug

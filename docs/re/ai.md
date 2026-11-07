@@ -1479,8 +1479,8 @@ the next room's local path (0x4a8640; none: arrived), and after the last room's,
 `src/movement.c`: the path's update, the movement state's collisions (from `src/physics.c`'s wall and
 context hits and `src/chr_hit.c`'s pushes), the decay, `Calculate_Movement`, the look and the movement
 mode's weapon (`AI2rMovementState_NewMovementMode` 0x4a9300: walk_noaim and run_noaim hide it, 0x4ecf80;
-at the alert's change too, 0x4a8230). Not kept: the movement state's start (0x4a8d60's
-`AI2iMovementState_FindClearPoint`), the repath after a teleport (0x4ae3d0 from 0x4e9210), the forced
-aiming byte (C+0x1580, no caller ported), the ghost waypoint's look ahead along the links after, the
-direction to keep away from (C+0x1574: the dodge that sets it, 0x49f460, isn't ported) and the combat
+at the alert's change too, 0x4a8230), the clear point at the start (0x4a8d60's
+`AI2iMovementState_FindClearPoint`) and the ghost waypoint's look ahead ([pathfinding.md](pathfinding.md)).
+Not kept: the repath after a teleport (0x4ae3d0 from 0x4e9210), the forced aiming byte (C+0x1580, no
+caller ported), the direction to keep away from (C+0x1574: the dodge that sets it, 0x49f460, isn't ported) and the combat
 state's own modifier (+0x1a8, +0x1ac).

@@ -203,6 +203,8 @@ typedef struct Character {
     float bone_world[19][12];       /* A+0x2278 (0x30 each): the bones' matrices the particles hang from */
     bool placed;                    /* put somewhere (0x4e9210) since the bones' last matrices: the location
                                        (C+0x160) is the position, y + 0.5 */
+    int room;                       /* C+0x188: its graph room (PHrNodeFromBNV 0x50c9c0 of C+0x184,
+                                       AKrNodeFromPoint's), -1 none: set where it is put, and once a tick */
     float jump_velocity[3];         /* A+0x104: the motion as the jump was asked for */
     bool jump_given;                /* A+0x110 */
     uint16_t jump_delay;            /* A+0x112 (nothing in v1.0 sets it) */
@@ -258,6 +260,9 @@ bool chr_set_class(Character *c, const void *oncc);
    pelvis's x and z; for y the body's bottom (C+0x190), or at least the ground's height (A+0xe8) while on
    the ground; then 0.5 up. */
 void chr_location(const Character *c, float out[3]);
+/* PHrPathDistance 0x50edb0's start, as its callers give it: the location (C+0x160) to loc and the room
+   (C+0x188), or, without one, the room found from the location. */
+int chr_room(const Character *c, float loc[3]);
 /* The weapons' parts (weapon.c): HandleStartPickup (true if it took the input), the weapon's keys of
    HandleHeartbeatInput, and two steps of DoCharacterFrame: the pickup animation's action frame (at the
    start) and the trigger (after the overlays). */

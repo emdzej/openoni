@@ -2,6 +2,7 @@
    ONrCharacter_HandleHeartbeatInput 0x4f6ad0) and the frame (step 7, ONrGameState_DoCharacterFrame
    0x4ddba0). The animation engine is in chr_anim.c. */
 #include "character.h"
+#include "graph.h"
 
 #include "akev.h"
 #include "akev_collide.h"
@@ -922,6 +923,7 @@ void chr_input_mask(CharacterInput *in, uint64_t keys)
 bool character_init(Character *c, const void *oncc, const float pos[3], float facing)
 {
     memset(c, 0, sizeof *c);
+    c->room = -1;
     c->oncc = oncc;
     c->lod_shown = c->lod_wanted = 6;
     memcpy(c->pos, pos, sizeof c->pos);
@@ -1101,4 +1103,10 @@ void chr_location(const Character *c, float out[3])
     if (c->no_ground_ticks == 0 && c->air_ticks == 0 && !(c->flags & 0x20000) && y < c->ground_point[1])
         y = c->ground_point[1];
     out[1] = y + 0.5f;
+}
+
+int chr_room(const Character *c, float loc[3])
+{
+    chr_location(c, loc);
+    return c->room >= 0 ? c->room : graph_room_at(loc);
 }

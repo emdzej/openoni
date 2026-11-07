@@ -892,7 +892,7 @@
 004ae660	AI2rPath_Halt	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004ae670	AI2rPath_Update	AI2	med	name from the Intel Mac build (after AI2rPath_Halt): the path made, its link door opened when near (0x4c2a20, 0x4c2520), the path walked
 004aea30	AI2iPath_NextNode	AI2	med	name from the Intel Mac build (neighbours:1.00)
-004aea60	AI2rPath_FindGhostWaypoint	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004aea60	AI2rPath_FindGhostWaypoint	AI2	high	read: the link out's crossing from 4 links ahead projected back (Mac name)
 004aeb10	AI2iPath_MakePath	AI2	med	the global path: kept for the same nodes, point (20) and 90 ticks; else PHrFindPath
 004aef00	AI2iPath_Repath	AI2	low	the stuck path made again, at most 4 in a row, then halted (port name)
 004aef90	AI2rPath_SimplePath	AI2	med	name from the Intel Mac build (neighbours:1.00)
@@ -1475,7 +1475,7 @@
 0050c4c0	PHrAddCharacterToGrid	PH	med	name from the Intel Mac build (strings:1)
 0050c780	PHrAddObjectToGrid	PH	med	name from the Intel Mac build (strings:1)
 0050c870	PHrAddDoorToGrid	PH	high	read: the door's lines through 0x43c460 under one obstacle 0x4000|id (Mac name)
-0050c9c0	PHrNodeFromBNV	PH	low	the BNV's graph node (BNV +0x18)
+0050c9c0	PHrNodeFromBNV	PH	high	read: the BNV's graph node (+0x18), NULL for none (name made up)
 0050c9e0	PHrRenderGrid	PH	med	name from the Intel Mac build (neighbours:1.00)
 0050d660	PHrPrepareRoomForPath	PH	med	the room's run-time obstacle layer every 20 ticks: characters, objects, doors (Mac name)
 0050d840	PHiAddLinkDoorToGrid	PH	high	read: a link's door once a pass (link +0x28), through OBJrDoor_ComputeObstruction (name made up)
@@ -1486,6 +1486,7 @@
 0050dc60	PHrLocalPathWeight	PH	med	name from the Intel Mac build (neighbours:1.00)
 0050df80	PHiCheckForBlockages	PH	med	name from the Intel Mac build (strings:2)
 0050e7c0	PHiAddBlockage	PH	med	name from the Intel Mac build (strings:1)
+0050e9a0	PHrProjectOntoConnection	PH	high	read: a point moved to where the line from a near point crosses the link, in its margins, out of its blockages (Mac name)
 0050ed90	PHrNotifyDoorStateChange	PH	med	name from the Intel Mac build (neighbours:1.00)
 0050edb0	PHrPathDistance	PH	med	name from the Intel Mac build (neighbours:0.80)
 0050ee80	ONrPersistance_Initialize	ON	med	name from the Intel Mac build (neighbours:1.00)

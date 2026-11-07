@@ -66,6 +66,9 @@ void graph_quad_low_pair(uint32_t quad, float lo[3], float lo2[3]);
 /* PHrWaypointFromGunk 0x43c300: the point to cross a link's quad by: the middle of its bottom edge, or
    (an edge longer than 20) the point of it nearest to near, kept 10 from its ends. */
 void graph_waypoint(uint32_t quad, const float *near, float out[3]);
+/* PHrProjectOntoConnection 0x50e9a0: p moved to where the line from near to it crosses the link (in its
+   margins, out of its blockages). */
+void graph_project_onto_link(int link, const float near[3], float p[3]);
 /* Its BNV's flags (+0x5c): 4 a room, 1 stairs. */
 uint32_t graph_room_flags(int room);
 /* Its BNV's box (+0x30): min xyz, max xyz. */

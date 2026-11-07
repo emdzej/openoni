@@ -185,6 +185,10 @@ static Chr *create(int object)
     c->ai.job_patrol = c->ai.patrol;
     /* AI2rMovementState_Initialize 0x4a8d60 (ONrGameState_NewCharacter): the weapon out by the mode */
     if (!c->player) movement_new_mode(c);
+    /* NewCharacter 0x4db713: its room from the location, before the movement's start */
+    float loc[3];
+    chr_location(&c->c, loc);
+    c->c.room = graph_room_at(loc);
     movement_place_clear(c);    /* its end, without a path: off any obstacle it stands on */
     c->ai.job_alert = (int)objc_char_job_alert(o);
     c->ai.pursue_alert = (int)objc_char_pursue_alert(o);
@@ -639,6 +643,12 @@ void chars_update(const CharacterInput *player_in, const void *env)
         if (used[i]) list[n++] = &slots[i].c;
     chr_collide_all(list, n);
     throw_update(list, n);
+    /* 0x4dda33: each one's room from its location (C+0x184, C+0x188), before the physics */
+    for (int i = 0; i < n; i++) {
+        float loc[3];
+        chr_location(list[i], loc);
+        list[i]->room = graph_room_at(loc);
+    }
     /* OBiPhysics_Update 0x43af50: every context, after the frames and the contacts */
     chr_physics_later = false;
     for (int i = 0; i < n; i++)

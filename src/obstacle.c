@@ -195,7 +195,7 @@ void obstacle_prepare(int room, const GraphGrid *g)
     for (int i = 0; i < chars_slots(); i++) {
         const Chr *ch = chars_get(i);
         if (!ch || !chars_in_use(ch) || (ch->c.flags & 0x40004u)) continue;
-        if (graph_room_at(ch->c.pos) != room) continue;
+        if (ch->c.room != room) continue;     /* C+0x184 */
         add_character(r, g, &ch->c);
     }
     /* the objects with flag 0x200 but not 0x102, whose context hasn't flag 1 */

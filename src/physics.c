@@ -6,6 +6,7 @@
 #include "body.h"
 #include "chr_anim.h"
 #include "chr_hit.h"
+#include "graph.h"
 #include "m3gm.h"
 #include "ui.h"
 
@@ -87,6 +88,7 @@ void physics_place(Character *c, const float pos[3])
     memcpy(c->phys_pos, pos, sizeof c->phys_pos);
     c->ground_height = pos[1];
     c->placed = true;
+    c->room = graph_room_at(pos);   /* 0x4e9210, 0x4e9330: C+0x184, C+0x188 from the place */
 }
 
 void physics_take(Character *c, const float w[3])

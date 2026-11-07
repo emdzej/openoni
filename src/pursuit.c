@@ -170,16 +170,17 @@ static bool desire(AiState *a, const Character *c, int why)
     if (a->alert < a->pursue_alert) return false;
     float limit = a->combat_set.pursuit_distance;
     if (limit == 0.0f) return true;
-    int from = graph_room_at(c->pos);
+    float loc[3];
+    int from = chr_room(c, loc);
     if (why != 2 && why != 3) {
         /* PHrPathDistance 0x50edb0: a room unknown fails it */
         int to = graph_room_at(e->pos);
-        return from >= 0 && to >= 0 && graph_find_path_within(from, c->pos, to, e->pos, true, -1, NULL, &limit) != 0;
+        return from >= 0 && to >= 0 && graph_find_path_within(from, loc, to, e->pos, true, -1, NULL, &limit) != 0;
     }
     if (!a->job_pos_set) return false;
     float d = 0.0f;
     int to = graph_room_at(a->job_pos);
-    if (from >= 0 && to >= 0 && graph_find_path_within(from, c->pos, to, a->job_pos, true, -1, NULL, &d) != 0 && limit <= d)
+    if (from >= 0 && to >= 0 && graph_find_path_within(from, loc, to, a->job_pos, true, -1, NULL, &d) != 0 && limit <= d)
         return false;
     return true;
 }
