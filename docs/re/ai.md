@@ -1309,3 +1309,118 @@ the attack's turn sin/cos +0x1c/+0x20, its offset +0x24 and direction +0x28) sca
 The update's pick then strikes off an attack whose prediction (`TRrIntersectAnimations` on the same
 context, restored and rotated by the record: the Mac build's `AI2iCheckTechniqueViability`, inlined in
 the Windows update) misses.
+
+## The movement
+
+The movement layer sits between the states (which ask for a path, a facing, a look, modifiers) and the
+executor (which turns a facing, a kind of move and a mode into keys). `AI2rMovement_Update` 0x4a8550:
+the glance's delay (C+0x1594) and ticks (C+0x1598, counted once the aim is done, 0x498e60); for an
+active character, the movement state's update (0x4a97b0), then the executor (0x498550). Status: read
+from the exe (confirmed); the port is in progress (`src/ai.c`'s mover is the stand-in).
+
+### The character's movement fields (C+)
+
+| Offset | What |
+|---|---|
+| +0x14a4 | The movement mode (0: by the alert level, 0x4a8d00) |
+| +0x14a8 | No slowing down (a run isn't dropped to a walk for a turn) |
+| +0x14ac | — (cleared with the modifiers) |
+| +0x14b0 | Modifiers this tick (8 at most) |
+| +0x14b4 | The modifiers, 0x18 bytes each: the direction, its vector (sin, 0, cos), the weight (+0x10), the weight left after the collisions (+0x14) |
+| +0x1574 | A direction to keep away from (1000 none; the dodge from danger, 0x49f460, sets it) |
+| +0x1578 | The facing mode: 0 free, 1 a fixed kind of move (+0x157c), 2 a fixed facing (+0x157c), 3 none (the facing left alone) |
+| +0x1580, +0x1581 | The aiming byte forced (and its value) |
+| +0x1584 | The look: 0 none, 1 a point, 2 a direction, 3 a character (+0x1588) |
+| +0x1594, +0x1598 | The glance's delay and ticks; +0x159c its full turn, +0x15a0 its kind, +0x15a4 its place |
+
+`AI2rMovement_MovementModifier` 0x4a8250 adds a modifier (its weight both at +0x10 and +0x14) and has the
+state count it (0x4ab570: +0x864 up; +0x868 set when there are collisions or a direction to keep away
+from). `AI2rMovement_Clear` 0x4a8440 (with the path's halt) empties them and the direction to keep away
+from; 0x4a7ff0 also the facing mode, the look, the glance, the mode.
+
+### The movement state (0x18f8 bytes)
+
+| Offset | What |
+|---|---|
+| +0x00 | Aiming (modes 3, 5, 7 set it, 4 and 6 clear it, `AI2rMovementState_NewMovementMode` 0x4a9300) |
+| +0x08 | The kind of move to be worked out again; +0x09 and +0x0a: walking and running keep facing the look (strafe) |
+| +0x0b | The facing is within 90° of the move's (set by the strafe test) |
+| +0x0c, +0x10 | Arrived: waiting (+0x10 ticks, 60) before the path is halted |
+| +0x14, +0x18 | The collisions (16 at most) and those confirmed (flag 4) |
+| +0x1c | The collisions, 0x44 bytes each (below) |
+| +0x45c | The arcs' breakpoints (64 at most), from +0x460, 16 bytes each: the cost, the cost to add, the angle, the next one's index |
+| +0x860 | Stuck (a collision confirmed for 30 hits) |
+| +0x864 | The modifiers that counted |
+| +0x868 | The modifiers' weights to be worked out again |
+| +0x86c | The path's point (a pointer into the points at +0x8b8), +0x870 the vector to it, +0x87c its distance squared on the ground |
+| +0x880 | The direction of the move (1000 none); +0x884 the last one; +0x888 a facing held while it doesn't move |
+| +0x88c | The kind of move: 0 forward, 1 back, 2 left, 3 right, 4 none; the facing is the move's direction less 0, π, π/2, 3π/2 (0x52aec8) |
+| +0x891, +0x894 | Slowed: the mode used instead (a run turned into its walk, the mode less 2) |
+| +0x898 | Stopped to turn; +0x899 stopped to arrive (+0x89a its ticks, 40) |
+| +0x89c | Ticks before the kind of move may change (40) |
+| +0x8b8 | The local path's points, 16 bytes each: the place, the cell's kind (0, 1, other); +0x18b8 the count, +0x18ba the next |
+| +0x18c4 | Every point is passed within 3 |
+
+A collision record (`AI2iMovementState_MakeCollision` 0x4ab6b0): flags (+0: 1 hit this tick, 2 old, 4
+confirmed), the kind (+4: 0 a wall, 1 an object or a character) and two ids (+8, +0xc: a wall matches
+by its quad, +0xc; the others by +8), the character's place when made (+0x10), the point hit (+0x1c),
+the plane (+0x28), the direction into it (+0x3c, `atan2(−nx, −nz)`), the strength (+0x40), the ticks
+since the last hit (+0x38) and the hits (+0x3a). A hit again on the same thing renews it; a 17th is
+dropped. Only walls (|ny| ≤ 0.9) the character stands in front of count: `NotifyWallCollision`
+0x4ab5b0, from the character's wall collisions (0x4ebf78; the two-sided quads, 0x2a0, again with the
+plane turned, 0x4ec00b) for a character with an active AI (C+4 flag 0x400000); 0x4ab830 for the
+physics contexts (0x4ecc7e); 0x4ab920 for characters (from 0x4e8c50), unless the AI may path through
+them (`AI2rTryToPathfindThrough` 0x48b670). None while there's no move (+0x88c 4 or +0x880 1000).
+
+### The update (0x4a97b0)
+
+The two tick counters (+0x89a, +0x89c) count down. Each collision: one not hit this tick ages (its ticks
+from 0 once, then up by one); its strength is the product of the distance (1 within 10 of where it was
+made, else `(20 − d) / 10`, gone past 20), the age (1 under 30 ticks, then `(90 − t) / 60`, gone at
+90) and the hits (0 up to 3, then `(n − 3) / 54`, 0.5 from 30; a collision hit this tick with more than
+3 hits is confirmed, and from 30 hits the state is stuck). A collision not hit this tick, by its plane
+(the character's x and z, the hit point's y): more than 5 behind it, gone; behind it, weakened
+(`1 + d / 5`); in front, past the character's radius by t tenths of 10: from 1, gone; under 1, kept
+only if the move goes into the wall (the move's direction · the plane's normal ≤ 0.2) and weakened by
+`1 − t`. Then `Calculate_Movement` and every collision's flag 1 cleared.
+
+### `AI2iMovementState_Calculate_Movement` 0x4aa250
+
+1. The mode: the slowed mode, else the movement mode (or the alert's); a run not barred from slowing
+   (C+0x14a8) may slow to the mode less 2.
+2. The direction: along a path (C+0x112d clear) toward the path's point (+0x870), none without one;
+   at the path's end, the arrival's wait (+0x0c) and the path's points cleared.
+3. The modifiers: each one's weight is worked out again when asked (+0x868): 0 within 30° of a
+   confirmed collision hit this tick, else less up to 90° (`(d − π/6) · 3/π`); 0 within 60° of the
+   direction to keep away from (and the rest are left as they were), less up to 100°. The direction
+   is that of the sum of the move's direction (none: nothing) and each counting modifier's vector by
+   its weight.
+4. The arcs: with collisions, and a direction or modifiers that didn't count, a circle of costs over
+   the directions (two breakpoints: 0 and 2π, cost 0). Each collision of strength s adds a
+   trapezoid (0x4ab400): nothing at 90° from its direction, rising to s at 30°, s within it. The
+   breakpoints are kept sorted, a new one put where a ramp starts or ends (its cost interpolated
+   between its neighbours). Then the direction wanted (the move's, else the last, else the facing)
+   is put in, and the move goes the breakpoint's way whose cost plus 0.2 × its angle from that one is
+   least (the 2π breakpoint left out).
+5. The facing, by the facing mode when there's no move (free: the character's; 2: +0x157c; 3: none);
+   with a move, the direction less the kind's offset, the kind fixed in mode 1.
+6. The look (or the glance under way): the executor's aim at the point, along the direction, at the
+   character's place (gone or dead: the aim stopped), with the aiming byte as the weapon's speed;
+   the look's facing.
+7. The strafe: in a mode that keeps facing the look (+0x09 walking, +0x0a running) or not, the kind
+   of move from the look's facing against the move's direction: within 45° forward, past 135° back
+   (unless it may not strafe), else left or right; once changed it holds for 40 ticks (+0x89c).
+   Without a move the facing held (+0x888) changes only past a threshold: 4° while the character's
+   animation is of type 0xe0 or 0xe7 (0x4f12e0), 10° in combat with the state's +0x18c at 5, 25° in
+   panic, 10° neutral, 115° glancing without a weapon in hand, 85° pursuing, else 40°.
+8. The turn: more than 40° from the facing (with collisions), 80° (else) or 120° (running) and it
+   stops to turn (kind 4); under 5° the slowing and the stop are over.
+9. The turning circle: toward the path's point, the circle through it (`(along² + side²) / (2 side)`,
+   the side less the point's radius) against the class's speed (`ONrCharacterClass_MovementSpeed`
+   0x4ee020) over its turn rate (0x498520): too tight (over 0.9 × the circle) stops it to turn
+   (+0x898), or slows a run (+0x891). At the path's last point, a moving character whose stopping
+   distance (0x4ee140: 6 walking, 15 running forward or back, 8 running sideways) is beyond 0.9 × the
+   distance left stops to arrive (+0x899, 40 ticks).
+10. Near the point, a turn override: `1 − d² × 0.04`, times π/2, when positive.
+11. `AI2rExecutor_Move` 0x498b00: the facing, the kind, the mode, the full turn (the glance's, or not a
+    calm state, 0x52a4d8).
