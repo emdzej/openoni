@@ -73,10 +73,14 @@ bit 1, which `AI2rInitializeCharacter` sets):
    does, the time it lasts is restarted from the class (ONCC +0x410 for strength 4, +0x414 for 3,
    +0x418 for 2).
 4. **Hurts.** A hurt adds the damage. With no hostility yet, the entry becomes hostile (+0x4b) for
-   900 ticks and its hostility becomes 2. The exceptions: damage still under half the owner's hit
-   points (C+0x3c) while a hostile contact is within C+0x1014 of the owner. The port has no C+0x1014
-   yet, so it always makes the entry hostile. With hostility already set, the entry is hostile for
-   good.
+   900 ticks and its hostility becomes 2. The exception: the damage so far is no more than half the
+   owner's hit points (C+0x3c) while another contact is near. That contact must be stronger than 2,
+   have hostility 2, and be within the Neutral's enemy range (C+0x1014, 100 without a Neutral) of the
+   owner. Then the hurt is taken as a stray blow from a fight with that contact. With hostility
+   already set, the entry is hostile for good.
+   The Syndicate (team 2) is hostile to every team but its accessories (7), the neutrals (3)
+   included (0x48b2c0). A striker that sees a neutral fights it: on level 1, Bay6_Striker_1 knocks
+   the Bay6 neutrals down unless Konoko deals with it first.
    A melee or gunfire sound (3, 4) of the target fighting another character (the post's value, a
    character for the sounds) takes sides: an entry with no hostility yet, at strength 4, whose owner is
    neutral to the target (`AI2rTeam_FriendOrFoe` 1) and a friend of the other (0), gets hostility 1 and

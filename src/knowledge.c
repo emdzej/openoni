@@ -359,11 +359,22 @@ static void post_now(const Pending *p)
         if (type == KNOW_HURT_MELEE) e->hurt_melee = true;
         e->damage += p->value;
         if (e->hostility == 0) {
-            /* hostile once hurt for half the hit points (C+0x3c), or with no enemy seen near: the
-               distance C+0x1014 is the combat profile's, not ported yet (0) */
-            e->hostile = true;
-            e->hostile_until = e->posted + 900;
-            if (e->hostile) e->hostility = 2;
+            /* hostile (for 900 ticks) once hurt for more than half the hit points (C+0x3c), or with
+               no enemy near (a contact above the strength 2, hostile, within the Neutral's enemy
+               range, C+0x1014): else a hurt by the way, in a fight with another */
+            bool enemy_near = false;
+            if (e->damage <= o->c.max_hit_points >> 1) {
+                float r = o->ai.neutral_enemy;
+                for (const KnowEntry *k = o->ai.know; k && !enemy_near; k = k->next) {
+                    float dx = k->pos[0] - o->c.pos[0], dy = k->pos[1] - o->c.pos[1], dz = k->pos[2] - o->c.pos[2];
+                    enemy_near = k->strength > 2 && k->hostility == 2 && dx * dx + dy * dy + dz * dz < r * r;
+                }
+            }
+            if (!enemy_near) {
+                e->hostile = true;
+                e->hostile_until = e->posted + 900;
+                e->hostility = 2;
+            }
         } else {
             if (e->hostility > 2) e->hostility = 2;
             e->hostile = true;

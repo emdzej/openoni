@@ -1041,13 +1041,20 @@ static void route_input(const Character *c, CharacterInput *in)
             memcpy(name, s + 1, len), name[len] = 0;
             int n = comma ? atoi(comma + 1) : 0;
             const Chr *t = chars_find(name);
-            if (!t || !t->c.hit_points || !chars_in_use(t)) { route_next(); continue; }
+            /* back from a fight it left below her (down a slope, "!"): hunted again for N frames, then
+               given up */
+            static const Chr *hunted;
+            static uint32_t hunt_until;
+            bool again = (semi ? semi[-1] : s[strlen(s) - 1]) == '!';
+            if (!t || !t->c.hit_points || !chars_in_use(t) || (again && hunted == t && now >= hunt_until)) {
+                hunted = NULL;
+                route_next();
+                continue;
+            }
             float dx = t->c.pos[0] - c->pos[0], dy = t->c.pos[1] - c->pos[1], dz = t->c.pos[2] - c->pos[2];
             static char rest[16384];
             snprintf(rest, sizeof rest, "%s", semi ? semi + 1 : "");
             /* no way to it (on a walkway the rooms don't reach): tried for N frames, then given up */
-            static const Chr *hunted;
-            static uint32_t hunt_until;
             if (hunted != t) hunted = t, hunt_until = now + (uint32_t)n;
             if (dx * dx + dz * dz > 900.0f || fabsf(dy) > 15.0f) {
                 static char steps[16384];
@@ -1059,11 +1066,17 @@ static void route_input(const Character *c, CharacterInput *in)
                 }
             }
             if (dx * dx + dz * dz > 900.0f || fabsf(dy) > 15.0f)
-                snprintf(route.buf, sizeof route.buf, "W%.1f,%.1f,%.1f;X%s,%d%s%s", t->c.pos[0], t->c.pos[1], t->c.pos[2],
-                         name, n, rest[0] ? ";" : "", rest);
-            else {
-                hunted = NULL;
-                snprintf(route.buf, sizeof route.buf, "F%s,%d%s%s", name, n, rest[0] ? ";" : "", rest);
+                snprintf(route.buf, sizeof route.buf, "W%.1f,%.1f,%.1f;X%s,%d%s%s%s", t->c.pos[0], t->c.pos[1], t->c.pos[2],
+                         name, n, again ? "!" : "", rest[0] ? ";" : "", rest);
+            else if (again && dy < -10.0f) {
+                /* near, but below her (down the slope the fight left by): run at it */
+                float err = wrap_pi(atan2f(dx, dz) - c->desired_facing);
+                in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
+                in->forward = fabsf(wrap_pi(atan2f(dx, dz) - c->facing)) < 0.6f;
+                return;
+            } else {
+                if (!again) hunted = NULL;
+                snprintf(route.buf, sizeof route.buf, "F%s,%d,h%s%s", name, n, rest[0] ? ";" : "", rest);
             }
             route.step = route.buf;
             route.phase = 0;
@@ -1084,6 +1097,18 @@ static void route_input(const Character *c, CharacterInput *in)
             if (comma) n = atoi(comma + 1);
             const Chr *t = chars_find(name);
             if (!route.phase) route.until = now + (uint32_t)n, route.phase = 1;
+            if (t && t->c.hit_points && now < route.until && t->c.pos[1] < c->pos[1] - 10.0f && comma && strchr(comma + 1, ',') &&
+                strchr(comma + 1, ',')[1] == 'h' && (!strchr(s, ';') || strchr(comma + 1, ',') < strchr(s, ';'))) {
+                /* a hunt's fight ("X") it left below her: the hunt again (marked "!") */
+                const char *semi = strchr(s, ';');
+                static char rest[16384];
+                snprintf(rest, sizeof rest, "%s", semi ? semi + 1 : "");
+                snprintf(route.buf, sizeof route.buf, "X%s,%d!%s%s", name, n, rest[0] ? ";" : "", rest);
+                route.step = route.buf;
+                route.phase = 0;
+                route.until = 0;
+                continue;
+            }
             if (!t || !t->c.hit_points || now >= route.until || t->c.pos[1] < c->pos[1] - 10.0f) { route_next(); continue; }
             float dx = t->c.pos[0] - c->pos[0], dz = t->c.pos[2] - c->pos[2];
             float err = wrap_pi(atan2f(dx, dz) - c->desired_facing);

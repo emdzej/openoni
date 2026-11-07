@@ -765,12 +765,13 @@ void (*combat_log)(const char *line);
 static void debug_line(const AiState *a, const Character *c)
 {
     const CombatState *s = &a->combat;
-    char b[256];
+    char b[320];
     snprintf(b, sizeof b, "%s: range %d beh %d man %d dist %.0f lof %d aim %d fire %d look %d tgt %d err %.1f tol %.1f "
-             "trig %d ammo %d self %u hp %u lr %.2f ud %.2f st %x daze %u/%d/%d getup %d mode %d/%d kind %d", a->name, s->range, s->behaviour, s->maneuver, s->dist, s->lof,
+             "trig %d ammo %d self %u hp %u lr %.2f ud %.2f st %x daze %u/%d/%d getup %d mode %d/%d kind %d at %s", a->name, s->range, s->behaviour, s->maneuver, s->dist, s->lof,
              s->aim, s->fire, a->aim.look, s->targeting, s->t.error, s->t.tolerance, a->aim.fire,
              c->weapon ? c->weapon->ammo : -1, c->hit_points, chars_player() ? chars_player()->c.hit_points : 0, c->aim_lr, c->aim_ud, c->state,
-             a->daze_timer, s->dazed, a->daze_started, s->getup, a->mode, a->movement_mode, a->kind);
+             a->daze_timer, s->dazed, a->daze_started, s->getup, a->mode, a->movement_mode, a->kind,
+             a->target ? a->target->ai.name : "-");
     combat_log(b);
 }
 
