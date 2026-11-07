@@ -2,6 +2,7 @@
 #include "wm.h"
 
 #include "exe.h"
+#include "sound.h"
 #include "font.h"
 #include "li.h"
 #include "platform.h"
@@ -1110,7 +1111,9 @@ static uintptr_t button_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t 
             bool pressed = (uint16_t)w->data == 1;
             w->data &= ~(uintptr_t)0x10001;
             set_capture(NULL);
-            /* Not ported: the click's impulse sound (0x5e975c) */
+            /* the click (0x5e975c, the impulse "button_click" looked up at the button's create: v1.0's data
+               has none, so it is silent), then the command */
+            if (inside && pressed) sound_impulse_play_ss(exe_str(0x53c5b0));
             if (inside && pressed) wm_send(w->parent, WM_COMMAND, (uintptr_t)w->id | 0x10000, (uintptr_t)w);
         }
         return 0;

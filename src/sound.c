@@ -1840,6 +1840,14 @@ void sound_impulse_play_at(const void *impulse, const float pos[3], const float 
     impulse_play(impulse, pos, volume);
 }
 
+/* SSrImpulse_GetByName 0x4801f0 and SSrImpulse_Play 0x480440 at the listener, full: the sound system's
+   own, which the scripts' switch (script-only) doesn't hold back (the WM's button click). */
+void sound_impulse_play_ss(const char *name)
+{
+    const Impulse *m = loaded && name ? find_nocase(&impulses, name) : NULL;
+    if (m) impulse_play(m, NULL, NULL);
+}
+
 /* 0x5145f0: at the listener, volume 0..1. */
 void sound_impulse_play(const char *name, float volume)
 {
