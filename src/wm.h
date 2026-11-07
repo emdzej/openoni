@@ -118,6 +118,8 @@ void wm_dialog_end(WmWindow *dialog, uint32_t result);
 uintptr_t wm_dialog_param(WmWindow *dialog);
 void wm_set_draw_callback(void (*draw)(void));
 void wm_set_frame_hook(void (*hook)(void));
+/* The windows drawn over the game behind, as in a modal dialog's frame. */
+void wm_redraw(void);
 
 /* The DC (0x4694b0, 0x469720) and its drawing. */
 WmDc *wm_dc_begin(WmWindow *w);

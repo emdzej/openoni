@@ -64,6 +64,20 @@ void sound_speech_stop(uint32_t id);
 void sound_music_start(const char *name, float volume);
 void sound_music_stop(const char *name);
 void sound_music_volume(const char *name, float volume, float seconds);
+/* The OS layer's one music (OSrMusic_*: the main menu's and the splash screens'): started at a volume,
+   faded, stopped (its out sound follows), halted at once; on while its id is kept. */
+void sound_music_play(const char *name, float volume);
+bool sound_music_on(void);
+void sound_music_fade(float volume, float seconds);
+void sound_music_end(void);
+void sound_music_halt(void);
+/* OSrSetScriptOnly 0x514e60: no script impulses or ambients while on. */
+void sound_set_script_only(bool on);
+/* 0x483710: every playing ambient and channel stopped. 0x4835d0, 0x483660: the playing channels paused,
+   and played on. */
+void sound_stop_all(void);
+void sound_pause_all(void);
+void sound_resume_all(void);
 void sound_impulse_play(const char *name, float volume);
 /* An impulse by name (OSrImpulse_GetByName 0x512440, the scripts' case-insensitive lookup), NULL if none;
    its impact velocity (+0x84); OSrImpulse_Play 0x512480: at pos (NULL: at the listener), volume NULL

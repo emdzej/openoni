@@ -321,12 +321,44 @@ runs the same menu over the level (`OWrOniWindow_MainMenu` 0x4bec00).
 The menu: "psui_oniUI", the desktop's background of type 1, dialog 150 (640 by 480, centred: five
 buttons over the picture `pict_mainmenu`). Its procedure (`ONiOutGameUI_MainMenu_Callback` 0x4d2cd0):
 
-- 0x3d: Options (102) shown out of a level, Resume (104), in its place, in one; the menu's music.
+- 0x3d: Options (102) shown out of a level, Resume (104), in its place, in one. Then the sounds:
+  `OSrSetScriptOnly(true)` 0x514e60, every playing channel paused (`SSrPlayingChannels_Pause` 0x4835d0:
+  the DirectSound buffer stopped, 0x484620, and bit 0x10 of the channel's +0x1b set), and the menu's
+  music, the ambient `main_menu_win` (0x54c904), started at volume 0 (`OSrMusic_Start` 0x512750: priority
+  3, no position, its id at 0x61fa00) and brought to 1 over half a second (`OSrMusic_SetVolume` 0x512730).
+- 0x13 (the menu's destroy): the music, still on (`OSrMusic_IsPlaying` 0x512720: the id kept), down to 0
+  over half a second and stopped (`OSrMusic_Stop` 0x5127b0, the ambient's stop: its out sound follows; the
+  id stays); script-only off; the paused channels played on (`SSrPlayingChannels_Resume` 0x483660).
 - 0x17: 2 (Escape) resumes in a level; 100 New Game runs dialog 154 ("Press Start to begin a new game.",
   Start 1, Cancel 2), and Start ends the menu and starts level 1 (`OWrGame_Start` 0x4beb40: the current
   level unloaded, the continue cleared, the level loaded); 101 Load Game, dialog 151 (the levels'
   list); 102 Options, dialog 152; 103 Quit, dialog 153 (Yes 1, No 2), Yes sets the quit; 104 Resume.
   The yes-or-no dialogs (`ONiOutGameUI_Choice_Callback` 0x4d2aa0) end with the button's id.
+  Start, a level picked in Load Game and Quit's Yes first fade the music (`ONiOGU_MainMenu_FadeMusic`
+  0x4d3100 for Start, the same inline for the others): if it is on, down to 0 over half a second and
+  stopped, then 30 of the machine's sixtieths of `OSrUpdate` (the listener at the origin) and the sound's
+  update (0x483bd0), then `OSrMusic_Halt` 0x512700 (the id forgotten). The screen isn't drawn meanwhile
+  (the port draws the frozen menu).
+
+## The splash screens
+
+`ONrGameState_SplashScreen` 0x4f4d40 (ecx the TXMB's name, edx the music's, the stack's byte "quiet"):
+nothing without the TXMB but script-only turned off. Quiet: `OSrSetScriptOnly(true)` and `SSrStopAll`
+0x483710 (every playing ambient's channels stopped, the ambient released through its state machine, then
+every channel stopped and its sound dropped). The music starts at 0 and goes to 1 over a second; the
+picture fades in from black over 120 sixtieths, stays (600 then 600 more, a key or a button ends it),
+the music goes to 0 over a second as the fade to black (120) begins, and is halted after it. Its callers:
+
+| Caller | TXMB | Music | Quiet |
+|---|---|---|---|
+| `ONiRunGame` 0x4d4770, the scripts' `splash_screen` (G+0x118) | the script's | none | no |
+| `ONiRunGame` 0x4d4914, a level won (G+0x1679bc 1), after `ONrGameState_ClearContinue` | `win_splash_screen` (0x54d0cc) | `main_menu_win` | yes |
+| `ONiRunGame` 0x4d48d9, a level lost (2) | `fail_splash_screen` (0x54d0e0) | `loss_screen_music` (0x54d0f4) | yes |
+| `ONrLevel_Load` 0x5068be, the load's end | `intro_splash_screen` (0x555f28) | none | no |
+
+Every level has the win and loss screens; every level but level 1 its intro (the chapter's title). After
+the won or lost screen, the level unloads and the next (or the same) loads; level 19 won goes on to the
+game won and the outro movie.
 
 Dialogs' keys: Return posts the command of the default button (a button of style 0x100000 tells its
 dialog its id on its create, 0x3f; 0x3e asks), if enabled; Escape posts `WM_CLOSE` (0x14), which the

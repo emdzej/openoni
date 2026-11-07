@@ -4,6 +4,7 @@
 #include "exe.h"
 #include "particle.h"
 #include "persist.h"
+#include "platform.h"
 #include "sound.h"
 #include "tm.h"
 #include "vfs.h"
@@ -160,36 +161,69 @@ static uint32_t sub_dialog(uint16_t id, WmDialogProc proc)
     return r;
 }
 
+/* ONiOGU_MainMenu_FadeMusic 0x4d3100 (and the same inline for Load Game and Quit): the music, if on,
+   down to nothing over half a second and stopped, 30 ticks of the sound's updates (OSrUpdate with the
+   listener at the origin, 0x483bd0), then halted. */
+static void fade_music(void)
+{
+    if (!sound_music_on()) return;
+    sound_music_fade(0.0f, 0.5f);
+    sound_music_end();
+    static const float origin[3] = { 0, 0, 0 };
+    sound_set_listener(origin, origin);
+    for (int t = 0; t < 30; t++) {
+        wm_redraw();
+        sound_update();
+        plat_wait_frame();
+    }
+    sound_music_halt();
+}
+
 /* The main menu's procedure (0x4d2cd0). */
 static bool menu_proc(WmWindow *d, uint32_t msg, uintptr_t p1, uintptr_t p2)
 {
     (void)p2;
     Menu *m = (Menu *)wm_dialog_param(d);
     if (msg == WM_INITDIALOG) {
-        /* Options out of a game, Resume in one. Not ported: the menu's music (0x54c904) */
+        /* Options out of a game, Resume in one; the level's sounds paused, the menu's music (0x54c904)
+           in from nothing over half a second */
         wm_set_visible(wm_item(d, 0x66), !m->in_level);
         wm_set_visible(wm_item(d, 0x68), m->in_level);
+        sound_set_script_only(true);
+        sound_pause_all();
+        sound_music_play(exe_str(0x54c904), 0.0f);
+        sound_music_fade(1.0f, 0.5f);
         return true;
     }
-    if (msg != WM_COMMAND) return msg == WM_DESTROY;
+    if (msg == WM_DESTROY) {
+        /* the music still on (Resume, Options' way out) out over half a second; the sounds on again */
+        if (sound_music_on()) {
+            sound_music_fade(0.0f, 0.5f);
+            sound_music_end();
+        }
+        sound_set_script_only(false);
+        sound_resume_all();
+        return true;
+    }
+    if (msg != WM_COMMAND) return false;
     if ((p1 >> 16) != 1) return true;
     switch ((uint16_t)p1) {
     case 2:         /* Escape: resumes a game */
         if (m->in_level) m->choice = OUTGAME_RESUME, wm_dialog_end(d, 0);
         break;
     case 100:       /* New Game: Start (1) or Cancel */
-        if (sub_dialog(0x9a, choice_proc) == 1) m->choice = OUTGAME_NEW_GAME, wm_dialog_end(d, 0);
+        if (sub_dialog(0x9a, choice_proc) == 1) fade_music(), m->choice = OUTGAME_NEW_GAME, wm_dialog_end(d, 0);
         break;
     case 101: {     /* Load Game: a level (OWrGame_Start 0x4beb40 with the line's data) */
         uint32_t v = sub_dialog(0x97, load_proc);
-        if (v) m->choice = OUTGAME_LOAD, m->start = v, wm_dialog_end(d, 0);
+        if (v) fade_music(), m->choice = OUTGAME_LOAD, m->start = v, wm_dialog_end(d, 0);
         break;
     }
     case 102:       /* Options */
         sub_dialog(0x98, options_proc);
         break;
     case 103:       /* Quit: Yes (1) or No */
-        if (sub_dialog(0x99, choice_proc) == 1) m->choice = OUTGAME_QUIT, wm_dialog_end(d, 0);
+        if (sub_dialog(0x99, choice_proc) == 1) fade_music(), m->choice = OUTGAME_QUIT, wm_dialog_end(d, 0);
         break;
     case 104:       /* Resume */
         m->choice = OUTGAME_RESUME, wm_dialog_end(d, 0);

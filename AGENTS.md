@@ -104,6 +104,9 @@ near them, and the `door_*` commands ([docs/re/door.md](docs/re/door.md)). `src/
   `src/outgame.c`'s Load Game lists them (the WM's list box, class 8) and its Options sets them (the
   check box, slider, popup and menu classes, the WM's timers).
 - `src/cheat.c`: the cheat codes typed on the pause screen once the game is won ([docs/re/cheat.md](docs/re/cheat.md)).
+- The splash screens (`splash_screen` in `src/app.c`, ONrGameState_SplashScreen): each level's intro as it
+  loads, the scripts' chapter screens, the won and lost levels' with their music; the main menu's music
+  and the level's sounds paused under it (`src/outgame.c`, the `sound_music_*` of `src/sound.c`).
 - `src/film.c`: the films (FILM, the `playback` command), with `begin_cutscene`/`end_cutscene`
   (`src/chars.c`): the cutscene after the training plays and the warehouse mission starts.
 - `src/bink.c`: the Bink movies (BIK 'i': the container, the video, the audio, the YUV conversion), ported
@@ -112,8 +115,9 @@ near them, and the `door_*` commands ([docs/re/door.md](docs/re/door.md)). `src/
   main menu and the outro when level 19 is won (`movie_play`, `movie_play_in_game`; `--param
   movie=outro.bik` plays one through the latter first).
 
-Stand-ins (camera, fight mode, the combat's maneuver paths) are marked in the code. They go as their originals are
-ported.
+The few stand-ins left (a weapon's velocity taken from its holder's, a module's own clock for the game
+time, the scripts' movement mode) and what isn't ported yet are marked in the code ("stand-in", "Not
+ported"). They go as their originals are ported.
 
 ## Hard rules
 

@@ -158,8 +158,10 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - **The text consoles**: the documents Konoko reads at the level's consoles, page by page, in the
   game's own window manager, its dialogs built from the game's data, over the level as the original
   draws them.
-- **The splash screens** between the parts of a level ("Chapter 00 . Combat Training"), faded in
-  and out as the original does.
+- **The splash screens**: each level's chapter title as it loads, the ones between the parts of a level
+  ("Chapter 00 . Combat Training"), and the screens of a level won and a level lost, with their music,
+  faded in and out as the original does.
+- **The main menu's music**, faded in over the level's sounds, which are paused while the menu is up.
 - **The cutscenes**: the films (a character's input recorded tick by tick and played back), the
   characters carried by object animations (Konoko's motorbike ride into the airport), the camera's
   moves, the letterbox, and the AI held still while they play.

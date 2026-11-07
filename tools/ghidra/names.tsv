@@ -637,6 +637,8 @@
 0047f460	SSrSubtitle_Find	SS	med	name from the Intel Mac build (neighbours:1.00)
 0047f550	SSrMessage_Find	SS	med	name from the Intel Mac build (strings:1)
 0047f790	SSrSoundData_GetDuration	SS	med	read: an SNDD's ticks, stored at +0x36 or computed from the sample count (Mac name by role)
+0047f820	SSiSoundChannel_IsPaused	SS	med	name from the Intel Mac build: bit 0x10 of +0x1b
+0047f870	SSiSoundChannel_SetPaused	SS	med	name from the Intel Mac build: bit 0x10 of +0x1b
 0047f8d0	SSrPermutation_Play	SS	med	name from the Intel Mac build (neighbours:0.75)
 0047fd90	SSrGroup_New	SS	med	name from the Intel Mac build (neighbours:1.00)
 0047ff50	SSrGroup_Play	SS	med	name from the Intel Mac build (neighbours:1.00)
@@ -654,10 +656,15 @@
 004830c0	SS2rInitializeBasic	SS2	med	name from the Intel Mac build (strings:1)
 00483310	SS2rInitializeFull	SS2	med	name from the Intel Mac build (strings:3)
 004834e0	SSiSoundData_ProcHandler	SS	med	read: the SNDD template's callback: on load adds the .raw base to +0x3c (Mac name by role)
+004835d0	SSrPlayingChannels_Pause	SS	med	name from the Intel Mac build: every playing channel paused (the main menu over a level)
+00483660	SSrPlayingChannels_Resume	SS	med	name from the Intel Mac build: the paused playing channels on again
+00483710	SSrStopAll	SS	med	name from the Intel Mac build: every playing ambient and channel stopped
 00483e00	SS2rVolume_Set	SS2	med	name from the Intel Mac build (neighbours:1.00)
 004841d0	SSrIMA_CalculateNumSamples	SS	low	read: an IMA4 SNDD's packets (+0x10) times 64 (name made up after the MS ADPCM one)
 004841f0	SSrMSADPCM_CalculateNumSamples	SS	med	read: an MS ADPCM SNDD's sample count through acmStreamSize (Mac name by role)
 004842a0	SSiSoundChannels_Initialize	SS	med	name from the Intel Mac build (neighbours:1.00)
+00484620	SS2rPlatform_SoundChannel_Pause	SS	med	name from the Intel Mac build: the buffer stopped, the paused bit (0x10 of +0x1b) set
+004849a0	SS2rPlatform_SoundChannel_Resume	SS	med	name from the Intel Mac build: the paused buffer played again (looping), the paused bit cleared
 00485530	SSiPlayingAmbient_Update	SS	med	name from the Intel Mac build (neighbours:1.00)
 00485810	SSiPlatform_SoundChannel_Terminate	SS	med	name from the Intel Mac build (neighbours:1.00)
 00487080	SS2rRegisterTemplates	SS2	med	name from the Intel Mac build (neighbours:1.00)
@@ -1558,7 +1565,10 @@
 00511f00	OSiAmbient_Update	OS	med	name from the Intel Mac build (neighbours:1.00)
 005125c0	OSiDialog_Play	OS	low	a dialogue line started, its subtitle shown when on
 00512700	OSrMusic_Halt	OS	med	name from the Intel Mac build (neighbours:1.00)
+00512720	OSrMusic_IsPlaying	OS	med	name from the Intel Mac build: the music id (0x61fa00) kept
 00512730	OSrMusic_SetVolume	OS	med	name from the Intel Mac build (neighbours:1.00)
+00512750	OSrMusic_Start	OS	med	name from the Intel Mac build: the ambient of the name at priority 3 and a volume
+005127b0	OSrMusic_Stop	OS	med	name from the Intel Mac build: SSrAmbient_Stop of the music, the id kept
 00512a10	OSrSA_ListBrokenSounds	OS	med	name from the Intel Mac build (strings:1)
 00512b30	OSiPlayList_AddSound	OS	low	made up: a playlist entry for a Sound object
 00512cb0	OSiScriptCommands_Initialize	OS	med	name from the Intel Mac build (strings:1)

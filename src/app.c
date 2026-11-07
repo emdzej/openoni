@@ -1413,22 +1413,36 @@ static void splash_frame(const char *name, float blanket)
 }
 
 /* ONrGameState_SplashScreen 0x4f4d40, the original's blocking loop in the game loop's place for the
-   frame: in from black over 120 ticks ((1 - t/120)^1.9; past 120 the power of a negative is no number and
-   no blanket is drawn) within 600, then 600 more, either ended by a key or a button, then out to black
-   over 120 ((t/120)^1.9). Its clock is the machine's sixtieths: here the frames. Not ported: the music's
-   volume (up at the start, down over the fade) and the listener kept on the player. */
-static void splash_screen(const char *name)
+   frame: the TXMB of the name (none: nothing but the script-only switch turned off), in from black over
+   120 ticks ((1 - t/120)^1.9; past 120 the power of a negative is no number and no blanket is drawn)
+   within 600, then 600 more, either ended by a key or a button, then out to black over 120 ((t/120)^1.9).
+   Quiet (the win and loss screens): the scripts' sounds held off and every sound stopped first (0x483710).
+   The music (none for the chapters' and the levels' intro screens) starts from nothing, up over a second,
+   down over a second as the fade out begins, and is halted at the end. Its clock is the machine's
+   sixtieths: here the frames. Not ported: the listener kept on the player. */
+static void splash_screen(const char *name, const char *music, bool quiet)
 {
-    bool skip = false;
-    for (int t = 0; t < 600 && !skip; t++) {
-        if (any_press()) skip = true;
-        else splash_frame(name, powf(1.0f - (float)t * (1.0f / 120.0f), 1.9f));
+    if (tm_instance_get(TM_TAG("TXMB"), name)) {
+        if (quiet) {
+            sound_set_script_only(true);
+            sound_stop_all();
+        }
+        sound_music_play(music, 0.0f);
+        sound_music_fade(1.0f, 1.0f);
+        bool skip = false;
+        for (int t = 0; t < 600 && !skip; t++) {
+            if (any_press()) skip = true;
+            else splash_frame(name, powf(1.0f - (float)t * (1.0f / 120.0f), 1.9f));
+        }
+        for (int t = 0; t < 600 && !skip; t++) {
+            if (any_press()) skip = true;
+            else splash_frame(name, 0.0f);
+        }
+        sound_music_fade(0.0f, 1.0f);
+        for (int t = 0; t < 120; t++) splash_frame(name, powf((float)t * (1.0f / 120.0f), 1.9f));
+        sound_music_halt();
     }
-    for (int t = 0; t < 600 && !skip; t++) {
-        if (any_press()) skip = true;
-        else splash_frame(name, 0.0f);
-    }
-    for (int t = 0; t < 120; t++) splash_frame(name, powf((float)t * (1.0f / 120.0f), 1.9f));
+    sound_set_script_only(false);
 }
 
 /* ---- the movies (docs/formats/bink.md "The player") ---- */
@@ -1794,6 +1808,8 @@ static int play(int level, int *next)
         wm_set_frame_hook(modal_frame);
     }
     display.ct = &ct, display.player = player, display.ticks = 0;
+    /* the end of ONrLevel_Load 0x5059d0: the level's intro screen, no music */
+    splash_screen(exe_str(0x555f28), NULL, false);
     start_scripts();
     memset(&route, 0, sizeof route);
     if (first && plat_param("route", route.buf, sizeof route.buf)) route.step = route.buf;
@@ -1936,7 +1952,7 @@ static int play(int level, int *next)
         }
         char splash[32];
         bool splashing = ui_splash_take(splash);    /* ONiRunGame: G+0x118, the splash in the display's place */
-        if (splashing) splash_screen(splash);
+        if (splashing) splash_screen(splash, NULL, false);
         if (!splashing) {
             camera_update(0, 0, NULL, ticks);   /* the frame's part */
             particles_update(ticks, false);    /* the decorative particles (iComputeDeltaTicks 0x4fafb0) */
@@ -1950,6 +1966,7 @@ static int play(int level, int *next)
         if (ui_level_end() == 1) {
             *next = level == 19 ? 0 : next_level(level);
             save_clear();       /* 0x4fda80 */
+            splash_screen(exe_str(0x54d0cc), exe_str(0x54c904), true);    /* the main menu's music */
             if (level == 19) {
                 persist_set_won_game();
                 plat_log("OpenOni: level 19 ends, the game won");
@@ -1958,6 +1975,7 @@ static int play(int level, int *next)
             return 0;
         }
         if (ui_level_end() == 2) {
+            splash_screen(exe_str(0x54d0e0), exe_str(0x54d0f4), true);
             *next = level;
             return 0;
         }
@@ -1992,7 +2010,7 @@ static void blank_display(void)
 
 /* ONiMain 0x4d3280 after the start-up: the intro movie (0x4d33a4), the Oni window (WMrInitialize, the
    desktop), the main menu (OWrOniWindow_Startup 0x4bebd0), then unless the player quit, the game from
-   level 1. Not ported yet: the splash screen before the menu (0x4cae10). */
+   level 1. (The splash screen before the menu, 0x4cae10, is an empty function in v1.0.) */
 static void front_end(void)
 {
     int w, h;

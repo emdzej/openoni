@@ -1762,6 +1762,68 @@ void sound_music_volume(const char *name, float volume, float seconds)
 const void *sound_impulse_find(const char *name) { return loaded ? find_nocase(&impulses, name) : NULL; }
 float sound_impulse_impact_velocity(const void *impulse) { return impulse ? ((const Impulse *)impulse)->impact_velocity : 0.0f; }
 
+/* The OS layer's one music (0x61fa00, its playing ambient's id): the main menu's and the splash screens'. */
+static uint32_t music_id = UINT32_MAX;
+
+/* OSrMusic_Start 0x512750: the ambient of the name at priority 3 and the volume, no position. An earlier
+   music's id is overwritten, not stopped. */
+void sound_music_play(const char *name, float volume)
+{
+    Ambient *amb = name ? (Ambient *)ambient_named(name) : NULL;
+    if (!amb) return;
+    amb->priority = 3;
+    music_id = ambient_start(amb, NULL, 0, 0, &volume);     /* 0x4823a0 */
+}
+
+/* OSrMusic_IsPlaying 0x512720: an id kept (the stop below keeps it too). */
+bool sound_music_on(void) { return music_id != UINT32_MAX; }
+
+/* OSrMusic_SetVolume 0x512730: to the volume over the seconds. */
+void sound_music_fade(float volume, float seconds)
+{
+    if (music_id != UINT32_MAX) ambient_set_volume(music_id, volume, seconds);
+}
+
+/* OSrMusic_Stop 0x5127b0: the ambient's stop (its out sound follows); the id stays. */
+void sound_music_end(void)
+{
+    if (music_id != UINT32_MAX) ambient_stop(music_id);
+}
+
+/* OSrMusic_Halt 0x512700: now, and the id forgotten. */
+void sound_music_halt(void)
+{
+    if (music_id == UINT32_MAX) return;
+    ambient_halt(music_id);
+    music_id = UINT32_MAX;
+}
+
+/* OSrSetScriptOnly 0x514e60. */
+void sound_set_script_only(bool on) { script_only = on; }
+
+/* 0x4835d0: every playing channel's buffer stopped and marked paused (0x484620), the stereo ones and
+   the mono ones. */
+void sound_pause_all(void)
+{
+    for (int i = 0; i < CHANNELS; i++) {
+        Chan *c = i < 7 ? &stereo[i] : &mono[i - 7];
+        if (!(c->flags & CH_PLAYING)) continue;
+        c->ds_playing = false;
+        c->flags |= CH_PAUSED;
+    }
+}
+
+/* 0x483660: the playing channels marked paused play on from where they were (0x4849a0). */
+void sound_resume_all(void)
+{
+    for (int i = 0; i < CHANNELS; i++) {
+        Chan *c = i < 7 ? &stereo[i] : &mono[i - 7];
+        if ((c->flags & (CH_PLAYING | CH_PAUSED)) != (CH_PLAYING | CH_PAUSED)) continue;
+        c->ds_playing = true;
+        c->flags &= (uint8_t)~CH_PAUSED;
+    }
+}
+
 void sound_impulse_play_at(const void *impulse, const float pos[3], const float *volume)
 {
     if (!impulse || script_only) return;
@@ -1848,6 +1910,8 @@ static void stop_all(void)      /* 0x483710 */
     for (int i = 0; i < 7; i++) chan_stop(&stereo[i]), stereo[i].sndd = NULL;
     for (int i = 0; i < CHANNELS - 7; i++) chan_stop(&mono[i]), mono[i].sndd = NULL;
 }
+
+void sound_stop_all(void) { stop_all(); }
 
 static void init_channel(Chan *c, uint16_t index, uint8_t kind)     /* 0x483200.. */
 {

@@ -910,6 +910,14 @@ static void (*frame_hook)(void);
 void wm_set_draw_callback(void (*draw)(void)) { draw_callback = draw; }
 void wm_set_frame_hook(void (*hook)(void)) { frame_hook = hook; }
 
+/* A frame drawn as a modal dialog's are (the game behind, then the windows), for the waits a dialog's
+   procedure makes inside its message (the original's screen stays as it was). */
+void wm_redraw(void)
+{
+    if (draw_callback) draw_callback();
+    if (plat_frame_shown()) wm_display();
+}
+
 /* 0x468830: the WMDD with the id among all of them. */
 static const uint8_t *find_dialog(uint16_t id)
 {
