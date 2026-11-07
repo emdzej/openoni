@@ -11,8 +11,8 @@
 #include <string.h>
 
 static GLuint prog, vao, stream_vbo, stream_ibo, white;
-static struct { GLint proj, view, tex, alpha_ref, fog, fog_colour; } u;
-static float fog_start, fog_end, fog_rgb[3];
+static struct { GLint proj, view, tex, alpha_ref, fog, fog_on, fog_colour; } u;
+static float fog_start, fog_end, fog_rgb[3], cur_proj[16], cur_view[16];
 
 static const char *VS =
     "#version 300 es\n"
@@ -21,10 +21,9 @@ static const char *VS =
     "layout(location=1) in vec2 a_uv;\n"
     "layout(location=2) in vec4 a_colour;\n"
     "uniform mat4 u_proj, u_view;\n"
-    "out vec2 v_uv; out vec4 v_colour; out float v_dist;\n"
+    "out vec2 v_uv; out vec4 v_colour;\n"
     "void main() {\n"
     "  vec4 e = u_view * vec4(a_pos, 1.0);\n"
-    "  v_dist = length(e.xyz);\n"
     "  v_uv = a_uv; v_colour = a_colour;\n"
     "  gl_Position = u_proj * e;\n"
     "}\n";
@@ -34,13 +33,14 @@ static const char *FS =
     "precision mediump float;\n"
     "uniform sampler2D u_tex;\n"
     "uniform float u_alpha_ref;\n"
-    "uniform vec2 u_fog; uniform vec3 u_fog_colour;\n"
-    "in vec2 v_uv; in vec4 v_colour; in float v_dist;\n"
+    "uniform highp vec2 u_fog; uniform float u_fog_on; uniform vec3 u_fog_colour;\n"
+    "in vec2 v_uv; in vec4 v_colour;\n"
     "out vec4 o;\n"
     "void main() {\n"
     "  vec4 c = texture(u_tex, v_uv) * v_colour;\n"
     "  if (c.a < u_alpha_ref) discard;\n"
-    "  if (u_fog.y > u_fog.x) c.rgb = mix(c.rgb, u_fog_colour, clamp((v_dist - u_fog.x) / (u_fog.y - u_fog.x), 0.0, 1.0));\n"
+    "  highp float z = gl_FragCoord.z * 2.0 - 1.0;\n"
+    "  if (u_fog_on > 0.5 && u_fog.y > u_fog.x) c.rgb = mix(c.rgb, u_fog_colour, float(clamp((z - u_fog.x) / (u_fog.y - u_fog.x), 0.0, 1.0)));\n"
     "  o = c;\n"
     "}\n";
 
@@ -182,6 +182,7 @@ bool gl_dev_init(void)
     u.tex = glGetUniformLocation(prog, "u_tex");
     u.alpha_ref = glGetUniformLocation(prog, "u_alpha_ref");
     u.fog = glGetUniformLocation(prog, "u_fog");
+    u.fog_on = glGetUniformLocation(prog, "u_fog_on");
     u.fog_colour = glGetUniformLocation(prog, "u_fog_colour");
     glGenVertexArrays(1, &vao);
     glGenBuffers(1, &stream_vbo);
@@ -217,6 +218,8 @@ void gl_dev_begin(int w, int h, float r, float g, float b)
 
 void gl_dev_matrices(const float proj[16], const float view[16])
 {
+    memcpy(cur_proj, proj, sizeof cur_proj);
+    memcpy(cur_view, view, sizeof cur_view);
     if (dry) return;
     glUseProgram(prog);
     glUniformMatrix4fv(u.proj, 1, GL_FALSE, proj);
@@ -225,13 +228,29 @@ void gl_dev_matrices(const float proj[16], const float view[16])
 
 void gl_dev_fog(float start, float end, float r, float g, float b)
 {
-    if (dry) return;
     fog_start = start;
     fog_end = end;
     fog_rgb[0] = r, fog_rgb[1] = g, fog_rgb[2] = b;
+    if (dry) return;
     glUseProgram(prog);
     glUniform2f(u.fog, fog_start, fog_end);
     glUniform3f(u.fog_colour, r, g, b);
+}
+
+/* gl_calculate_fog_factor 0x40dcf0: p's depth on the screen (MSrTransform_PointListToFrustumScreen 0x418100,
+   z over w) against the fog: 0 without fog (start = end, start not below 1, end not above 0) and at or
+   before the start, (end - z) / (end - start) between, and 1 at or past the end (as the original: the
+   factor climbs back past the end, where the far plane is). */
+float gl_dev_fog_factor(const float p[3])
+{
+    if (fog_start == fog_end || !(fog_start < 1.0f) || !(fog_end > 0.0f)) return 0.0f;
+    float e[4], c[4];
+    for (int i = 0; i < 4; i++) e[i] = cur_view[i] * p[0] + cur_view[4 + i] * p[1] + cur_view[8 + i] * p[2] + cur_view[12 + i];
+    for (int i = 0; i < 4; i++) c[i] = cur_proj[i] * e[0] + cur_proj[4 + i] * e[1] + cur_proj[8 + i] * e[2] + cur_proj[12 + i] * e[3];
+    float z = c[2] * (1.0f / c[3]);
+    if (!(z > fog_start)) return 0.0f;
+    if (!(z < fog_end)) return 1.0f;
+    return (fog_end - z) / (fog_end - fog_start);
 }
 
 void gl_dev_cull(int mode)
@@ -365,7 +384,6 @@ void gl_dev_screen(int w, int h)
     proj[13] = 1.0f;
     proj[15] = 1.0f;
     gl_dev_matrices(proj, view);
-    gl_dev_fog(0, 0, 0, 0, 0);
     gl_dev_cull(0);
 }
 
@@ -426,6 +444,9 @@ static void state(unsigned tex, int mode)
     if (mode == GL_DEV_SCREEN || mode == GL_DEV_SCREEN_ADD || mode == GL_DEV_SKY) glDisable(GL_DEPTH_TEST);
     else glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
+    /* the fog (the draw state 0xf, on by default): not on the 2D path, nor the sky (ONiGameState_Display_Reflectable
+       0x4fb69f), nor additive textures (0x40d640 turns GL_FOG off with flag 0x400's blend) */
+    glUniform1f(u.fog_on, mode == GL_DEV_SCREEN || mode == GL_DEV_SCREEN_ADD || mode == GL_DEV_SKY || mode == GL_DEV_ADD ? 0.0f : 1.0f);
     switch (mode) {
     case GL_DEV_SCREEN:
     case GL_DEV_SCREEN_ADD:

@@ -188,6 +188,8 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - **What is seen**: rays from the camera through the level find the walls, floors and things in view,
   and only those are drawn, as the original's are, with its pop-in. The sky shows when a ray gets
   out: the level's skybox round the camera, afternoon, sunset or night.
+- **The fog**: the far parts of a level fade into the level's fog colour, as far out as its scripts
+  set (a grey from about 80 units by default), and particles fade into it.
 - **Sound** from the game's own sound groups: the music, the dialog and speech, the impacts, and the
   particles' sounds (the gunshots, the rockets' roar, the level's hissing steam and sparks), placed
   where they play and following the particles that carry them, and the level's own sound places: the
@@ -199,7 +201,6 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 
 ## Not yet
 
-- The environment's brightness: it is darker than the original's look, which isn't explained yet.
 - Debug and developer features: the console variables, the developer keys' tools.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked

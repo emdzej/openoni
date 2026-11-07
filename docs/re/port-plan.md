@@ -187,8 +187,9 @@ the player.
 
 Still to do:
 
-- environment maps and the brightness of the environment, which is darker than the original's look and
-  isn't explained yet (the default gamma, 0.5, makes the exe's ramp the identity)
+- a capture of the original under Wine at a known place, to compare the environment's colours with (the
+  draw path matches the exe step by step: [lighting.md](lighting.md) "The environment's colours"; the
+  environment has no reflection maps in the original)
 
 **Check:** `--param viewer=level&level=1` (fly-through) and `viewer=char&char=konoko` screenshots and
 hashes. Reference captures come from the original under Wine, kept outside the repo.

@@ -411,7 +411,17 @@ static bool cmd_dprint(SlThread *t, int argc, const SlValue *argv, SlValue *r, v
     return true;
 }
 
-static float fog_rgb[3], fog_start = 0.99f, fog_end = 1.0f, far_clip = 10000.0f;
+/* The fog (the GL context's +0x5f4 colour, +0x5d8 start, +0x5dc end; gl_dev_fog): as
+   gl_reset_fog_parameters 0x40ca50 leaves it (M3rDraw_Reset_Fog, from ONrLevel_Unload), a grey of a
+   quarter from 0.975 to 1 of the depth, until the level's scripts set it. */
+static float fog_rgb[3], fog_start, fog_end, far_clip = 10000.0f;
+
+static void fog_reset(void)
+{
+    fog_rgb[0] = fog_rgb[1] = fog_rgb[2] = 0.25f;
+    fog_start = 0.975f;
+    fog_end = 1.0f;
+}
 
 /* The fog's smooth changes (gl_fog_start_changeto_func 0x40cb20, gl_fog_end_changeto_func 0x40cb90):
    to the value over the frames (none, or not above 0: at once), by a step a tick. */
@@ -545,6 +555,7 @@ static void start_scripts(void)
     sl_register("gl_fog_start_changeto", cmd_fog_start_to, NULL);
     sl_register("gl_fog_end_changeto", cmd_fog_end_to, NULL);
     memset(fog_change, 0, sizeof fog_change);
+    fog_reset();
     TmFile *f = tm_file_at(tm_file_slots() - 1);
     const char *name = NULL;
     for (uint32_t i = 0; f && i < tm_file_instance_count(f); i++) {
@@ -1584,6 +1595,7 @@ static void game_display(void)
     if (display.ticks) fog_step(display.ticks);
     gl_dev_begin(w, h, 0.0f, 0.0f, 0.0f);
     gl_dev_matrices(proj, view);
+    gl_dev_fog(fog_start, fog_end, fog_rgb[0], fog_rgb[1], fog_rgb[2]);    /* the frame's start, 0x4058a3 */
     LodCamera lc = { .fov = 0.785398f, .far = far_clip };
     CameraView cv;
     if (camera_view(&cv)) memcpy(lc.pos, cv.location, sizeof lc.pos), memcpy(lc.view, cv.view, sizeof lc.view);

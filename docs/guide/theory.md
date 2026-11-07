@@ -218,7 +218,8 @@ setting up what that part of the level needs. `restore_game` then puts the playe
   cutscenes (orbits, recorded animations, interpolations).
 - **The draw**: the sky (when seen), the environment's marked quads (solid, then transparent), the
   objects, the corpses, the characters (each with a level of detail by its size on screen), decals,
-  particles, lens flares, then the HUD and the dialogs on top. Fog comes from the level's scripts.
+  particles, lens flares, then the HUD and the dialogs on top. Fog is on the depth on the screen, so it starts at a
+  fraction of the far plane's depth (0.975 by default, about 80 units) that the level's scripts change.
 - **The UI** is the window manager's dialogs: data-described windows (`WMDD`) with buttons, lists and
   sliders, used for the menus, the pause screen and the in-game text pages.
 - **Sound**: sound groups (`OSBD`) pick a sample among variations and play it in 3D, muffled by the

@@ -30,6 +30,16 @@ static bool unit(float *v)
 }
 static const float *col(const float *m, int k) { return m + 3 * k; }
 
+/* The fog's fade (P3rDisplayClass_Sprite 0x4617cc, _Vector 0x461056, _Contrail 0x462316; _Geometry
+   0x460b21, whose alpha the port's geometry doesn't take): an alpha times the point's fog factor
+   (gl_dev_fog_factor) when that is above 0, at most 1. */
+static float fogged(float alpha, const float p[3])
+{
+    float f = gl_dev_fog_factor(p);
+    if (f > 0.0f) alpha *= f;
+    return alpha > 1.0f ? 1.0f : alpha;
+}
+
 /* The sprite's two axes for its mode (MSrGeomContext_Method_Sprite_Draw's switch): 0 the camera's;
    1 the velocity (or the orientation's y) seen on the screen; 2 a beam along the velocity (or the
    orientation's y) turned to the camera; 3, 4 and 7 the orientation's columns (1 and 2, 0 and 2, 1 and
@@ -78,7 +88,7 @@ static void sprite(const View *v, const P3Draw *d)
     if (!tex) return;
     float u[3], w[3];
     if (!axes(v, d, u, w)) return;
-    float alpha = d->alpha;
+    float alpha = fogged(d->alpha, d->pos);
     /* the edge fade (flags2 0x4000000): by the angle to the eye, against the axis of the mode */
     if (d->edge_fade && d->mode != 5 && d->mode != 6) {
         float to[3] = { v->eye[0] - d->pos[0], v->eye[1] - d->pos[1], v->eye[2] - d->pos[2] }, ax[3];
@@ -174,6 +184,8 @@ static void contrail(const P3Contrail *s, void *user)
     const float sg[4] = { 1, -1, 1, -1 }, us[4] = { 0, 1, 0, 1 }, vs[4] = { s->va, s->va, s->vb, s->vb };
     for (int i = 0; i < 4; i++) {
         uint32_t c = i < 2 ? s->argb_a : s->argb_b;
+        /* inferred: each end faded at its own point */
+        c = (c & 0xffffffu) | (uint32_t)lrintf(fogged((float)(c >> 24) * (1.0f / 255.0f), i < 2 ? s->a : s->b) * 255.0f) << 24;
         q[i].x = pos[i][0] + sg[i] * w[i][0];
         q[i].y = pos[i][1] + sg[i] * w[i][1];
         q[i].z = pos[i][2] + sg[i] * w[i][2];
@@ -190,7 +202,7 @@ static void contrail(const P3Contrail *s, void *user)
 /* P3rDisplayClass_Vector 0x460cf0: a line in the tint, at the alpha (the draw context's, 0x41e720). */
 static void vector(const P3Draw *d)
 {
-    int a8 = (int)lrintf(d->alpha * 255.0f);
+    int a8 = (int)lrintf(fogged(d->alpha, d->pos) * 255.0f);
     a8 = a8 < 0 ? 0 : a8 > 255 ? 255 : a8;
     uint8_t r = (uint8_t)(d->tint >> 16), g = (uint8_t)(d->tint >> 8), b = (uint8_t)d->tint;
     GlVertex q[2] = {

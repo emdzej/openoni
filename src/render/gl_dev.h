@@ -29,8 +29,12 @@ void gl_dev_begin(int w, int h, float r, float g, float b);
    frames do, still happens) but nothing is drawn. Textures and meshes are still made. */
 void gl_dev_set_dry(bool on);
 void gl_dev_matrices(const float proj[16], const float view[16]);
-/* Linear fog from start to end (distances from the eye), off if end <= start. */
+/* The fog (GL_LINEAR as the original's, 0x405898): from start to end of the depth on the screen (z over
+   w, -1 at the near plane, 1 at the far), off if end <= start. The 3D modes but the additive and the sky
+   take it. */
 void gl_dev_fog(float start, float end, float r, float g, float b);
+/* gl_calculate_fog_factor 0x40dcf0: a point's factor for the particles' alpha (gl_dev.c). */
+float gl_dev_fog_factor(const float p[3]);
 /* The GL texture of a TXMP (all its mip levels), uploaded on first use; 0 if it doesn't decode. */
 unsigned gl_dev_texture(const void *txmp);
 /* The texture of white texels, for untextured draws. */
