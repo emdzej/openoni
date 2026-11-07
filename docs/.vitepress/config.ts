@@ -78,7 +78,7 @@ export default defineConfig({
     ],
     socialLinks: [{ icon: "github", link: "https://github.com/emdzej/openoni" }],
     footer: {
-      message: "GPL-3.0. Oni is a trademark of its owners; this project is not affiliated with them and distributes none of their data.",
+      message: "GPL-3.0. Oni is a trademark of its owners; this project is not affiliated with them and distributes none of their data. <a href=\"/credits\">Credits</a>",
     },
   },
 });
