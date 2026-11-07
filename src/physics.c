@@ -86,6 +86,7 @@ void physics_place(Character *c, const float pos[3])
     memcpy(c->prev_pos, pos, sizeof c->prev_pos);
     memcpy(c->phys_pos, pos, sizeof c->phys_pos);
     c->ground_height = pos[1];
+    c->placed = true;
 }
 
 void physics_take(Character *c, const float w[3])
@@ -193,11 +194,19 @@ static unsigned find_env(Character *c, const void *env, const float mv[3], Hit *
         h->quad = hits[i].quad;
         memcpy(h->plane, hits[i].plane, sizeof h->plane);
         memcpy(h->point, hits[i].point, sizeof h->point);
-        if (h->plane[1] <= 0.5f) c->wall_hits++;     /* AI2rMovementState_NotifyWallCollision: not ported */
+        /* a wall: counted, and the AI's movement told (AI2rMovementState_NotifyWallCollision 0x4ab5b0;
+           a two-sided quad's back again, its id's high bit set, 0x4ec00b) */
+        bool wall = h->plane[1] <= 0.5f;
+        if (wall) {
+            c->wall_hits++;
+            if ((c->flags & 0x400000u) && chr_movement_hit_hook) chr_movement_hit_hook(c, CHR_HIT_WALL, h->quad, h->point, h->plane);
+        }
         if (quad_flags(env, h->quad) & 0x2a0) {
             Hit *g = &out[k++];
             *g = *h;
             for (int j = 0; j < 4; j++) g->plane[j] *= -1.0f;   /* 0x529804 */
+            if (wall && (c->flags & 0x400000u) && chr_movement_hit_hook)
+                chr_movement_hit_hook(c, CHR_HIT_WALL, h->quad ^ 0x80000000u, g->point, g->plane);
         }
     }
     return k;
@@ -247,7 +256,14 @@ static unsigned find_all(Character *c, const void *env, const float mv[3], Hit *
     unsigned n = find_env(c, env, mv, h);
     physics_ctx(c, me);
     if (first) me->flags |= PHYS_FIRST_PASS;
-    if (!(c->flags & 0x2u)) n = physctx_find(me, mv, skip_other, h, n, HITS_MAX);
+    if (!(c->flags & 0x2u)) {
+        unsigned n0 = n;
+        n = physctx_find(me, mv, skip_other, h, n, HITS_MAX);
+        /* 0x4ecc7e: the AI's movement told of each (0x4ab830) */
+        if ((c->flags & 0x400000u) && chr_movement_hit_hook)
+            for (unsigned i = n0; i < n; i++)
+                chr_movement_hit_hook(c, CHR_HIT_OBJECT, (uintptr_t)h[i].other.owner, h[i].point, h[i].plane);
+    }
     return n;
 }
 
@@ -441,8 +457,25 @@ static void after_move(Character *c, const void *env)
 
 void (*physics_debug_log)(const char *msg);
 
+static const void *last_env;    /* the environment physics_update was last given (physics_move_to's) */
+
+void physics_move_to(Character *c, const float to[3])
+{
+    if (!c->has_physics || !last_env) {
+        physics_place(c, to);
+        return;
+    }
+    /* the move from the context's place, slid along the walls and the others (0x43a710), stopped when
+       still colliding (0x43aac0) */
+    float mv[3] = { to[0] - c->phys_pos[0], to[1] - c->phys_pos[1], to[2] - c->phys_pos[2] };
+    if (slide(c, last_env, mv)) respond(c, last_env, mv);
+    float p[3] = { c->phys_pos[0] + mv[0], c->phys_pos[1] + mv[1], c->phys_pos[2] + mv[2] };
+    physics_place(c, p);
+}
+
 void physics_update(Character *c, const void *env)
 {
+    if (env) last_env = env;
     if (!c->has_physics || !env) return;
     if (c->envanim.oban) {
         /* animated (flags 0x44): PHrPhysics_Update_Animation 0x43a620 plays it; no move, walls or floor */

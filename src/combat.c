@@ -463,6 +463,9 @@ void combat_enter(AiState *a)
     memset(s->gun_ignored, 0, sizeof s->gun_ignored);
     s->gun_rolled = s->gun_go = s->run_rolled = s->run_go = false;
     a->flags |= AI_FLAG_COMBAT_SCRIPT;      /* the character's combat script, run by AI2rUpdateAI */
+    /* AI2rMovement_ChangeMovementMode(0): the alert level's mode, whatever a script set (a creeping
+       guard fights standing) */
+    ai_set_movement_mode(a, 0);
 }
 
 void combat_new_target(AiState *a, Character *c, const Character *target)
@@ -764,9 +767,10 @@ static void debug_line(const AiState *a, const Character *c)
     const CombatState *s = &a->combat;
     char b[256];
     snprintf(b, sizeof b, "%s: range %d beh %d man %d dist %.0f lof %d aim %d fire %d look %d tgt %d err %.1f tol %.1f "
-             "trig %d ammo %d self %u hp %u lr %.2f ud %.2f", a->name, s->range, s->behaviour, s->maneuver, s->dist, s->lof,
+             "trig %d ammo %d self %u hp %u lr %.2f ud %.2f st %x daze %u/%d/%d getup %d mode %d/%d kind %d", a->name, s->range, s->behaviour, s->maneuver, s->dist, s->lof,
              s->aim, s->fire, a->aim.look, s->targeting, s->t.error, s->t.tolerance, a->aim.fire,
-             c->weapon ? c->weapon->ammo : -1, c->hit_points, chars_player() ? chars_player()->c.hit_points : 0, c->aim_lr, c->aim_ud);
+             c->weapon ? c->weapon->ammo : -1, c->hit_points, chars_player() ? chars_player()->c.hit_points : 0, c->aim_lr, c->aim_ud, c->state,
+             a->daze_timer, s->dazed, a->daze_started, s->getup, a->mode, a->movement_mode, a->kind);
     combat_log(b);
 }
 
@@ -934,41 +938,6 @@ void combat_tick(AiState *a, Character *c, const void *env, bool has_target)
 void combat_aim(AiState *a, Character *c)
 {
     AiAim *m = &a->aim;
-    /* the movement's look (AI2iMovementState_Calculate_Movement 0x4aa250): the executor's aim, and
-       standing, the facing toward it; in combat the weapon's aiming speed counts (0x52a4d8) */
-    bool weapon_speed = a->state == AI_STATE_COMBAT || a->state == AI_STATE_PURSUIT || a->state == AI_STATE_ALARM ||
-                        a->state == AI_STATE_PANIC || a->state == 10 || a->state == 11;
-    float face = 1000.0f;
-    /* a glance under way (no delay left) takes the look's place (0x4aa250) */
-    bool glancing = a->glance_ticks && !a->glance_delay;
-    int look = glancing ? a->glance_kind : m->look;
-    const float *look_at = glancing ? a->glance_at : m->look_at;
-    switch (look) {
-    case 0:
-        if (m->on) m->stop = true;          /* 0x498da0 */
-        break;
-    case 1:
-        face = wrap_2pi(atan2f(look_at[0] - c->pos[0], look_at[2] - c->pos[2]));
-        m->on = true, m->at_point = true, m->weapon_speed = weapon_speed;
-        memcpy(m->at, look_at, sizeof m->at);
-        break;
-    case 2:
-        face = wrap_2pi(atan2f(look_at[0], look_at[2]));
-        m->on = true, m->at_point = false, m->weapon_speed = weapon_speed;
-        memcpy(m->at, look_at, sizeof m->at);
-        break;
-    case 3:
-        if (!m->look_char || !chars_in_use((const Chr *)m->look_char)) {
-            if (m->on) m->stop = true;
-            break;
-        }
-        face = wrap_2pi(atan2f(m->look_char->pos[0] - c->pos[0], m->look_char->pos[2] - c->pos[2]));
-        m->on = true, m->at_point = true, m->weapon_speed = weapon_speed;
-        pelvis(m->look_char, m->at);
-        break;
-    }
-    if (face != 1000.0f && !a->moving) a->facing = face;
-
     /* AI2rExecutor_UpdateAim 0x498f50: from 15 over the feet, toward the point (or along the
        direction) at the aiming speed (6 degrees a tick, 0x52a880, by the weapon's +0x7c); more than
        130 degrees off the facing (0x52a888), ahead */

@@ -17,6 +17,8 @@ enum {
     GL_DEV_ADD,             /* depth test without write, additive */
     GL_DEV_SCREEN,          /* no depth test, source alpha blending: the 2D path (gl_dev_screen) */
     GL_DEV_SCREEN_ADD,      /* the same, added to what is there */
+    GL_DEV_REFLECT,         /* as opaque, what is there kept as much as the source's alpha (GL_ONE,
+                               GL_SRC_ALPHA): a texture over its reflection map (0x405b90's mode 8) */
 };
 
 bool gl_dev_init(void);

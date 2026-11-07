@@ -340,6 +340,7 @@ bool (*character_pickup_hook)(Character *c, const ChrInput *in);
 void (*character_weapon_input_hook)(Character *c, const ChrInput *in);
 void (*character_frame_hook)(Character *c, int step);
 void (*character_action_frame_hook)(Character *c);
+void (*character_sidestep_hook)(Character *c, bool walk);
 
 /* HandleStartTauntOrAction 0x4f80d0: the console action under way, the action key's console or door
    (the hook), else the taunt (type 0x5e, the action key gone down). The taunt waits for the game time
@@ -453,6 +454,7 @@ static bool handle_start_sidestep(Character *c, const ChrInput *in)
     }
     if (run && (!side || tr_varient(run) > tr_varient(side))) {
         if (chr_do_animation(c, CHR_ANIM_WHEN_CAN, chosen)) {
+            if ((c->flags & CHR_FLAG_AI_MOVEMENT) && character_sidestep_hook) character_sidestep_hook(c, walk);
             switch (c->type) {
             case 2: case 3: case 0x3a: case 0x3b: case 0xd0: case 0xd1: case 0xd2: case 0xd3:
                 set_facing_offset(c, left ? 1.5707964f : -1.5707964f);
@@ -1086,6 +1088,11 @@ bool chr_pose_matrices(const Character *c, float (*m)[12])
 
 void chr_location(const Character *c, float out[3])
 {
+    /* at creation, or put somewhere (0x4e9210), until the next frame: the position, y + 0.5 */
+    if (c->placed || (c->bone_world[0][9] == 0.0f && c->bone_world[0][10] == 0.0f && c->bone_world[0][11] == 0.0f)) {
+        out[0] = c->pos[0], out[1] = c->pos[1] + 0.5f, out[2] = c->pos[2];
+        return;
+    }
     /* the end of ONrGameState_DoCharacterFrame */
     out[0] = c->bone_world[0][9];
     out[2] = c->bone_world[0][11];

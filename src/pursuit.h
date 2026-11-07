@@ -21,3 +21,9 @@ void pursuit_notify(struct Chr *c, struct KnowEntry *e, bool degraded);
 void pursuit_forgotten(struct Chr *c, struct KnowEntry *e);
 /* 0x4b0f90 (through AI2rIsHurrying 0x48b020): going to the contact, hurrying. */
 bool pursuit_hurrying(const AiState *a);
+/* The guard's scan (the pursuit's look around and the patrol's guard and scan points): 0x499970, a new
+   scan, its first look at angle (1000 the facing); AI2rGuard_UpdateScan 0x499b50, its tick. */
+void ai_scan_set(AiScan *s, float angle);
+void ai_scan_update(AiState *a, AiScan *s, const Character *c, const void *env);
+/* A patrol's scan point while the character moves (0x4afc90): the look the way it goes (dir, 1000 none). */
+void ai_scan_follow(AiState *a, AiScan *s, float dir);

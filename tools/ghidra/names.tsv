@@ -44,8 +44,12 @@
 004115f0	MSrGeomContext_Method_Geometry_PolyDraw	MS	med	name from the Intel Mac build (neighbours:1.00)
 004118b0	MSrGeomContext_Method_Sprite_Draw	MS	med	name from the Intel Mac build (strings:1)
 00412d00	MSrGeomContext_Method_PointTestVisibleScale	MS	med	name from the Intel Mac build (neighbours:1.00)
+004135c0	MSiGeomEngine_SetAmbient	MS	low	the ambient light (context +0x60) (port name)
+004135e0	MSiGeomEngine_SetDirectionalLights	MS	low	up to 4 lights; the length over x, y, x: z never read (port name)
 00416510	MSrClip_Triangle	MS	med	name from the Intel Mac build (neighbours:1.00)
 00416a30	MSrClip_Quad	MS	med	name from the Intel Mac build (neighbours:1.00)
+00417690	MSiGeomEngine_LightVertices	MS	low	every vertex lit, unlit (white) with the geometry's 0x10 or the texture's 0x800 (port name)
+00417f00	MSiGeomEngine_LightVertex	MS	low	ambient plus the lights facing the normal; the reflection's sphere-map coordinates (port name)
 00418100	MSrTransform_PointListToFrustumScreen	MS	med	name from the Intel Mac build (neighbours:1.00)
 004184e0	MSrTransform_UpdateMatrices	MS	med	name from the Intel Mac build (neighbours:1.00)
 00419570	MSrGeomEngine_Initialize	MS	med	name from the Intel Mac build (strings:2)
@@ -713,6 +717,7 @@
 00495190	AI2iReport_Pathfinding_AStarFailed	AI2	med	name from the Intel Mac build (strings:1)
 00497620	AI2iReport_Melee_Failed_Attack	AI2	med	name from the Intel Mac build (strings:1)
 00498490	AI2rExecutor_Initialize	AI2	med	name from the Intel Mac build (neighbours:1.00)
+00498520	AI2iExecutor_TurnRate	AI2	low	the class's turn a tick (ONCC+0x124), halved walking unless full (port name)
 00498550	AI2rExecutor_Update	AI2	med	Mac match by caller: the wanted move, mode and facing made into the input block
 00498ae0	AI2rExecutor_TurnOverride	AI2	med	name from the Intel Mac build (neighbours:1.00)
 00498b00	AI2rExecutor_Move	AI2	med	name from the Intel Mac build (neighbours:1.00)
@@ -817,11 +822,17 @@
 004a8d60	AI2rMovementState_Initialize	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a9170	AI2iMovementState_FindClearPoint	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a9300	AI2rMovementState_NewMovementMode	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004a93c0	AI2rMovementState_NoSidestep	AI2	low	a sidestep done as a turned run: no sideways moves walking (+9) or running (+0xa) (port name)
+004a95d0	AI2iMovementState_NextPoint	AI2	low	the vector to the local path's point; passed within 12/8/3, the next; true past the last (port name)
+004a97b0	AI2iMovementState_Update	AI2	low	the collisions' decay (distance, age, hits, plane), then Calculate_Movement, the hit flags cleared (port name)
+004a9b10	AI2iMovementState_ArrivedAndTurned	AI2	low	the arrival's facing (facing mode 3) set once, then reached within 5 degrees (port name)
 004a9bc0	AI2rMovementState_CheckFailure	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004aa0c0	AI2iMovementState_AdjustPathPoint	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004aa250	AI2iMovementState_Calculate_Movement	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004ab400	AI2iMovementState_AddArcRamp	AI2	low	the arcs' costs ramped from a breakpoint to an angle, a breakpoint put in (port name)
 004ab5b0	AI2rMovementState_NotifyWallCollision	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004ab6b0	AI2iMovementState_MakeCollision	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004ab830	AI2rMovementState_NotifyObjectCollision	AI2	low	a physics context hit (0x4ecc7e): MakeCollision kind 1 (port name)
 004ab920	AI2rMovementState_NotifyCharacterCollision	AI2	med	from HandleGenericMask: TryToPathfindThrough, then MakeCollision
 004aba20	AI2rMovementState_Report	AI2	med	name from the Intel Mac build (strings:1)
 004abc30	AI2rMovementState_RenderCollision	AI2	med	name from the Intel Mac build (neighbours:1.00)
@@ -854,7 +865,10 @@
 004aea30	AI2iPath_NextNode	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004aea60	AI2rPath_FindGhostWaypoint	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004aeb10	AI2iPath_MakePath	AI2	med	the global path: kept for the same nodes, point (20) and 90 ticks; else PHrFindPath
+004aef00	AI2iPath_Repath	AI2	low	the stuck path made again, at most 4 in a row, then halted (port name)
 004aef90	AI2rPath_SimplePath	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004aefb0	AI2iPath_StopAtEnd	AI2	low	whether the path's end is stopped at (+0x10f8 for a point, 12 for a character), and its radius (port name)
+004af030	AI2iPath_TestArrival	AI2	low	within the radius (at least 3, heights within 22.5 level) of the location: +0x112d, +0x112c (port name)
 004af120	AI2rPath_Report	AI2	med	name from the Intel Mac build (strings:6)
 004af970	AI2rPatrol_Enter	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004afba0	AI2rPatrol_Exit	AI2	med	name from the Intel Mac build (neighbours:0.75)
@@ -1156,6 +1170,7 @@
 004da450	iSetAnyCharacterHealth	-	med	name from the Intel Mac build (strings:5)
 004daa10	ONrCharacter_FindFloorWithRay	ON	med	name from the Intel Mac build (neighbours:1.00)
 004dac50	ONrGameState_NewCharacter	ON	med	name from the Intel Mac build (strings:3)
+004dc100	ONrCharacter_GetRadius	ON	low	3 for an AI's character, 4 for the player's (port name)
 004dc160	ONiCharacter_BuildSphereTree	ON	low	the root, 4 leaves and 2 middle spheres from the feet (or the body's bottom) to the top
 004dc2b0	ONrCharacter_EnablePhysics	ON	med	the active character's physics context and callback table 0x5ec918
 004dc480	ONrGameState_DeleteCharacter	ON	med	name from the Intel Mac build (neighbours:1.00)
@@ -1183,6 +1198,7 @@
 004e3f30	ONrCharacter_IsPickingUp	ON	med	name from the Intel Mac build (neighbours:1.00)
 004e3ff0	ONrCharacter_InSpecialAnimation	ON	low	an animation of the types 0xc0..0xc3 (now or queued)
 004e4070	ONrCharacter_IsFallen	ON	low	the active record's state 0x12 or 0x32 (name made up)
+004e4140	ONrCharacter_AnimIsMoving	ON	low	the animation's to-state is a run, walk or their start (port name)
 004e4400	ONrCharacter_DoAnimation	ON	med	name from the Intel Mac build (neighbours:0.80)
 004e4ab0	ONrCharacter_LetGoWeapon	ON	low	the hand's weapon dropped (ONrCharacter_DropWeapon) and the varient made again (name made up)
 004e4c00	ONrCharacter_SetWeapon	ON	low	the weapon in the hand: C+0x194, the hand's variant bits, the owner (Mac name by role)
@@ -1200,6 +1216,7 @@
 004e8e70	ONiCharacter_LandedAttacks	ON	low	the attacks at the frame whose parts touch, and their highest priority
 004e9040	ONiCharacter_Trigger	ON	low	the trigger of DoCharacterFrame (fire, again, alternate, held)
 004e9210	ONrCharacter_Teleport	ON	med	the character's position and the physics' with it
+004e9330	ONiCharacter_MoveThroughPhysics	ON	low	the character moved to a point through the physics (the walls slid along), then placed there (port name)
 004e96a0	ONiCharacter_AttachParticle	ON	med	name from the Intel Mac build (neighbours:1.00)
 004e97a0	ONrCharacter_NewAnimationHook	ON	med	name from the Intel Mac build (caller; strings 'throwtarget was NULL')
 004ea2b0	ONiCharacter_FindNearestOpponent	ON	med	name from the Intel Mac build (AttemptThrow's callee); the enemy nearest the aim within an angle and distance
@@ -1232,6 +1249,7 @@
 004edd20	ONrCharacter_Holster	ON	med	read: the weapon overlay (lookup 7) into slot 1; the Mac build's name
 004edeb0	ONrCharacter_Draw	ON	low	a stowed weapon drawn by Draw_Pistol/Rifle (0xa1, 0xa2)
 004ee020	ONrCharacterClass_MovementSpeed	ON	med	name from the Intel Mac build (neighbours:1.00)
+004ee140	ONrCharacterClass_StopDistance	ON	low	the distance a move takes to stop: 6 walking, 15 running forward or back, 8 sideways (port name)
 004ee1b0	ONrCharacter_ConsoleAction_Begin	ON	high	read: C+0x1680 the marker, C+0x1684 0 (name made up)
 004ee220	ONrCharacter_ConsoleAction_Update	ON	med	name from the Intel Mac build (strings:2)
 004eea60	ONrSetupAnimIntersectionContext	ON	med	Mac match (neighbours:0.60): the two characters' halves, the matrix, the target's parts
@@ -1294,6 +1312,7 @@
 004fa520	ONiCharacter_PlayerKeyFilter	ON	low	the player's keys: a conversation's mask and end, fire to punch or kick without a weapon (name made up)
 004faec0	ONiGameState_PlayerEscape	ON	low	the player's input bit 1 (escape): the main menu over the level, at most once in 15 ticks
 004fafb0	iComputeDeltaTicks	-	med	name from the Intel Mac build (strings:2)
+004fb290	ONiGameState_SetObjectShade	ON	low	an object's own shade as the ambient, no directional lights (port name)
 004fb2e0	ONrBlanketScreen	ON	med	name from the Intel Mac build (neighbours:0.80)
 004fb480	ONiGameState_Display_Reflectable	ON	med	name from the Intel Mac build (strings:1)
 004fbaa0	ONi_GameState_Display_All_UI_Elements	-	med	name from the Intel Mac build (strings:2)
@@ -1419,6 +1438,7 @@
 0050af70	PHrBuildGraph	PH	med	name from the Intel Mac build (strings:2)
 0050bdb0	PHrFindPath	PH	low	the rooms' A* over the graph's nodes and links (the distance matrix, the doors, flag 1 avoided)
 0050c390	PHiPropagateCost	PH	low	a reopened node's saving passed on to the nodes reached through it
+0050c410	PHrPointInRoomGrid	PH	low	in the room's grid's cells, and its box's height unless a stair room (port name)
 0050c4c0	PHrAddCharacterToGrid	PH	med	name from the Intel Mac build (strings:1)
 0050c780	PHrAddObjectToGrid	PH	med	name from the Intel Mac build (strings:1)
 0050c870	PHrAddDoorToGrid	PH	med	name from the Intel Mac build (strings:1)

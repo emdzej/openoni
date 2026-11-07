@@ -1,5 +1,7 @@
 /* The level's characters: see chars.h. */
 #include "chars.h"
+#include "movement.h"
+#include "corpse.h"
 #include "neutral.h"
 #include "boss.h"
 #include "alarm.h"
@@ -180,6 +182,8 @@ static Chr *create(int object)
     }
     c->ai.job = c->ai.state;
     c->ai.job_patrol = c->ai.patrol;
+    /* AI2rMovementState_Initialize 0x4a8d60 (ONrGameState_NewCharacter): the weapon out by the mode */
+    if (!c->player) movement_new_mode(c);
     c->ai.job_alert = (int)objc_char_job_alert(o);
     c->ai.pursue_alert = (int)objc_char_pursue_alert(o);
     c->ai.pursue_strong_low = (int)objc_char_pursuit(o, 0);
@@ -261,6 +265,7 @@ static Chr *create_setup(const uint8_t *r, const ObjcObject *flag)
         c->ai.state = AI_STATE_IDLE;
         melee_start(&c->ai.melee, NULL, oncc);
         combat_default_settings(&c->ai);
+        movement_new_mode(c);
     }
     c->ai.job = c->ai.state;
     c->ai.job_patrol = c->ai.patrol;
@@ -284,6 +289,7 @@ int chars_load(void)
 {
     chr_cheats_clear();     /* ONrCharacter_LevelBegin 0x4d87b0 */
     chars_unload();
+    corpse_level_begin();   /* (0x4d9d50) */
     level_graph();      /* for the AIs' ways (the pursuit's distances) before any of them moves */
     patrol_load();      /* the paths first: the patrol jobs start with their characters */
     melee_initialize();
@@ -410,6 +416,51 @@ static bool path_through(const Character *c, const Character *o)
     return a->ai.state == AI_STATE_NEUTRAL && !o->ai;
 }
 
+/* ONrGameState_UpdateCharacters 0x4dce97..0x4dcff4, the dead (C+4 flag 2, then 4): the body settles
+   (120 ticks on the ground, 0x78; fallen 330 ticks, 0x14a, or dying 900, 0x384: no corpse, flag
+   0x80000), then the AI's weapons go (0x4e4ab0) and the physics (0x43aef0, flag 4). An AI's is then
+   deleted once its time is out and it isn't seen (its detail none or the lowest, A+0x221c 6 or 0), its
+   body left as a corpse (0x4ef340) unless flag 0x80000 or 0x400; while its shield or invisibility
+   shows it stays. True if deleted. */
+static bool dying_update(Chr *ch)
+{
+    Character *c = &ch->c;
+    if (c->flags & 4) {
+        if (c->invisible_shown || (c->flags & 0x40000)) return false;   /* (A+0x2800, A+0x2815) */
+        if (ch->player || !c->ai) return false;
+        if (c->lod_shown != 6 && c->lod_shown != 0) return false;
+        if ((c->flags & 0x400) || ch->corpse_time) return false;
+        if (!(c->flags & 0x80000)) corpse_add(c);
+        chars_delete(ch);
+        return true;
+    }
+    if (!(c->flags & 2)) return false;
+    bool settled = false;
+    if (c->air_ticks >= 330) {
+        c->flags |= 0x80000;
+    } else {
+        if (c->air_ticks == 0 && c->no_ground_ticks == 0) settled = ++c->settled_ticks > 120;
+        else c->settled_ticks = 0;
+        if (++c->dying_ticks > 900) c->flags |= 0x80000;    /* "character took too long to die" */
+        else if (!settled) return false;
+    }
+    if (c->ai) chr_drop_weapon(c);      /* (the stowed ones aren't dropped: deleted with the character) */
+    c->flags |= 4;
+    c->has_physics = false;
+    return false;
+}
+
+/* the AI's movement told of what the character ran into (movement.h) */
+static void movement_hit(Character *c, int kind, uintptr_t id, const float point[3], const float plane[4])
+{
+    Chr *ch = (Chr *)c;
+    if (kind == CHR_HIT_WALL) movement_hit_wall(ch, (uint32_t)id, point, plane);
+    else if (kind == CHR_HIT_OBJECT) movement_hit_object(ch, id, point, plane);
+    else movement_hit_character(ch, (const Chr *)id, point, plane);
+}
+
+static void no_sidestep(Character *c, bool walk) { movement_no_sidestep((Chr *)c, walk); }
+
 /* AI2rBlockFunction 0x48b870, every AI's block function (AI2rInitializeCharacter 0x48a6b0). */
 static bool block(Character *c)
 {
@@ -532,6 +583,8 @@ void chars_update(const CharacterInput *player_in, const void *env)
     chr_block_hook = block;
     chr_knockdown_hook = knocked_down;
     chr_path_through_hook = path_through;
+    chr_movement_hit_hook = movement_hit;
+    character_sidestep_hook = no_sidestep;
     throw_install();
     throw_ai_hook = ai_throw;
     weapons_install();
@@ -545,6 +598,7 @@ void chars_update(const CharacterInput *player_in, const void *env)
             chars_delete(&slots[i]);
             continue;
         }
+        if (dying_update(&slots[i])) continue;
         speech_update(&slots[i]);     /* ONrSpeech_Update 0x516a60, first in the character's update 0x4ddba0 */
         if (slots[i].player && (slots[i].c.flags & CHR_FLAG_AI_MOVEMENT)) ai_control_update(&slots[i].ai, &slots[i].c, env);
         else if (slots[i].player) {
@@ -616,14 +670,15 @@ static bool cmd_takecontrol(SlThread *t, int c, const SlValue *v, SlValue *r, vo
 /* trigvolume_kill id (AI2iScript_TriggerVolume_DeleteCharacters 0x4ba420, 0x4dcc70 for each volume of
    the id) deletes the AI characters in it; trigvolume_corpse id (0x4ba450, 0x4dcbd0) the bodies in it,
    the dead characters there at the next tick (C+0x1644 1). The original's test (0x4cc680) is the
-   volume's own, with the team mask; here trigger_contains, without it. Not kept: the level's corpse
-   list (GS+0x2f8) the second also clears, which the port doesn't have. */
+   volume's own, with the team mask; here trigger_contains, without it. The second also empties the
+   characters' corpses in the volume (corpse.h). */
 static bool volume_delete(int c, const SlValue *v, bool corpses)
 {
     if (c < 1) return true;
     uint32_t id = (uint32_t)num(&v[0]);
     for (int k = 0; k < trigger_count(); k++) {
         if (trigger_id(k) != id) continue;
+        if (corpses) corpse_clear_volume(k);
         Chr *in[CHARS_MAX];
         int n = 0;
         for (int i = 0; i < CHARS_MAX; i++)
@@ -1142,7 +1197,7 @@ static bool cmd_set_movement_mode(SlThread *t, int c, const SlValue *v, SlValue 
     Chr *ch = c >= 2 ? arg_char(&v[0]) : NULL;
     if (!ch || ch->player || v[1].type != SL_STRING) return true;
     for (int k = 0; k < 8; k++)
-        if (!strcmp(v[1].s, names[k])) ch->ai.movement_mode = k;   /* else "unknown movement mode" */
+        if (!strcmp(v[1].s, names[k])) ai_set_movement_mode(&ch->ai, k);   /* else "unknown movement mode" */
     return true;
 }
 

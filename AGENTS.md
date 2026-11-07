@@ -38,10 +38,12 @@ Step 3, the decoders, is done. Each has a reference reader in `tools/` and a tes
 
 Steps 4 (renderer), 6 (character) and 7 (scripts) have begun:
 
-- `src/render/` (gasm only): `gl_dev.c`, `env_draw.c`, `char_draw.c`.
+- `src/render/` (gasm only): `gl_dev.c`, `env_draw.c`, `char_draw.c`, `geom_draw.c` (the geometry's lights
+  and reflection maps, [docs/re/lighting.md](docs/re/lighting.md)). `src/corpse.c`: the corpses (the
+  level's `CRSA` and the dead AIs' bodies, [docs/formats/crsa.md](docs/formats/crsa.md)).
 - `src/trac.c`: the animation collections.
 - `src/chars.c`: the level's characters (from `CHAR` objects and `ai2_spawn`), their scripts (die,
-  defeated, hurt) and the `chr_*`/`ai2_*` commands. `src/ai.c` (the AI's executor, a stand-in mover), `src/patrol.c` (patrol paths and jobs), `src/alarm.c` (the alarm state and event), `src/pursuit.c` (the pursuit state and the guard's look around),
+  defeated, hurt) and the `chr_*`/`ai2_*` commands. `src/ai.c` (the AI's executor), `src/movement.c` (the AI's path and movement layer: collisions, steering, turning and slowing), `src/patrol.c` (patrol paths and jobs), `src/alarm.c` (the alarm state and event), `src/pursuit.c` (the pursuit state and the guard's look around),
   `src/knowledge.c` (sight, hurts, the alert), `src/combat.c` (the combat settings, behaviours,
   maneuvers, the gun pickup, targeting and the executor's aim) `src/melee.c` (the melee profiles and techniques), `src/neutral.c` (the neutral characters'
   conversations and the characters' speech) and `src/panic.c` (the non-combatants' panic; all
@@ -105,7 +107,7 @@ near them, and the `door_*` commands ([docs/re/door.md](docs/re/door.md)). `src/
   main menu and the outro when level 19 is won (`movie_play`, `movie_play_in_game`; `--param
   movie=outro.bik` plays one through the latter first).
 
-Stand-ins (camera, fight mode, the AI's mover) are marked in the code. They go as their originals are
+Stand-ins (camera, fight mode, the combat's maneuver paths) are marked in the code. They go as their originals are
 ported.
 
 ## Hard rules

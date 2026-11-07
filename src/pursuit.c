@@ -46,7 +46,7 @@ static void look_along(AiState *a, const float v[3])
 /* ---- the guard's scan ---- */
 
 /* 0x499970: a new scan, its first look at angle. */
-static void scan_set(AiScan *s, float angle)
+void ai_scan_set(AiScan *s, float angle)
 {
     s->started = false;
     s->first = angle;
@@ -110,12 +110,25 @@ static void scan_sweep(AiScan *s)
     s->look[2] = cosf(a) * len;
 }
 
+/* AI2rPatrol_Update 0x4afc90, a scan point's: while the character moves, the scan looks the way it goes
+   (once that is more than 3 degrees, 0x52ade0, off the look): 100 along it, swept (0x499d00), looked
+   along (0x4a8090). */
+void ai_scan_follow(AiState *a, AiScan *s, float dir)
+{
+    if (dir == 1000.0f || fabsf(dir - s->angle) <= 0.05235988f) return;
+    s->started = true;
+    s->again = false;
+    s->v[0] = sinf(dir) * 100.0f, s->v[1] = 0.0f, s->v[2] = cosf(dir) * 100.0f;
+    s->angle = dir;
+    scan_sweep(s);
+    look_along(a, s->look);
+}
+
 /* AI2rGuard_UpdateScan 0x499b50: a new look when the last one's hold is out (about the facing, or all
    round), and a new sweep offset (within its range) when its timer is out; the movement looks along
    the result. */
-static void scan_update(AiState *a, const Character *c, const void *env)
+void ai_scan_update(AiState *a, AiScan *s, const Character *c, const void *env)
 {
-    AiScan *s = &a->pursuit.scan;
     bool picked = false;
     if (!s->started || s->hold == 0) {
         s->center = !s->on ? 1000.0f : s->face == 1000.0f ? c->facing : s->face;
@@ -278,7 +291,7 @@ static void apply_mode(AiState *a, Character *c)
         return;
     case PURSUIT_LOOK:
         if (!p->looked && e) {
-            scan_set(s, atan2f(e->pos[0] - c->pos[0], e->pos[2] - c->pos[2]));
+            ai_scan_set(s, atan2f(e->pos[0] - c->pos[0], e->pos[2] - c->pos[2]));
             p->looked = true;
         }
         s->on = false;
@@ -291,7 +304,7 @@ static void apply_mode(AiState *a, Character *c)
         float d[3] = { e->pos[0] - c->pos[0], e->pos[1] - c->pos[1], e->pos[2] - c->pos[2] };
         p->looked = false;
         float angle = atan2f(d[0], d[2]);
-        scan_set(s, angle);
+        ai_scan_set(s, angle);
         s->angle = angle;
         memcpy(s->v, d, sizeof s->v);
         memcpy(s->look, d, sizeof s->look);
@@ -378,7 +391,7 @@ void pursuit_update(AiState *a, Character *c, const void *env)
         p->vocal = random_ticks(720, 180);
     }
     if (p->mode == PURSUIT_LOOK || p->mode == PURSUIT_GLANCE) {
-        scan_update(a, c, env);
+        ai_scan_update(a, &a->pursuit.scan, c, env);
         return;
     }
     if (p->mode != PURSUIT_GOTO || !e) return;
@@ -435,7 +448,7 @@ void pursuit_update(AiState *a, Character *c, const void *env)
     }
 scan:
     if (!p->looked) {
-        scan_set(&p->scan, atan2f(e->pos[0] - c->pos[0], e->pos[2] - c->pos[2]));
+        ai_scan_set(&p->scan, atan2f(e->pos[0] - c->pos[0], e->pos[2] - c->pos[2]));
         p->looked = true;
         p->scan.on = true;
         p->scan.face = c->facing;
@@ -445,7 +458,7 @@ scan:
         p->scan.sweep_range = 0.0f;
         p->scan.sweep_timer = 0;
     }
-    scan_update(a, c, env);
+    ai_scan_update(a, &a->pursuit.scan, c, env);
 }
 
 /* ---- the knowledge ---- */

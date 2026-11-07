@@ -328,8 +328,11 @@ tanker's combat script spawns the second tanker.
 
 ## Leaving combat
 
-The combat state (`AI2rCombat_Enter` 0x48f290) points its class block (state +0x28) at ONCC+0x138 and
-sets C+0xf80, the knowledge handler, to 0x490510. Its block (C+0x8b8; +0x08 the target, +0x0c lost,
+The combat state (`AI2rCombat_Enter` 0x48f290) points its class block (state +0x28) at ONCC+0x138,
+sets C+0xf80, the knowledge handler, to 0x490510, and sets the movement mode back to the alert level's
+(`AI2rMovement_ChangeMovementMode` 0x4a8200 with 0): a guard a script made creep fights standing.
+Without it, a creeping striker that ran for a melee move slid (`run_slide`) into `prone_idle` with the
+crouch still held, and never got up: `run_slide_getup` is the prone state's idle (type 6). Its block (C+0x8b8; +0x08 the target, +0x0c lost,
 +0x10 the target's contact, +0x14 its strength last told):
 
 - **The handler** (0x490510), for a degraded contact of the target: strength 0 loses the target
@@ -598,9 +601,8 @@ closer from the retreats, draws the chance again.
   maneuver, that chance is forgotten and B+0x1dc cleared.
 
 The port (`src/combat.c`, its test `tests/gun_test.c`: a THUG_Wh 50 from a pistol picks it up)
-has no running pickup. Its movement layer is a stand-in that walks in combat (the default modes of
-0x52af2c) and stops at the path's 8, so an AI may stand 4 or 5 from the handle until another maneuver
-carries it closer, or give the gun up after 40 maneuvers.
+has no running pickup. The path stops within its 8, so an AI may stand 4 or 5 from the handle until
+another maneuver carries it closer, or give the gun up after 40 maneuvers.
 
 **The daze** (the default behaviour's message 6, 0x493120; the combat block's dazed flag at B+0x189,
 the character's C+0x101c, this fall's daze begun, and C+0x1020, the ticks left). Not dazed: with no
@@ -812,6 +814,21 @@ range about it, +0x0c the centre of the pick (1000 all round), +0x10 the first l
   the head, flags 0x42080; six tries each), the hold and the sweep timers drawn. With a sweep range,
   when its timer is out a new offset is drawn within the range. The look is the pick's vector, or it
   turned by the offset (0x499d00); the movement looks along it (0x4a8090).
+
+The patrol runs the same scan for two of its waypoints (`AI2rPatrol_Update` 0x4afc90; its block keeps
+the scan at +0x560, with +0x558 scanning, +0x559 guarding, +0x55a the guard begun and +0x55c the ticks
+left). `AI2iPatrol_DoWaypoint` 0x4b0650 clears +0x559, +0x55a and +0x55c as a guard point starts. The
+ticks running out end either one: the look stops (`AI2rMovement_StopAiming`) and the next point starts.
+
+- **Guard** (0x13: a flag, the frames, an angle): to the flag, facing its way. Once there (C+0x112c),
+  a scan about that facing (the arrival's, C+0x157c, with the facing mode 3; else the character's),
+  within the angle (in degrees, held to 0..180). Looks are held 240 to 480 ticks and swept by up to 45
+  degrees every 90 to 150. With 0 frames it guards for good. A guard turns where it looks, so it
+  notices what comes from behind: level 19's C_Sb25 in its booth.
+- **Scan** (0x11: the frames, an angle): once no glance is under way (C+0x1598), a scan all round, a
+  look held 10,000 ticks and swept within the angle every 60 to 100. While the character moves, the
+  scan looks the way it goes (0x4a83e0, the movement's +0x880) once that is more than 3 degrees
+  (0x52ade0) off the look: 100 along it.
 
 Not ported: the vocalizations, the glance's look (0x4a8150) and the facing held, the report
 (`AI2rPursuit_Report` 0x4b18e0, debug text). A contact removed without the forget's notice leaves
@@ -1087,9 +1104,8 @@ easy, normal, hard: `ONrPersist_GetDifficulty` 0x50f240, normal at start-up), mu
 0..100 (`(UUrRandom & 0xffff) × 100 / 0xffff`). After the decision come the combat report
 (`AI2rNotifyAttackLanded` 0x48b700) and the daze timer's cut to 1 (0x48b9d0); neither is ported yet.
 
-Stand-ins, marked in `src/melee.c`: throws; the blockage's objects and characters; the
-movement's modifiers and facing mode as the executor's kinds (`src/ai.c`, a stand-in for
-`AI2iMovementState_Calculate_Movement`). A maneuver's step toward the target searches about the angle as
+Stand-ins, marked in `src/melee.c`: throws; the blockage's objects and characters. The movement's
+modifiers and facing mode go through `AI2iMovementState_Calculate_Movement` (`src/movement.c`). A maneuver's step toward the target searches about the angle as
 the original (`AI2rFindLocalPath` 0x49d220: 15 ahead, then up to 4 steps of pi/16 to one side then the
 other; `src/localpath.c`). `AI2rCombat_WaitingForShieldCharge` 0x4904c0 (the combat behaviour's handler
 asked with message 0x10) is a stand-in that never waits.
@@ -1316,7 +1332,7 @@ The movement layer sits between the states (which ask for a path, a facing, a lo
 executor (which turns a facing, a kind of move and a mode into keys). `AI2rMovement_Update` 0x4a8550:
 the glance's delay (C+0x1594) and ticks (C+0x1598, counted once the aim is done, 0x498e60); for an
 active character, the movement state's update (0x4a97b0), then the executor (0x498550). Status: read
-from the exe (confirmed); the port is in progress (`src/ai.c`'s mover is the stand-in).
+from the exe (confirmed); ported in `src/movement.c` (see "The port" below).
 
 ### The character's movement fields (C+)
 
@@ -1424,3 +1440,37 @@ only if the move goes into the wall (the move's direction · the plane's normal 
 10. Near the point, a turn override: `1 − d² × 0.04`, times π/2, when positive.
 11. `AI2rExecutor_Move` 0x498b00: the facing, the kind, the mode, the full turn (the glance's, or not a
     calm state, 0x52a4d8).
+
+### The path (`AI2rPath_Update` 0x4ae670)
+
+`AI2rPath_GoToPoint` 0x4ae480 and `AI2rPath_FollowCharacter` 0x4ae580 set the path (type 1 a point, 2 a
+character; +0x10f8 whether it stops there: almost every caller passes 1, the patrol's "move through"
+points and the combat's advance 0), clear the arrival's facing (0x4a8480: facing mode 3 back to 0,
++0x890 and +0x0c cleared), test the arrival (0x4af030) and make the path (`AI2iPath_MakePath` 0x4aeb10,
+unless a failure, +0x14a0, is younger than 90 ticks). The followed character's location is taken as the
+path is made, not every tick. `AI2iPath_MakePath` makes the local path of the room it is in every time,
+kept rooms or not.
+
+Each tick: without a path, arrived (and the local path cleared, 0x4a84f0); else a destination moved by
+more than 15 (225 squared) or a change of +0x112c forgets the collisions (0x4a84c0) and the repaths'
+counts. The door of the link out opens near it (`OBJrDoor_CharacterProximity`, `OBJrDoor_CharacterOpen`).
+The arrival (0x4af030): within the radius (at least 3; heights within 22.5 count as level) of the
+location, C+0x160; +0x112c (0x4a9b10) is false on the first tick of the arrival, which turns facing mode
+3 to the facing asked for, then true (in mode 3 once within 5 degrees of it). Not arrived: the failure
+check (`AI2rMovementState_CheckFailure` 0x4a9bc0, every tick or after its 30-tick delay: stuck, out of the
+local path's room and the one before, `0x50c410`, or off the segment from the last point to the next by
+more than 14 to the side or outside −0.5..1.5 of its length) repaths (0x4aef00: at most 4 in a row, then
+halted; a repath is forgotten every 300 ticks without one). Then the local path's points (0x4a95d0: the
+vector from the location, passed within 12, 8 or 3; each one passed clears the stops); the last passed,
+the next room's local path (0x4a8640; none: arrived), and after the last room's, arrived.
+
+### The port
+
+`src/movement.c`: the path's update, the movement state's collisions (from `src/physics.c`'s wall and
+context hits and `src/chr_hit.c`'s pushes), the decay, `Calculate_Movement`, the look and the movement
+mode's weapon (`AI2rMovementState_NewMovementMode` 0x4a9300: walk_noaim and run_noaim hide it, 0x4ecf80;
+at the alert's change too, 0x4a8230). Not kept: the movement state's start (0x4a8d60's
+`AI2iMovementState_FindClearPoint`), the repath after a teleport (0x4ae3d0 from 0x4e9210), the forced
+aiming byte (C+0x1580, no caller ported), the ghost waypoint's look ahead along the links after, the
+direction to keep away from (C+0x1574: the dodge that sets it, 0x49f460, isn't ported) and the combat
+state's own modifier (+0x1a8, +0x1ac).

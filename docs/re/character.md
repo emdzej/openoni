@@ -590,8 +590,11 @@ animation a character is about to play.
   notice (0x48b530, an AI2 target), C+0x1bc cleared on both, the throw's noise
   (`AI2rKnowledge_Sound` 0x49a8a0, 150); the victim animation, remapped, through the old animation hook,
   set from the target's state with 6 frames of interpolation, then the target's own new animation hook.
-  The target is moved (through the physics, 0x4e9330) to the thrower's place plus the throw's offset
-  turned by the thrower's facing (`MUrPoint_RotateYAxis` 0x433010); the thrower's A+0x1ed8 names it;
+  The target is moved (through the physics, 0x4e9330: the move from its context's place slid along the
+  walls, `PHiPhysics_FindCollisions` 0x43a710, and stopped if still colliding, 0x43aac0; the
+  characters don't count) to the thrower's place plus the throw's offset turned by the thrower's
+  facing (`MUrPoint_RotateYAxis` 0x433010). A thrower with its back to a wall leaves its victim on
+  this side of it; placed straight there, Konoko fell out of level 14. The thrower's A+0x1ed8 names it;
   its facing is the thrower's plus the throw's angle (only wrapped above 2 pi); it gets flag 0x1000
   (being thrown, dropped by `ONrCharacter_DoAnimation` as soon as it asks for another animation).
 - **While it lasts**: the thrower and the target don't touch (`iCollideTwoLikelyCharacters`, A+0x1ed8).

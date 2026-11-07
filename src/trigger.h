@@ -41,6 +41,8 @@ void trigger_box(int i, float origin[3], float axis[3][3], float size[3]);
 void trigger_centre(int i, float c[3]);
 /* Whether a character (its feet at pos) is in volume i, ignoring the team and flags. */
 bool trigger_contains(int i, const float pos[3]);
+/* PHrCollision_Volume_Ray: the segment from a to b meets the volume. */
+bool trigger_segment(int i, const float a[3], const float b[3]);
 
 /* One tick: every volume, every character (ONrGameState_UpdateTrigger for each volume), the scripts
    queued and then started with the character's name (sl.h). */

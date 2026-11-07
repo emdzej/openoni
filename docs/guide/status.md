@@ -182,6 +182,9 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   material.
 - **Decals**: the bullet holes, scorch marks and the characters' shadows, laid on the walls, cut to their shapes and folded
   round their corners; they fade, and the oldest give way to new ones as the original's do.
+- **The lighting** of the characters, weapons and objects: the game's ambient and its directional
+  lights, one or two by the graphics quality, and the reflection maps on the shiny surfaces. The dead
+  stay where they fell, as corpses, and so do the bodies each level sets into its scenes.
 - **Sound** from the game's own sound groups: the music, the dialog and speech, the impacts, and the
   particles' sounds (the gunshots, the rockets' roar, the level's hissing steam and sparks), placed
   where they play and following the particles that carry them, and the level's own sound places: the
@@ -193,8 +196,8 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 
 ## Not yet
 
-- Of the graphics quality: the environment's visibility rays, the directional lights, the reflection
-  maps and the corpses (none of which the port's draw has yet).
+- Of the graphics quality: the environment's visibility rays (the octree's visible nodes: the corpses
+  and the characters are drawn without them).
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked
 against the original.

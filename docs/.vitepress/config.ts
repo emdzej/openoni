@@ -67,6 +67,7 @@ export default defineConfig({
           { text: "Level objects (OBJC)", link: "/formats/objc" },
           { text: "Object animations (OBAN)", link: "/formats/oban" },
           { text: "Weapon classes (ONWC)", link: "/formats/onwc" },
+          { text: "Corpses (CRSA)", link: "/formats/crsa" },
           { text: "Sounds (SNDD)", link: "/formats/sndd" },
           { text: "Sound groups (OSBD)", link: "/formats/osbd" },
           { text: "Fonts (TSFF)", link: "/formats/font" },

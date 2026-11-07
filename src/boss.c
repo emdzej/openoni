@@ -113,8 +113,8 @@ static int barabbas(AiState *a, Character *c, int msg, bool *handled, int arg)
         b->mode = mode;
         /* AI2rMovement_ChangeMovementMode: running aiming while he may run with the gun, or when not
            shooting; else walking aiming */
-        a->movement_mode = boss_barabbas_run || mode == BAR_MELEE_GUN || mode == BAR_HEAL || mode == BAR_BACK
-                               ? AI_MODE_RUN_AIMING : AI_MODE_WALK_AIMING;
+        ai_set_movement_mode(a, boss_barabbas_run || mode == BAR_MELEE_GUN || mode == BAR_HEAL || mode == BAR_BACK
+                               ? AI_MODE_RUN_AIMING : AI_MODE_WALK_AIMING);
         if (mode != b->prev) {
             if (b->prev == BAR_HEAL) chr_do_animation(c, 4, 6);    /* the healing broken off */
             if (mode == BAR_HEAL) b->regen_damage = 0, b->retreat = 0;
@@ -211,13 +211,13 @@ static int barabbas_shoot(AiState *a, Character *c, int msg, bool *handled, int 
     switch (msg) {
     case MSG_ENTER:
         b->mode = BAR_SHOOT;
-        if (!boss_barabbas_run) a->movement_mode = AI_MODE_WALK_AIMING;
+        if (!boss_barabbas_run) ai_set_movement_mode(a, AI_MODE_WALK_AIMING);
         break;
     case MSG_WEIGHTS:
         b->mode = b->shot_wait == 0 ? BAR_SHOOT : BAR_HOLD;
         break;
     case MSG_EXIT:
-        a->movement_mode = 0;
+        ai_set_movement_mode(a, 0);
         break;
     case MSG_FIRE:
         if (p5 && !p6) b->shot_wait = 180;
@@ -246,7 +246,7 @@ static int barabbas_advance(AiState *a, Character *c, int msg, bool *handled, in
         b->mode = BAR_SHOOT;
         break;
     case MSG_EXIT:
-        a->movement_mode = 0;
+        ai_set_movement_mode(a, 0);
         break;
     case MSG_FIRE:
         if (p5 && !p6) b->shot_wait = (uint16_t)(((uint32_t)trac_random() * 90) >> 16) + 360u;   /* UUrRandom */

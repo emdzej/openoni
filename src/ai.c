@@ -11,6 +11,7 @@
 #include "neutral.h"
 #include "panic.h"
 #include "melee.h"
+#include "movement.h"
 #include "patrol.h"
 #include "pursuit.h"
 
@@ -42,6 +43,9 @@ void ai_init(AiState *a)
     a->neutral_id = -1;
     a->neutral_enemy = 100.0f;      /* AI2rNeutral_ChangeBehavior 0x4ac870 without one */
     a->local_seg = -1;
+    a->avoid = 1000.0f;
+    a->arrived = a->turned = true;
+    movement_init(&a->move);
     a->aim.speed = 1.0f;
     a->aim.last_facing = 1000.0f;
     a->alarm_marker = a->alarm_last = -1;
@@ -54,10 +58,14 @@ void ai_init(AiState *a)
 
 void ai_halt(AiState *a)
 {
+    a->path_type = 0;
     a->follow = NULL;
     a->moving = false;
     a->goal_facing = false;
-    a->kind = AI_MOVE_NONE;
+    /* 0x4a8440 */
+    a->nmod = 0;
+    a->avoid = 1000.0f;
+    a->move.counted = 0;
 }
 
 void ai_executor_move(AiState *a, float facing, int mode, int kind, bool full_turn)
@@ -72,31 +80,13 @@ bool ai_movement_modifier(AiState *a, float dir, float weight)
 {
     if (a->nmod > 7) return false;      /* (0x4936b0: a report) */
     a->mod_dir[a->nmod] = dir;
-    a->mod_weight[a->nmod] = weight;
+    a->mod_weight[a->nmod] = a->mod_left[a->nmod] = weight;
     a->nmod++;
+    /* 0x4ab570: counted; its weight worked out again with confirmed collisions or a direction to keep
+       away from */
+    a->move.counted++;
+    if (a->move.nconfirmed || a->avoid != 1000.0f) a->move.reweigh = true;
     return true;
-}
-
-/* A stand-in for AI2iMovementState_Calculate_Movement 0x4aa250 with modifiers and no path: along the
-   first modifier's direction; in the facing mode 1 as its kind of move (the body turned from the way by
-   0, pi, pi/2 or 3 pi/2), else the kind by how far the way is from the facing (within 45 degrees ahead,
-   left or right of it, else back). */
-static void apply_modifiers(AiState *a, const Character *c)
-{
-    (void)c;
-    if (!a->nmod || a->moving) return;
-    if (a->facing_mode == 1 && a->move_kind >= AI_MOVE_FORWARD && a->move_kind <= AI_MOVE_RIGHT) {
-        static const float off[4] = { 0.0f, 3.1415927f, 1.5707964f, 4.712389f };
-        a->kind = a->move_kind;
-        a->facing = wrap_2pi(a->mod_dir[0] - off[a->move_kind]);
-        return;
-    }
-    float face = a->facing_override != 1000.0f ? a->facing_override : a->facing;
-    float d = wrap_2pi(a->mod_dir[0] - face);
-    if (d <= 0.78539819f || d >= 5.4977871f) a->kind = AI_MOVE_FORWARD;
-    else if (d < 2.3561945f) a->kind = AI_MOVE_LEFT;
-    else if (d <= 3.9269908f) a->kind = AI_MOVE_BACK;
-    else a->kind = AI_MOVE_RIGHT;
 }
 
 /* AI2rIsHurrying 0x48b020: an AI hurries in the states the table at 0x52a4d8 doesn't mark calm (combat,
@@ -110,9 +100,10 @@ static bool hurrying(const AiState *a)
 }
 
 /* The movement's default mode for the alert level (0x4a8d00): the tables at 0x52af18 (hurrying) and
-   0x52af2c (not). */
-static int default_mode(const AiState *a)
+   0x52af2c (not); run for a character the AI doesn't own (C+0x1e8 not 2: the player). */
+int ai_default_mode(const AiState *a, bool player)
 {
+    if (player) return AI_MODE_RUN_AIMING;
     uint32_t table = hurrying(a) ? 0x52af18 : 0x52af2c;
     int level = a->alert >= 0 && a->alert < 5 ? a->alert : 0;   /* else "illegal alert status" */
     return (int)exe_u32(table + 4u * (uint32_t)level);
@@ -122,7 +113,7 @@ static int default_mode(const AiState *a)
    the aim is AI2rExecutor_UpdateAim 0x498f50 (combat.c). */
 static void executor_update(AiState *a, Character *c, ChrInput *in)
 {
-    int mode = a->mode ? a->mode : a->movement_mode ? a->movement_mode : default_mode(a);
+    int mode = a->mode ? a->mode : a->movement_mode ? a->movement_mode : ai_default_mode(a, false);
     uint64_t held = 0;
     if (a->key_override) {
         /* the override's keys instead of the move's: running, or crouching with the crouch key (its
@@ -184,150 +175,52 @@ static void executor_update(AiState *a, Character *c, ChrInput *in)
     a->held = held;
 }
 
+void ai_set_movement_mode(AiState *a, int mode)
+{
+    a->movement_mode = mode;
+    movement_new_mode((Chr *)((char *)a - offsetof(Chr, ai)));
+}
+
+/* the path given (0x4a8480: the arrival's facing over; the arrival tested and the path made at the
+   path's next update, movement.c) */
+static void path_given(AiState *a)
+{
+    if (a->facing_mode == 3) a->facing_mode = 0;
+    a->move.arrived_seen = a->move.waiting = false;
+    a->arrived = a->turned = false;
+    a->moving = true;
+    a->path_pending = true;
+}
+
 /* AI2rPath_GoToPoint 0x4ae480: the radius at least 3 (0x529808) */
-void ai_move_near(AiState *a, const float p[3], float radius, bool face, float angle)
+void ai_go_to(AiState *a, const float p[3], float radius, bool stop, bool face, float angle)
 {
     if (radius <= 3.0f) radius = 3.0f;
     memcpy(a->goal, p, sizeof a->goal);
+    a->path_type = 1;
     a->follow = NULL;
-    a->moving = true;
+    a->goal_radius = radius;
+    a->path_stop = stop;
     a->goal_facing = face;
     a->goal_angle = angle;
-    a->goal_radius = radius;
+    path_given(a);
 }
 
-void ai_move_to(AiState *a, const float p[3], bool face, float angle) { ai_move_near(a, p, 4.0f, face, angle); }
+void ai_move_near(AiState *a, const float p[3], float radius, bool face, float angle) { ai_go_to(a, p, radius, true, face, angle); }
+void ai_move_to(AiState *a, const float p[3], bool face, float angle) { ai_go_to(a, p, 0.0f, true, face, angle); }
 
+/* AI2rPath_FollowCharacter 0x4ae580: to the character's place (taken again as the path is made) */
 void ai_follow(AiState *a, const Character *who)
 {
     if (!who) {
         ai_halt(a);
         return;
     }
-    ai_move_near(a, who->pos, 12.0f, false, 0.0f);   /* (0x4aefb0: 12 for type 2) */
+    memcpy(a->goal, who->pos, sizeof a->goal);
+    a->path_type = 2;
     a->follow = who;
-}
-
-/* AI2iPath_MakePath 0x4aeb10: the path kept while it goes between the same rooms to within 20 of the
-   same point (400 squared, 0x529dec) and is younger than 90 ticks; else the rooms' A* again (the
-   character's room, C+0x188, found here from its position). */
-static void make_path(AiState *a, const Character *c)
-{
-    int from = graph_room_at(c->pos), to = graph_room_at(a->goal);
-    float dx = a->path_goal[0] - a->goal[0], dy = a->path_goal[1] - a->goal[1], dz = a->path_goal[2] - a->goal[2];
-    if (a->path_made && a->ticks < a->path_time + 90 && dz * dz + dy * dy + dx * dx < 400.0f && from == a->path_from &&
-        to == a->path_to)
-        return;
-    a->path_made = true;
-    a->path_time = a->ticks;
-    a->local_seg = -1;     /* a new path: its rooms' local paths again */
-    a->path_from = from, a->path_to = to;
-    memcpy(a->path_goal, a->goal, sizeof a->path_goal);
-    a->path_n = a->path_k = 0;
-    if (from < 0 || to < 0 || from == to) return;
-    int n = graph_find_path(from, c->pos, to, a->goal, true, a->path);
-    a->path_n = n > 1 ? n - 1 : 0;      /* no path: straight at the point (AI2iReport_Pathfinding_NoPath) */
-}
-
-/* AI2rMovementState_MakePath 0x4a9f20 for the global path's room `seg` (path_n: the destination's): from
-   the character (in the first room) or the crossing of the link before (PHrWaypointFromGunk, near
-   the character), to the crossing of the link out (AI2rPath_FindGhostWaypoint 0x4aea60, without its
-   look ahead along the links after: a stand-in) or the destination, through the room's grid. */
-static void make_local(AiState *a, const Character *c, const void *env, int seg)
-{
-    if (!a->local) a->local = malloc(sizeof(LocalPoint) * LOCAL_PATH_MAX);
-    a->local_seg = seg;
-    a->local_n = a->local_k = 0;
-    if (!a->local) return;
-    float start[3], end[3];
-    int room;
-    if (seg == 0 || seg > a->path_n) memcpy(start, c->pos, sizeof start);
-    else graph_waypoint(graph_link(a->path[seg - 1])->quad, c->pos, start);
-    if (seg >= a->path_n) {
-        memcpy(end, a->goal, sizeof end);
-        room = a->path_to;
-    } else {
-        graph_waypoint(graph_link(a->path[seg])->quad, start, end);
-        room = graph_link(a->path[seg])->from;
-    }
-    /* +0x1148: the next room is a stair one */
-    bool stairs = seg + 1 < a->path_n && (graph_room_flags(graph_link(a->path[seg + 1])->to) & 1);
-    a->local_n = local_path(env, room, start, end, c, stairs, true, a->local);
-    /* AI2iMovementState_SetupPath 0x4a9d70: a path made, the next waypoint is the second (+0x18ba = 1),
-       the first being the start's cell */
-    if (a->local_n > 0) a->local_k = 1;
-}
-
-/* The stand-in for the movement layer: forward, facing the local path's next waypoint (passed within
-   2), the path's next door when there is no local path, then the goal, until within the goal's radius
-   (then the facing asked for, if any). A link is passed in the room beyond, or within 2 of its middle. */
-static void mover(AiState *a, const Character *c, const void *env)
-{
-    if (!a->moving) return;
-    if (a->follow) memcpy(a->goal, a->follow->pos, sizeof a->goal);    /* AI2iPath_MakePath: type 2 */
-    if (env && graph_for(env)) make_path(a, c);
-    else a->path_n = 0;
-    /* AI2rPath_Update 0x4ae670: the door of the link out of the room (C+0x1144: the path's link, none in
-       the destination's room), opened as the action key opens it (OBJrDoor_CharacterOpen 0x4c2520) once
-       the character is within its activation distance */
-    if (a->path_k < a->path_n) {
-        int door = graph_link(a->path[a->path_k])->door;
-        const Chr *who = (const Chr *)((const char *)a - offsetof(Chr, ai));
-        if (door >= 0 && door_near(door, c->pos)) door_action_open(door, who);
-    }
-    while (a->path_k < a->path_n) {
-        const GraphLink *l = graph_link(a->path[a->path_k]);
-        float lx = l->mid[0] - c->pos[0], lz = l->mid[2] - c->pos[2];
-        if (graph_room_at(c->pos) == l->to || lx * lx + lz * lz < 4.0f) {
-            a->path_k++;
-            continue;
-        }
-        break;
-    }
-    int seg = a->path_k;
-    if (env && graph_for(env) && a->local_seg != seg && a->path_from >= 0 && a->path_to >= 0) make_local(a, c, env, seg);
-    const float *at = a->path_k < a->path_n ? graph_link(a->path[a->path_k])->mid : a->goal;
-    /* 0x4a95d0: the path's point is passed within 12 of it (a cell of kind 0), 8 (kind 1) or 3; the last
-       point of the last room's path within the goal's radius, if less, and at least 3 (0x529808). Not
-       kept: its flag +0x18c4, which makes it 3 for any point. */
-    while (a->local_k < a->local_n) {
-        const LocalPoint *w = &a->local[a->local_k];
-        float wx = w->p[0] - c->pos[0], wz = w->p[2] - c->pos[2];
-        float r = w->kind == 0 ? 12.0f : w->kind == 1 ? 8.0f : 3.0f;
-        if (a->local_k + 1 >= a->local_n && a->path_k >= a->path_n) {
-            if (a->goal_radius < r) r = a->goal_radius;
-            if (r <= 3.0f) r = 3.0f;
-        }
-        if (wx * wx + wz * wz <= r * r && a->local_k + 1 < a->local_n) {
-            a->local_k++;
-            continue;
-        }
-        at = w->p;
-        break;
-    }
-    bool last = a->path_k >= a->path_n;
-    float dx = (last ? a->goal[0] : at[0]) - c->pos[0], dz = (last ? a->goal[2] : at[2]) - c->pos[2];
-    if (last && dx * dx + dz * dz < a->goal_radius * a->goal_radius) {
-        if (a->follow) {
-            /* there, it waits for the character to move on (the path's goal stays) */
-            ai_executor_move(a, c->facing, AI_MODE_DEFAULT, AI_MOVE_NONE, false);
-            return;
-        }
-        a->moving = false;
-        a->path_made = false;
-        a->local_seg = -1;
-        ai_executor_move(a, a->goal_facing ? a->goal_angle : c->facing, AI_MODE_DEFAULT, AI_MOVE_NONE, false);
-        return;
-    }
-    dx = at[0] - c->pos[0], dz = at[2] - c->pos[2];
-    /* AI2iMovementState_Calculate_Movement 0x4aa250's turn: more than 80 degrees off the way (0x52af5c;
-       120 in the run modes, 0x52ade4), the character turns where it stands (move 4). Not ported: its 40
-       with obstacles near (0x52a8a0) and its test of the turning circle at the class's speed. */
-    float way = wrap_2pi(atan2f(dx, dz)), off = wrap_2pi(way - c->facing);
-    if (off > PI) off = TWO_PI - off;
-    int mode = a->movement_mode ? a->movement_mode : default_mode(a);
-    float limit = mode > 5 ? 2.0943952f : 1.3962634f;
-    ai_executor_move(a, way, AI_MODE_DEFAULT, off > limit ? AI_MOVE_NONE : AI_MOVE_FORWARD, false);
+    a->goal_facing = false;
+    path_given(a);
 }
 
 static uint32_t oncc_u32(const Character *c, unsigned off)
@@ -345,7 +238,17 @@ void ai_exit_state(AiState *a)
     if (a->state == AI_STATE_NEUTRAL) neutral_exit((Chr *)((char *)a - offsetof(Chr, ai)));
     if (a->state == AI_STATE_PANIC) panic_exit((Chr *)((char *)a - offsetof(Chr, ai)));
     if (a->state == AI_STATE_PURSUIT) pursuit_exit(a);
-    if (a->state == AI_STATE_ALARM) a->movement_mode = 0;     /* 0x48e7f0: the default movement mode */
+    if (a->state == AI_STATE_ALARM) {
+        a->movement_mode = 0;     /* 0x48e7f0: the default movement mode */
+        movement_new_mode((Chr *)((char *)a - offsetof(Chr, ai)));
+    }
+    if (a->state == AI_STATE_COMBAT) {
+        /* 0x490170: slowing again, the facing free, no modifiers */
+        a->no_slow = false;
+        a->facing_mode = 0;
+        a->nmod = 0;
+        a->move.counted = 0;
+    }
     /* the job's block (C+0x200) stays as it was: the port keeps its patrol */
     if (a->state == a->job && a->patrol >= 0) a->job_patrol = a->patrol, a->job_point = a->point;
     a->patrol = -1;
@@ -483,6 +386,10 @@ static bool combat_update(AiState *a, Character *c)
 static void state_update(AiState *a, Character *c, const void *env)
 {
     if (a->state == AI_STATE_COMBAT) {
+        /* AI2rCombat_Update 0x48ff14: the modifiers cleared (0x4a8370), no slowing in melee (0x49000c) */
+        a->nmod = 0;
+        a->move.counted = 0;
+        a->no_slow = a->combat.maneuver == 5;
         bool has_target = combat_update(a, c);
         if (a->state == AI_STATE_COMBAT) combat_tick(a, c, env, has_target);
     } else if (a->state == AI_STATE_ALARM) {
@@ -499,11 +406,20 @@ static void state_update(AiState *a, Character *c, const void *env)
     }
 }
 
+/* AI2rPath_Update 0x4ae670, then AI2rMovement_Update 0x4a8550's movement state (0x4a97b0) and the
+   executor's aim (AI2rExecutor_UpdateAim 0x498f50, combat.c) */
+static void movement_tick(AiState *a, Character *c, const void *env)
+{
+    Chr *ch = (Chr *)c;
+    a->ticks++;
+    movement_path_update(ch, env);
+    movement_update(ch);
+    combat_aim(a, c);
+}
+
 void ai_control_update(AiState *a, Character *c, const void *env)
 {
-    a->ticks++;
-    mover(a, c, env);
-    combat_aim(a, c);       /* the movement's look (ai2_lookatchar) */
+    movement_tick(a, c, env);
     ChrInput in;
     executor_update(a, c, &in);
     character_update_input(c, &in, env);
@@ -513,10 +429,28 @@ void ai_take_control(AiState *a, Character *c)
 {
     character_set_facing_offset(c, 0.0f);   /* 0x4f5be0 */
     c->flags |= CHR_FLAG_AI_MOVEMENT;
-    /* 0x4ae360 and 0x4a7ff0: the movement's state and path cleared, the default movement mode */
+    /* 0x4ae360: no path, arrived, the repaths and the collisions forgotten, the rooms and the local
+       path cleared */
     ai_halt(a);
-    a->movement_mode = 0;
+    a->arrived = a->turned = true;
+    a->repaths = a->check_delay = a->repath_timer = 0;
+    a->fail_set = false;
+    a->path_n = a->path_k = 0;
+    a->path_made = false;
+    a->local_n = a->local_k = 0;
+    a->local_seg = -1;
+    MoveState *m = &a->move;
+    m->ncoll = m->nconfirmed = m->narc = 0;
+    m->near_all = m->has_point = m->stuck = m->slowed = m->stop_arrive = m->stop_turn = false;
+    m->arrive_ticks = m->kind_ticks = 0;
+    m->room = m->prev_room = -1;
+    /* 0x4a7ff0: the facing free, no modifiers, look or glance, the default movement mode */
+    a->facing_mode = 0;
     a->aim.look = 0;
+    a->glance_ticks = a->glance_delay = 0;
+    a->no_slow = false;
+    a->movement_mode = 0;
+    movement_new_mode((Chr *)c);
 }
 
 void ai_update(AiState *a, Character *c, const void *env)
@@ -530,12 +464,7 @@ void ai_update(AiState *a, Character *c, const void *env)
         memcpy(a->job_pos, c->pos, sizeof a->job_pos);
     }
     chars_ai_scripts((Chr *)c);
-    /* AI2rMovement_Update 0x4a8550 without a path, in the facing mode 0 (A+0x1578): the executor is
-       given the character's own facing; the states may set another after (combat's look at its
-       target), and the path's way does while moving */
-    if (!a->moving) a->facing = a->goal_facing ? a->goal_angle : c->facing;   /* (arrived with one: mode 2) */
-    a->nmod = 0;
-    /* its glance: the delay first, then the ticks, a tick counted once the aim is done (A+0x1ab8,
+    /* AI2rMovement_Update 0x4a8550's glance: the delay first, then the ticks, a tick counted once the aim is done (A+0x1ab8,
        0x498e60) */
     if (a->glance_delay) a->glance_delay--;
     else if (a->glance_ticks && a->aim.done) a->glance_ticks--;
@@ -543,15 +472,12 @@ void ai_update(AiState *a, Character *c, const void *env)
     /* before the states (not passive): a neutral may start a conversation by itself */
     if (!(a->flags & AI_FLAG_PASSIVE) && !(c->flags & 1)) neutral_check((Chr *)c);
     if (a->flags & AI_FLAG_PASSIVE) ai_halt(a);     /* AI2rPassive 0x48b160: the state left, the path halted */
-    else if (a->patrol >= 0 && !(c->flags & 1)) patrol_update(a, c->pos, c->facing, a->name);
+    else if (a->patrol >= 0 && !(c->flags & 1)) patrol_update(a, c, env, a->name);
     else if (!(c->flags & 1)) {
         state_update(a, c, env);
         alarm_fight_tick(a, c);
     }
-    a->ticks++;
-    mover(a, c, env);
-    combat_aim(a, c);
-    apply_modifiers(a, c);
+    movement_tick(a, c, env);
     ChrInput in;
     executor_update(a, c, &in);
     character_update_input(c, &in, env);

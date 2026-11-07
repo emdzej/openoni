@@ -299,7 +299,7 @@ int main(void)
             d0 = sqrtf((fl.pos[0] - p->c.pos[0]) * (fl.pos[0] - p->c.pos[0]) + (fl.pos[2] - p->c.pos[2]) * (fl.pos[2] - p->c.pos[2]));
             for (int k = 0; k < 600; k++) {
                 CharacterInput in = { .forward = -1 };     /* back, held: ignored */
-                chars_update(&in, NULL);
+                chars_update(&in, env);
                 sl_update();
             }
             d1 = sqrtf((fl.pos[0] - p->c.pos[0]) * (fl.pos[0] - p->c.pos[0]) + (fl.pos[2] - p->c.pos[2]) * (fl.pos[2] - p->c.pos[2]));
@@ -314,7 +314,8 @@ int main(void)
     if (!sl_load_text("chars_del", script, err, sizeof err) || !sl_call("del", 0, NULL)) failed++;
     sl_update();
     printf("level1: after deletes=%d player=%d\n", count(), chars_player() != NULL);
-    if (count() != 5 || chars_player()) failed++;  /* Train_TD_1 twice, demo2 (a body stays: ONCC+0xc8a is 0), demo3, the dummy */
+    if (count() != 4 || chars_player()) failed++;  /* Train_TD_1 twice, demo3, the dummy: demo2's body, its corpse time
+                                                   (ONCC+0xc8a) 0, became a corpse once it settled (0x4dcf04) */
     chars_unload();
     tm_terminate();
     exe_free();

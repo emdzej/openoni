@@ -85,7 +85,7 @@ static void enter(AiState *a)
     a->alarm_goal[1] = m->pos[1];
     a->alarm_goal[2] = m->pos[2] - cosf(m->facing) * 5.0f;
     a->alarm_wait = 0;
-    a->movement_mode = AI_MODE_RUN;     /* AI2rMovement_ChangeMovementMode(6) */
+    ai_set_movement_mode(a, AI_MODE_RUN);     /* AI2rMovement_ChangeMovementMode(6) */
     a->aim.look = 0;                    /* AI2rMovement_StopAiming (the glance and facing too) */
     ai_move_near(a, a->alarm_goal, 5.0f, true, m->facing);  /* AI2rPath_GoToPoint */
 }
@@ -94,7 +94,7 @@ static void enter(AiState *a)
 static void leave(AiState *a)
 {
     ai_halt(a);
-    a->movement_mode = 0;
+    ai_set_movement_mode(a, 0);
 }
 
 bool alarm_setup(AiState *a, Character *c, int marker)

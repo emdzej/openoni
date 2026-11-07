@@ -1,12 +1,11 @@
 /* The AI (AI2, docs/re/port-plan.md step 9). So far its executor (AI2rExecutor_Update 0x498550): what
    the AI wants, a kind of move, a movement mode and a facing, made into the character's input, the
-   way the player's keys are. The movement layer (AI2rMovement) is a stand-in: it walks the global
-   path the rooms' graph gives (graph.h: from door to door, then to the point), straight between its
-   points, without the rooms' grids (the local paths). Notes:
-   docs/re/character.md, "The AI's executor". */
+   way the player's keys are; the movement layer before it is movement.h. Notes:
+   docs/re/character.md, "The AI's executor", and docs/re/ai.md. */
 #pragma once
 #include "targeting.h"
 #include "character.h"
+#include "movement.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -353,22 +352,45 @@ typedef struct {
     int glance_kind;
     float glance_at[3];
     bool glance_wait;
-    /* the movement's facing mode (C+0x1578: 0 free, 1 a fixed kind of move C+0x157c, AI_MOVE_*: the
-       body turned from the way it goes; AI2rMovement_FreeFacing 0x4a81c0 and 0x4a81a0) and this tick's
-       modifiers (C+0x14b0, at most 8: a direction and a weight each, AI2rMovement_MovementModifier
-       0x4a8250) */
+    /* the patrol's scan (+0x558 scanning, a point 0x11; +0x559 guarding, a point 0x13; +0x55a the
+       guard's scan begun; +0x55c its ticks left, 0 for good; +0x560 the scan itself) */
+    bool scanning, guarding, guard_begun, point_scan_set;
+    uint32_t scan_ticks;
+    AiScan scan;
+    /* the movement's facing mode (C+0x1578: 0 free, 1 a fixed kind of move move_kind, AI_MOVE_*: the
+       body turned from the way it goes, 2 a fixed facing face_at, 3 the arrival's facing face_at;
+       AI2rMovement_FreeFacing 0x4a81c0 and 0x4a81a0), the direction to keep away from (C+0x1574, 1000
+       none), no slowing down (C+0x14a8) and the modifiers (C+0x14b0, at most 8: a direction, a weight
+       and the weight left after the collisions, AI2rMovement_MovementModifier 0x4a8250) */
     int facing_mode;
     int move_kind;
+    float face_at;
+    float avoid;
+    bool no_slow;
     int nmod;
-    float mod_dir[8], mod_weight[8];
-    /* the stand-in mover */
-    bool moving;
+    float mod_dir[8], mod_weight[8], mod_left[8];
+    /* the path (C+0x10f0..): its type (0 none, 1 a point, 2 a character), the point's radius, whether
+       it stops there (+0x10f8) and its facing (goal_facing, goal_angle: +0x10fc, 1000 none) */
+    int path_type;
+    bool moving;            /* the path's type set and not arrived and turned (+0x112c clear) */
     float goal[3];
+    bool path_stop;
     bool goal_facing;
     float goal_angle;
-    float goal_radius;      /* arrived within this */
+    float goal_radius;      /* +0x10f4: arrived within this */
     const Character *follow;    /* +0x10f4 with the path's type 2 (+0x10f0): the character followed, its
                                    place the goal (AI2rPath_FollowCharacter 0x4ae580), NULL none */
+    bool arrived;           /* +0x112d: within the radius (or the last room's path done) */
+    bool turned, was_turned;    /* +0x112c, +0x112e: and the arrival's facing reached */
+    float last_goal[3];     /* +0x1130 */
+    float start_d2;         /* +0x1140: the distance to the point when it was given, squared */
+    bool path_pending;      /* given this tick: AI2rPath_GoToPoint's AI2iPath_MakePath, on the next update */
+    bool fail_set;          /* +0x14a0: the time of the last failure to make a path (none: -1) */
+    uint32_t fail_time;
+    uint32_t repaths;       /* +0x1498: the repaths lately */
+    uint32_t check_delay;   /* +0x1494: before the next check for a failure */
+    uint32_t repath_timer;  /* +0x149c: before a repath is forgotten */
+    MoveState move;         /* A+0x190 */
     /* the global path (AI2iPath_MakePath 0x4aeb10, graph.h): the links to cross, then the goal */
     int path[199];          /* +0x1174 (GRAPH_PATH_MAX) */
     int path_n, path_k;     /* the links, the next one */
@@ -411,15 +433,14 @@ void ai_combat_notify(AiState *a, const Character *c, struct KnowEntry *e, bool 
 /* 0x48af80 (with both flags, as the combat state calls it): back to the job, or idle when the alert is
    below the job's start level. */
 void ai_return_to_job(AiState *a);
-/* AI2rPath_Halt 0x4ae660: no path (+0x10f0) and the movement's state cleared (0x4a8440), so no move
-   goes to the executor (the port's mover would leave its last one: it is stopped too). */
+/* AI2rPath_Halt 0x4ae660: no path (+0x10f0) and the movement's modifiers cleared (0x4a8440). */
 void ai_halt(AiState *a);
 /* AI2rExecutor_Move 0x498b00. */
 void ai_executor_move(AiState *a, float facing, int mode, int kind, bool full_turn);
 /* AI2rMovement_MovementModifier 0x4a8250: move toward the direction this tick (false: 8 already). */
 bool ai_movement_modifier(AiState *a, float dir, float weight);
-/* One tick of a character the AI moves: the stand-in mover, then the executor, then the character's
-   update with the input it made. */
+/* One tick of a character the AI moves: its states, the path and the movement, then the executor,
+   then the character's update with the input it made. */
 void ai_update(AiState *a, Character *c, const void *env);
 /* The player under ai2_takecontrol: its AI's movement and executor only, no states (the player isn't
    an AI, C+0x1e8 0). */
@@ -427,12 +448,18 @@ void ai_control_update(AiState *a, Character *c, const void *env);
 /* ai2_takecontrol 1 (AI2iScript_TakeControl 0x4b8940): the run's turn undone, the movement flag, the
    movement and path reset (AI2rExecutor_Initialize). */
 void ai_take_control(AiState *a, Character *c);
-/* The stand-in mover: walk to a point (then face angle when face). */
+/* 0x4a8d00: the movement's mode by the alert level (a run for the player under the AI). */
+int ai_default_mode(const AiState *a, bool player);
+/* AI2rMovement_ChangeMovementMode 0x4a8200: the movement mode (0 by the alert level), and the weapon out
+   or not for it (movement_new_mode). */
+void ai_set_movement_mode(AiState *a, int mode);
+/* AI2rPath_GoToPoint 0x4ae480: a path to the point, arrived within the radius (at least 3), stopping
+   there (else the move goes on a while, for the next point to take over), then facing angle when face. */
+void ai_go_to(AiState *a, const float p[3], float radius, bool stop, bool face, float angle);
+/* The same, stopping: within 3 (ai_move_to) or the radius. */
 void ai_move_to(AiState *a, const float p[3], bool face, float angle);
-/* The same, arriving within radius (and not stopping there when through). */
 void ai_move_near(AiState *a, const float p[3], float radius, bool face, float angle);
-/* AI2rPath_FollowCharacter 0x4ae580: the path's goal is the character, wherever it goes (to within 12);
-   NULL halts. */
+/* AI2rPath_FollowCharacter 0x4ae580: the path's goal is the character, wherever it goes; NULL halts. */
 void ai_follow(AiState *a, const Character *who);
 /* The pursuit state (C+0x1f8 6, C+0x8c0 the contact), as the combat and alarm states enter it
    (AI2rExitState, then AI2rEnterState on C+0x8b8's block). */

@@ -288,6 +288,7 @@ void chr_bone_matrices(Character *c)
     BodyMatrix m[BODY_MAX_BONES];
     if (!chr_pose_matrices(c, m)) return;
     for (int b = 0; b < CHR_BONES; b++) memcpy(c->bone_world[b], m[b], sizeof c->bone_world[b]);
+    c->placed = false;
 }
 
 /* The class's particle list (ONCC +0x430, ONCP: the count at +0x14, entries of 0x58 from +0x18: the

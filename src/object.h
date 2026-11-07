@@ -43,6 +43,8 @@ int object_create(uint32_t from, uint32_t to);
 /* The objects there are. */
 int object_count(void);
 bool object_shown(int i);
+/* Its own shade (0x00rrggbb, obj_shade: the flag 0x8000), false if it has none. */
+bool object_shade(int i, uint32_t *shade);
 uint32_t object_id(int i);
 const char *object_name(int i);
 /* The object's geometry array (M3GA: count at 0x14, M3GM links from 0x18). */

@@ -40,6 +40,11 @@ extern void (*chr_knockdown_hook)(Character *c);
 /* AI2rTryToPathfindThrough 0x48b670, for a character the AI's movement drives (C+4 0x400000) pushed off
    another: whether its path goes through that one (chars.c). */
 extern bool (*chr_path_through_hook)(const Character *c, const Character *o);
+/* The AI's movement told of what a character it drives (C+4 0x400000) ran into (movement.h): kind 0 a
+   wall (id its quad), 1 a physics context (id its owner), 2 a character; the point hit and the plane
+   facing the character (chars.c). */
+enum { CHR_HIT_WALL, CHR_HIT_OBJECT, CHR_HIT_CHARACTER };
+extern void (*chr_movement_hit_hook)(Character *c, int kind, uintptr_t id, const float point[3], const float plane[4]);
 /* The player's cheat switches (ONrCheater 0x4f5c30, and the game's variables of 0x4fbf10): unstoppable
    (G 0x5ece91), invincible (0x5ece92), omnipotent (0x5ece93: the player's blows and throws deal at least
    the victim's hit points); unthrowable (0x5ece90) has no variable. All cleared at the level's start

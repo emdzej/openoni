@@ -191,7 +191,6 @@ Still to do:
 - the sky and fog from the level's scripts
 - environment maps and the brightness of the environment, which is darker than the original's look and
   isn't explained yet (the default gamma, 0.5, makes the exe's ramp the identity)
-- the original's character lighting, in place of the fixed light
 
 **Check:** `--param viewer=level&level=1` (fly-through) and `viewer=char&char=konoko` screenshots and
 hashes. Reference captures come from the original under Wine, kept outside the repo.

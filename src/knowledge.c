@@ -9,6 +9,7 @@
 #include "chr_hit.h"
 #include "exe.h"
 #include "graph.h"
+#include "movement.h"
 #include "pursuit.h"
 
 #include <math.h>
@@ -201,12 +202,13 @@ static bool upgrade_alert(Chr *c, int level, KnowEntry *e);
 bool knowledge_upgrade_alert(Chr *c, int level) { return upgrade_alert(c, level, NULL); }
 
 /* AI2rAlert_DowngradeStatus 0x48f180: the alert set lower (in combat only if forced); under low the
-   time it rose (C+0xf90) is forgotten. (The movement's notification isn't kept.) */
+   time it rose (C+0xf90) is forgotten; the movement hears of it (AI2rMovement_NotifyAlertChange 0x4a8230). */
 void knowledge_downgrade_alert(Chr *c, int level, bool force)
 {
     AiState *a = &c->ai;
     if ((!force && a->state == AI_STATE_COMBAT) || a->alert == level) return;
     a->alert = level;
+    movement_alert_change(c);
     if (level < 2) a->alert_time = 0;
 }
 
@@ -216,6 +218,7 @@ static bool upgrade_alert(Chr *c, int level, KnowEntry *e)
     bool startled = false;
     if (level != a->alert) {
         a->alert = level;
+        movement_alert_change(c);   /* 0x4a8230 */
         if (level > 1 && !a->alert_time) a->alert_time = e ? e->posted : now;
         if (!(oncc_u32(c, 0x120) & 1) && a->alert >= 3 && e && e->hostility != 3 && !(!e->raised && e->highest > 3) &&
             (!a->alert_time || e->posted <= a->alert_time + 60)) {

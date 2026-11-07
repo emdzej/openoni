@@ -199,8 +199,8 @@ static const void *remap(Character *c, const void *next)
 }
 
 /* The victim at the thrower's hands: the thrower's place plus the throw's offset turned by its facing
-   (MUrPoint_RotateYAxis 0x433010). The original moves it there through the physics (0x4e9330, the
-   walls in the way); the port places it. */
+   (MUrPoint_RotateYAxis 0x433010), moved there through the physics (0x4e9330): against a wall it stays
+   on this side. */
 static void hold_victim(Character *c, Character *t)
 {
     const uint8_t *th = throw_block(c->anim);
@@ -208,7 +208,7 @@ static void hold_victim(Character *c, Character *t)
     float o[3] = { rdf(th), rdf(th + 4), rdf(th + 8) };
     float co = cosf(c->facing), si = sinf(c->facing);
     float p[3] = { c->pos[0] + co * o[0] + si * o[2], c->pos[1] + o[1], c->pos[2] - si * o[0] + co * o[2] };
-    physics_place(t, p);
+    physics_move_to(t, p);
 }
 
 /* NewAnimationHook 0x4e97a0, a throw (TRAM flag 15): the victim, alive, in fight mode if the throw is,

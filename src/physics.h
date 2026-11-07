@@ -16,6 +16,9 @@ bool physics_ctx(Character *c, PhysCtx *out);
 void physics_start(Character *c);
 /* 0x4e9210: the character put at pos, the physics' position and the old one with it. */
 void physics_place(Character *c, const float pos[3]);
+/* 0x4e9330: the character moved to `to` through the physics (the walls and the others in the way),
+   then placed there (0x4e9210). */
+void physics_move_to(Character *c, const float to[3]);
 /* 0x4e5ff0 and 0x4dc160, step 19 of DoCharacterFrame: the body box (C+0x190, C+0x1658) from the pose,
    then the sphere tree. */
 void physics_body(Character *c);

@@ -159,6 +159,11 @@ static bool intersects(const Volume *v, const TriggerActor *a)
     return segment_hits(v, a->pos, top);
 }
 
+bool trigger_segment(int i, const float a[3], const float b[3])
+{
+    return i >= 0 && i < nvols && segment_hits(&vols[i], a, b);
+}
+
 bool trigger_contains(int i, const float pos[3])
 {
     if (i < 0 || i >= nvols) return false;

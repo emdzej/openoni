@@ -1,7 +1,9 @@
 /* Patrol paths and the patrol: see patrol.h. */
 #include "patrol.h"
 
+#include "movement.h"
 #include "objc.h"
+#include "pursuit.h"
 #include "sl.h"
 
 #include <stdio.h>
@@ -108,6 +110,8 @@ void patrol_start(AiState *a, int path)
     a->wait = 0;
     a->script = 0;
     a->glance_wait = false;
+    a->scanning = a->guarding = a->guard_begun = a->point_scan_set = false;
+    a->scan_ticks = 0;
 }
 
 static bool flag_at(uint16_t id, float pos[3], float *facing)
@@ -121,9 +125,10 @@ static bool flag_at(uint16_t id, float pos[3], float *facing)
 
 /* AI2iPatrol_DoWaypoint 0x4b0650 starts a waypoint; AI2rPatrol_Update 0x4afc90 sees it done. Returns
    whether the waypoint is done (the next one starts at once). */
-static bool do_point(AiState *a, const PatrolPoint *w, const float pos[3], const char *who)
+static bool do_point(AiState *a, const Character *c, const PatrolPoint *w, const char *who)
 {
     float p[3], face;
+    const float *pos = c->pos;
     bool start = !a->point_started;
     a->point_started = true;
     switch (w->type) {
@@ -144,21 +149,40 @@ static bool do_point(AiState *a, const PatrolPoint *w, const float pos[3], const
     case 6:     /* loop */
         a->point = -1;
         return true;
-    case 7:     /* the movement mode */
-        a->mode = (int)w->n;
+    case 3:     /* look at the flag (AI2rMovement_LookAtPoint) */
+        if (!flag_at(w->a, p, &face)) return true;
+        a->aim.look = 1;
+        memcpy(a->aim.look_at, p, sizeof a->aim.look_at);
+        return true;
+    case 4:     /* look at the point */
+        a->aim.look = 1;
+        memcpy(a->aim.look_at, w->f, sizeof a->aim.look_at);
+        return true;
+    case 7:     /* the movement mode (AI2rMovement_ChangeMovementMode) */
+        ai_set_movement_mode(a, (int)w->n);
+        return true;
+    case 9:     /* the facing locked to a kind of move (0x4a81a0) */
+        a->facing_mode = 1;
+        a->move_kind = (int)w->n;
+        return true;
+    case 0xc:   /* AI2rMovement_StopAiming */
+        a->aim.look = 0;
+        return true;
+    case 0xd:   /* AI2rMovement_FreeFacing */
+        a->facing_mode = 0;
         return true;
     case 8:     /* move to the point */
         if (start) ai_move_to(a, w->f, false, 0.0f);
         return !a->moving;
-    case 10:    /* move through the flag: on within the distance */
+    case 10:    /* move through the flag: on within the distance, not stopping */
     case 0xf:   /* move near the flag */
         if (start) {
             if (!flag_at(w->a, p, &face)) return true;
-            ai_move_near(a, p, w->f[0] > 0.0f ? w->f[0] : 4.0f, false, 0.0f);
+            ai_go_to(a, p, w->f[0], w->type == 0xf, false, 0.0f);
         }
         return !a->moving;
     case 0xb:   /* move through the point */
-        if (start) ai_move_near(a, w->f, w->f[3] > 0.0f ? w->f[3] : 4.0f, false, 0.0f);
+        if (start) ai_go_to(a, w->f, w->f[3], false, false, 0.0f);
         return !a->moving;
     case 0xe:   /* glance at the flag for the ticks (AI2rPatrol_Update 0x4afc90) */
         if (start) {
@@ -187,20 +211,45 @@ static bool do_point(AiState *a, const PatrolPoint *w, const float pos[3], const
         a->point = to - 1;
         return true;
     }
-    case 0x11:  /* scan for frames: the scan's turn isn't ported */
-        if (start) a->wait = w->a;
-        if (a->wait) a->wait--;
-        return a->wait == 0;
-    case 0x13:  /* move to the flag, face its way and wait (0 frames: for good) */
+    case 0x11:  /* scan for the frames: the guard's scan all round, held (10000), swept within the angle every
+                   60 to 100 ticks; done when its ticks run out (patrol_update) */
+        if (!a->scanning && !a->point_scan_set) {
+            if (a->glance_ticks) return false;      /* (C+0x1598: a glance under way first) */
+            ai_scan_set(&a->scan, c->facing);
+            a->scanning = true;
+            a->guarding = false;
+            a->point_scan_set = true;
+            a->scan_ticks = w->a;
+            a->scan.center = 1000.0f;
+            a->scan.hold_base = 10000, a->scan.hold_rand = 0;
+            a->scan.sweep_base = 60, a->scan.sweep_rand = 40;
+            a->scan.sweep_range = w->f[0] * 0.017453292f;
+        }
+        return !a->scanning;
+    case 0x13:  /* guard: to the flag, facing its way; there, the guard's scan within the angle of that
+                   facing (a look held 240 to 480 ticks, swept by up to 45 degrees every 90 to 150) for
+                   the frames (0: for good; patrol_update ends it) */
         if (start) {
+            a->guard_begun = a->guarding = false;
+            a->scan_ticks = 0;
             if (!flag_at(w->a, p, &face)) return true;
             ai_move_to(a, p, true, face);
-            a->wait = w->b;
         }
-        if (a->moving) return false;
-        if (!w->b) return false;
-        if (a->wait) a->wait--;
-        return a->wait == 0;
+        if (!a->arrived) return false;
+        if (!a->guard_begun) {
+            ai_scan_set(&a->scan, c->facing);
+            a->scanning = false;
+            a->guarding = a->guard_begun = true;
+            a->scan_ticks = w->b;
+            a->scan.on = true;
+            a->scan.face = a->facing_mode == 3 ? a->face_at : c->facing;
+            float r = w->f[0] * 0.017453292f;
+            a->scan.range = r < 0.0f ? 0.0f : r > 3.14159265f ? 3.14159265f : r;
+            a->scan.hold_base = 240, a->scan.hold_rand = 240;
+            a->scan.sweep_base = 90, a->scan.sweep_rand = 60;
+            a->scan.sweep_range = 0.7853982f;
+        }
+        return !a->guarding;
     case 0x14:  /* run patrolscript%04d */
     case 0x15: {    /* the same, waited for: the thread kept at +0x5ac */
         if (start) {
@@ -215,19 +264,25 @@ static bool do_point(AiState *a, const PatrolPoint *w, const float pos[3], const
     case 0x16:  /* ignore the player */
         a->ignore_player = w->n != 0;
         return true;
-    default:    /* looking, facing locks: not ported */
+    default:    /* the scan's turn: not ported */
         (void)pos;
         return true;
     }
 }
 
-void patrol_update(AiState *a, const float pos[3], float facing, const char *who)
+void patrol_update(AiState *a, const Character *c, const void *env, const char *who)
 {
-    (void)facing;
     /* AI2rPatrol_Update 0x4afc90: nothing more while the script of a point of type 0x15 runs */
     if (a->script) {
         if (sl_running(a->script)) return;
         a->script = 0;
+    }
+    /* a scan's or a guard's ticks out: the look stopped (AI2rMovement_StopAiming), the next point */
+    if (a->scan_ticks && --a->scan_ticks == 0 && (a->scanning || a->guarding)) {
+        a->scanning = a->guarding = false;
+        a->aim.look = 0;
+        a->point++;
+        a->point_started = a->point_scan_set = false;
     }
     /* the points done at once go on until one takes time, or the way comes back to the point it
        started from ("patrol %s is looping endlessly"): then on the next tick. A loop to a later point
@@ -240,9 +295,15 @@ void patrol_update(AiState *a, const float pos[3], float facing, const char *who
             a->patrol = -1;     /* past the last waypoint: the patrol ends */
             return;
         }
-        if (!do_point(a, &pa->p[a->point], pos, who)) return;
+        if (!do_point(a, c, &pa->p[a->point], who)) {
+            /* the scan of the point under way: a scan point looks the way the character goes (0x4a83e0), then
+               AI2rGuard_UpdateScan */
+            if (a->scanning) ai_scan_follow(a, &a->scan, movement_direction((const struct Chr *)c));
+            if (a->scanning || a->guarding) ai_scan_update(a, &a->scan, c, env);
+            return;
+        }
         a->point++;
-        a->point_started = false;
+        a->point_started = a->point_scan_set = false;
         if (a->point == first) return;
     }
 }

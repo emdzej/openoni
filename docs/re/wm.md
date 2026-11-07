@@ -368,11 +368,11 @@ code into one):
 |---|---|---|---|
 | CharacterPolygonCount 0x5083f0 | 1500, 2200, 3000, 3400, 4000 | the characters' levels of detail (0x4e2900) | `chr_lod.c` |
 | RayCastCount 0x508440 | 1, 1, 1, 1, 2 | `AKrEnvironment_StartFrame` 0x4430f0 (the visibility's rays) | not ported (no environment visibility) |
-| NumDirectionalLights 0x508490 | 1, 1, 2, 2, 2 | `ONrGameState_SetupDefaultLighting` 0x4f4a30 | not ported (no lights) |
+| NumDirectionalLights 0x508490 | 1, 1, 2, 2, 2 | `ONrGameState_SetupDefaultLighting` 0x4f4a30 | `render/geom_draw.c` ([lighting.md](lighting.md)) |
 | RayCount 0x5084e0 | 16, 18, 20, 20, 20 | `AKrLevel_Begin` 0x43ffe0 (0x442f50) | not ported (no environment visibility) |
 | 0x508530: q >= 2 | trilinear, high-quality textures | the OpenGL texture upload 0x40cf40 | `gl_dev.c` |
-| 0x508540: q >= 1 | shadows, reflection maps, cosmetic corpses | `ONiCharacter_Display_Body` 0x4e1d70, `M3rGeometry_Draw` 0x41a750 (a geometry's +0x90 map), the corpses (0x4e1540: those named "_..."), 0x405410 | the shadows; no reflection pass nor corpses |
-| 0x508550: q >= 3 | high-quality corpses | 0x4e1540 | no corpses |
+| 0x508540: q >= 1 | shadows, reflection maps, cosmetic corpses | `ONiCharacter_Display_Body` 0x4e1d70, `M3rGeometry_Draw` 0x41a750 (a geometry's +0x90 map), the corpses (0x4e1540: those named "_..."), 0x405410 | the shadows, the reflection pass (`render/geom_draw.c`), the corpses |
+| 0x508550: q >= 3 | high-quality corpses | 0x4e1540 | `render/char_draw.c` |
 | 0x508560: q >= 4 | never the lowest detail, hardware Bink | 0x4e1d70 | `chr_lod.c` |
 
 `ONiMotoko_Quality_Set` also sets the particles' detail (`P3rChangeDetail` 0x4580b0 with 0 for a

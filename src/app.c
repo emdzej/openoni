@@ -182,7 +182,11 @@ static void draw_objects(void)
         if (!object_shown(i)) continue;
         float m[12];
         object_matrix(i, m);
+        uint32_t shade;
+        bool shaded = object_shade(i, &shade);
+        if (shaded) geom_set_shade(shade);
         for (uint32_t k = 0; k < object_geometry_count(i); k++) geom_draw(object_geometry(i, k), m, NULL);
+        if (shaded) geom_default_lighting();
     }
     /* the consoles' screens (0x4c0c80) */
     for (int i = 0; i < console_count(); i++) {
@@ -303,6 +307,7 @@ static int level_viewer(int level)
             view_matrix(view, eye, yaw, pitch);
             gl_dev_begin(w, h, 0.0f, 0.0f, 0.0f);
             gl_dev_matrices(proj, view);
+            geom_set_eye(eye);
             env_draw();
             draw_objects();
             for (int i = 0; i < n_view_chars; i++)
@@ -1161,9 +1166,10 @@ static void route_input(const Character *c, CharacterInput *in)
         in->crouch = route.crouch;
         /* forward only while the body itself faces the point (it moves the way it faces); "R" runs as
            "r" but starts off up to 1.3 away: standing in fight mode the body turns on the spot only past
-           70 degrees (HandleStandingTurn), and turns as it goes */
+           70 degrees (HandleStandingTurn), and turns as it goes; so does a sprint in fight mode */
         float off = fabsf(wrap_pi(atan2f(dx, dz) - c->facing));
-        if (off > (mode == 'R' || mode == 'P' ? 1.3f : 0.6f)) return;
+        bool loose = mode == 'R' || mode == 'P' || (mode == 's' && (c->varient & 0x200));
+        if (off > (loose ? 1.3f : 0.6f)) return;
         if (mode == 's' && route.phase < 3) {
             /* the double tap: down, up, down (within 15 ticks), then held */
             in->forward = route.phase != 1;
@@ -1481,14 +1487,16 @@ static void game_display(void)
     if (display.ticks) fog_step(display.ticks);
     gl_dev_begin(w, h, 0.0f, 0.0f, 0.0f);
     gl_dev_matrices(proj, view);
-    env_draw();
-    draw_objects();
-    char_shadows_clear();
-    /* 0x4e1540: the characters in the camera's view, their levels of detail (0x4e2900), then drawn */
     LodCamera lc = { .fov = 0.785398f, .far = far_clip };
     CameraView cv;
     if (camera_view(&cv)) memcpy(lc.pos, cv.location, sizeof lc.pos), memcpy(lc.view, cv.view, sizeof lc.view);
     else if (display.ct) memcpy(lc.pos, display.ct->pos, sizeof lc.pos), lc.view[2] = 1.0f;
+    geom_set_eye(lc.pos);
+    env_draw();
+    draw_objects();
+    char_shadows_clear();
+    char_draw_corpses();
+    /* 0x4e1540: the characters in the camera's view, their levels of detail (0x4e2900), then drawn */
     Character *seen[CHARS_MAX];
     int slot_of[CHARS_MAX], nseen = 0;
     for (int i = 0; i < chars_slots(); i++) {

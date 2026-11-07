@@ -13,6 +13,8 @@ void char_draw_pose(const void *oncc, const float pos[3], float facing, float he
 /* A Character (character.h) in its blended pose: the quaternions of ONrCharacter_BuildQuaternions
    0x4e5360 and the pelvis height C+0x18c. */
 void char_draw_character(const Character *c, int slot);
+/* The level's corpses (corpse.h). */
+void char_draw_corpses(void);
 /* The characters' display 0x4e1540: the characters' shadows taken down before they are drawn again. */
 void char_shadows_clear(void);
 /* The class's first animation of a type in its collection (TRAC, then the collections it falls back

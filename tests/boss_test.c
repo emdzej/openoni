@@ -149,7 +149,11 @@ int main(void)
         knowledge_update(env);
         chars_update(&(CharacterInput){ 0 }, env);
         /* she keeps away (he waits 300 ticks after entering his thunderbolt behaviour before the first) */
-        if (k % 30 == 0) physics_place(&p->c, away);
+        if (k % 30 == 0) {
+            /* (250 from where he is now: he advances on her) */
+            const float aw[3] = { m->c.pos[0] + 250.0f * sinf(f0), away[1], m->c.pos[2] + 250.0f * cosf(f0) };
+            physics_place(&p->c, aw);
+        }
         if (m->c.super_level > 0.65f && full_at < 0) full_at = k;
         if (m->c.type == 0xe7 && bolt_at < 0) bolt_at = k;
         if (bolt_at >= 0 && m->c.super_level < 0.1f) dropped_at = k;

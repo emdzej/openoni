@@ -427,6 +427,12 @@ static void state(unsigned tex, int mode)
         glDepthMask(GL_FALSE);
         glUniform1f(u.alpha_ref, 0.0f);
         break;
+    case GL_DEV_REFLECT:
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_ONE, GL_SRC_ALPHA);
+        glDepthMask(GL_TRUE);
+        glUniform1f(u.alpha_ref, -1.0f);
+        break;
     default:
         glDisable(GL_BLEND);
         glDepthMask(GL_TRUE);

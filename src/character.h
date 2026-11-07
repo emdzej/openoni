@@ -180,6 +180,8 @@ typedef struct Character {
     float fall_height;              /* A+0xf0: where the ground went (for the landing's damage) */
     uint16_t jumped;                /* A+0xf4: 1 for a jump, 0 for a fall */
     uint16_t air_ticks;             /* A+0xf6: 0 on the ground */
+    uint16_t settled_ticks;         /* A+0x2830: dying, still on the ground */
+    uint16_t dying_ticks;           /* A+0x2832 */
     float air_velocity[3];          /* A+0xf8, per tick, in the character's space */
     /* the teleport (the super ninja's behaviours, boss.c): set (A+0x178), the point (A+0x17c) and the
        facing (A+0x188) that the animation 0xdf (a teleport's second half) puts the character at */
@@ -197,6 +199,8 @@ typedef struct Character {
         uint16_t bone;
     } anim_particle[16];            /* A+0x1ca8, 0x10 each */
     float bone_world[19][12];       /* A+0x2278 (0x30 each): the bones' matrices the particles hang from */
+    bool placed;                    /* put somewhere (0x4e9210) since the bones' last matrices: the location
+                                       (C+0x160) is the position, y + 0.5 */
     float jump_velocity[3];         /* A+0x104: the motion as the jump was asked for */
     bool jump_given;                /* A+0x110 */
     uint16_t jump_delay;            /* A+0x112 (nothing in v1.0 sets it) */
@@ -259,6 +263,9 @@ enum { CHR_FRAME_PICKUP, CHR_FRAME_FIRE };
 /* DoCharacterFrame 0x4df571: at the animation's action frame (TRAM +0x174), after the pickup's, an AI's
    combat behaviour hears of it (message 11, chars.c). */
 extern void (*character_action_frame_hook)(Character *c);
+/* HandleStartSidestep 0x4f83f0's 0x4a93c0: a character the AI drives sidestepped with a turned run
+   (walking or not): its movement moves sideways no more in that mode (chars.c). */
+extern void (*character_sidestep_hook)(Character *c, bool walk);
 extern bool (*character_pickup_hook)(Character *c, const ChrInput *in);
 extern void (*character_weapon_input_hook)(Character *c, const ChrInput *in);
 extern void (*character_frame_hook)(Character *c, int step);

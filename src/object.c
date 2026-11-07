@@ -25,8 +25,7 @@ typedef struct {
     ObanPlayer anim;
     bool shown;
     uint16_t flags;             /* +0x12: 0x8 always drawn (obj_force_draw), 0x8000 its own shade */
-    uint32_t shade;             /* +0x20: the shade OBiDraw lights it with (the port's draw has no lights
-                                   yet, so neither is applied) */
+    uint32_t shade;             /* +0x20: the shade OBiDraw lights it with */
     /* its physics context (+0x18): the flags (+0x128), the sphere (centre the position) and the box */
     uint32_t ctx_flags;
     float sphere[4];
@@ -130,6 +129,13 @@ int object_create(uint32_t from, uint32_t to)
 
 int object_count(void) { return nobjs; }
 bool object_shown(int i) { return i >= 0 && i < nobjs && objs[i].shown; }
+
+bool object_shade(int i, uint32_t *shade)
+{
+    if (i < 0 || i >= nobjs || !(objs[i].flags & 0x8000)) return false;
+    *shade = objs[i].shade;
+    return true;
+}
 uint32_t object_id(int i) { return i >= 0 && i < nobjs ? rd32(objs[i].setup + OBOA_ID) : 0; }
 const char *object_name(int i) { return i >= 0 && i < nobjs ? (const char *)objs[i].setup + OBOA_NAME : ""; }
 

@@ -45,6 +45,7 @@ static uint16_t knockdown_fallback(uint16_t t)
 static bool down_type(uint16_t t);
 void (*chr_knockdown_hook)(Character *c);
 bool (*chr_path_through_hook)(const Character *c, const Character *o);
+void (*chr_movement_hit_hook)(Character *c, int kind, uintptr_t id, const float point[3], const float plane[4]);
 
 void chr_knockdown(Character *c, uint16_t type)
 {
@@ -444,8 +445,8 @@ static uint32_t landed(const Character *a, const Spheres *sb, const uint32_t *to
    that heads into it, along the line between them on the ground (MUrVector_PushBack 0x433da0: only a
    move toward it, the move's dot with the line below 0); not closer than 1 apart. A+0xb4 counts the
    pushes; for one the AI moves, a character its path goes through sets A+0xb6, and the AI's movement
-   hears of the collision (AI2rMovementState_NotifyCharacterCollision 0x4ab920: the mover is a stand-in, not
-   ported). */
+   hears of any other (0x4ab920): the point half a unit from its pelvis toward the other, the plane
+   through it facing it. */
 static void push_off(Character *c, const Character *o)
 {
     if (!c->has_physics) return;
@@ -458,7 +459,14 @@ static void push_off(Character *c, const Character *o)
     if (dot < 0.0f)
         for (int k = 0; k < 3; k++) c->move[k] -= dot * u[k];
     c->pushes++;
-    if ((c->flags & 0x400000u) && chr_path_through_hook && chr_path_through_hook(c, o)) c->blocked_by_char = true;
+    if (!(c->flags & 0x400000u)) return;
+    if (chr_path_through_hook && chr_path_through_hook(c, o)) {
+        c->blocked_by_char = true;
+    } else if (chr_movement_hit_hook) {
+        float pt[3] = { c->pos[0] - u[0] * 0.5f, c->pos[1] + c->pelvis_height - u[1] * 0.5f, c->pos[2] - u[2] * 0.5f };
+        float plane[4] = { u[0], u[1], u[2], -(u[0] * pt[0] + u[1] * pt[1] + u[2] * pt[2]) };
+        chr_movement_hit_hook(c, CHR_HIT_CHARACTER, (uintptr_t)o, pt, plane);
+    }
 }
 
 /* iCollideTwoLikelyCharacters 0x4e73e0. A thrower and the one it throws (A+0x1ed8) don't touch. */
