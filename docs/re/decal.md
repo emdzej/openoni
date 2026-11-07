@@ -182,8 +182,8 @@ particle is killed (0x456c70). The block is then added to the tail of its list.
 `P3iDisplayDecals` (0x453760) runs for the static list, then the dynamic one, from 0x4fb480 after the
 characters and objects and before the particles, with depth writes off:
 
-- It skips decals whose quad isn't visible (the environment's vis vector, 2 bits a quad; **not
-  ported**).
+- It skips a decal whose quad (+4, 0xffffffff none) the visibility hasn't marked (the environment's
+  vis vector, 2 bits a quad: [visibility.md](visibility.md)).
 - The quad's alpha is AGQR's second u16 for a see-through quad (flag 0x20), else 0xff.
 - The draw (M3rDecal_Draw) is read from the Mac build's `MSrGeomContext_Method_Decal_Draw`:
   - the alpha is decal × quad × 2 >> 8, at most 0xff;

@@ -7,5 +7,7 @@ bool env_draw_load(const void *env);
 void env_draw_unload(void);
 /* Solid quads, then the transparent ones (blended, no depth write). */
 void env_draw(void);
+/* The same, of the quads the visibility marks (akev_vis.h); the game's draw. */
+void env_draw_visible(void);
 /* The environment loaded (NULL none). */
 const void *env_draw_environment(void);

@@ -3,6 +3,7 @@
    the AI's targeting (targeting.h) at the nearest character of its target teams, its shooters'
    particles fired as the targeting says. Notes: docs/re/turret.md. */
 #pragma once
+#include "akev_vis.h"
 #include "targeting.h"
 
 #include <stdbool.h>
@@ -31,6 +32,7 @@ typedef struct {
     uint16_t retarget;          /* +0x158 */
     uint32_t active_ticks;      /* +0x15c */
     uint32_t hidden_ticks;      /* +0x160 */
+    VisList leaves;             /* +0x3a4: the leaves round its head, found at its first draw */
     uint32_t particle[TURRET_SHOOTERS];     /* +0x168 (their handles, +0x1a8) */
     AiTargeting t;              /* +0x268 (its +8, +0x270, the target) */
 } Turret;

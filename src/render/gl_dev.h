@@ -19,6 +19,7 @@ enum {
     GL_DEV_SCREEN_ADD,      /* the same, added to what is there */
     GL_DEV_REFLECT,         /* as opaque, what is there kept as much as the source's alpha (GL_ONE,
                                GL_SRC_ALPHA): a texture over its reflection map (0x405b90's mode 8) */
+    GL_DEV_SKY,             /* no depth test or write, no blending: the sky, behind all that follows */
 };
 
 bool gl_dev_init(void);
@@ -49,6 +50,8 @@ void gl_dev_forget_textures(void);
 /* A static mesh: vertices and triangle indices kept on the GPU. Returns an id > 0, 0 on failure. */
 unsigned gl_dev_mesh(const GlVertex *v, uint32_t nv, const uint32_t *idx, uint32_t ni);
 void gl_dev_mesh_free(unsigned mesh);
+/* The mesh's indices replaced (as many as ni). */
+void gl_dev_mesh_indices(unsigned mesh, const uint32_t *idx, uint32_t ni);
 /* Draws count indices from first of a static mesh. */
 void gl_dev_draw_mesh(unsigned mesh, uint32_t first, uint32_t count, unsigned tex, int mode);
 /* Draws triangles from client memory (streamed). */

@@ -2,6 +2,7 @@
 #include "env_draw.h"
 
 #include "akev.h"
+#include "akev_vis.h"
 #include "gl_dev.h"
 #include "im.h"
 #include "txmp.h"
@@ -22,6 +23,16 @@ const void *env_draw_environment(void) { return loaded_env; }
 static uint32_t loaded_serial;
 static Range *ranges;
 static uint32_t n_ranges, n_solid;
+/* For the visibility's draw: each range's quads in order (the quad, its first index, its count), the
+   static indices, and the frame's. */
+typedef struct { uint32_t quad, first, count; } Drawn;
+static Drawn *drawn;
+static uint32_t n_drawn, n_quads;
+static uint32_t *static_idx, *frame_idx;
+static uint32_t *range_drawn;       /* each range's first entry of drawn */
+static Range *frame_ranges;
+static uint8_t *allowed;
+static bool replaced;           /* the mesh holds a frame's indices */
 
 /* A solid quad's texture with an alpha channel is drawn with the alpha test. */
 static int solid_mode(const void *txmp)
@@ -39,6 +50,10 @@ void env_draw_unload(void)
     free(ranges);
     ranges = NULL;
     n_ranges = n_solid = 0;
+    free(drawn), free(static_idx), free(frame_idx), free(range_drawn), free(frame_ranges), free(allowed);
+    drawn = NULL, static_idx = frame_idx = range_drawn = NULL, frame_ranges = NULL, allowed = NULL;
+    n_drawn = n_quads = 0;
+    replaced = false;
 }
 
 bool env_draw_load(const void *env)
@@ -70,7 +85,9 @@ bool env_draw_load(const void *env)
     GlVertex *v = malloc(sizeof *v * 4 * (n ? n : 1));
     uint32_t *idx = malloc(sizeof *idx * 6 * (n ? n : 1)), nv = 0, ni = 0;
     ranges = malloc(sizeof *ranges * (n ? n : 1));
-    if (!v || !idx || !ranges) return free(order), free(q), free(v), free(idx), false;
+    drawn = malloc(sizeof *drawn * (n ? n : 1));
+    range_drawn = malloc(sizeof *range_drawn * (n + 1));
+    if (!v || !idx || !ranges || !drawn || !range_drawn) return free(order), free(q), free(v), free(idx), false;
     for (uint32_t k = 0; k < n; k++) {
         const AkevQuad *e = &q[order[k]];
         bool transparent = e->flags & AKEV_QUAD_TRANSPARENT;
@@ -78,9 +95,11 @@ bool env_draw_load(const void *env)
         unsigned tex = gl_dev_texture(txmp);
         int mode = transparent ? GL_DEV_BLEND : solid_mode(txmp);
         if (!n_ranges || ranges[n_ranges - 1].tex != tex || ranges[n_ranges - 1].mode != mode) {
+            range_drawn[n_ranges] = n_drawn;
             ranges[n_ranges++] = (Range){ tex, ni, 0, mode };
             if (!transparent) n_solid = n_ranges;
         }
+        drawn[n_drawn++] = (Drawn){ order[k], ni, e->corners == 4 ? 6u : 3u };
         for (uint32_t c = 0; c < e->corners; c++) {
             const uint8_t *p = pts + 12 * e->point[c], *t = uv + 8 * e->texcoord[c];
             GlVertex *o = &v[nv + c];
@@ -94,14 +113,53 @@ bool env_draw_load(const void *env)
         ranges[n_ranges - 1].count += e->corners == 4 ? 6 : 3;
         nv += e->corners;
     }
+    range_drawn[n_ranges] = n_drawn;
     mesh = gl_dev_mesh(v, nv, idx, ni);
-    free(order), free(q), free(v), free(idx);
-    return mesh != 0;
+    n_quads = nq;
+    static_idx = idx;
+    frame_idx = malloc(sizeof *frame_idx * (ni ? ni : 1));
+    frame_ranges = malloc(sizeof *frame_ranges * (n_ranges ? n_ranges : 1));
+    allowed = calloc(1, nq ? nq : 1);
+    free(order), free(q), free(v);
+    return mesh != 0 && frame_idx && frame_ranges && allowed;
 }
 
 void env_draw(void)
 {
     /* the quads' flags changed (env_show): the mesh again, once a frame at most */
     if (loaded_env && loaded_serial != akev_flags_serial()) env_draw_load(loaded_env);
+    if (replaced) gl_dev_mesh_indices(mesh, static_idx, ranges && n_ranges ? ranges[n_ranges - 1].first + ranges[n_ranges - 1].count : 0), replaced = false;
     for (uint32_t r = 0; r < n_ranges; r++) gl_dev_draw_mesh(mesh, ranges[r].first, ranges[r].count, ranges[r].tex, ranges[r].mode);
+}
+
+/* AKiEnvironment_ComputeVis 0x444030: the quads the visibility rays have marked, the first 0x2000 of them
+   by their index (the rest left out: "Exceeded max visible GQs"), in the ranges' order (by texture, the
+   solid ones first). */
+void env_draw_visible(void)
+{
+    if (loaded_env && loaded_serial != akev_flags_serial()) env_draw_load(loaded_env);
+    vis_env_drawn();
+    if (!mesh || !allowed) return;
+    memset(allowed, 0, n_quads);
+    for (uint32_t k = 0; k < n_drawn; k++) allowed[drawn[k].quad] = 1;
+    for (uint32_t i = 0, kept = 0; i < n_quads; i++) {
+        if (!allowed[i]) continue;
+        if (vis_quad(i) && kept < 0x2000) kept++;
+        else allowed[i] = 0;
+    }
+    uint32_t ni = 0;
+    for (uint32_t r = 0; r < n_ranges; r++) {
+        frame_ranges[r] = ranges[r];
+        frame_ranges[r].first = ni;
+        for (uint32_t k = range_drawn[r]; k < range_drawn[r + 1]; k++) {
+            if (!allowed[drawn[k].quad]) continue;
+            memcpy(frame_idx + ni, static_idx + drawn[k].first, drawn[k].count * sizeof *frame_idx);
+            ni += drawn[k].count;
+        }
+        frame_ranges[r].count = ni - frame_ranges[r].first;
+    }
+    gl_dev_mesh_indices(mesh, frame_idx, ni);
+    replaced = true;
+    for (uint32_t r = 0; r < n_ranges; r++)
+        if (frame_ranges[r].count) gl_dev_draw_mesh(mesh, frame_ranges[r].first, frame_ranges[r].count, frame_ranges[r].tex, frame_ranges[r].mode);
 }

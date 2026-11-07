@@ -176,7 +176,7 @@ void char_draw_corpses(void)
     int q = persist_quality();
     for (int i = 0; i < corpse_count(); i++) {
         const Corpse *k = corpse_get(i);
-        if (!k || !k->oncc || (k->name[0] == '_' && q < 1)) continue;
+        if (!k || !k->oncc || (k->name[0] == '_' && q < 1) || !corpse_visible(i)) continue;
         const void *body = body_of_class(k->oncc, q >= 3 ? 1 : 0);
         if (!body || body_bones(body) > CHR_BONES) continue;
         for (uint32_t b = 0; b < body_bones(body); b++) geom_draw(body_geometry(body, b), k->m[b], body_texture(k->oncc, b));

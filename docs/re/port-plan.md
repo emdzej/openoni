@@ -187,8 +187,6 @@ the player.
 
 Still to do:
 
-- visibility (the octree)
-- the sky and fog from the level's scripts
 - environment maps and the brightness of the environment, which is darker than the original's look and
   isn't explained yet (the default gamma, 0.5, makes the exe's ramp the identity)
 

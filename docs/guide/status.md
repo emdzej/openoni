@@ -185,6 +185,9 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - **The lighting** of the characters, weapons and objects: the game's ambient and its directional
   lights, one or two by the graphics quality, and the reflection maps on the shiny surfaces. The dead
   stay where they fell, as corpses, and so do the bodies each level sets into its scenes.
+- **What is seen**: rays from the camera through the level find the walls, floors and things in view,
+  and only those are drawn, as the original's are, with its pop-in. The sky shows when a ray gets
+  out: the level's skybox round the camera, afternoon, sunset or night.
 - **Sound** from the game's own sound groups: the music, the dialog and speech, the impacts, and the
   particles' sounds (the gunshots, the rockets' roar, the level's hissing steam and sparks), placed
   where they play and following the particles that carry them, and the level's own sound places: the
@@ -196,8 +199,8 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 
 ## Not yet
 
-- Of the graphics quality: the environment's visibility rays (the octree's visible nodes: the corpses
-  and the characters are drawn without them).
+- The environment's brightness: it is darker than the original's look, which isn't explained yet.
+- Debug and developer features: the console variables, the developer keys' tools.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked
 against the original.

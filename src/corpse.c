@@ -82,7 +82,6 @@ void corpse_add(const Character *c)
     k->oncc = c->oncc;
     memcpy(k->m, c->bone_world, sizeof k->m);
     body_box(c, k->box);
-    /* (0x440900: the octree's nodes the box is in, for the visibility the port doesn't have) */
     if (++next >= cap) next = nstatic;
 }
 
@@ -97,3 +96,11 @@ void corpse_clear_volume(int volume)
 
 int corpse_count(void) { return (int)cap; }
 const Corpse *corpse_get(int i) { return i >= 0 && (uint32_t)i < cap ? &corpses[i] : NULL; }
+
+bool corpse_visible(int i)
+{
+    Corpse *k = (Corpse *)corpse_get(i);
+    if (!k) return false;
+    if (!k->listed) vis_list(k->box, VIS_LIST_MAX, &k->leaves), k->listed = true;
+    return vis_list_visible(&k->leaves);
+}

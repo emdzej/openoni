@@ -3,6 +3,7 @@
    many as fit (+0x14 in all, 20), the AI characters' dead bodies, the oldest replaced
    (ONrGameState_UpdateCharacters 0x4dcf1c, 0x4ef340). Drawn by 0x4e1540 (render/char_draw.c). */
 #pragma once
+#include "akev_vis.h"
 #include "character.h"
 
 #include <stdbool.h>
@@ -15,6 +16,8 @@ typedef struct {
     const void *oncc;           /* +0xa0: none, an empty slot */
     float m[CHR_BONES][12];     /* +0xa4: the parts' matrices (A+0x2278's) */
     float box[6];               /* +0x434: min xyz, max xyz (C+0x1648) */
+    VisList leaves;             /* +0x20: the leaves the box is in (0x440900; found at its first draw) */
+    bool listed;
 } Corpse;
 
 /* 0x4d9d50 (ONrCharacter_LevelBegin 0x4d87b0): the level's corpses read, the characters' slots
@@ -26,3 +29,5 @@ void corpse_add(const Character *c);
 void corpse_clear_volume(int volume);
 int corpse_count(void);
 const Corpse *corpse_get(int i);
+/* 0x440b50 on the corpse's leaves: one of them visible. */
+bool corpse_visible(int i);

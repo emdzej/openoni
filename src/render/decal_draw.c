@@ -3,6 +3,7 @@
 
 #include "akev.h"
 #include "decal.h"
+#include "akev_vis.h"
 #include "gl_dev.h"
 
 #include <stdint.h>
@@ -14,11 +15,12 @@ typedef struct { const void *env; } Ctx;
 /* P3iDisplayDecals 0x453760's decal (M3rDecal_Draw, its method in the Mac build's
    MSrGeomContext_Method_Decal_Draw): the quad's alpha (a see-through quad's, AGQR's second half; else
    0xff) times the decal's, twice over (at most 0xff); each vertex its shade times the tint. Blended,
-   without writing the depth (0x41e720 state 4 off around both lists). The quads' visibility (the
-   environment's vis vector) is not ported: every decal is drawn. */
+   without writing the depth (0x41e720 state 4 off around both lists). A decal on a quad the visibility
+   hasn't marked (AKrEnvironment_GetVisVector 0x444010) is left out. */
 static void one(const DecalDraw *d, void *user)
 {
     const Ctx *x = user;
+    if (d->quad >= 0 && !vis_quad((uint32_t)d->quad)) return;
     uint32_t qa = 0xff;
     if (d->quad >= 0) {
         uint32_t nq, nr;

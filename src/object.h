@@ -43,6 +43,8 @@ int object_create(uint32_t from, uint32_t to);
 /* The objects there are. */
 int object_count(void);
 bool object_shown(int i);
+/* obj_force_draw's flag (+0x12 0x8): drawn whatever the visibility. */
+bool object_forced(int i);
 /* Its own shade (0x00rrggbb, obj_shade: the flag 0x8000), false if it has none. */
 bool object_shade(int i, uint32_t *shade);
 uint32_t object_id(int i);

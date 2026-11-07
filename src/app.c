@@ -6,6 +6,7 @@
 #include "akev.h"
 #include "bink.h"
 #include "akev_collide.h"
+#include "akev_vis.h"
 #include "body.h"
 #include "camera.h"
 #include "cheat.h"
@@ -32,6 +33,7 @@
 #include "save.h"
 #include "laser_draw.h"
 #include "env_draw.h"
+#include "sky_draw.h"
 #include "decal_draw.h"
 #include "exe.h"
 #include "geom_draw.h"
@@ -40,6 +42,7 @@
 #include "im.h"
 #include "localpath.h"
 #include "objc.h"
+#include "m3gm.h"
 #include "material.h"
 #include "particle.h"
 #include "particle_draw.h"
@@ -176,12 +179,66 @@ static bool add_char(const ObjcObject *o, void *user)
 
 /* The level's objects, each geometry of its array under its matrix (OBiDraw 0x438fb0, without its
    visibility test yet). */
+/* The box round a geometry's bounds under m, in the world (none: false). */
+static bool world_box(const void *g, const float m[12], float box[6])
+{
+    float b[6], sph[4];
+    if (!g || !m3gm_bounds(g, b, sph)) return false;
+    for (int k = 0; k < 8; k++) {
+        float p[3] = { (k & 1) ? b[3] : b[0], (k & 2) ? b[4] : b[1], (k & 4) ? b[5] : b[2] }, w[3];
+        for (int r = 0; r < 3; r++) w[r] = m[r] * p[0] + m[3 + r] * p[1] + m[6 + r] * p[2] + m[9 + r];
+        for (int r = 0; r < 3; r++) {
+            if (!k || w[r] < box[r]) box[r] = w[r];
+            if (!k || w[r] > box[3 + r]) box[3 + r] = w[r];
+        }
+    }
+    return true;
+}
+
+/* 0x440900 then 0x440b50: one of the leaves of the box (up to max - 1, more stand for any) visible. */
+static bool box_visible(const float box[6], uint32_t max)
+{
+    VisList l = { 0 };
+    vis_list(box, max, &l);
+    return vis_list_visible(&l);
+}
+
+/* OBiIsVisible 0x439160: forced (obj_force_draw), or one of the leaves of its box visible within the
+   last 6 frames (its frames unseen, +0x1c). (Its far and view-cone tests, 0x529d9c, 0x529d90, are left
+   to the GL's clipping.) */
+static uint32_t *object_unseen;
+static int n_object_unseen;
+static bool object_visible(int i, const float m[12])
+{
+    if (object_forced(i)) return true;
+    if (i >= n_object_unseen) {
+        uint32_t *n = realloc(object_unseen, sizeof *n * (size_t)(i + 64));
+        if (!n) return true;
+        memset(n + n_object_unseen, 0, sizeof *n * (size_t)(i + 64 - n_object_unseen));
+        object_unseen = n, n_object_unseen = i + 64;
+    }
+    float box[6] = { 0 }, b[6];
+    bool any = false;
+    for (uint32_t k = 0; k < object_geometry_count(i); k++)
+        if (world_box(object_geometry(i, k), m, b)) {
+            for (int r = 0; r < 3; r++) {
+                if (!any || b[r] < box[r]) box[r] = b[r];
+                if (!any || b[3 + r] > box[3 + r]) box[3 + r] = b[3 + r];
+            }
+            any = true;
+        }
+    if (any && box_visible(box, VIS_LIST_MAX)) object_unseen[i] = 0;
+    else object_unseen[i]++;
+    return object_unseen[i] < 6;
+}
+
 static void draw_objects(void)
 {
     for (int i = 0; i < object_count(); i++) {
         if (!object_shown(i)) continue;
         float m[12];
         object_matrix(i, m);
+        if (!object_visible(i, m)) continue;
         uint32_t shade;
         bool shaded = object_shade(i, &shade);
         if (shaded) geom_set_shade(shade);
@@ -207,9 +264,11 @@ static void draw_objects(void)
         const Weapon *w = weapon_get(i);
         if (!w) continue;
         if (!w->owner) {
-            float m[12], gp[3], gs[2];
+            float m[12], gp[3], gs[2], box[6];
             const void *gt[2];
             uint8_t a = weapon_world_matrix(w, m), ga;
+            /* WPrDisplay 0x519710: one in the world drawn while a leaf of its box (0x10 at most) is visible */
+            if (world_box(weapon_geometry(w), m, box) && !box_visible(box, 0x10)) continue;
             if (weapon_glow(w, m, a, gt, gp, gs, &ga))
                 for (int k = 0; k < 2; k++) sprite_draw_flat(gt[k], gp, m, gs[0], gs[1], ga, p3_tick());
             if (a < 0xff) geom_draw_alpha(weapon_geometry(w), m, NULL, a);
@@ -220,8 +279,10 @@ static void draw_objects(void)
     /* the powerups (0x51c2b0: the glow lying under each, then its geometry turned by its facing) */
     for (int i = 0; i < powerup_count(); i++) {
         const Powerup *p = powerup_get(i);
-        float m[12];
+        float m[12], box[6];
         powerup_matrix(p, m);
+        /* 0x51c2b0: while a leaf of its box (0xc at most) is visible */
+        if (world_box(p->geometry, m, box) && !box_visible(box, 0xc)) continue;
         float gp[3];
         if (powerup_glow(p, gp)) sprite_draw_flat(p->glow, gp, m, p->glow_size[0], p->glow_size[1], 0x55, p3_tick());
         if (p->geometry) geom_draw(p->geometry, m, NULL);
@@ -1486,6 +1547,17 @@ static void movie_play_in_game(const char *name)
     movie_close(&mv);
 }
 
+/* A link of the level's ONLV (the loaded level's file). */
+static const void *level_link(unsigned at)
+{
+    TmFile *f = tm_file_at(tm_file_slots() - 1);
+    for (uint32_t i = 0; f && i < tm_file_instance_count(f); i++) {
+        const TmInstance *in = tm_file_instance(f, i);
+        if (in->tmpl->tag == TM_TAG("ONLV") && in->data) return tm_link(in->data + at);
+    }
+    return NULL;
+}
+
 /* One level, until it ends (*next: the level to load then, 0 none) or the player quits (Esc). */
 /* ONiGameState_Display_Reflectable 0x4fb480: the level, its characters, particles and lasers, the HUD and
    the screen's layer; also the WM's dialogs' draw callback (WMrDialog_SetDrawCallback, set at the level's
@@ -1517,7 +1589,24 @@ static void game_display(void)
     if (camera_view(&cv)) memcpy(lc.pos, cv.location, sizeof lc.pos), memcpy(lc.view, cv.view, sizeof lc.view);
     else if (display.ct) memcpy(lc.pos, display.ct->pos, sizeof lc.pos), lc.view[2] = 1.0f;
     geom_set_eye(lc.pos);
-    env_draw();
+    /* 0x4430f0: the visibility rays from the camera (its location, view and up, and the frustum's corners
+       as 0x41b5c0 unprojects them: the near plane's then the far's, top left, top right, bottom left,
+       bottom right), then the sky if one got out, then the environment's marked quads (0x444030) */
+    VisCamera vc;
+    float right[3] = { view[0], view[4], view[8] }, up[3] = { view[1], view[5], view[9] };
+    float fwd[3] = { -view[2], -view[6], -view[10] }, eye[3];
+    for (int k = 0; k < 3; k++) eye[k] = -(view[4 * k] * view[12] + view[4 * k + 1] * view[13] + view[4 * k + 2] * view[14]);
+    memcpy(vc.location, eye, sizeof eye), memcpy(vc.view, fwd, sizeof fwd), memcpy(vc.up, up, sizeof up);
+    float aspect = h ? (float)w / (float)h : 1.0f, t = tanf(0.785398f * 0.5f);
+    for (int p = 0; p < 2; p++) {
+        float d = p ? far_clip : near, hh = d * t, hw = hh * aspect;
+        for (int c = 0; c < 4; c++) {
+            float sy = c < 2 ? hh : -hh, sx = (c & 1) ? hw : -hw;
+            for (int k = 0; k < 3; k++) vc.corners[4 * p + c][k] = eye[k] + fwd[k] * d + up[k] * sy + right[k] * sx;
+        }
+    }
+    if (vis_update(&vc)) sky_draw(eye, right, up);
+    env_draw_visible();
     draw_objects();
     char_shadows_clear();
     char_draw_corpses();
@@ -1657,6 +1746,10 @@ static int play(int level, int *next)
     fill_target(&ct, &player->c);
     camera_set_target(&ct);
     camera_reset();
+    /* AKrEnvironment_LevelBegin 0x43ffe0's visibility, then ONrLevel_Load's sky (ONrSky_LevelBegin 0x5105a0,
+       the level's ONLV +0x54) after the camera's reset */
+    vis_level_begin(env);
+    sky_level_begin(level_link(0x54), far_clip);
     uint32_t ticks = 0;     /* the game time (ONrGameState's +0x144), ticks since the level began */
     ui_reset();
     igui_level_load(level);     /* ONiInGameUI_LevelLoad 0x503eb0 */

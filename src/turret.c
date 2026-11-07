@@ -478,9 +478,19 @@ const void *turret_geometry(int i, int k, float m[12])
 {
     Turret *t = turret_get(i);
     if (!t || !show_turrets || k < 0 || k > 1) return NULL;
-    t->flags |= TURRET_DRAWN;       /* (the original only when its box is in view, 0x440b50) */
     float h[12];
     multiply(t->base, t->head, h);
+    /* OBJiTurret_Draw: drawn (and marked so) while one of the leaves 8 each way of its head is visible
+       (0x440900 once, while it has none, then 0x440b50) */
+    if (!t->leaves.count) {
+        float box[6] = { h[9] - 8.0f, h[10] - 8.0f, h[11] - 8.0f, h[9] + 8.0f, h[10] + 8.0f, h[11] + 8.0f };
+        vis_list(box, VIS_LIST_MAX, &t->leaves);
+    }
+    if (!vis_list_visible(&t->leaves)) {
+        t->flags &= (uint16_t)~TURRET_DRAWN;
+        return NULL;
+    }
+    t->flags |= TURRET_DRAWN;
     if (k == 0) {
         memcpy(m, h, sizeof h);
         return tm_link(t->cls + T_HEAD_GEOM);

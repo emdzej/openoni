@@ -44,6 +44,8 @@
 004115f0	MSrGeomContext_Method_Geometry_PolyDraw	MS	med	name from the Intel Mac build (neighbours:1.00)
 004118b0	MSrGeomContext_Method_Sprite_Draw	MS	med	name from the Intel Mac build (strings:1)
 00412d00	MSrGeomContext_Method_PointTestVisibleScale	MS	med	name from the Intel Mac build (neighbours:1.00)
+00412e60	MSrGeomContext_Method_Skybox_Create	MS	med	Mac name: five textures, a cube 5 each way of the eye; docs/re/visibility.md
+00412fc0	MSrGeomContext_Method_Skybox_Draw	MS	med	Mac name: each textured face, clipped
 004135c0	MSiGeomEngine_SetAmbient	MS	low	the ambient light (context +0x60) (port name)
 004135e0	MSiGeomEngine_SetDirectionalLights	MS	low	up to 4 lights; the length over x, y, x: z never read (port name)
 00416510	MSrClip_Triangle	MS	med	name from the Intel Mac build (neighbours:1.00)
@@ -71,6 +73,8 @@
 0041b360	M3rCamera_GetActive	M3	med	name from the Intel Mac build (strings:1)
 0041b460	M3rCamera_GetStaticData	M3	med	name from the Intel Mac build (neighbours:1.00)
 0041b4a0	M3rCamera_GetViewData	M3	med	name from the Intel Mac build (neighbours:1.00)
+0041b500	M3rCamera_GetFrustum	M3	low	the 8 corners and 6 planes copied out (name made up)
+0041b5c0	M3rCamera_UpdateFrustum	M3	low	the frustum's corners unprojected (+0x270) and planes (+0x210) (name made up)
 0041baa0	M3rMatrixStack_Push	M3	med	name from the Intel Mac build (strings:1)
 0041bb20	M3rMatrixStack_Get	M3	med	name from the Intel Mac build (neighbours:1.00)
 0041bb30	M3rMatrixStack_Pop	M3	med	name from the Intel Mac build (neighbours:1.00)
@@ -140,6 +144,7 @@
 004243d0	UUrBitVector_FindFirstSetRange	UU	med	name from the Intel Mac build (neighbours:1.00)
 004244c0	UUrBitVector_ClearBitAll	UU	med	name from the Intel Mac build (neighbours:1.00)
 004244e0	UUr2BitVector_Allocate	-	med	name from the Intel Mac build (neighbours:1.00)
+00424530	UUrBytes_Map	UU	low	each byte through the 256-byte table at 0x532260 (the marks' ageing) (name made up)
 004245a0	UUrError_Report_Internal	UU	med	name from the Intel Mac build (neighbours:0.91)
 00424670	UUrError_ReportP_Internal	UU	med	name from the Intel Mac build (neighbours:1.00)
 004247f0	UUrDebuggerMessage	UU	med	name from the Intel Mac build (neighbours:0.92)
@@ -342,6 +347,14 @@
 00440170	AKrInitialize	AK	med	name from the Intel Mac build (neighbours:1.00)
 00440340	AKrEnvironment_TemplateHandler	AK	med	name from the Intel Mac build (neighbours:0.80)
 00440600	AKrNodeFromPoint	AK	med	the BNV holding a point: the octree leaf's BNVs, their BSPs, stairs first; docs/re/pathfinding.md
+00440900	AKrEnvironment_NodeList_Get	AK	med	Mac name: the octree leaves a box overlaps, up to max - 1 (more: 0xffffffff); docs/re/visibility.md
+004409c0	AKrEnvironment_NodeList_Get_Recursive	AK	med	Mac name: a node's cube halved into its eight
+00440b50	AKrEnvironment_NodeList_Visible	AK	med	Mac name: a listed leaf marked (0xffffffff: always)
+00440bb0	AKrEnvironment_IsBoundingBoxMinMaxVisible	AK	med	Mac name: 0x440c20 from the root cube
+00440c20	AKrEnvironment_IsBoundingBoxMinMaxVisible_Recursive	AK	med	Mac name: a marked leaf under the node overlapping the box
+00440dc0	AKrEnvironment_PointIsVisible	AK	med	Mac name: the leaf holding the point marked
+00440e20	AKrEnvironment_DrawIfVisible_Point	AK	med	Mac name
+00440ea0	AKrEnvironment_DrawIfVisible	AK	med	Mac name: the geometry's box visible, then drawn
 00440f30	AKrCollision_LevelBegin	AK	med	name from the Intel Mac build (neighbours:1.00)
 004410a0	AKrLineOfSight	AK	med	name from the Intel Mac build (neighbours:1.00)
 00441190	AKrCollision_InitializeSpatialCache	AK	med	name from the Intel Mac build (neighbours:1.00)
@@ -1475,6 +1488,7 @@
 0050fba0	ONrScript_Initialize	ON	med	name from the Intel Mac build (strings:3)
 00510160	ONrScript_Schedule	ON	med	name from the Intel Mac build (neighbours:0.75)
 00510220	ONrSky_Initialize	ON	med	name from the Intel Mac build (strings:3)
+005105a0	ONrSky_LevelBegin	ON	med	Mac name: the ONSK's planets (and stars, none in the game's skies)
 00511160	ONrSky_Draw	ON	med	name from the Intel Mac build (neighbours:0.86)
 00511320	ONrSky_DrawLensFlare	ON	med	name from the Intel Mac build (neighbours:0.80)
 00511670	OSrAmbient_GetByName	OS	med	name from the Intel Mac build (neighbours:1.00)

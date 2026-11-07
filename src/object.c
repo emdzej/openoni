@@ -129,6 +129,7 @@ int object_create(uint32_t from, uint32_t to)
 
 int object_count(void) { return nobjs; }
 bool object_shown(int i) { return i >= 0 && i < nobjs && objs[i].shown; }
+bool object_forced(int i) { return i >= 0 && i < nobjs && (objs[i].flags & 0x8); }
 
 bool object_shade(int i, uint32_t *shade)
 {

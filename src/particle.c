@@ -11,6 +11,7 @@
 
 #include "akev.h"
 #include "akev_collide.h"
+#include "akev_vis.h"
 #include "body.h"
 #include "chars.h"
 #include "chr_hit.h"
@@ -3200,7 +3201,8 @@ void p3_each_flare(const float eye[3], const float fwd[3], float near, uint32_t 
             float v[3];
             for (int k = 0; k < 3; k++) v[k] = d.pos[k] - fwd[k] * dist - from[k];
             static AkevHit hit[AKEV_HITS_MAX];
-            bool seen = !env || !akev_collide_point(env, from, v, 0x420a0, 0, hit);
+            /* seen: in a leaf the visibility marks (0x440dc0), then the line to it clear (0x41a900) */
+            bool seen = vis_point(d.pos) && (!env || !akev_collide_point(env, from, v, 0x420a0, 0, hit));
             uint32_t *st = (flags1(c) & 0x400000) ? (uint32_t *)block(c, p, P3_X_LENSFLARE) : NULL;
             if (st) {
                 int a8 = (int)lrintf(d.alpha * 255.0f);

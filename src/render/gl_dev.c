@@ -401,6 +401,15 @@ unsigned gl_dev_mesh(const GlVertex *v, uint32_t nv, const uint32_t *idx, uint32
     return 0;
 }
 
+void gl_dev_mesh_indices(unsigned m, const uint32_t *idx, uint32_t ni)
+{
+    if (dry || !m || m >= MAX_MESHES || !meshes[m].vao) return;
+    glBindVertexArray(meshes[m].vao);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, meshes[m].ibo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)(ni * sizeof *idx), ni ? (const void *)idx : NULL, GL_DYNAMIC_DRAW);
+    glBindVertexArray(0);
+}
+
 void gl_dev_mesh_free(unsigned m)
 {
     if (!m || m >= MAX_MESHES || !meshes[m].vao) return;
@@ -414,7 +423,7 @@ static void state(unsigned tex, int mode)
 {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex ? tex : white);
-    if (mode == GL_DEV_SCREEN || mode == GL_DEV_SCREEN_ADD) glDisable(GL_DEPTH_TEST);
+    if (mode == GL_DEV_SCREEN || mode == GL_DEV_SCREEN_ADD || mode == GL_DEV_SKY) glDisable(GL_DEPTH_TEST);
     else glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
     switch (mode) {
@@ -431,6 +440,11 @@ static void state(unsigned tex, int mode)
         glEnable(GL_BLEND);
         glBlendFunc(GL_ONE, GL_SRC_ALPHA);
         glDepthMask(GL_TRUE);
+        glUniform1f(u.alpha_ref, -1.0f);
+        break;
+    case GL_DEV_SKY:
+        glDisable(GL_BLEND);
+        glDepthMask(GL_FALSE);
         glUniform1f(u.alpha_ref, -1.0f);
         break;
     default:
