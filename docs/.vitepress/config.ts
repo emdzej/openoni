@@ -52,6 +52,7 @@ export default defineConfig({
           { text: "What OpenOni is", link: "/guide/" },
           { text: "Getting the game files", link: "/guide/game-data" },
           { text: "Status", link: "/guide/status" },
+          { text: "How Oni works", link: "/guide/theory" },
         ],
       },
       {
