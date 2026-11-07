@@ -232,8 +232,8 @@ and sphere tree (0x4dc160), the move slid along the walls (`OBiPhysics_Update` 0
 character's environment search 0x4ebd70), and the floor (the ground callback 0x4eca00,
 `FindGroundCollision` 0x4ec040: the step up, the landing and its damage, the fall after 12 ticks without
 ground). `physics_test` stands Konoko on the training room's floor, runs her into a wall and drops her
-40 onto the floor. Stand-ins left: each character's physics runs right after its frame (not after all
-of them), characters don't push each other (0x4ecb40). The ground probe of step 9 is the original's
+40 onto the floor. Since then the physics runs after all
+the characters' frames (`OBiPhysics_Update`) and the characters push each other off (0x4e8c50). The ground probe of step 9 is the original's
 `AKrCollision_Point` (`akev_collide_point`, the segment walked through the octree's leaves).
 
 ## 7. BSL scripting and level logic
@@ -261,7 +261,7 @@ Progress:
   that may pass, and closes it when nobody is. Open hides the gunk and plays the panels; once closed they
   go and the gunk is back. Commands: `door_open`, `door_close`, `door_lock`, `door_unlock`, `door_jam`,
   `door_unjam`. `tests/door_test.c`: Konoko walks through door 18, and the locked door 11 opens after
-  `door_unlock`. Not yet: the panels' physics, keys.
+  `door_unlock`. The panels' physics and the rest since: [door.md](door.md) "The port".
 - `src/console.c`, `src/event.c`, `src/action.c`: consoles, event lists and the action key
   ([console.md](console.md)). `tests/console_test.c`: Konoko uses the training's console 10. The script
   trace (`--param sltrace=1`) logs script calls, messages and dialogue with the frame number.
@@ -283,10 +283,10 @@ Progress:
   (the swap key, the pickup animation's action frame), the hand's variant, the weapon on the fist's
   node, the trigger, the shooters and their pulses (ammo, delays, the recoil overlay), dropping. The
   overlays (`chr_anim.c`: four slots, blended into the drawn pose). The shooters' particles are
-  stand-ins until the particle system: they take the events and emit nothing.
+  on the particle system since (`src/particle.c`).
 - Throws (`src/throw.c`, docs/re/character.md "Throws"): the player's throw moves become throws of the
   enemy in front (`RemapAnimationHook` 0x4ea550, `AttemptThrow` 0x4eaa10), the victim's part as the
-  throw starts, the victim held and its own damage. The AI's throws are next.
+  throw starts, the victim held and its own damage. The AI's throws followed (`src/melee.c`).
 
 ## 8. Combat systems
 
@@ -319,27 +319,27 @@ The order to port it, each step with a test on level 1:
 
 1. **The executor and movement**: facing, moving to a point (`AI2rExecutor_Move`), the input it
    gives the character (the block at A+0x2158). Test: an AI walks to a flag. *Executor done* (`src/ai.c`,
-   `tests/ai_test.c`); the movement layer is a stand-in.
+   `tests/ai_test.c`); the movement layer since (`src/movement.c`).
 2. **Idle and patrol**: `AI2rIdle_Update`, `AI2rPatrol_Update` with the level's patrol paths
    (`CJBOPatrol Path`). The scripts' `ai2_dopath`, `ai2_setjobstate`. Test: a warehouse thug walks
    its path. *Patrol done* (`src/patrol.c`, `tests/patrol_test.c`): the paths, the patrol jobs the
-   characters start with, `ai2_dopath`, the waypoints' moves, waits, loops, modes and scripts, over
-   the stand-in mover; looking, glancing, scanning's turn and the facing locks are not ported, nor
-   idle or `ai2_setjobstate`.
+   characters start with, `ai2_dopath`, the waypoints' moves, waits, loops, modes and scripts, now
+   on the movement layer, with the glances, the scans and the facing locks.
 3. **Knowledge**: sight and hearing (`AI2rKnowledge_*`, 0x49a6e0), the alarm (`AI2rAlarm_*`), the
    `ai2_makeignoreplayer`, `ai2_passive` and alert commands. Test: a thug notices Konoko. *Sight,
    hurts and the alert done* (`src/knowledge.c`, `tests/knowledge_test.c`, notes in
    [ai.md](ai.md)): contacts, their order and forgetting, the sight cones and lines, hurts, the teams,
    the calm and pursuit handlers raising the alert, startles, the move to pursuit and combat (stand-in
-   states until steps 5 and the pursuit's port), `ai2_passive`. Not yet: sounds, the alarm, the
-   other commands.
+   states until steps 5 and the pursuit's port), `ai2_passive`; the sounds and the alarm (`src/alarm.c`)
+   since.
 4. **Pathfinding** on the BNV graph (the level's `AKVA` volumes and their connections). *Global
    path done* (`src/graph.c`, `tests/graph_test.c`, notes in [pathfinding.md](pathfinding.md)): the
    graph (`PHrBuildGraph`), the blockages from the rooms' grids (`PHiCheckForBlockages`), the room under
    a point (`AKrNodeFromPoint`), the rooms' A* (0x50bdb0) and `AI2iPath_MakePath`'s reuse; the AI's
    mover walks it room by room, each room by its local path through the grid (`src/localpath.c`:
-   `ASrPath_Generate`, `ASiList_CalcWaypoints`). Next: the movement state's steering
-   (`AI2iMovementState_Calculate_Movement`); the doors on the links; the grids' run-time obstacles.
+   `ASrPath_Generate`, `ASiList_CalcWaypoints`). The movement state's steering and the doors
+   on the links followed (`src/movement.c`). Still stand-ins: the grids' run-time obstacle layer
+   (`PHrPrepareRoomForPath` 0x50d660) and the rest listed in [pathfinding.md](pathfinding.md).
 5. **Combat and melee**: `AI2rCombat_Update`, the melee profiles (`CJBOMelee Profile`),
    `AI2rMelee_Update` 0x4a01f0 and its technique weighting 0x4a2580, blocking
    (`AI2rBlockFunction`). Test: a thug fights Konoko. *Begun* (`src/melee.c`, `tests/melee_test.c`,
@@ -348,8 +348,9 @@ The order to port it, each step with a test on level 1:
    cookie, blocking by chance and difficulty; the attack prediction the weighting uses
    (`src/chr_intersect.c`, `tests/intersect_test.c`). The profile in memory as the original builds it
    (`PrepareForUse`, `MoveIsValid`, the transitions), the weighting, the update, the maneuvers and the
-   positions run on it; the characters push each other off (0x4e8c50). Not yet: throws, the movement's
-   collisions (`AI2iMovementState_MakeCollision`), `AI2rCombat_Update`'s ranges.
+   positions run on it; the characters push each other off (0x4e8c50). The throws, the movement's
+   collisions (`AI2iMovementState_MakeCollision`) and `AI2rCombat_Update`'s ranges followed (`src/melee.c`,
+   `src/movement.c`, `src/combat.c`).
 6. **Neutral characters and panic**.
 
 ## 10. Audio and movies

@@ -136,6 +136,9 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - **The main menu**: the game starts on Oni's own menu (New Game, Load Game, Options, Quit; Escape in a
   level brings it back over the level, with Resume), its dialogs built by the game's window manager from
   its data.
+- **The controls** are the game's own: `key_config.txt` (written with Oni's defaults when there is
+  none, or the one in the game folder) binds the keys and the mouse to the actions, with the second key
+  set (P L ; ' and the rest) and any rebinding a player writes in it.
 - **Options**: the volume, the difficulty, the subtitles (shown under the dialogue) and the inverted
   mouse, with the game's own sliders, popup menus and check boxes, kept in `persist.dat`. The gamma
   brightens or darkens the picture as the original's display ramp did; the graphics quality sets the
@@ -199,9 +202,11 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - **The movies**: the intro before the main menu and the outro at the game's end, decoded from the
   game's own Bink files the way RAD's player shipped with the game does, with their sound.
 
-## Not yet
+## Not in this version of the game
 
-- Debug and developer features: the console variables, the developer keys' tools.
+The developer console and the developer keys (the console variables typed in, the debug keys, the
+recording and camera tools) are in the executable, but v1.0 gives no way to switch them on: the cheat
+that would grant developer access has no code in its table. The port keeps them out, as the game does.
 
 The order of work is in the repository's port plan. Each step ends with something that can be checked
 against the original.

@@ -195,6 +195,42 @@ after a blocked cell ending it; not blocked at its first cell; its highest value
 is room. A waypoint: the cell's middle on the grid's floor (the last: the end point), and a kind by the
 cell's value (the table at 0x54b0c8: 0, 0, 0, 2, 1, 2, 2, 2, 3, 0).
 
+## The run-time obstacles (not ported yet)
+
+Read from the exe; the port's grids have no obstacle layer yet.
+
+`PHrPrepareRoomForPath` 0x50d660 (from `ASrPath_SetParams`) keeps, for each room's node: a byte per cell
+(+0x2c, the obstacle's number, 0 none), the list of obstacles (+0x38: a u16 count that starts at 1,
+then up to 31 u16 entries), and the time it was made (+0x34). It is made again when it is the room's
+first path, or 20 ticks have passed (0x14). Each making adds one to a pass counter (0x5ed33c), then:
+
+- **The characters** (`PHrAddCharacterToGrid` 0x50c4c0), each active one without C+4 0x40004 whose
+  room is this one (C+0x184's grid): its position (C+0x148) in the grid's cells (`PHrWorldToGridSpaceDangerous`
+  0x43c290: (x − cell / 2 − the grid's x) / cell − the grid's first column, rounded; the same for z),
+  from 2 outside the grid to 2 past it. The entry is 0x8000 | its slot. Its cells are the 5 × 5 square
+  round it without the four corners (21 cells; each inside the grid, 0x43c000).
+- **The objects** (`PHrAddObjectToGrid` 0x50c780), each of the level's objects with flag 0x200 (+0x16)
+  but not 0x102, whose +0x128 bit 0 is clear: its position (+0x84 of its +0x18) in cells, r = its
+  radius over the cell size rounded, plus 1. The entry is its index. Only one row is filled: the cells
+  from x − r to x + r at z + r (one loop over x, at the square's last row: an original bug, to keep).
+- **The doors** (0x50d840 for each link in and out of the room with a door, once a pass by the link's
+  +0x28): `OBJrDoor_ComputeObstruction` 0x4c2ee0 gives the door's open panels as one or two lines (the
+  panels at the open frame, `OBrAnim_Matrix`, their width by `OBJiDoor_GetGeometryWidth`, and the door's
+  place), and `PHrAddDoorToGrid` 0x50c870 draws each line in the grid (0x43c460) under the entry
+  0x4000 | the door's id.
+
+`PHrSquareIsPassable` 0x50db00 then reads the cell: out of the grid or a 9, impassable. A cell with an
+obstacle asks `PHrIgnoreObstruction` 0x50d9f0 once a path (two bit vectors keep the answers):
+
+- an object: ignored unless it has flag 0x200 without 0x100;
+- a door (0x4000): not ignored when the mode is 0; else, if found, not ignored when it is open
+  (0x4c2490) or the character can't open it (0x4c24b0), nor in mode 1 when it opens by hand (0x4c24a0);
+  otherwise ignored;
+- a character (0x8000): itself is ignored; another is not in mode 0, and in the other modes only an
+  AI-moved one (C+4 0x400000) asks `AI2rTryToPathfindThrough`.
+
+Not ignored, the cell is impassable and blocked (9).
+
 ## The port
 
 `src/graph.c` builds the graph once per environment (`graph_for`), with the blockages from the rooms'
@@ -220,10 +256,10 @@ waypoint's kind. If the class's speed (`ONrCharacterClass_MovementSpeed` 0x4ee02
 rate (0x498520) exceeds 0.9 of that radius, it stops and turns (+0x898) until it is within 5 degrees
 (0x52af50).
 
-The port has the 80/120-degree turn only. Stand-ins: the obstacle list and its 40 degrees; the
-turning-circle test; the ghost waypoint's look ahead; the character's node looked up from its position each time;
-the doors' danger factors and keys; the grids' run-time obstacle layer (`PHrPrepareRoomForPath`
-0x50d660: characters, objects, doors).
+The port (`src/movement.c`) has the turns, the obstacle list's 40 degrees and the turning-circle test.
+Stand-ins left: the ghost waypoint's look ahead; the character's node looked up from its position each
+time; the doors' danger factors; the grids' run-time obstacle layer (`PHrPrepareRoomForPath` 0x50d660:
+characters, objects, doors). Keys need nothing: none are ever given ([door.md](door.md)).
 
 `tests/graph_test.c`: level 1's 240 rooms and 528 links, each with one back, 32 blocked; the training
 room apart from the warehouse; a 68-room path across the warehouse. `tests/ai_test.c` walks a thug

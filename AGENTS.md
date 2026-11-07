@@ -96,7 +96,8 @@ near them, and the `door_*` commands ([docs/re/door.md](docs/re/door.md)). `src/
 - `src/wm.c`: the window manager (windows, messages, the WMDD dialogs, the DC, part specs and text),
   `src/igui.c` the in-game UI's pages and the text consoles (`text_console`), `src/outgame.c` the main
   menu (the start without `--param play`, and Escape in a level), `src/li.c` the keys as the input
-  layer's codes ([docs/re/wm.md](docs/re/wm.md)). `--param keys=27,32,@546:250` taps keys into the
+  layer's codes ([docs/re/wm.md](docs/re/wm.md)) and the bindings from `key_config.txt`, the actions
+  the player's character takes ([docs/re/input.md](docs/re/input.md)). `--param keys=27,32,@546:250` taps keys into the
   dialogs and clicks (desktop pixels: it is as tall as 480).
 - `src/persist.c`: persist.dat (levels reached, the continues, the pause screen's bits, the options);
   `src/outgame.c`'s Load Game lists them (the WM's list box, class 8) and its Options sets them (the

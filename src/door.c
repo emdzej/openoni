@@ -373,12 +373,13 @@ bool door_near(int i, const float p[3])
 
 static void play_sound(const Door *d, unsigned name_at, const Chr *who)
 {
-    /* the class's sound (UpdateSoundPointers 0x4c4ce0 looks it up), played at the door (0x512480): the
-       port's impulse has no place yet */
+    /* the class's sound (UpdateSoundPointers 0x4c4ce0 looks it up), played at the door (OSrImpulse_Play
+       0x512480, full volume) */
     char name[33];
     memcpy(name, d->cls + name_at, 32);
     name[32] = 0;
-    if (name[0] && sound_has_impulse(name)) sound_impulse_play(name, 1.0f);
+    const void *imp = name[0] ? sound_impulse_find(name) : NULL;
+    if (imp) sound_impulse_play_at(imp, d->pos, NULL);
     /* then the class's AI sound (+0x14, -1 none; its radius +0x18), of who opens it */
     int32_t type;
     memcpy(&type, d->cls + DOOR_CLASS_AI_SOUND, 4);

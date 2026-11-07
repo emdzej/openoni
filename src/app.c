@@ -58,6 +58,7 @@
 #include "sound.h"
 #include "vfs.h"
 #include "igui.h"
+#include "li.h"
 #include "outgame.h"
 #include "wm.h"
 
@@ -1787,59 +1788,55 @@ static int play(int level, int *next)
     for (;;) {
         uint8_t keys[KEY_COUNT] = { 0 }, presses[64];
         int n = plat_key_presses(presses, (int)sizeof presses);
+        plat_keys(keys);
+        /* the frame's actions from the bindings (key_config.txt; LIrUpdate 0x403220), the mouse's while
+           it is captured (the first click captures it) */
+        PlatMouse mouse;
+        bool have_mouse = plat_mouse(&mouse) && mouse.captured;
+        if (plat_mouse(&mouse) && (mouse.pressed & MOUSE_LEFT) && !mouse.captured) plat_mouse_capture(true);
+        LiActions act;
+        li_actions(&act, have_mouse ? &mouse : NULL, persist_invert_mouse());
         /* 0x4faec0: the player's escape (its input's bit 1, at most once in 15 ticks, not in a cutscene)
            opens the main menu over the level (0x4bec00); New Game starts again at level 1 (0x4beb40) */
         /* ... and its pause key (bit 4, F1 by default; not when dead) the pause screen, after the frame
            (ONiRunGame 0x4d4640, G+0x138) */
-        for (int i = 0; i < n; i++)
-            if (presses[i] == DIK_F1 && (ui_keys_allowed() & 4) && !ui_cutscene() && player && !(player->c.flags & 1)) igui_pause_screen(pause_key);
-        for (int i = 0; i < n; i++)
-            if (presses[i] == DIK_ESCAPE) {
-                uint32_t start = 0;
-                int choice = outgame_main_menu(true, &start);
-                if (choice == OUTGAME_LOAD) {
-                    *next = game_start(start);
-                    return 0;
-                }
-                if (choice == OUTGAME_QUIT) {
-                    *next = 0;
-                    return 0;
-                }
-                if (choice == OUTGAME_NEW_GAME) {
-                    *next = 1;
-                    save_clear();       /* 0x4fda80 */
-                    return 0;
-                }
+        if ((act.down & 4) && (ui_keys_allowed() & 4) && !ui_cutscene() && player && !(player->c.flags & 1)) igui_pause_screen(pause_key);
+        if (act.down & 1) {
+            uint32_t start = 0;
+            int choice = outgame_main_menu(true, &start);
+            if (choice == OUTGAME_LOAD) {
+                *next = game_start(start);
+                return 0;
             }
-        plat_keys(keys);
-        PlatMouse mouse;
+            if (choice == OUTGAME_QUIT) {
+                *next = 0;
+                return 0;
+            }
+            if (choice == OUTGAME_NEW_GAME) {
+                *next = 1;
+                save_clear();       /* 0x4fda80 */
+                return 0;
+            }
+        }
+        /* the action bits as the character's input (character.h's CHR_KEY_*: 1 << the action's index);
+           punch and kick also on a tap within the frame; the mouse's axes as HandleTurnInput 0x4f7b90 takes
+           them (turn_x is aim_lr, turn_y aim_ud) */
+        uint64_t h = act.held, hd = act.held | act.down;
         CharacterInput in = {
-            .forward = keys[DIK_W] - keys[DIK_S], .strafe = keys[DIK_D] - keys[DIK_A], .walk = keys[DIK_CAPITAL] != 0,
-            .turn = (keys[DIK_LEFT] - keys[DIK_RIGHT]) * 0.05f, .pitch = (keys[DIK_UP] - keys[DIK_DOWN]) * 0.02f,
-            .jump = keys[DIK_SPACE] != 0, .crouch = keys[DIK_LSHIFT] || keys[DIK_RSHIFT],
-            .action = keys[DIK_LCONTROL] || keys[DIK_RCONTROL],
+            .forward = !!(h & CHR_KEY_FORWARD) - !!(h & CHR_KEY_BACK),
+            .strafe = !!(h & CHR_KEY_STEP_RIGHT) - !!(h & CHR_KEY_STEP_LEFT),
+            .walk = (h & CHR_KEY_WALK) != 0, .turn = act.aim_lr * (-1.0f / 64.0f), .pitch = act.aim_ud * (1.0f / 64.0f),
+            .punch = (hd & CHR_KEY_PUNCH) != 0, .kick = (hd & CHR_KEY_KICK) != 0,
+            .jump = (hd & CHR_KEY_JUMP) != 0, .crouch = (h & CHR_KEY_CROUCH) != 0,
+            .action = (hd & CHR_KEY_ACTION) != 0, .fire = (hd & CHR_KEY_FIRE) != 0,
+            .swap = (act.down & CHR_KEY_SWAP) != 0, .drop = (act.down & CHR_KEY_DROP) != 0,
+            .reload = (act.down & CHR_KEY_RELOAD) != 0, .hypo = (act.down & CHR_KEY_HYPO) != 0,
+            .extra = hd & (CHR_KEY_TURN_LEFT | CHR_KEY_TURN_RIGHT | (uint64_t)0x80000000u | CHR_KEY_LOOK |
+                           CHR_KEY_ALT_FIRE | CHR_KEY_FIRE3),
         };
-        for (int i = 0; i < n; i++) {
-            /* the exe's default bindings (its "bind f to punch" lines): F punch, C kick; mouse 1 and 2 fire */
-            if (presses[i] == DIK_F) in.punch = true;
-            if (presses[i] == DIK_C) in.kick = true;
-            if (presses[i] == DIK_Q) in.swap = true;
-            if (presses[i] == DIK_E) in.drop = true;
-            if (presses[i] == DIK_R) in.reload = true;
-            if (presses[i] == DIK_TAB) in.hypo = true;
-            /* the shapeshifter's key (debug key 0x29, LI 0x88): F8, with Shift back */
+        /* the shapeshifter's key (debug key 0x29, LI 0x88): F8, with Shift back */
+        for (int i = 0; i < n; i++)
             if (presses[i] == DIK_F8 && player) cheat_shapeshift(&player->c, keys[DIK_LSHIFT] || keys[DIK_RSHIFT]);
-        }
-        if (plat_mouse(&mouse) && mouse.captured) {
-            in.turn -= mouse.dx * 0.004f;
-            /* LIrUpdate 0x403220: the mouse's y axis is its move by -0.125 with the persisted "invert mouse"
-               (the default), else by 0.125 */
-            in.pitch -= mouse.dy * (persist_invert_mouse() ? 0.004f : -0.004f);
-            in.punch |= (mouse.pressed & MOUSE_LEFT) != 0;
-            in.fire = (mouse.buttons & MOUSE_LEFT) != 0;     /* "bind mousebutton1 to fire1", held */
-            in.kick |= (mouse.pressed & MOUSE_RIGHT) != 0;
-        }
-        if (plat_mouse(&mouse) && (mouse.pressed & MOUSE_LEFT) && !mouse.captured) plat_mouse_capture(true);
         /* "input 0" from a script (cutscenes): the player's keys do nothing (0x4bcc50's flag) */
         if (route.step && player) route_input(&player->c, &in);
         /* a debug aid: --param invincible=1, omnipotent=1 and unstoppable=1, the game's switches of
@@ -2007,6 +2004,7 @@ int app_main(void)
     }
     plat_log("OpenOni: Oni.exe v1.0 found");
     persist_initialize(plat_load_user_file, plat_save_user_file);
+    li_config_load(plat_load_user_file, plat_save_user_file, vfs_read_all);   /* key_config.txt (0x4d4a50, from ONiMain 0x4d34a5) */
     if (!im_initialize(err, sizeof err) || !tm_initialize(err, sizeof err) || !tm_level_load(0, err, sizeof err)) {
         snprintf(m, sizeof m, "OpenOni: %s", err);
         plat_log(m);

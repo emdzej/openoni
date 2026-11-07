@@ -120,8 +120,15 @@ are drawn from their elements' geometry under the matrix above. They step with t
 `src/physctx.c`; an open swinging door stands across the room it opens into), but its blocked counter
 (+0x140) stays 0 as in the original (physics.md), so the stuck logic never starts.
 
-Not yet:
+The door's events run as it opens (0x4f3cc0), its sounds play at the door (D+0x0c, `OSrImpulse_Play`
+0x512480) and the AIs hear the class's AI sound (0x49a8a0).
 
-- Keys, the door's events, the AI's sound, the pathfinding notice.
-- The sounds' place: they play as plain impulses.
-- `door_is_locked` and the lock lights.
+Left as they are:
+
+- **Keys**: a locked door with a key (OSD +0x41) lets its holder pass (`WPrInventory_HasKey` 0x424370,
+  a bit vector), but nothing gives keys: in the Mac build `WPrInventory_AddKey` has no caller, and no
+  script command makes one (inferred for the Windows build). The port's `has_key` is always false.
+- **The pathfinding notice** (`PHrNotifyDoorStateChange` 0x50ed90) zeroes +0x34 of the door's two graph
+  links; the port's graph keeps no such field (what reads it isn't traced).
+- There is no `door_is_locked` command in v1.0, and the lock lights are the scripts' particles
+  (`bigdoor_locklight02`, `Shindoor_locklight01`), run by `particle`.

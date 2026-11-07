@@ -898,7 +898,7 @@ uint64_t chr_input_bits(const CharacterInput *in)
     if (in->drop) k |= CHR_KEY_DROP;
     if (in->reload) k |= CHR_KEY_RELOAD;
     if (in->hypo) k |= CHR_KEY_HYPO;
-    return k;
+    return k | in->extra;
 }
 
 void chr_input_mask(CharacterInput *in, uint64_t keys)
@@ -916,6 +916,7 @@ void chr_input_mask(CharacterInput *in, uint64_t keys)
     in->drop &= (keys & CHR_KEY_DROP) != 0;
     in->reload &= (keys & CHR_KEY_RELOAD) != 0;
     in->hypo &= (keys & CHR_KEY_HYPO) != 0;
+    in->extra &= keys;
 }
 
 bool character_init(Character *c, const void *oncc, const float pos[3], float facing)

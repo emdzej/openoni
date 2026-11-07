@@ -113,7 +113,9 @@ Movement and fighting are driven by **animations**, not by code that moves the b
 - the frames that block, and the particles and sounds it starts.
 
 The class's animation collection (`TRAC`) maps (state, type, varient) to the animations that fit, with
-weights for random choice. Every tick, the input (the player's keys or the AI's executor) becomes an
+weights for random choice. Every tick, the input becomes an animation type. For the player, the keys and
+the mouse are bound to named actions in a text file (`key_config.txt`: `bind w to forward`), and each
+action is a bit in a 64-bit mask; the AI's executor sets the same bits. That mask becomes the
 animation type; the collection picks the animation for the character's state; the animation moves
 it. Combos are animations that start from the state another attack leaves. A throw is a pair of
 animations, one for each side, played together.

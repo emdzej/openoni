@@ -26,6 +26,9 @@ pen (0, the font's ascent). The pause screen clears it as it closes, and `ONiInG
 At 0x5533f8, 16 bytes an entry, ended by a null code: the code's string, the message when the cheat
 goes on, the one when it goes off (null for the one-shot cheats), the cheat's id. 21 entries, ids 0 to
 21 without 11 (the developer keys, which `ONrCheater` still knows). The port reads it from the exe.
+Case 11 is the only write of developer access (0x5ece8e) and the only call of
+`LIrInitializeDeveloperKeys` 0x404730, so v1.0 can't switch on the console or the developer keys
+([input.md](input.md) "What the player can't reach").
 
 ## The cheats (ONrCheater)
 

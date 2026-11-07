@@ -572,6 +572,25 @@ static void sound(Character *c, int type, const float pos[3], float radius, Char
     knowledge_sound(type, pos, radius, (Chr *)c, (Chr *)target);
 }
 
+/* The rest of ONiCharacter_PlayerKeyFilter 0x4fa520, after the conversation's part: unarmed, or with fire
+   gone down on an empty weapon with nothing to reload (C+8 bit 0), fire1 punches; fire2 kicks unless the
+   weapon has an alternate fire (ONWC +0xcc 0x400); fire3 crouches. A weapon with ONWC +0xcc 0x1000 makes
+   the player walk (C+4 0x8000000, cleared otherwise). The fire bits stay. */
+static void player_key_filter(Character *c, CharacterInput *in)
+{
+    const uint8_t *wc = c->weapon ? c->weapon->cls : NULL;
+    uint32_t wf = wc ? (uint32_t)wc[0xcc] | (uint32_t)wc[0xcd] << 8 | (uint32_t)wc[0xce] << 16 | (uint32_t)wc[0xcf] << 24 : 0;
+    if (in->fire && (!wc || c->reload_wanted)) in->punch = true;
+    if ((in->extra & CHR_KEY_ALT_FIRE) && (!wc || !(wf & 0x400) || c->reload_wanted)) in->kick = true;
+    if (in->extra & CHR_KEY_FIRE3) in->crouch = true;
+    if (wf & 0x1000) {
+        c->flags |= 0x8000000u;
+        in->walk = true;
+    } else {
+        c->flags &= ~0x8000000u;
+    }
+}
+
 void chars_update(const CharacterInput *player_in, const void *env)
 {
     chr_hurt_hook = hurt;
@@ -604,6 +623,7 @@ void chars_update(const CharacterInput *player_in, const void *env)
         else if (slots[i].player) {
             CharacterInput in = *player_in;
             neutral_filter_input(&slots[i], &in);     /* 0x4fa520, the player's keys */
+            player_key_filter(&slots[i].c, &in);
             character_update(&slots[i].c, &in, env);
         } else {
             ai_update(&slots[i].ai, &slots[i].c, env);

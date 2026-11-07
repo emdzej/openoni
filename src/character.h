@@ -43,6 +43,7 @@ typedef struct {
     bool action;        /* held (Ctrl: the exe's "bind leftcontrol to action") */
     bool fire, swap, drop, reload;  /* mouse 1, Q (pick up), E, R */
     bool hypo;          /* Tab ("bind tab to hypo") */
+    uint64_t extra;     /* the other action bits held: turn left and right, block, look, fire2, fire3 */
 } CharacterInput;
 
 /* An overlay (ONrOverlay_Set 0x4d7b80): an animation over the pose, 12 bytes from A+0x1c58. */
@@ -75,6 +76,7 @@ enum {
 #define CHR_KEY_DROP ((uint64_t)0x20 << 32)
 #define CHR_KEY_FIRE ((uint64_t)0x40 << 32)
 #define CHR_KEY_ALT_FIRE ((uint64_t)0x80 << 32)
+#define CHR_KEY_FIRE3 ((uint64_t)0x100 << 32)
 
 typedef struct Character {
     const void *oncc;               /* C+0x0c */
