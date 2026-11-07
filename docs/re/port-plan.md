@@ -341,8 +341,10 @@ The order to port it, each step with a test on level 1:
    on the links followed (`src/movement.c`). The grids' run-time obstacle layer
    (`PHrPrepareRoomForPath` 0x50d660: characters, objects, the doors' panels; `src/obstacle.c`), the
    doors' danger factors in the A*, the searches as the character, and the clear point a new
-   character steps to (`AI2iMovementState_FindClearPoint` 0x4a9170). Still
-   stand-ins: those listed in [pathfinding.md](pathfinding.md).
+   character steps to (`AI2iMovementState_FindClearPoint` 0x4a9170), the ghost waypoint's look ahead
+   (`PHrProjectOntoConnection` 0x50e9a0) and the character's room kept as the original keeps it
+   (C+0x188). *Done*; not ported: the movement stub (`AI2iMovementStub_*`), for a character without
+   an active record (C+2 0), which the port's characters always have.
 5. **Combat and melee**: `AI2rCombat_Update`, the melee profiles (`CJBOMelee Profile`),
    `AI2rMelee_Update` 0x4a01f0 and its technique weighting 0x4a2580, blocking
    (`AI2rBlockFunction`). Test: a thug fights Konoko. *Begun* (`src/melee.c`, `tests/melee_test.c`,

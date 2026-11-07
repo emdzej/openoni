@@ -357,6 +357,14 @@ typedef struct {
     bool scanning, guarding, guard_begun, point_scan_set;
     uint32_t scan_ticks;
     AiScan scan;
+    /* the patrol's shooting at a flag (a point 0x17): its targeting set up (+0x5b0), under way (+0x5b1),
+       the trigger held (+0x5b2), the point's float (+0x5b4, kept, never read), the ticks left (+0x5b8),
+       the weapon the targeting is set for (+0x5bc), the targeting (+0x5c0, the callbacks 0x53ec20) */
+    bool shoot_init, shooting, shoot_held;
+    float shoot_unused;
+    uint32_t shoot_ticks;
+    const void *shoot_weapon;
+    AiTargeting shoot;
     /* the movement's facing mode (C+0x1578: 0 free, 1 a fixed kind of move move_kind, AI_MOVE_*: the
        body turned from the way it goes, 2 a fixed facing face_at, 3 the arrival's facing face_at;
        AI2rMovement_FreeFacing 0x4a81c0 and 0x4a81a0), the direction to keep away from (C+0x1574, 1000

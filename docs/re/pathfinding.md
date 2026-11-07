@@ -323,8 +323,9 @@ and doors are in (`obstacle_invalidate`).
 
 `src/graph.c` builds the graph once per environment (`graph_for`), with the blockages from the rooms'
 grids, and finds the room under a point and the path. The AI's mover (`src/ai.c`) makes the path as
-`AI2iPath_MakePath` does and walks it straight from link to link, then to the point; a link is passed
-in the room beyond, or within 2 of its middle (a stand-in). In each room it makes the local path (`src/localpath.c`:
+`AI2iPath_MakePath` does; a room is passed when its local path's last waypoint is (`AI2rPath_Update`
+0x4ae670: 0x4a8520, then the next room's local path, 0x4a8640; past the last room, arrived). In each
+room it makes the local path (`src/localpath.c`:
 `ASrPath_SetParams`, `ASrPath_Generate`, `ASiList_CalcWaypoints`, `PHrWaypointFromGunk`) and heads for
 its waypoints from the second, opening the doors on its links.
 
@@ -347,8 +348,7 @@ rate (0x498520) exceeds 0.9 of that radius, it stops and turns (+0x898) until it
 The port (`src/movement.c`) has the turns, the obstacle list's 40 degrees and the turning-circle test.
 The ghost waypoint (`ghost_waypoint`, `graph_project_onto_link`), the character's room kept as the
 original keeps it (below), the doors' danger factors, the grids' run-time obstacle layer and the clear
-point are ported (above, "The run-time obstacles" and "The clear point"). Stand-in left: a link counts
-as passed in the room beyond or within 2 of its middle. Keys need nothing: none are ever given ([door.md](door.md)).
+point are ported (above, "The run-time obstacles" and "The clear point"). Keys need nothing: none are ever given ([door.md](door.md)).
 
 `tests/graph_test.c`: level 1's 240 rooms and 528 links, each with one back, 32 blocked; the training
 room apart from the warehouse; a 68-room path across the warehouse. `tests/ai_test.c` walks a thug

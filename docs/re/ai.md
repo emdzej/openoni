@@ -840,6 +840,32 @@ ticks running out end either one: the look stops (`AI2rMovement_StopAiming`) and
   scan looks the way it goes (0x4a83e0, the movement's +0x880) once that is more than 3 degrees
   (0x52ade0) off the look: 100 along it.
 
+The waypoints that take time (`AI2rPatrol_Update`; offsets from the block + 8, as `DoWaypoint` keeps
+them):
+
+- **Pause** (2: the ticks): `DoWaypoint` sets the countdown +0x530 and halts the path. Each later tick
+  starts by counting it down (halting the path while it isn't 0); at 0 the point is done. So a pause of
+  n goes on n ticks after it starts, and one of 0 at once.
+- **Shoot at a flag** (0x17: the flag, the ticks at +6, a float at +8 kept at +0x5b4 and never read):
+  the character made active (`ONrCharacter_MakeActive` 0x4f11b0); the targeting at +0x5c0 set up once
+  (+0x5b0; `AI2rTargeting_Initialize` 0x4ba6d0 with the patrol's callbacks 0x53ec20, the class's AI
+  block ONCC+0x138 and skills +0x154), for the weapon held (+0x5bc; `AI2rTargeting_SetWeapon`
+  0x4bb700, the firing mode ONWC+0xd0, the hand's matrix, node 19); its point (+0x604, +0x610 set) the
+  flag's place; the trigger let go (+0x5b2), the shooting on (+0x5b1), the ticks +0x5b8. While a
+  point waits, a shooting under way follows a weapon changed and runs `AI2rTargeting_Update` (target,
+  aim, fire) and the fire decision (aim, want, line of fire). The ticks are counted down at each
+  tick's start; at 0 the trigger is let go and the targeting stopped. A shooting of 0 ticks is never
+  counted down: it goes on through the later points until the patrol is left (`AI2rPatrol_Exit`
+  0x4afba0 stops it). The callbacks are the combat's but the trigger (0x4b05c0 →
+  `AI2iPatrol_Trigger` 0x4b0520): held while not knocked down nor picking up, with a weapon that
+  needn't wait (class flag 0x200 and `WPrMustWaitToFire` 0x51a380); let go, A+0x21e3 once.
+  Level 8's staged firefights (a_s02's, roof_tctf1's paths) are these.
+- The walk through the points done at once ends when it comes back to the point it started from:
+  "patrol %s is looping endlessly" (0x4b0331), the point past the end back to 0, and the patrol left,
+  the job's for idle (`AI2rExitState`, state 1, `AI2rEnterState`), another for the job
+  (`AI2rReturnToJob` 0x48af80). A loop to a later point the original would go round for good; the
+  port stops it at the path's points.
+
 Not ported: the vocalizations, the glance's look (0x4a8150) and the facing held, the report
 (`AI2rPursuit_Report` 0x4b18e0, debug text). A contact removed without the forget's notice leaves
 the exe with a stale pointer; the port goes back to the job.

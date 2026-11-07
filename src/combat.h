@@ -18,6 +18,17 @@ enum { COMBAT_MANEUVER_HOLD, COMBAT_MANEUVER_ADVANCE, COMBAT_MANEUVER_RETREAT, C
 
 /* The level's Combat objects (OBJiCombat_Read 0x4c01c0), after the level's objects are loaded. */
 void combat_load(void);
+/* The AI's targeting callbacks (0x53ebf8; the patrol's 0x53ec20 the same but its trigger): the owner a
+   Chr. +4 the aiming speed, +0x10 the shooter's place, +0x14 the aim along a vector, +0x18 and +0x1c the
+   look at a point or a character. */
+void combat_op_speed(void *o, float speed);
+void combat_op_place(void *o, float out[3]);
+void combat_op_vector(void *o, const float v[3]);
+void combat_op_point(void *o, const float p[3]);
+void combat_op_char(void *o, const Character *c);
+/* The trigger's tests (0x490a50, 0x4b0520): not knocked down nor picking up (0x4e37b0, 0x4e3f30), a
+   weapon, and not one that must wait to fire. */
+bool combat_may_fire(const Character *c);
 /* AI2rInitializeCharacter 0x48a6b0's copy: the Combat object of that id, else the defaults. */
 void combat_settings(AiState *a, uint16_t id);
 /* The settings of a character with no combat profile (FUN_004936b0's defaults). */

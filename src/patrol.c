@@ -2,6 +2,9 @@
 #include "patrol.h"
 
 #include "chars.h"
+#include "chr_hit.h"
+#include "combat.h"
+#include "weapon.h"
 #include "graph.h"
 #include "movement.h"
 #include "objc.h"
@@ -117,6 +120,9 @@ void patrol_start(AiState *a, int path)
     a->glance_wait = false;
     a->scanning = a->guarding = a->guard_begun = a->point_scan_set = false;
     a->scan_ticks = 0;
+    /* (AI2rPatrol_Enter: the shooting forgotten, its targeting not stopped) */
+    a->shoot_init = a->shooting = false;
+    a->shoot_ticks = 0;
     patrol_nearest(a);
 }
 
@@ -160,6 +166,58 @@ static bool flag_at(uint16_t id, float pos[3], float *facing)
     return true;
 }
 
+/* AI2iPatrol_Trigger 0x4b0520 (the patrol's targeting callback +0, 0x4b05c0): the trigger held while
+   the character may fire (combat_may_fire), else let go (A+0x21e3, the release, follows from the key
+   let go). */
+static void shoot_trigger(void *o, bool on)
+{
+    Chr *ch = o;
+    AiState *a = &ch->ai;
+    if (on && combat_may_fire(&ch->c)) {
+        a->shoot_held = true;
+        a->aim.fire = true;
+        return;
+    }
+    a->shoot_held = false;
+    a->aim.fire = false;
+}
+
+static const TargetingOps patrol_ops = { shoot_trigger, combat_op_speed, NULL, combat_op_place, combat_op_vector,
+                                         combat_op_point, combat_op_char };
+
+/* The shooting's end (its ticks run out, AI2rPatrol_Update 0x4afd20; AI2rPatrol_Exit 0x4afba0): the
+   trigger let go, the targeting stopped (0x4bab70). */
+static void shoot_stop(AiState *a)
+{
+    shoot_trigger((char *)a - offsetof(Chr, ai), false);
+    a->shooting = false;
+    if (a->shoot_init) {
+        targeting_stop(&a->shoot);
+        a->shoot_init = false;
+    }
+}
+
+void patrol_exit(AiState *a)
+{
+    if (a->shooting) shoot_stop(a);
+}
+
+/* The shooting's tick (AI2rPatrol_Update 0x4b02b6, while a point waits): the weapon changed, the
+   targeting's set for it (its firing mode, ONWC+0xd0; the matrix the hand's, node 19, 0x4f13e0); then
+   AI2rTargeting_Update (target, aim, fire) and the fire decision (aim, want, line of fire). */
+static void shoot_tick(AiState *a, const Character *c)
+{
+    if (!a->shooting) return;
+    const Weapon *w = c->weapon;
+    if (a->shoot_weapon != (const void *)w) {
+        targeting_set_weapon(&a->shoot, w ? w->cls + 0xd0 : NULL);
+        a->shoot_weapon = w;
+    }
+    if (w && !chr_weapon_matrix(c, a->shoot.matrix)) memcpy(a->shoot.matrix, w->m, sizeof a->shoot.matrix);
+    targeting_update(&a->shoot, true, true, true, NULL);
+    targeting_fire_decision(&a->shoot, true, true, true);
+}
+
 /* AI2iPatrol_DoWaypoint 0x4b0650 starts a waypoint; AI2rPatrol_Update 0x4afc90 sees it done. Returns
    whether the waypoint is done (the next one starts at once). */
 static bool do_point(AiState *a, const Character *c, const PatrolPoint *w, const char *who)
@@ -179,8 +237,12 @@ static bool do_point(AiState *a, const Character *c, const PatrolPoint *w, const
     case 1:     /* stop: the patrol is over, idle (state 1) */
         a->patrol = -1;
         return false;
-    case 2:     /* pause */
-        if (start) a->wait = w->n;
+    case 2:     /* pause: the countdown (+0x538) set as it starts, then down by one at each later tick's
+                   start (AI2rPatrol_Update 0x4afc90): on n ticks later, at once for 0 */
+        if (start) {
+            a->wait = w->n;
+            return a->wait == 0;
+        }
         if (a->wait) a->wait--;
         return a->wait == 0;
     case 6:     /* loop */
@@ -301,6 +363,31 @@ static bool do_point(AiState *a, const Character *c, const PatrolPoint *w, const
     case 0x16:  /* ignore the player */
         a->ignore_player = w->n != 0;
         return true;
+    case 0x17:  /* shoot at the flag for the ticks (AI2iPatrol_Shooting): the character made active
+                   (0x4f11b0), the targeting set up once (0x4ba6d0: the class's AI block, ONCC+0x138, and
+                   skills, +0x154), for the weapon held, aimed at the flag's place (+0x604, the
+                   targeting's point, set) */
+        if (start) {
+            if (!flag_at(w->a, p, &face)) return true;      /* AI2rError (0x4936b0) */
+            Chr *ch = (Chr *)((char *)a - offsetof(Chr, ai));
+            if (!a->shoot_init) {
+                const uint8_t *cls = (const uint8_t *)c->oncc + 0x138;
+                targeting_init(&a->shoot, 0, &patrol_ops, ch, NULL, cls, cls + 0x1c);
+                a->shoot_init = true;
+            }
+            a->shoot_weapon = NULL;
+            if (c->weapon) {
+                targeting_set_weapon(&a->shoot, c->weapon->cls + 0xd0);
+                a->shoot_weapon = c->weapon;
+            }
+            memcpy(a->shoot.point, p, sizeof a->shoot.point);
+            a->shoot.has_point = true;
+            a->shoot_held = false;
+            a->shooting = true;
+            memcpy(&a->shoot_unused, &w->n, sizeof a->shoot_unused);
+            a->shoot_ticks = (uint32_t)(int32_t)(int16_t)w->b;
+        }
+        return a->shoot_ticks == 0;
     default:    /* the scan's turn: not ported */
         (void)pos;
         return true;
@@ -314,6 +401,8 @@ void patrol_update(AiState *a, const Character *c, const void *env, const char *
         if (sl_running(a->script)) return;
         a->script = 0;
     }
+    /* the shooting's ticks out (0x4afd0b) */
+    if (a->shoot_ticks && --a->shoot_ticks == 0) shoot_stop(a);
     /* a scan's or a guard's ticks out: the look stopped (AI2rMovement_StopAiming), the next point */
     if (a->scan_ticks && --a->scan_ticks == 0 && (a->scanning || a->guarding)) {
         a->scanning = a->guarding = false;
@@ -322,9 +411,10 @@ void patrol_update(AiState *a, const Character *c, const void *env, const char *
         a->point_started = a->point_scan_set = false;
     }
     /* the points done at once go on until one takes time, or the way comes back to the point it
-       started from ("patrol %s is looping endlessly"): then on the next tick. A loop to a later point
-       could still go round without coming back (the port's points done at once differ from the
-       original's): at most the path's points in a tick (a stand-in) */
+       started from: "patrol %s is looping endlessly" (0x4b0331), the point past the end wrapped to 0,
+       and the patrol left: the job's patrol for idle (AI2rExitState 0x48ae80, state 1,
+       AI2rEnterState 0x48ad50), another back to the job (AI2rReturnToJob 0x48af80). A loop to a later
+       point, which the original would go round for good, stops at the path's points in a tick. */
     int first = a->point;
     for (int guard = 0; a->patrol >= 0 && guard <= paths[a->patrol].n; guard++) {
         const Path *pa = &paths[a->patrol];
@@ -337,10 +427,21 @@ void patrol_update(AiState *a, const Character *c, const void *env, const char *
                AI2rGuard_UpdateScan */
             if (a->scanning) ai_scan_follow(a, &a->scan, movement_direction((const struct Chr *)c));
             if (a->scanning || a->guarding) ai_scan_update(a, &a->scan, c, env);
+            shoot_tick(a, c);
             return;
         }
         a->point++;
         a->point_started = a->point_scan_set = false;
-        if (a->point == first) return;
+        if (a->point == first) {
+            /* "patrol %s is looping endlessly" */
+            if (a->point >= pa->n) a->point = 0;
+            if (a->state == a->job) {
+                ai_exit_state(a);
+                a->state = AI_STATE_IDLE;
+            } else {
+                ai_return_to_job(a);
+            }
+            return;
+        }
     }
 }

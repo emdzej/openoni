@@ -33,4 +33,6 @@ void patrol_start(AiState *a, int path);
 void patrol_nearest(AiState *a);
 /* AI2rPatrol_Update, one tick of a patrolling character (before the mover). env: the AKEV (the guard's
    scan keeps its looks off the walls); who: its name, for the waypoints' scripts. */
+/* AI2rPatrol_Exit 0x4afba0's part: a shooting under way stopped. */
+void patrol_exit(AiState *a);
 void patrol_update(AiState *a, const Character *c, const void *env, const char *who);

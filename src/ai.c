@@ -251,6 +251,7 @@ void ai_exit_state(AiState *a)
     }
     /* the job's block (C+0x200) stays as it was: the port keeps its patrol */
     if (a->state == a->job && a->patrol >= 0) a->job_patrol = a->patrol, a->job_point = a->point;
+    patrol_exit(a);     /* AI2rPatrol_Exit 0x4afba0 */
     a->patrol = -1;
     ai_halt(a);
     a->aim.look = 0;

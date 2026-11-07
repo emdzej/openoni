@@ -136,6 +136,14 @@ static bool knocked(uint16_t t)
 /* ONrCharacter_IsPickingUp 0x4e3f30: the pickup animations. */
 static bool picking_up(uint16_t t) { return t == 0x9d || t == 0x9e || t == 0x9f || (t >= 0xe3 && t <= 0xe5); }
 
+bool combat_may_fire(const Character *c)
+{
+    if (knocked(c->type) || picking_up(c->type) || !c->weapon) return false;
+    /* a weapon of class flag 0x200 (ONWC+0xcc) waits while WPrMustWaitToFire 0x51a380 (its +0x4c, +0x52) */
+    const Weapon *w = c->weapon;
+    return !((rd32(w->cls + 0xcc) & 0x200) && (w->delay || w->reload_wait));
+}
+
 /* FUN_00490a50: the trigger held (or the alternate's), unless picking up or the weapon can't; let go,
    the trigger's release. */
 static int send_args(AiState *a, const Character *c, int msg, int p5, int p6, const void *ptr, float *arg);
@@ -143,9 +151,7 @@ static int send_args(AiState *a, const Character *c, int msg, int p5, int p6, co
 static void fire(AiState *a, const Character *c, bool on)
 {
     CombatState *s = &a->combat;
-    if (knocked(c->type) || picking_up(c->type)) on = false;
-    /* (with the class's flag 0x200, 0x51a380 can stop it too) */
-    if (!c->weapon) on = false;
+    if (!combat_may_fire(c)) on = false;
     if (on) {
         s->firing = s->firing_alt = false;
         if (!s->alt) a->aim.fire = true, s->firing = true;
@@ -164,31 +170,31 @@ static void fire(AiState *a, const Character *c, bool on)
    and +0x1c the look at the point or the character (AI2rMovement_LookAtPoint, LookAtCharacter). The
    owner is the character (its Chr). */
 static void op_fire(void *o, bool on) { fire(&((Chr *)o)->ai, &((Chr *)o)->c, on); }
-static void op_speed(void *o, float speed) { set_aiming_speed(&((Chr *)o)->ai, speed); }
-static void op_place(void *o, float out[3]) { shooter_place(&((Chr *)o)->c, out); }
+void combat_op_speed(void *o, float speed) { set_aiming_speed(&((Chr *)o)->ai, speed); }
+void combat_op_place(void *o, float out[3]) { shooter_place(&((Chr *)o)->c, out); }
 
-static void op_vector(void *o, const float v[3])
+void combat_op_vector(void *o, const float v[3])
 {
     AiState *a = &((Chr *)o)->ai;
     a->aim.look = 2;
     memcpy(a->aim.look_at, v, sizeof a->aim.look_at);
 }
 
-static void op_point(void *o, const float p[3])
+void combat_op_point(void *o, const float p[3])
 {
     AiState *a = &((Chr *)o)->ai;
     a->aim.look = 1;
     memcpy(a->aim.look_at, p, sizeof a->aim.look_at);
 }
 
-static void op_char(void *o, const Character *c)
+void combat_op_char(void *o, const Character *c)
 {
     AiState *a = &((Chr *)o)->ai;
     a->aim.look = 3;
     a->aim.look_char = c;
 }
 
-static const TargetingOps ai_ops = { op_fire, op_speed, NULL, op_place, op_vector, op_point, op_char };
+static const TargetingOps ai_ops = { op_fire, combat_op_speed, NULL, combat_op_place, combat_op_vector, combat_op_point, combat_op_char };
 
 /* AI2rInitializeCharacter's part (0x4ba6d0): the character's targeting, with the class's AI block. */
 static AiTargeting *targeting(AiState *a, Character *c)
