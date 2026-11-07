@@ -688,7 +688,10 @@ static void select_maneuver(AiState *a, Character *c, const void *env)
                 MeleeState *m = &a->melee;
                 m->env_wait = m->env_wait > 5 ? m->env_wait - 5 : 0;
                 if (m->env_wait == 0 && dist_to(c, s->t.target->pos) * dist_to(c, s->t.target->pos) < 6400.0f) {
+                    const Character *was = a->ignore;   /* the target let through the test */
+                    a->ignore = s->t.target;
                     melee_test_local_environment(m, c, s->t.target);
+                    a->ignore = was;
                     if (!m->env_blocked) {
                         ok = true;
                         break;

@@ -591,8 +591,7 @@ void melee_test_local_environment(MeleeState *m, const Character *c, const Chara
     memcpy(m->env_pos, loc, sizeof loc);
     bool reached, crossed;
     uint8_t kind;
-    /* (AI2rMovement_IgnoreCharacter around it: the grids' obstacles aren't ported) */
-    if (local_try_movement(loc, to, 3, &reached, at, &kind, &crossed) && !crossed) {
+    if (local_try_movement(c, loc, to, 3, &reached, at, &kind, &crossed) && !crossed) {
         if (!reached) {
             float f = (at[0] - loc[0]) * sa + (at[2] - loc[2]) * ca;
             m->room_fwd = f;
@@ -614,7 +613,7 @@ void melee_test_local_environment(MeleeState *m, const Character *c, const Chara
         m->env_fwd[2] = m->env_pos[2] + ca * 6.0f;
     }
     float back[3] = { loc[0] - sa * 50.0f, loc[1], loc[2] - ca * 50.0f };
-    if (local_try_movement(loc, back, 3, &reached, at, &kind, &crossed)) {
+    if (local_try_movement(c, loc, back, 3, &reached, at, &kind, &crossed)) {
         if (!reached) {
             m->danger_back = kind == 8;
             memcpy(m->env_back, at, sizeof at);
@@ -1068,8 +1067,8 @@ static bool maneuver_step(AiState *a, Character *c, int dir, bool toward)
     if (!toward) {
         /* 15 ahead of the way, straight (AI2rTryLocalMovement) */
         float to[3] = { loc[0] + sinf(way) * 15.0f, loc[1], loc[2] + cosf(way) * 15.0f };
-        if (!local_try_movement(loc, to, 3, &reached, at, &kind, &crossed)) reached = false;
-    } else if (local_find_path(loc, 15.0f, way, 0.19634954631328583f, 4, 8, 3, &reached, at, &kind, &crossed) &&
+        if (!local_try_movement(c, loc, to, 3, &reached, at, &kind, &crossed)) reached = false;
+    } else if (local_find_path(c, loc, 15.0f, way, 0.19634954631328583f, 4, 8, 3, &reached, at, &kind, &crossed) &&
                reached) {
         /* the way the line found (up to 4 steps of pi/16 either side) */
         way = wrap_2pi(atan2f(at[0] - loc[0], at[2] - loc[2]));
@@ -1448,7 +1447,7 @@ static bool no_technique(AiState *a, Character *c)
     float to[3] = { d * sinf(m->angle) + loc[0], loc[1], d * cosf(m->angle) + loc[2] };
     bool reached, crossed;
     uint8_t kind;
-    bool ok = local_try_movement(loc, to, 3, &reached, at, &kind, &crossed);
+    bool ok = local_try_movement(c, loc, to, 3, &reached, at, &kind, &crossed);
     if (!ok || !reached) return false;
     ai_movement_modifier(a, wrap_2pi(atan2f(at[0] - loc[0], at[2] - loc[2])), a->combat.weight[COMBAT_MANEUVER_MELEE]);
     return true;
@@ -1933,7 +1932,7 @@ static void weigh_technique(const AiState *a, const Character *c, ChrIntersect *
             float to[3] = { ex + loc[0], loc[1], ez + loc[2] }, at[3];
             bool reached = false, crossed;
             uint8_t kind;
-            if (local_try_movement(loc, to, 3, &reached, at, &kind, &crossed)) {
+            if (local_try_movement(c, loc, to, 3, &reached, at, &kind, &crossed)) {
                 if ((fl & 4) && !reached && kind == 8) reached = true;
             } else {
                 reached = false;
@@ -2338,7 +2337,7 @@ static bool weigh_spacing(const AiState *a, const Character *c, Weighing *w)
             float to[3] = { pt[0] * co + pt[1] * s + loc[0], loc[1], pt[1] * co - pt[0] * s + loc[2] };
             bool reached, crossed;
             uint8_t kind;
-            if (!local_try_movement(loc, to, 3, &reached, at, &kind, &crossed)) return false;
+            if (!local_try_movement(c, loc, to, 3, &reached, at, &kind, &crossed)) return false;
             if (k->computed & 4) {
                 if (!reached && kind != 8) return false;
             } else if (!reached) {

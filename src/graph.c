@@ -1,5 +1,6 @@
 /* The AI's pathfinding graph: see graph.h. */
 #include "graph.h"
+#include "obstacle.h"
 
 #include "akev.h"
 #include "door.h"
@@ -116,6 +117,7 @@ bool graph_for(const void *env)
 bool graph_build(const void *envp)
 {
     graph_free();
+    obstacle_level_begin();     /* the rooms' run-time obstacle layers go with the graph */
     memset(&E, 0, sizeof E);
     const uint8_t *env = envp;
     if (!env) return false;
@@ -327,6 +329,8 @@ int graph_link_count(void) { return nlinks; }
 const GraphLink *graph_link(int i) { return i >= 0 && i < nlinks ? &links[i] : NULL; }
 int graph_out_count(int room) { return room >= 0 && room < nrooms ? rooms[room].nout : 0; }
 int graph_out(int room, int k) { return rooms[room].out[k]; }
+int graph_in_count(int room) { return room >= 0 && room < nrooms ? rooms[room].nin : 0; }
+int graph_in(int room, int k) { return rooms[room].in[k]; }
 int graph_room_bnv(int room) { return room >= 0 && room < nrooms ? rooms[room].bnv : -1; }
 
 uint32_t graph_room_flags(int room) { return room >= 0 && room < nrooms ? rd32(bnv(rooms[room].bnv) + 0x5c) : 0; }

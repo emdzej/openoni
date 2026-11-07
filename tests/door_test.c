@@ -1,7 +1,8 @@
 /* The doors (OPENONI_DATA=<dir>, default ./game; skipped without it): on level 1 every door finds its
    panels; door 18 opens as Konoko comes near, hides its gunk while she walks through, stays open 180
    ticks and closes after (OBJrDoor_Update 0x4c44f0); the locked door 11 doesn't open for her until a
-   script's door_unlock. */
+   script's door_unlock. Door 18's obstruction for the AI's grids is a line across the doorway shut, beside
+   it open; the roll-up door 20's none open. */
 #include "akev.h"
 #include "chars.h"
 #include "door.h"
@@ -90,6 +91,26 @@ int main(void)
     }
     door_load(env);     /* again: as at the level's start */
     printf("doors=%d with panels=%d\n", n, panels);
+    /* OBJrDoor_ComputeObstruction: door 18 shut, its panel across the doorway (30 wide); open, beside
+       it; the roll-up door 20, open, above the 15 that counts */
+    {
+        float p[4][3], c[3];
+        uint16_t id;
+        int d18 = find(18), d20 = find(20);
+        door_position(d18, c);
+        int shut = door_obstruction(d18, &id, p);
+        bool across = shut == 2 && id == 18 && fabsf(p[0][0] - (c[0] - 15.0f)) < 0.1f && fabsf(p[1][0] - (c[0] + 15.0f)) < 0.1f;
+        door_open(d18);
+        int open = door_obstruction(d18, &id, p);
+        bool aside = open == 2 && p[0][0] > c[0] + 14.0f && p[1][0] > c[0] + 44.0f;
+        door_close(d18);
+        door_open(d20);
+        int up = door_obstruction(d20, &id, p);
+        door_close(d20);
+        door_load(env);
+        printf("obstruction: door 18 shut %d across %d, open %d aside %d; door 20 open %d\n", shut, across, open, aside, up);
+        if (!across || !aside || up != 0) failed++;
+    }
     if (!p || n != 97 || panels != n) failed |= 1;
 
     /* door 18: Konoko 40 in front, facing it, walks through */

@@ -195,9 +195,10 @@ after a blocked cell ending it; not blocked at its first cell; its highest value
 is room. A waypoint: the cell's middle on the grid's floor (the last: the end point), and a kind by the
 cell's value (the table at 0x54b0c8: 0, 0, 0, 2, 1, 2, 2, 2, 3, 0).
 
-## The run-time obstacles (not ported yet)
+## The run-time obstacles
 
-Read from the exe; the port's grids have no obstacle layer yet.
+Read from the exe (confirmed). Port: `src/obstacle.c` (the layer, the lines, the ignore rules),
+`door_obstruction` in `src/door.c`, the passable test in `src/localpath.c`; test `tests/door_test.c`.
 
 `PHrPrepareRoomForPath` 0x50d660 (from `ASrPath_SetParams`) keeps, for each room's node: a byte per cell
 (+0x2c, the obstacle's number, 0 none), the list of obstacles (+0x38: a u16 count that starts at 1,
@@ -213,23 +214,49 @@ first path, or 20 ticks have passed (0x14). Each making adds one to a pass count
   but not 0x102, whose +0x128 bit 0 is clear: its position (+0x84 of its +0x18) in cells, r = its
   radius over the cell size rounded, plus 1. The entry is its index. Only one row is filled: the cells
   from x − r to x + r at z + r (one loop over x, at the square's last row: an original bug, to keep).
-- **The doors** (0x50d840 for each link in and out of the room with a door, once a pass by the link's
-  +0x28): `OBJrDoor_ComputeObstruction` 0x4c2ee0 gives the door's open panels as one or two lines (the
-  panels at the open frame, `OBrAnim_Matrix`, their width by `OBJiDoor_GetGeometryWidth`, and the door's
-  place), and `PHrAddDoorToGrid` 0x50c870 draws each line in the grid (0x43c460) under the entry
-  0x4000 | the door's id.
+- **The doors** (0x50d840 for each link out of the room, then each link in, with a door; once a pass
+  by the link's +0x28, so a door on a link and on the link back is two obstacles). The door's panels
+  come from `OBJrDoor_ComputeObstruction` 0x4c2ee0 as 2 points (one line) or 4 (two, flag 0x80, a
+  double door):
+  1. The door's own animation (S+0x164) at the open frame (OBAN +0x74) if the door is open (S+0xc ==
+     1), else at its last frame (OBAN +0x72 − 1): `OBrAnim_Matrix` 0x4395f0, M.
+  2. The width w (`OBJiDoor_GetGeometryWidth` 0x4c2e60): the class's (DOOR +0) OFGA's first geometry
+     (+0x1c, read once for each of its entries), its points' box, max x − min x, at least 0.
+  3. The line (−w/2, 0, 0) to (w/2, 0, 0) through M; a double door's second line Rx(π)·M·Rx(π)
+     (0x434530).
+  4. Each point (x, y, z) to (x, z, −y), then through the panel's placement: `OBJiDoor_SetOSD` 0x4c3b30
+     makes S+0x104 (the first line's) and S+0x134 (the second's) from the class's box: a move by (the
+     box's middle x, −min z, the middle y), a double door's both by (w/2, −min z, the middle y); then
+     a half turn about y from the left (0x434d70) for the first if the door has 0x100, for a double
+     door's second if it hasn't.
+  5. y less −min z (S+0x18), through the door's rotation (S+0x1d8: 0x437130, order 0, of the degrees),
+     plus the door's position.
+  6. A line whose ends are both 15 or more up (0x529d84) is dropped; both dropped, no obstacle.
+
+  `PHrAddDoorToGrid` 0x50c870 takes each line's ends to cells (0x43c290). A line wholly to one side of
+  the grid is skipped; the first that isn't takes the obstacle (0x4000 | the id & 0x3fff; a full list
+  ends the door). `PHrDynamicBresenham2` 0x43c460 draws it: Bresenham's line with 16-bit steps, the error starting at half the
+  difference of the spans, writing only the cells inside the grid that are still 0.
+
+On level 1 a shut door's line lies across the doorway (30 long for a single door, two of 22.5 from the
+middle for a double); a sliding door's open line lies beside the doorway, and a door that rolls up has
+none open.
 
 `PHrSquareIsPassable` 0x50db00 then reads the cell: out of the grid or a 9, impassable. A cell with an
 obstacle asks `PHrIgnoreObstruction` 0x50d9f0 once a path (two bit vectors keep the answers):
 
 - an object: ignored unless it has flag 0x200 without 0x100;
-- a door (0x4000): not ignored when the mode is 0; else, if found, not ignored when it is open
-  (0x4c2490) or the character can't open it (0x4c24b0), nor in mode 1 when it opens by hand (0x4c24a0);
-  otherwise ignored;
+- a door (0x4000): not ignored when the mode is 0; else the first door of the id
+  (`OBJrDoor_FindDoorWithID` 0x4c1d30; none, ignored) is not ignored when it is open (0x4c2490) or the
+  character can't open it (0x4c24b0, side 0xff), nor in mode 1 when it opens by hand (0x4c24a0);
+  otherwise ignored. So a shut door the character may open is passed, and an open one's panels are in
+  the way;
 - a character (0x8000): itself is ignored; another is not in mode 0, and in the other modes only an
   AI-moved one (C+4 0x400000) asks `AI2rTryToPathfindThrough`.
 
-Not ignored, the cell is impassable and blocked (9).
+Not ignored, the cell is impassable and blocked (9). The modes: the local path (`ASrPath_Generate`) asks
+with 2; the local movement's tests (`AI2rTryLocalMovement`, `AI2rFindLocalPath`, `AI2rFindNearbyPoint`)
+with 1 (0x5eb860, 0x5eb864), for the character moved.
 
 ## The port
 
@@ -258,8 +285,8 @@ rate (0x498520) exceeds 0.9 of that radius, it stops and turns (+0x898) until it
 
 The port (`src/movement.c`) has the turns, the obstacle list's 40 degrees and the turning-circle test.
 Stand-ins left: the ghost waypoint's look ahead; the character's node looked up from its position each
-time; the doors' danger factors; the grids' run-time obstacle layer (`PHrPrepareRoomForPath` 0x50d660:
-characters, objects, doors). Keys need nothing: none are ever given ([door.md](door.md)).
+time; the doors' danger factors. The grids' run-time obstacle layer is ported ("The run-time
+obstacles"). Keys need nothing: none are ever given ([door.md](door.md)).
 
 `tests/graph_test.c`: level 1's 240 rooms and 528 links, each with one back, 32 blocked; the training
 room apart from the warehouse; a 68-room path across the warehouse. `tests/ai_test.c` walks a thug

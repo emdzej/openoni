@@ -103,7 +103,9 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   with the weapons and the inventory the level gives them. When they die their gun flies from their
   hand and what they were to drop (clips, cells, hypos, a shield, invisibility, the LSI) tumbles out;
   a dropped weapon or power-up falls, lands with the sound of the floor's material, slides to rest
-  and, a weapon, fades away a minute and a half later; both lie on their glows. The characters
+  and, a weapon, fades away a minute and a half later; both lie on their glows. Their paths through
+  a room go round the other characters, the crates and the open doors' panels in it, which the
+  original marks in the room's grid every 20 ticks. The characters
   stop at the level's crates and boxes, a falling weapon stops on a character, and the guards kick
   the weapons on the ground aside (but not the one they are going for). Without a gun they may go for one lying
   nearby, by their class's chance. They run to alarm consoles when their scripts or combat settings say so, and an

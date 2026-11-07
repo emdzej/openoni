@@ -79,7 +79,8 @@ Steps 4 (renderer), 6 (character) and 7 (scripts) have begun:
 ([docs/re/turret.md](docs/re/turret.md)).
 
 `src/physics.c` gives the characters the original's floor and walls ([docs/re/physics.md](docs/re/physics.md)).
-`src/graph.c` (the rooms' graph) and `src/localpath.c` (paths through a room's grid) find the AI's way
+`src/graph.c` (the rooms' graph), `src/localpath.c` (paths through a room's grid) and `src/obstacle.c`
+(the grids' run-time obstacles: the characters, objects and doors' panels) find the AI's way
 ([docs/re/pathfinding.md](docs/re/pathfinding.md)). `src/door.c`: the level's doors open for the characters
 near them, and the `door_*` commands ([docs/re/door.md](docs/re/door.md)). `src/console.c`, `src/event.c` and
 `src/action.c`: consoles, event lists and the action key (Ctrl) ([docs/re/console.md](docs/re/console.md)).

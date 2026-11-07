@@ -410,7 +410,8 @@ static void knocked_down(Character *c)
 static bool path_through(const Character *c, const Character *o)
 {
     const Chr *a = (const Chr *)c;
-    if (a->ai.follow == o) return true;
+    /* AI2rMovement_ShouldIgnoreObstruction 0x4a81e0 (+0x14ac; the port's follow is its follow case) */
+    if (a->ai.ignore == o || a->ai.follow == o) return true;
     if (!c->ai) return false;
     if (a->ai.state == AI_STATE_COMBAT && a->ai.target && &a->ai.target->c == o) return true;
     return a->ai.state == AI_STATE_NEUTRAL && !o->ai;

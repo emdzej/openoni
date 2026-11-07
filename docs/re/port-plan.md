@@ -338,8 +338,9 @@ The order to port it, each step with a test on level 1:
    a point (`AKrNodeFromPoint`), the rooms' A* (0x50bdb0) and `AI2iPath_MakePath`'s reuse; the AI's
    mover walks it room by room, each room by its local path through the grid (`src/localpath.c`:
    `ASrPath_Generate`, `ASiList_CalcWaypoints`). The movement state's steering and the doors
-   on the links followed (`src/movement.c`). Still stand-ins: the grids' run-time obstacle layer
-   (`PHrPrepareRoomForPath` 0x50d660) and the rest listed in [pathfinding.md](pathfinding.md).
+   on the links followed (`src/movement.c`). The grids' run-time obstacle layer
+   (`PHrPrepareRoomForPath` 0x50d660: characters, objects, the doors' panels; `src/obstacle.c`). Still
+   stand-ins: those listed in [pathfinding.md](pathfinding.md).
 5. **Combat and melee**: `AI2rCombat_Update`, the melee profiles (`CJBOMelee Profile`),
    `AI2rMelee_Update` 0x4a01f0 and its technique weighting 0x4a2580, blocking
    (`AI2rBlockFunction`). Test: a thug fights Konoko. *Begun* (`src/melee.c`, `tests/melee_test.c`,

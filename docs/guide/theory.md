@@ -157,7 +157,10 @@ The AI ([ai](https://github.com/emdzej/openoni/blob/main/docs/re/ai.md)) is laye
   conditions) that the AI picks among as the fight goes.
 - **Movement.** The plan becomes motion through a movement layer: facing, walking or running,
   dodging, avoiding the walls. The way is found through the graph of rooms (the global path) and a
-  grid inside each room (the local path).
+  grid inside each room (the local path). The grid is baked with the level (walls, crates, stairs);
+  over it, every 20 ticks, the room marks what moves: the other characters, the loose objects, the
+  doors' panels. A character may ignore some of these marks: a shut door it can open, the one it
+  follows, the target it is fighting.
 - **The executor.** At the bottom, the AI presses the same virtual keys a player does. The character
   code can't tell the two apart.
 

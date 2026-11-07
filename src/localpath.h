@@ -1,9 +1,8 @@
 /* The AI's local paths: through one room's grid, from a point to a point (ASrPath_SetParams 0x4be240,
    ASrPath_Generate 0x4bd8c0: an A* over the cells), made into waypoints (ASiList_CalcWaypoints
-   0x4be310). Notes: docs/re/pathfinding.md, "The local path".
-
-   Not yet: the grid's run-time obstacles (PHrPrepareRoomForPath 0x50d660: characters, objects, doors),
-   so every cell's obstacle layer is clear. */
+   0x4be310). Notes: docs/re/pathfinding.md, "The local path". The cells under the run-time obstacles the
+   character may not ignore are impassable (obstacle.h): mode 2 for the path, 1 for the local movement
+   (c: the character; NULL, the route harness's plans, which keep to the baked grid). */
 #pragma once
 #include "character.h"
 
@@ -30,19 +29,19 @@ int local_path(const void *env, int room, const float start[3], const float end[
    reached: the line got there (out: `to`), else out is where it stopped; kind: the worst value it met
    (its line's highest, the lowest for a line that started blocked; where it stopped, that line's
    highest); crossed_blocked: a line started blocked. */
-bool local_try_movement(const float from[3], const float to[3], int tolerance, bool *reached, float out[3],
+bool local_try_movement(const Character *c, const float from[3], const float to[3], int tolerance, bool *reached, float out[3],
                         uint8_t *kind, bool *crossed_blocked);
 
 /* AI2rFindLocalPath 0x49d220: a straight line (as local_try_movement) dist from `from` toward angle,
    else toward the angle a step to one side then the other, two steps, ... up to n steps. reached: one got
    there (out: its end, kind and crossed_blocked as local_try_movement's); else out, kind and
    crossed_blocked are the first line's. False with no room or grid at `from`. */
-bool local_find_path(const float from[3], float dist, float angle, float step, unsigned n, uint8_t threshold,
+bool local_find_path(const Character *c, const float from[3], float dist, float angle, float step, unsigned n, uint8_t threshold,
                      int tolerance, bool *reached, float out[3], uint8_t *kind, bool *crossed_blocked);
 
 /* AI2rFindNearbyPoint 0x49cec0: a point dist from `from` toward angle reached by a straight line over the
    grids (threshold: the cells' value it stays under, tolerance: blocked cells allowed at its start), else
    the angle a step to either side, two steps, ... n steps; failing all, the farthest point a line got to
    (if the last try got beyond min). False with none. */
-bool local_find_nearby_point(const float from[3], float dist, float min, float angle, float step, unsigned n,
+bool local_find_nearby_point(const Character *c, const float from[3], float dist, float min, float angle, float step, unsigned n,
                              uint8_t threshold, int tolerance, float out[3]);

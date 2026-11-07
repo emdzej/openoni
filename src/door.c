@@ -6,6 +6,7 @@
 #include "event.h"
 #include "graph.h"
 #include "knowledge.h"
+#include "m3gm.h"
 #include "oban.h"
 #include "physctx.h"
 #include "objc.h"
@@ -643,9 +644,115 @@ const void *door_panel(int i, int k, float m[12])
     return tm_link(p->element + OBOA_GEOMETRY);
 }
 
+/* OBJiDoor_GetGeometryWidth 0x4c2e60: the class's geometry (its OFGA's first, +0x1c, read once for
+   each of its entries) across x, at least 0. */
+static float geometry_width(const Door *d)
+{
+    const uint8_t *ofga = d->cls ? tm_link(d->cls) : NULL;
+    float hi = -100000.0f, lo = 100000.0f, box[6], sphere[4];     /* 0xc7c35000, 0x52b0f0 */
+    if (ofga && rd32(ofga + 0x14) && m3gm_bounds(tm_link(ofga + 0x1c), box, sphere)) {
+        if (box[3] > hi) hi = box[3];
+        if (box[0] <= lo) lo = box[0];
+    }
+    float w = hi - lo;
+    return w < 0.0f ? 0.0f : w;
+}
+
+static void transform(const float m[12], float p[3])
+{
+    float x = p[0], y = p[1], z = p[2];
+    for (int k = 0; k < 3; k++) p[k] = m[k] * x + m[3 + k] * y + m[6 + k] * z + m[9 + k];    /* 0x4339e0 */
+}
+
+static void rotate_y_left(float m[12])
+{
+    const float pi = 3.14159274f;   /* 0x40490fdb */
+    float c = cosf(pi), s = sinf(pi);
+    const float ry[12] = { c, 0, -s, 0, 1, 0, s, 0, c, 0, 0, 0 };    /* MUrMatrix_RotateY 0x434d70 */
+    mul(ry, m, m);
+}
+
+int door_obstruction(int i, uint16_t *id, float out[4][3])
+{
+    if (i < 0 || i >= ndoors) return 0;
+    const Door *d = &doors[i];
+    if (id) *id = d->id;
+    if (!d->cls || !d->oban) return 0;
+    /* OBrAnim_Matrix 0x4395f0 of the door's own animation at the open frame, or the last */
+    int frame = d->state == 1 ? (int)open_frame(d) : (int16_t)(frame_count(d) - 1);
+    float m[12];
+    if (!oban_matrix(d->oban, frame, false, m)) return 0;
+    int n = (d->flags & DOOR_DOUBLE) ? 4 : 2;
+    float w = geometry_width(d);
+    /* the panels' placements (OBJiDoor_SetOSD 0x4c3b30, S+0x104 and S+0x134): moved up by the
+       geometry's lowest z (S+0x18) and to its middle (a double door's panels to half its width), then a
+       half turn about y for the mirrored one */
+    float sb[6] = { 0 };
+    {
+        const uint8_t *ofga = tm_link(d->cls);
+        float sphere[4];
+        if (ofga) m3gm_bounds(tm_link(ofga + 0x1c), sb, sphere);
+    }
+    float lift = -sb[2], mid_x = (sb[3] + sb[0]) * 0.5f, mid_y = (sb[4] + sb[1]) * 0.5f;
+    float place[2][12];
+    for (int k = 0; k < 2; k++) {
+        const float id12[12] = { 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0 };     /* 0x434c30 */
+        memcpy(place[k], id12, sizeof id12);
+    }
+    if (n == 4) {
+        for (int k = 0; k < 2; k++) {
+            place[k][9] = w * 0.5f, place[k][10] = lift, place[k][11] = mid_y;  /* 0x434c90 */
+            if (((d->flags & DOOR_MIRROR) != 0) == (k == 0)) rotate_y_left(place[k]);
+        }
+    } else {
+        place[0][9] = mid_x, place[0][10] = lift, place[0][11] = mid_y;
+        if (d->flags & DOOR_MIRROR) rotate_y_left(place[0]);
+    }
+    /* the line across the width; the second panel's mirrored about x (MUrMatrix_BuildRotateX 0x434530) around the frame */
+    out[0][0] = w * -0.5f, out[0][1] = 0.0f, out[0][2] = 0.0f;
+    out[1][0] = w * 0.5f, out[1][1] = 0.0f, out[1][2] = 0.0f;
+    if (n == 4) memcpy(out[2], out[0], sizeof out[0]), memcpy(out[3], out[1], sizeof out[1]);
+    transform(m, out[0]), transform(m, out[1]);
+    if (n == 4) {
+        const float pi = 3.14159274f;
+        float c = cosf(pi), s = sinf(pi);
+        const float rx[12] = { 1, 0, 0, 0, c, s, 0, -s, c, 0, 0, 0 };
+        for (int k = 2; k < 4; k++) transform(rx, out[k]), transform(m, out[k]), transform(rx, out[k]);
+    }
+    for (int k = 0; k < n; k++) {
+        float y = out[k][1];
+        out[k][1] = out[k][2], out[k][2] = -y;      /* z up to y up */
+    }
+    transform(place[0], out[0]), transform(place[0], out[1]);
+    if (n == 4) transform(place[1], out[2]), transform(place[1], out[3]);
+    for (int k = 0; k < n; k++) out[k][1] -= lift;
+    /* the door's rotation (S+0x1d8: 0x437130, order 0, R = Rz Ry Rx of the degrees) */
+    const float rad = 0.017453292f;     /* 0x529550 */
+    float ci = cosf(d->rot[0] * rad), si = sinf(d->rot[0] * rad);
+    float cj = cosf(d->rot[1] * rad), sj = sinf(d->rot[1] * rad);
+    float ch = cosf(d->rot[2] * rad), sh = sinf(d->rot[2] * rad);
+    const float r[12] = { cj * ch, cj * sh, -sj,
+                          sj * si * ch - ci * sh, sj * si * sh + ci * ch, cj * si,
+                          sj * ci * ch + si * sh, sj * ci * sh - si * ch, cj * ci, 0, 0, 0 };
+    for (int k = 0; k < n; k++) transform(r, out[k]);
+    /* a line both of whose ends are 15 or more up (0x529d84) is no obstacle */
+    bool high0 = out[0][1] >= 15.0f && out[1][1] >= 15.0f;
+    bool high1 = n < 4 || (out[2][1] >= 15.0f && out[3][1] >= 15.0f);
+    if (high0) {
+        if (high1) return 0;
+        memcpy(out[0], out[2], sizeof out[0]), memcpy(out[1], out[3], sizeof out[1]);
+        n = 2;
+    } else if (high1) {
+        n = 2;
+    }
+    for (int k = 0; k < n; k++)
+        for (int j = 0; j < 3; j++) out[k][j] += d->pos[j];
+    return n;
+}
+
 /* ---- the commands: each takes a door id (the u16 of its value); door_lock and door_unlock take 0xffff
    for every door (OBJiDoor_LockDoors_Enum 0x4c1dd0), the others the first door of the id
-   (OBJrDoor_FindDoorWithID, 0x4d01a0) ---- */
+   (OBJrDoor_FindDoorWithID, 0x4c1d30) ---- */
 
 static uint16_t arg_id(int argc, const SlValue *argv)
 {
@@ -659,6 +766,8 @@ static int find_id(uint16_t id)
         if (doors[i].id == id) return i;
     return -1;
 }
+
+int door_find(uint16_t id) { return find_id(id); }
 
 static bool cmd_open(SlThread *t, int c, const SlValue *v, SlValue *r, void *u) { (void)t, (void)r, (void)u; door_open(find_id(arg_id(c, v))); return true; }
 static bool cmd_close(SlThread *t, int c, const SlValue *v, SlValue *r, void *u) { (void)t, (void)r, (void)u; door_close(find_id(arg_id(c, v))); return true; }

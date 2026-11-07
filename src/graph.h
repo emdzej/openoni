@@ -5,8 +5,8 @@
 
    The links' blockages come from the rooms' grids (PHiCheckForBlockages 0x50df80): a link blocked all
    across gets flag 1, which characters don't take. The doors on the links (+0x2c) come from the level's
-   doors (graph_link_doors). Not yet: the grids' run-time obstacles (characters, objects, doors:
-   PHrPrepareRoomForPath 0x50d660). */
+   doors (graph_link_doors). The grids' run-time obstacles (characters, objects, doors) are obstacle.h's
+   (PHrPrepareRoomForPath 0x50d660). */
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
@@ -41,6 +41,9 @@ const GraphLink *graph_link(int i);
 /* The room's out links, in the original's list order (its newest first). */
 int graph_out_count(int room);
 int graph_out(int room, int k);
+/* Its in links, the same order. */
+int graph_in_count(int room);
+int graph_in(int room, int k);
 /* The room's BNV (its AKVA index). */
 int graph_room_bnv(int room);
 /* The room's grid (BNV +0x1c: PHrGrid_Decompress 0x43c600 of its .raw run-length data): w x h cells of

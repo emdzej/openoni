@@ -41,6 +41,7 @@ enum {
     DOOR_MANUAL = 0x0010,           /* opens with the action key (not yet), closes by itself */
     DOOR_ANIMATING = 0x0020,        /* also while it stays open, counting down */
     DOOR_STARTED = 0x0040,          /* LevelBegin ran */
+    DOOR_DOUBLE = 0x0080,           /* two panels (OBJrDoor_ComputeObstruction's two lines) */
     DOOR_MIRROR = 0x0100,           /* the first panel gets the half turns (else the second does) */
     DOOR_ONE_WAY = 0x0200,          /* a lock passes the characters of one side */
     DOOR_ONE_WAY_REVERSED = 0x0400, /* the other side */
@@ -81,6 +82,14 @@ void door_lock_id(uint16_t id, bool on);
 /* The panels to draw: door i's panel k (0, 1): its geometry array (M3GA, object.h's layout), NULL if
    there is no such panel; its matrix now (PHrPhysics_MaintainMatrix 0x43b410), 3x4 by columns. */
 const void *door_panel(int i, int k, float m[12]);
+
+/* OBJrDoor_ComputeObstruction 0x4c2ee0: the door's panels where the AI's grids take them (open: at the
+   animation's open frame, else at its last), each the line across its geometry's width at the bottom:
+   2 points (one line) or 4 (two, a double door's); a line whose ends are both 15 or more above the door's
+   base is dropped. Returns the points' count (0, 2, 4); *id: the door's id. */
+int door_obstruction(int i, uint16_t *id, float out[4][3]);
+/* OBJrDoor_FindDoorWithID 0x4c1d30: the first door of the id, -1 none. */
+int door_find(uint16_t id);
 
 /* door_open, door_close, door_lock, door_unlock, door_jam, door_unjam. */
 void door_register_commands(void);

@@ -378,6 +378,8 @@ typedef struct {
     bool goal_facing;
     float goal_angle;
     float goal_radius;      /* +0x10f4: arrived within this */
+    const Character *ignore;    /* +0x14ac: AI2rMovement_IgnoreCharacter 0x4a81d0, the character the grids'
+                                   obstacles let through (for the melee's test of the way, its target) */
     const Character *follow;    /* +0x10f4 with the path's type 2 (+0x10f0): the character followed, its
                                    place the goal (AI2rPath_FollowCharacter 0x4ae580), NULL none */
     bool arrived;           /* +0x112d: within the radius (or the last room's path done) */

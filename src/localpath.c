@@ -5,6 +5,7 @@
 #include "akev_collide.h"
 #include "exe.h"
 #include "graph.h"
+#include "obstacle.h"
 #include "physics.h"
 
 #include <math.h>
@@ -42,12 +43,14 @@ static struct {
     uint32_t heap_count;            /* +0x10: 1 when empty */
     bool tree_ready;                /* +0x46d */
     float tree[7][4];               /* +0x470: the character's tree at the end point */
+    int mode;                       /* PHrSquareIsPassable's: 2 the local path, 1 the local movement */
+    ObstacleCache cache;
 } P;
 
 /* ---- the cells ---- */
 
-/* PHrSquareIsPassable 0x50db00: out of the grid or a 9 is impassable (value 9); else passable, with the
-   cell's value. The run-time obstacle layer (+0x2c) is clear: not ported. */
+/* PHrSquareIsPassable 0x50db00: out of the grid or a 9 is impassable (value 9); a cell under an obstacle
+   the character may not ignore too, and blocked (obstacle.h); else passable, with the cell's value. */
 static bool passable(int x, int z, bool *blocked, uint8_t *value)
 {
     if (blocked) *blocked = false;
@@ -58,6 +61,11 @@ static bool passable(int x, int z, bool *blocked, uint8_t *value)
     uint8_t v = P.grid.cells ? P.grid.cells[(uint32_t)(uint16_t)z * P.grid.w + (uint16_t)x] : 0;
     if (v == 9) {
         if (value) *value = 9;
+        return false;
+    }
+    if (obstacle_blocks(P.room, &P.grid, x, z, P.c, P.mode, &P.cache)) {
+        if (value) *value = 9;
+        if (blocked) *blocked = true;
         return false;
     }
     if (value) *value = v;
@@ -298,6 +306,9 @@ int local_path(const void *env, int room, const float start[3], const float end[
     if (!env || !graph_grid(room, &P.grid)) return 0;
     /* ASrPath_SetParams */
     P.env = env, P.room = room, P.c = c, P.allow7 = allow7;
+    P.mode = 2;
+    P.cache.room = -1;
+    obstacle_prepare(room, &P.grid);    /* PHrPrepareRoomForPath 0x50d660 */
     memcpy(P.start, start, sizeof P.start);
     memcpy(P.end, end, sizeof P.end);
     graph_to_cell(&P.grid, start, &P.sx, &P.sz);
@@ -446,6 +457,8 @@ static struct {
     int tolerance;
     int crossings;      /* 0x5eb898 */
     int next_room;      /* 0x5eb89c, -1 none */
+    const Character *c; /* 0x5eb860: the character, for the obstacles (mode 1, 0x5eb864) */
+    int room;           /* the start's room */
 } N;
 
 static int16_t round_cell(float v) { return (int16_t)lrintf(v); }   /* 0x434030 */
@@ -456,11 +469,12 @@ static int16_t round_cell(float v) { return (int16_t)lrintf(v); }   /* 0x434030 
    point reached (out: the point); else out is where it stopped: the line's last passable cell's middle,
    or the edge cell's when no room beyond (or one with flag 8). The first room crossed into is kept
    across the tries; the next try into it reuses it, but its cells are found on its grid while the line
-   goes on with the old grid's (an original bug: kept). The grid's obstacles aren't ported (localpath.h). */
+   goes on with the old grid's (an original bug: kept). Each grid's obstacles are made first (0x49d8d4). */
 static bool local_movement(float out[3], uint8_t *kind, bool *crossed_blocked)
 {
     GraphGrid g = N.g;
     int16_t sx = N.sx, sz = N.sz;
+    int at_room = N.room;
     uint8_t worst = 0;
     *crossed_blocked = false;
     for (;;) {
@@ -486,6 +500,8 @@ static bool local_movement(float out[3], uint8_t *kind, bool *crossed_blocked)
             z1 = h - 1;
         }
         P.grid = g;
+        obstacle_prepare(at_room, &g);
+        P.room = at_room, P.c = N.c, P.mode = 1, P.cache.room = -1;
         bool first_blocked;
         uint8_t lo, hi;
         int lx, lz;
@@ -531,6 +547,7 @@ static bool local_movement(float out[3], uint8_t *kind, bool *crossed_blocked)
                 return false;
             }
             g = ng;
+            at_room = room;
         }
         if (N.crossings == 0) N.next_room = room;
         N.crossings++;
@@ -542,6 +559,7 @@ static bool start_at(const float from[3])
 {
     int room = graph_room_at(from);
     if (room < 0 || !graph_grid(room, &N.g) || !N.g.cells) return false;     /* (0x4936b0: a report) */
+    N.room = room;
     graph_to_cell(&N.g, from, &N.sx, &N.sz);
     if (N.sx < 0) N.sx = 0;
     else if (N.sx > (int16_t)N.g.w - 1) N.sx = (int16_t)N.g.w - 1;
@@ -551,11 +569,12 @@ static bool start_at(const float from[3])
     return true;
 }
 
-bool local_try_movement(const float from[3], const float to[3], int tolerance, bool *reached, float out[3],
-                        uint8_t *kind, bool *crossed_blocked)
+bool local_try_movement(const Character *c, const float from[3], const float to[3], int tolerance, bool *reached,
+                        float out[3], uint8_t *kind, bool *crossed_blocked)
 {
     /* AI2rTryLocalMovement 0x49d560: threshold 8 (0x5eb884) */
     *reached = false;
+    N.c = c;
     if (!start_at(from)) return false;
     memcpy(N.to, to, sizeof N.to);
     N.threshold = 8;
@@ -565,10 +584,11 @@ bool local_try_movement(const float from[3], const float to[3], int tolerance, b
     return true;
 }
 
-bool local_find_path(const float from[3], float dist, float angle, float step, unsigned n, uint8_t threshold,
-                     int tolerance, bool *reached, float out[3], uint8_t *kind, bool *crossed_blocked)
+bool local_find_path(const Character *c, const float from[3], float dist, float angle, float step, unsigned n,
+                     uint8_t threshold, int tolerance, bool *reached, float out[3], uint8_t *kind, bool *crossed_blocked)
 {
     *reached = false;
+    N.c = c;
     if (!start_at(from)) return false;
     N.threshold = threshold;
     N.tolerance = tolerance;
@@ -595,9 +615,10 @@ bool local_find_path(const float from[3], float dist, float angle, float step, u
     return true;
 }
 
-bool local_find_nearby_point(const float from[3], float dist, float min, float angle, float step, unsigned n,
-                             uint8_t threshold, int tolerance, float out[3])
+bool local_find_nearby_point(const Character *c, const float from[3], float dist, float min, float angle, float step,
+                             unsigned n, uint8_t threshold, int tolerance, float out[3])
 {
+    N.c = c;
     if (!start_at(from)) return false;
     N.threshold = threshold;
     N.tolerance = tolerance;

@@ -526,7 +526,7 @@ static bool teleport_to_flag(Character *c, const Character *t)
 static bool teleport_behind(Character *c, const Character *t)
 {
     float p[3];
-    if (!local_find_nearby_point(t->pos, 35.0f, 15.0f, wrap(heading(t) + PI), 0.2617993950843811f, 6, 4, 3, p)) return false;
+    if (!local_find_nearby_point(c, t->pos, 35.0f, 15.0f, wrap(heading(t) + PI), 0.2617993950843811f, 6, 4, 3, p)) return false;
     c->teleport = true;
     memcpy(c->teleport_to, p, sizeof p);
     c->teleport_facing = wrap(atan2f(t->pos[0] - p[0], t->pos[2] - p[2]));
@@ -578,7 +578,7 @@ static bool fell(AiState *a, Character *c)
     if (!found) return false;
     float turn = wrap((float)trac_random() * 1.5259021893143654e-05f * 1.0471975803375244f - 0.5235987901687622f + facing);
     float to[3];
-    if (local_find_nearby_point(best, 40.0f, 0.0f, turn, 0.19634954631328583f, 4, 4, 3, to)) {
+    if (local_find_nearby_point(c, best, 40.0f, 0.0f, turn, 0.19634954631328583f, 4, 4, 3, to)) {
         memcpy(c->teleport_to, to, sizeof to);
     } else {
         memcpy(c->teleport_to, best, sizeof best);

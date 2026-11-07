@@ -164,6 +164,16 @@ static void mul(const float a[12], const float b[12], float o[12])
    for the doors' animations (flag 0x10); the others T(position) Q(rotation) S(scale). The context's
    flags 0x40 (another object's matrix) and 0x20 (half turns about y and z) aren't set by anything
    ported yet. */
+bool object_obstacle(int i, uint16_t *flags, uint32_t *ctx_flags, float pos[3], float *radius)
+{
+    if (i < 0 || i >= nobjs) return false;
+    const Object *o = &objs[i];
+    *flags = o->flags, *ctx_flags = o->ctx_flags;
+    memcpy(pos, o->sphere, 3 * sizeof *pos);
+    *radius = o->sphere[3];
+    return true;
+}
+
 void object_matrix(int i, float m[12])
 {
     static const float ident[12] = { 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0 };

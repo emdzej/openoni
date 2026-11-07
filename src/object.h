@@ -54,6 +54,9 @@ uint32_t object_geometry_count(int i);
 const void *object_geometry(int i, uint32_t k);
 /* The object's matrix now (PHrPhysics_MaintainMatrix 0x43b410), 3x4 by columns. */
 void object_matrix(int i, float m[12]);
+/* For the AI's grids (PHrAddObjectToGrid 0x50c780): the object's flags (+0x12, its OBOA flags), its
+   context's flags (+0x128), the context's position (+0x84) and its sphere's radius. */
+bool object_obstacle(int i, uint16_t *flags, uint32_t *ctx_flags, float pos[3], float *radius);
 /* One tick: the playing animations step (PHrPhysics_Update_Animation). now: the game time, ticks. */
 void object_update(uint32_t now);
 
