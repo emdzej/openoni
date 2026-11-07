@@ -94,5 +94,9 @@ the retarget timer, +0x15c the active ticks, +0x160 the ticks unseen, +0x168 the
   - Otherwise it tests the line from 15 along the way to the target, which must be clear of the
     environment (flags 0x242000).
 
-Not ported yet: the active sound (the port has no positional ambient sounds), the drawn test's box
+The active sound: 0x4cd9c0 starts the class's ambient (+0x63c) at the turret's place
+(`OSrAmbient_Start` 0x511730, the OS layer's placed ambient) into +0x3a0 and sets bit 8; the deactivations
+(0x4cd8f0, 0x4cdab0, 0x4cded0) stop it (`OSrAmbient_Stop` 0x511e40) when bit 8 is set, and clear the bit.
+
+Not ported yet: the drawn test's box
 visibility (0x440b50: the port counts every drawn turret as seen), `turret_reset`, and the debug lines.

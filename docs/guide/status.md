@@ -90,7 +90,8 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - **Konoko**, with her movement, jumps, melee moves, throws and being hit, ported from the character
   engine. She can also pick up, carry, aim, fire, reload, holster and draw weapons, and pick up ammo and other
   power-ups. Hypos (Tab) heal her, past her maximum too, and invisibility fades her out of sight and out
-  of the enemies' view.
+  of the enemies' view. Her condition is heard: the heartbeat of low health, the rush of health over
+  her maximum and the hum of invisibility, each louder as it grows.
 - **The other characters**: they spawn from the level's objects and scripts, follow their patrol paths,
   and see, hear and react to the player: they hear the shots, the hits, the throws, the slides and
   the doors within each sound's reach, where it carries through the rooms (only gunfire through a
@@ -168,9 +169,9 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
 - **The turrets** (seven levels have them): switched on by the event lists and the scripts, they take
   the nearest character of their target teams, turn their heads and barrels within their limits, aim
   with the AI's targeting and fire their shooters' particles; their time over, they turn back to rest.
-  Their humming sound is not there yet.
-- **The laser triggers**: the beams sweep, blink and set off their alarms and scripts when the player
-  crosses them.
+  They hum while active.
+- **The laser triggers**: the beams sweep, blink, hum while active and set off their alarms and scripts
+  when the player crosses them.
 - **The particle system**, the engine under every shot, spark and shard of glass. It covers the particle
   classes, emitters, events and actions, plus collisions with the walls and characters, and damage.
   Projectiles fly and stop on what they hit, and break the glass made of breakable materials. The

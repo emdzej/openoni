@@ -5,8 +5,8 @@
    trig_activate, trig_deactivate, trig_reset, trig_hide, trig_show, trig_speed; event lists: 8 and 9.
 
    As the original, the beams are tested where they are drawn (OBJrTrigger_OnTrigger 0x4cb6f0, the type's
-   draw), so on the frames that are drawn. Not ported yet: the ambient sound of an active trigger
-   (TRIG +0x24, at the object's place) and the sound's place for the trigger's impulse. */
+   draw), so on the frames that are drawn. The active trigger's ambient sound (TRIG +0x24) plays at
+   the object's place. Not ported yet: the sound's place for the trigger's impulse. */
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>

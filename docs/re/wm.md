@@ -340,6 +340,25 @@ buttons over the picture `pict_mainmenu`). Its procedure (`ONiOutGameUI_MainMenu
   update (0x483bd0), then `OSrMusic_Halt` 0x512700 (the id forgotten). The screen isn't drawn meanwhile
   (the port draws the frozen menu).
 
+## The condition sounds
+
+`ONrGameState_Update` 0x4fa6a0, late in the tick (after the particles): five ambients of the game
+settings (ONGS +0xa10, 32 bytes each; `SSrImpulse_UpdateGroupPointers` 0x4f49b0 into 0x631188:
+`health_low`, `health_over`, `shield`, `invis`, and a blank one), their bits at G+0x1679c0, their ids at
+G+0x1679c4. 0x4fdae0 turns one on at a volume (started with no place, `SSrAmbient_Start` 0x4823a0; already
+on, faded to the volume over a second), 0x4fdb50 off (`SSrAmbient_Stop`). With the follow camera (G+0x80's
+mode 1) and no letterbox (G+0x38, set by `ONrGameState_BeginCutscene` 0x4fd070), for the player (G+0xac):
+
+| Sound | While | Volume |
+|---|---|---|
+| 0 | 0 < hit points < max / 5 | 1 − 0.6 f², f = 5 hp / max |
+| 1 | hit points > max | 1 − 0.6 (1 − f)², f = (hp − max) / ((ONGS +0 − 1) max), held to 0..1 |
+| 3 | invisibility (C+0x1ba) left | 1 − 0.6 f², f = 1 − ticks / 1800 |
+
+Otherwise every one on goes to 0 over a second, staying on (so it comes back at the next tick's volume).
+Nothing starts 2 (`shield`). The mission timer's (0x4fd3d0: ambient 4 under 600 ticks, event impulse 16
+each second, 17 when `timer_stop` stops it, 0x4fd3a0) are blank in v1.0's game settings.
+
 ## The splash screens
 
 `ONrGameState_SplashScreen` 0x4f4d40 (ecx the TXMB's name, edx the music's, the stack's byte "quiet"):

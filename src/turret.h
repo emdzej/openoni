@@ -32,6 +32,7 @@ typedef struct {
     uint16_t retarget;          /* +0x158 */
     uint32_t active_ticks;      /* +0x15c */
     uint32_t hidden_ticks;      /* +0x160 */
+    uint32_t sound;             /* +0x3a0: the active sound's (the OS layer's ambient id), UINT32_MAX none */
     VisList leaves;             /* +0x3a4: the leaves round its head, found at its first draw */
     uint32_t particle[TURRET_SHOOTERS];     /* +0x168 (their handles, +0x1a8) */
     AiTargeting t;              /* +0x268 (its +8, +0x270, the target) */

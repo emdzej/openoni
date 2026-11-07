@@ -6,6 +6,7 @@
 #include "objc.h"
 #include "particle.h"
 #include "sl.h"
+#include "sound.h"
 #include "tm.h"
 #include "trac.h"
 #include "ui.h"
@@ -238,6 +239,7 @@ static bool add_turret(const ObjcObject *o, void *user)
        the target teams (+0x67) */
     memcpy(t->name, o->data, 63);
     t->id = rd16(o->data + 0x3f);
+    t->sound = UINT32_MAX;
     t->flags = rd16(o->data + 0x41) & 2;
     t->teams = rd32(o->data + 0x67);
     memcpy(t->pos, o->pos, sizeof t->pos);
@@ -282,7 +284,11 @@ static void activate(Turret *t)
     if (t->state != 0) return;
     t->active_ticks = 0;
     t->state = 1;
-    t->flags |= TURRET_SOUND;           /* the active sound (+0x63c) isn't played: no positional ambients yet */
+    /* the class's active sound (+0x63c, the ambient of the name at +0x61c: OBJrTurret_UpdateSoundPointers
+       0x4cf880) at its place (OSrAmbient_Start 0x511730) */
+    const void *amb = t->cls ? sound_ambient_find((const char *)t->cls + 0x61c) : NULL;
+    t->sound = amb ? sound_ambient_start_at(amb, t->pos) : UINT32_MAX;
+    t->flags |= TURRET_SOUND;
     shooters_event(t, P3_EV_BG_START, 0xffff);
     targeting_init(&t->t, 1, &turret_ops, t, t->cls + T_FIRING, t->cls + T_AI, t->cls + T_SKILLS);
 }
@@ -302,9 +308,12 @@ static void deactivate(Turret *t)
         shooters_event(t, P3_EV_STOP, 0xffff);
     }
     shooters_event(t, P3_EV_BG_STOP, 0xffff);
+    /* (the firing bit's OR above sets the sound's bit too) */
+    if ((t->flags & TURRET_SOUND) && t->sound != UINT32_MAX) sound_ambient_stop(t->sound);    /* OSrAmbient_Stop */
     t->flags &= (uint16_t)~TURRET_SOUND;
     t->fire = false;
     t->state = 0;
+    t->sound = UINT32_MAX;
 }
 
 void turret_activate(uint16_t id)

@@ -6,6 +6,8 @@
 #include "chars.h"
 #include "exe.h"
 #include "objc.h"
+#include "sound.h"
+#include "tm.h"
 
 #include <math.h>
 
@@ -50,10 +52,85 @@ uint32_t ui_message_time(const char *id)
     return 0;
 }
 
+/* The condition sounds (G+0x1679c0's bits, their ids at G+0x1679c4): the ambients named in the game
+   settings at +0xa10, 32 bytes each (SSrImpulse_UpdateGroupPointers 0x4f49b0 into 0x631188): low health,
+   over health, the shield (nothing starts it), invisibility and the timer's (blank in v1.0). */
+enum { CONDITIONS = 5 };
+static uint32_t cond_on;
+static uint32_t cond_id[CONDITIONS];
+
+static const void *cond_ambient(int i)
+{
+    const uint8_t *gs = tm_instance_get(TM_TAG("ONGS"), "game_settings");
+    if (!gs) return NULL;
+    char name[33];
+    memcpy(name, gs + 0xa10 + 32 * i, 32);
+    name[32] = 0;
+    return name[0] ? sound_ambient_find(name) : NULL;
+}
+
+/* ONrGameState_ConditionSound_Start 0x4fdae0: on, started at the volume (the ambient missing: the bit set, no id); already on, to the
+   volume over a second. */
+static void cond_start(int i, float volume)
+{
+    if (!(cond_on & 1u << i)) {
+        cond_on |= 1u << i;
+        cond_id[i] = sound_ambient_play(cond_ambient(i), volume);
+    } else if (cond_id[i] != UINT32_MAX)
+        sound_ambient_volume(cond_id[i], volume, 1.0f);
+}
+
+/* ONrGameState_ConditionSound_Stop 0x4fdb50: off, its ambient stopped. */
+static void cond_stop(int i)
+{
+    if (!(cond_on & 1u << i)) return;
+    cond_on &= ~(1u << i);
+    if (cond_id[i] != UINT32_MAX) sound_ambient_end(cond_id[i]);
+    cond_id[i] = UINT32_MAX;
+}
+
+/* ONrGameState_Update 0x4fa6a0's condition sounds, a tick: in the follow camera without the letterbox
+   (G+0x80's mode 1, G+0x38), the player's low health (under a fifth: 1 - 0.6 f^2 of f = 5 hp / max), her
+   health over the maximum (1 - 0.6 (1 - f)^2 of f, the excess over (the game settings' +0 - 1) times the
+   maximum, held to 0..1) and her invisibility (1 - 0.6 f^2 of f = 1 - ticks / 1800); else every one on
+   goes to nothing over a second, staying on. */
+void ui_condition_sounds(const struct Character *player, bool follow)
+{
+    if (follow && !box.on) {
+        if (!player) return;
+        uint32_t hp = player->hit_points, max = player->max_hit_points;
+        if (hp < max / 5 && hp != 0) {
+            float f = (float)hp * 5.0f / (float)max;
+            cond_start(0, 1.0f - f * f * 0.6f);
+        } else
+            cond_stop(0);
+        if (hp > max) {
+            const uint8_t *gs = tm_instance_get(TM_TAG("ONGS"), "game_settings");
+            float over = 0.0f;
+            if (gs) memcpy(&over, gs, 4);
+            float f = (float)(hp - max) / ((over - 1.0f) * (float)(int32_t)max);
+            if (!(f >= 0.0f)) f = 0.0f;
+            else if (f > 1.0f) f = 1.0f;
+            cond_start(1, 1.0f - (1.0f - f) * (1.0f - f) * 0.6f);
+        } else
+            cond_stop(1);
+        if (player->invisibility) {
+            float f = 1.0f - (float)player->invisibility * (1.0f / 1800.0f);
+            cond_start(3, 1.0f - f * f * 0.6f);
+        } else
+            cond_stop(3);
+        return;
+    }
+    for (int i = 0; i < CONDITIONS; i++)
+        if ((cond_on & 1u << i) && cond_id[i] != UINT32_MAX) sound_ambient_volume(cond_id[i], 0.0f, 1.0f);
+}
+
 void ui_reset(void)
 {
     now = 0;
-    slowmo = 0;     /* ONrGameState_LevelBegin 0x4f54f1 */
+    slowmo = 0;
+    cond_on = 0;
+    for (int i = 0; i < CONDITIONS; i++) cond_id[i] = UINT32_MAX;     /* ONrGameState_LevelBegin 0x4f54f1 */
     n_seen = 0;
     memset(&fade, 0, sizeof fade);
     memset(&box, 0, sizeof box);
@@ -119,8 +196,8 @@ void ui_update(void)
         }
         areas[a].n = k;
     }
-    /* the timer's tick (0x4fd3d0). Not ported: its sounds (a tick every second, the music under 600
-       ticks) until the sound's port plays them. */
+    /* the timer's tick (0x4fd3d0). Its sounds (the game settings' condition ambient 4 under 600 ticks
+       left, the event impulse 16 every second, 17 when it is stopped) are blank in v1.0: none played. */
     if (timer.state == 1) {
         timer.blink++;
         if (--timer.ticks == 0) {
@@ -329,7 +406,7 @@ static bool cmd_timer_start(SlThread *t, int c, const SlValue *v, SlValue *r, vo
     return true;
 }
 
-/* timer_stop (0x4bd2d0, 0x4fd3a0): off. Not ported: its sound when it was running. */
+/* timer_stop (0x4bd2d0, 0x4fd3a0): off (its sound, event 17, is blank in v1.0). */
 static bool cmd_timer_stop(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)c, (void)v, (void)r, (void)u;

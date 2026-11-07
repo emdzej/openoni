@@ -965,14 +965,15 @@ static void route_input(const Character *c, CharacterInput *in)
         }
         if (*s == 'A') {
             /* "A<N>": for up to N frames, fights (as "F", run at past 9 unless touching) the nearest
-               character within 80 that is in combat (alert 4) and has hit points; done when there is
-               none */
+               character within 80 that is in combat (alert 4), takes her for an enemy and has hit points;
+               done when there is none */
             if (!route.phase) route.until = now + (uint32_t)atoi(s + 1), route.phase = 1;
             const Chr *t = NULL;
             float best = 80.0f * 80.0f;
             for (int i = 0; i < chars_slots(); i++) {
                 const Chr *o = chars_get(i);
                 if (!o || o->player || !chars_in_use(o) || !o->c.hit_points || o->ai.alert < 4) continue;
+                if (chars_player() && !ai_is_hostile(o, chars_player(), true)) continue;   /* an ally's fight (Kerr's) */
                 float ox = o->c.pos[0] - c->pos[0], oy = o->c.pos[1] - c->pos[1], oz = o->c.pos[2] - c->pos[2];
                 float d2 = ox * ox + oz * oz;
                 if (fabsf(oy) < 20.0f && d2 < best) best = d2, t = o;
@@ -1904,6 +1905,7 @@ static int play(int level, int *next)
             laser_update();     /* the triggers' (0x4cb100), the same mechanics update */
             turret_update(env); /* OBJiTurretCombat_Update 0x4cf140, the mechanics' update too */
             particles_update(ticks + 1, true);     /* P3rUpdate(time + 1) after the physics */
+            ui_condition_sounds(chars_player() ? &chars_player()->c : NULL, camera_mode() == CAMERA_FOLLOW);
             /* a script may delete the player: the camera keeps the last place */
             if ((player = chars_player())) fill_target(&ct, &player->c);
             camera_set_target(&ct);

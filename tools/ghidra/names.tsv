@@ -1379,6 +1379,7 @@
 004f9a70	HandleFallThrough	-	med	name from the Intel Mac build (strings:1)
 004fa2f0	HandleStartJumping	-	high	Mac name (its layout match ONrInput_Update_Keys is wrong): the jump table, then 0x4fa1c0
 004fa520	ONiCharacter_PlayerKeyFilter	ON	low	the player's keys: a conversation's mask and end, fire to punch or kick without a weapon (name made up)
+004fa6a0	ONrGameState_Update	ON	med	name from the Intel Mac build: the tick (input, the modules, the condition sounds, which the Mac build has apart as ONrGameState_UpdateConditionSounds)
 004faec0	ONiGameState_PlayerEscape	ON	low	the player's input bit 1 (escape): the main menu over the level, at most once in 15 ticks
 004fafb0	iComputeDeltaTicks	-	med	name from the Intel Mac build (strings:2)
 004fb290	ONiGameState_SetObjectShade	ON	low	an object's own shade as the ambient, no directional lights (port name)
@@ -1409,6 +1410,8 @@
 004fda80	ONrGameState_ClearContinue	ON	low	the continue cleared, no save point (a won level)
 004fdaa0	ONrGameState_SetContinue	ON	low	the continue copied in with its save point
 004fdac0	ONrGameState_EventSound_Play	ON	med	name from the Intel Mac build (neighbours:0.80)
+004fdae0	ONrGameState_ConditionSound_Start	ON	med	name from the Intel Mac build: G+0x1679c0 bit on, the ambient started at the volume, or faded to it
+004fdb50	ONrGameState_ConditionSound_Stop	ON	med	name from the Intel Mac build: the bit off, the ambient stopped
 004fdcf0	ONiImpactEffect_MakeDirty	ON	med	name from the Intel Mac build (neighbours:1.00)
 004fe150	ONiImpactEffect_DeallocateEntry	ON	med	name from the Intel Mac build (strings:1)
 004fe4b0	ONiImpactEffect_DeleteMaterialIndex	ON	med	name from the Intel Mac build (neighbours:1.00)

@@ -37,13 +37,13 @@ enum {
 /* The trigger object's flags (D+0x2e). */
 enum {
     TRIG_TRIGGERED = 0x02, TRIG_ACTIVE = 0x04, TRIG_INITIAL = 0x08, TRIG_REVERSE = 0x10,
-    TRIG_PINGPONG = 0x20, TRIG_HIDDEN = 0x40,
+    TRIG_PINGPONG = 0x20, TRIG_HIDDEN = 0x40, TRIG_SOUND = 0x80,
 };
 
 /* The TRIG class: the base geometry (+0x10), the emitter (+0x1c, a TRGE), its animation (+0x20, an OBAN),
    the active sound (+0x24, 32) and the hit sound (+0x44, 32). TRGE: the beam's start (+0x00) and
    direction (+0x0c) in the emitter's space, its geometry (+0x18). */
-enum { TRIG_EMITTER = 0x1c, TRIG_ANIM = 0x20, TRIG_HIT_SOUND = 0x44 };
+enum { TRIG_EMITTER = 0x1c, TRIG_ANIM = 0x20, TRIG_ACTIVE_SOUND = 0x24, TRIG_HIT_SOUND = 0x44 };
 enum { TRGE_POS = 0x00, TRGE_DIR = 0x0c, TRGE_GEOMETRY = 0x18 };
 enum { EMITTERS_MAX = 32 };
 
@@ -69,6 +69,7 @@ typedef struct {
     Emitter em[EMITTERS_MAX];   /* D+0x9c */
     float *hits;            /* D+0x104: the environment's hit point by the animation's frame, 0 0 0 none yet */
     const uint8_t *events;  /* D+0x90 */
+    uint32_t sound;         /* D+0x100: the active sound's (the OS layer's ambient id), UINT32_MAX none */
 } Laser;
 
 static Laser *lasers;
@@ -142,10 +143,24 @@ static void advance(Laser *l)
     }
 }
 
-/* The type's update (0x4cb100): (the active sound, not ported,) the emitters while active, then the on and
-   off times: on for time_on ticks, off for time_off, when either is set. */
+/* The type's update (0x4cb100): the active sound, the emitters while active, then the on and off times:
+   on for time_on ticks, off for time_off, when either is set. The sound: active and shown, the class's
+   (+0x64, the ambient of the name at +0x24) started at the trigger's place once (OSrAmbient_Start 0x511730,
+   flag 0x80, the id at D+0x100) and kept there (OSrAmbient_Update 0x511ec0); else stopped (0x511e40). */
 static void update(Laser *l)
 {
+    if (!(l->flags & TRIG_HIDDEN) && (l->flags & TRIG_ACTIVE)) {
+        if (!(l->flags & TRIG_SOUND)) {
+            const void *amb = l->cls ? sound_ambient_find((const char *)l->cls + TRIG_ACTIVE_SOUND) : NULL;
+            l->sound = amb ? sound_ambient_start_at(amb, l->pos) : UINT32_MAX;
+            l->flags |= TRIG_SOUND;
+        }
+    } else {
+        if ((l->flags & TRIG_SOUND) && l->sound != UINT32_MAX) sound_ambient_stop(l->sound);
+        l->flags &= (uint16_t)~TRIG_SOUND;
+        l->sound = UINT32_MAX;
+    }
+    if ((l->flags & TRIG_SOUND) && l->sound != UINT32_MAX) sound_ambient_move(l->sound, l->pos);
     if (l->oban && (l->flags & TRIG_ACTIVE)) advance(l);
     if (l->countdown) {
         l->countdown--;
@@ -217,6 +232,7 @@ static bool add(const ObjcObject *o, void *user)
     if (!l->cls) return true;
     nlasers++;
     l->id = rd16(o->data + OSD_ID);
+    l->sound = UINT32_MAX;
     l->flags = rd16(o->data + OSD_FLAGS) & 0x38;
     l->colour = rd32(o->data + OSD_COLOUR);
     l->start = clampf(rdf(o->data + OSD_START), 0.0f, 1.0f);

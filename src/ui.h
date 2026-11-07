@@ -79,3 +79,6 @@ bool ui_timer_text(char out[32]);
 bool ui_timer_running(void);
 /* fade_in, fade_out, letterbox, input, message, message_remove, win, lose, timer_start, timer_stop. */
 void ui_register_commands(void);
+/* ONrGameState_Update 0x4fa6a0's condition sounds for the player, a tick (follow: the follow camera's on). */
+struct Character;
+void ui_condition_sounds(const struct Character *player, bool follow);

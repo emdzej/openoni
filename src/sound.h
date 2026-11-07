@@ -64,6 +64,11 @@ void sound_speech_stop(uint32_t id);
 void sound_music_start(const char *name, float volume);
 void sound_music_stop(const char *name);
 void sound_music_volume(const char *name, float volume, float seconds);
+/* The sound system's own ambients (the game state's condition sounds): started with no place at a volume
+   (SSrAmbient_Start 0x4823a0), faded (0x482000), stopped (0x4823c0, the out sound follows). */
+uint32_t sound_ambient_play(const void *amb, float volume);
+void sound_ambient_volume(uint32_t id, float volume, float seconds);
+void sound_ambient_end(uint32_t id);
 /* The OS layer's one music (OSrMusic_*: the main menu's and the splash screens'): started at a volume,
    faded, stopped (its out sound follows), halted at once; on while its id is kept. */
 void sound_music_play(const char *name, float volume);

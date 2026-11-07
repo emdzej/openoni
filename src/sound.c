@@ -1762,6 +1762,16 @@ void sound_music_volume(const char *name, float volume, float seconds)
 const void *sound_impulse_find(const char *name) { return loaded ? find_nocase(&impulses, name) : NULL; }
 float sound_impulse_impact_velocity(const void *impulse) { return impulse ? ((const Impulse *)impulse)->impact_velocity : 0.0f; }
 
+/* SSrAmbient_Start without a place (0x4823a0) at the volume: the id, UINT32_MAX none. */
+uint32_t sound_ambient_play(const void *amb, float volume)
+{
+    return amb ? ambient_start((const Ambient *)amb, NULL, 0, 0, &volume) : UINT32_MAX;
+}
+
+/* SSrAmbient_SetVolume 0x482000 and SSrAmbient_Stop 0x4823c0 of an id from sound_ambient_play. */
+void sound_ambient_volume(uint32_t id, float volume, float seconds) { ambient_set_volume(id, volume, seconds); }
+void sound_ambient_end(uint32_t id) { ambient_stop(id); }
+
 /* The OS layer's one music (0x61fa00, its playing ambient's id): the main menu's and the splash screens'. */
 static uint32_t music_id = UINT32_MAX;
 
