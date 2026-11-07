@@ -521,6 +521,24 @@ static bool next_point(AiState *a, const Character *c)
     }
 }
 
+bool movement_path_now(Chr *ch, const void *env)
+{
+    AiState *a = ai_of(ch);
+    if (!a->path_pending) return false;
+    bool had = a->fail_set;
+    uint32_t when = a->fail_time;
+    path_given(a, &ch->c, env);
+    return a->fail_set && (!had || when != a->fail_time) && a->fail_time == a->ticks;
+}
+
+bool movement_path_short(const Chr *ch)
+{
+    const AiState *a = &ch->ai;
+    if (a->arrived) return true;
+    if (a->path_n >= 1) return false;
+    return a->local_n <= a->local_k + 1;
+}
+
 void movement_path_update(Chr *ch, const void *env)
 {
     AiState *a = ai_of(ch);

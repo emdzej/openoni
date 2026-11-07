@@ -47,6 +47,14 @@ bool ai_dangerous_contact(const Chr *c, const Chr *other, bool known, const stru
 void neutral_died(Chr *c);
 void neutral_deleted(Chr *c);
 
+/* AI2rVocalize 0x48ba60: c's cry of a type (0 taunt, 1 alert, 2 startle, 3 checkbody, 4 pursue, 5 cower,
+   6 superpunch, 7 superkick, 8 super3, 9 super4), the class's ambient (ONCC+0x2b4, 0x20 a type) said at the type's
+   priority (0x52a584), unforced only by the class's chance (ONCC+0x2a8, percent); none for a fighter's
+   taunt once it taunted (+0x76). True when said or queued. */
+bool ai_vocalize(Chr *c, uint32_t type, bool force);
 /* ONrSpeech_Say 0x516940: 0 said now, 1 queued, 2 refused. ONrSpeech_Update 0x516a60, a tick of it. */
 int speech_say(Character *c, const ChrSpeech *s, bool interrupt);
 void speech_update(Chr *c);
+/* 0x516a00: c's line cut short (its sound stopped: at once, 0x5116b0, or as an ambient, 0x511e40), the
+   line and the one queued forgotten. */
+void speech_stop(Character *c);

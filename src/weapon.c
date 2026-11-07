@@ -14,6 +14,8 @@
 #include "m3gm.h"
 #include "material.h"
 #include "objc.h"
+#include "object.h"
+#include "body.h"
 #include "particle.h"
 #include "persist.h"
 #include "powerup.h"
@@ -184,7 +186,9 @@ static bool fire_shooter(Weapon *w, int16_t trigger, bool keep, bool *empty)
     if (!(w->flags & WEAPON_FIRING)) {
         w->flags |= WEAPON_FIRING;
         if (!keep && rd16(sh + SH_ACTIVE) > w->fire_min) w->fire_min = rd16(sh + SH_ACTIVE);
-        /* the AI's dodge of the firing spread (AI2rKnowledge_NewDodgeFiringSpread): with the AI's weapons */
+        /* the firing spread the AIs dodge (AI2rKnowledge_NewDodgeFiringSpread 0x49c160), for a class
+           with one (+0x144, its length) */
+        if (rdf(w->cls + 0x144) > 0.0f) w->spread = knowledge_spread_new(w);
         for (unsigned j = 0; j < n; j++) {
             const uint8_t *s = shooter(w, j);
             int16_t t = (int16_t)rd16(s + SH_TRIGGER);
@@ -211,6 +215,13 @@ static bool depress_trigger(Weapon *w, bool keep, bool alt, bool *empty)
     return false;
 }
 
+/* The firing spread let go (AI2rKnowledge_DeleteDodgeFiringSpread 0x49c1e0). */
+static void free_spread(Weapon *w)
+{
+    if (w->spread != -1) knowledge_spread_delete(w->spread);
+    w->spread = -1;
+}
+
 /* ONiCharacter_StopFiring 0x51a3b0: unless forced, a shot's least time or the release delay still
    running only asks for the stop; else the shooters stop. */
 static void stop_firing(Weapon *w, bool force)
@@ -226,6 +237,7 @@ static void stop_firing(Weapon *w, bool force)
     w->fire_min = 0;
     if (w->flags & WEAPON_FIRING) {
         w->flags &= (uint16_t)~WEAPON_FIRING;
+        free_spread(w);
         every_shooter(w, EV_STOP);
     }
 }
@@ -715,6 +727,7 @@ Weapon *weapon_new(const void *onwc, const float pos[3], float facing)
     memset(w, 0, sizeof *w);
     w->cls = onwc;
     w->flags = WEAPON_IN_USE;
+    w->spread = -1;
     fill_ammo(w);
     w->time = now;
     /* the context made, then put 2 above the place (its matrix and the weapon's follow on the next
@@ -750,6 +763,7 @@ void weapon_delete(Weapon *w)
     w->fire_min = 0;
     if (w->flags & WEAPON_FIRING) {
         w->flags &= (uint16_t)~WEAPON_FIRING;
+        free_spread(w);
         every_shooter(w, EV_STOP);
     }
     if (w->flags & WEAPON_DELAYED) {
@@ -804,6 +818,7 @@ static void not_through_wall(const Character *c, float p[3])
 static void release(Weapon *w, bool thrown)
 {
     if (!(w->flags & WEAPON_IN_USE)) return;
+    free_spread(w);
     if (!w->has_phys) create_physics(w);
     PhysObject *o = &w->phys;
     Character *c = w->owner;
@@ -1058,6 +1073,8 @@ static void pickup_weapon(Character *c, Weapon *w)
     chr_set_weapon(c, w);
 }
 
+void chr_pickup_weapon(Character *c, Weapon *w) { pickup_weapon(c, w); }
+
 /* HandleStartPickup (in HandleHeartbeatInput 0x4f6ad0), the swap key gone down and no weapon overlay:
    the powerup and the weapon at hand (0x4fa4b0: a handle within 3 below and 18 above the feet, 8
    across), a weapon only with none stowed. With neither, the weapon in the hand is holstered, else the
@@ -1100,10 +1117,10 @@ static bool start_pickup(Character *c, const ChrInput *in)
 }
 
 /* The weapon's keys of HandleHeartbeatInput: without a weapon no reload; the reload key asks for one
-   (0x4edc00: not yet, no clips); with no reload asked and no weapon overlay, fire gone down (0x4e8f80),
-   else held (0x4e8fa0: sustained fire again, else the empty click), else released (0x4e9000); the
-   alternate fire only when the first is neither down nor held. HandlePickupInput 0x4eda40: drop (not
-   yet), hypo (weapon_input). */
+   (0x4edc00, run at the weapon's frame step); with no reload asked and no weapon overlay, fire gone
+   down (0x4e8f80), else held (0x4e8fa0: sustained fire again, else the empty click), else released
+   (0x4e9000); the alternate fire only when the first is neither down nor held. HandlePickupInput
+   0x4eda40: drop, hypo (weapon_input). */
 static void fire_input(Character *c, const ChrInput *in)
 {
     if (!c->weapon) {
@@ -1149,14 +1166,64 @@ static void weapon_input(Character *c, const ChrInput *in)
     }
 }
 
+static void xform(const float m[12], const float p[3], float out[3])
+{
+    for (int k = 0; k < 3; k++) out[k] = m[k] * p[0] + m[3 + k] * p[1] + m[6 + k] * p[2] + m[9 + k];
+}
+
+/* 0x4f0260: something between p and p + d: the level's quads (the first hit, skipping 0x44800), or an
+   object nearer than d's length (AMrRayToObject 0x4d52c0 along d made a unit, MUrVector_Normalize_ZeroTest
+   0x4340f0: a zero d counts as blocked). */
+static bool gun_ray_blocked(const float p[3], const float d[3])
+{
+    const void *env = p3_environment();
+    static AkevHit h[AKEV_HITS_MAX];
+    if (env && akev_collide_point(env, p, d, 0x44800, 1, h)) return true;
+    float l2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+    if (fabsf(l2) < 9.5367432e-07f) return true;     /* 0x529d00: 2^-20 */
+    float l = sqrtf(l2), n[3] = { d[0] / l, d[1] / l, d[2] / l }, hit[3];
+    if (!object_ray(p, n, hit)) return false;
+    float e[3] = { hit[0] - p[0], hit[1] - p[1], hit[2] - p[2] };
+    return l > sqrtf(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]);
+}
+
+/* ONrCharacter_IsGunThroughWall 0x4f0150: from the pelvis's middle (its geometry's sphere's centre under
+   the part's matrix, A+0x2278) to each shooter that takes ammo (its matrix's place under the weapon
+   node's, A+0x2608), then to the weapon node itself: a wall or an object in the way. */
+static bool gun_through_wall(const Character *c, const Weapon *w)
+{
+    const void *body = body_of_class(c->oncc, 4);
+    const void *g = body ? body_geometry(body, 0) : NULL;
+    float box[6], sph[4] = { 0, 0, 0, 0 }, wm[12], p[3];
+    if (g) m3gm_bounds(g, box, sph);
+    xform(c->bone_world[0], sph, p);
+    if (!chr_weapon_matrix(c, wm)) return false;
+    for (unsigned k = 0; k < shooters(w); k++) {
+        const uint8_t *s = shooter(w, k);
+        if (!rd16(s + SH_AMMO)) continue;
+        float at[3] = { rdf(s + 0x24), rdf(s + 0x28), rdf(s + 0x2c) }, q[3];
+        xform(wm, at, q);
+        float d[3] = { q[0] - p[0], q[1] - p[1], q[2] - p[2] };
+        if (gun_ray_blocked(p, d)) return true;
+    }
+    float d[3] = { wm[9] - p[0], wm[10] - p[1], wm[11] - p[2] };
+    return gun_ray_blocked(p, d);
+}
+
 /* 0x4e9040, a trigger of DoCharacterFrame (mode 0 fire, 1 again, 2 alternate, 3 held): the flags
-   cleared; a dead character doesn't; the trigger; out of ammo the firing stops (then the reload and the
-   empty sound: not yet). Not ported: the gun through a wall (ONrCharacter_IsGunThroughWall). */
+   cleared; a dead character doesn't; a gun through a wall stops firing; the trigger; out of ammo the
+   firing stops (then the reload and the empty sound). */
 static void trigger(Character *c, int mode)
 {
     if (mode == 2) c->fire2_down = false;
     else c->fire_down = c->fire_again = c->fire_empty = false;
-    if (!c->weapon || (c->flags & 1)) return;
+    if (!c->weapon) return;
+    if (gun_through_wall(c, c->weapon)) {
+        c->stop_fire = c->stop_fire2 = false;       /* A+0x21e3, A+0x21e4 */
+        stop_firing(c->weapon, false);
+        return;
+    }
+    if (c->flags & 1) return;
     c->last_action = c->time;
     bool empty = false;
     depress_trigger(c->weapon, false, mode == 2, &empty);
@@ -1327,7 +1394,7 @@ static bool inflict_damage(Character *c, const float dir[3], int type, uint32_t 
             knockback *= r;
         }
     }
-    chr_take_damage(c, dmg, knockback, dir, 0, owner_character(owner));
+    chr_take_damage(c, dmg, knockback, dir, 0, owner_character(owner), owner & 0xff000000u);
     /* an unstoppable character (0x4e6500: the cheat for the player, C+0x04 bit 0x100) takes no
        knockdown or stun of the damage's kind */
     if (chr_is_unstoppable(c) || (c->flags & 1)) return false;
@@ -1347,8 +1414,15 @@ static bool inflict_damage(Character *c, const float dir[3], int type, uint32_t 
         }
         break;
     case 3: {
+        /* by the knockback's strength (A+0xb8, squared): over 16.81 (0x52b8cc) a knockdown unless down
+           already (0x4eccb0); over 4.84 (0x52b8c8) a heavy stun unless in a reaction, and its stagger */
         float k = c->knockback[0] * c->knockback[0] + c->knockback[1] * c->knockback[1] + c->knockback[2] * c->knockback[2];
-        (void)k;    /* the thresholds (0x52b8c8, 0x52b8cc) and the air's knockdown: with the knockdowns' port */
+        if (k > 16.81f) {
+            if (!chr_is_down_type(c->type)) chr_knockdown(c, face_along(c, dir) == 1 ? 0x58 : 0x4f);
+        } else if (k > 4.84f) {
+            if (!chr_is_victim_type(c->type)) chr_knockdown(c, face_along(c, dir) == 1 ? 0xd5 : 0xc6);
+            c->countdown_1c9a = 22;
+        }
         break;
     }
     case 4:

@@ -2,6 +2,7 @@
 #include "camera.h"
 
 #include "akev.h"
+#include "akev_collide.h"
 #include "oban.h"
 #include "sl.h"
 #include "tm.h"
@@ -140,73 +141,11 @@ static uint8_t *env_array(const void *env, unsigned field, uint32_t *count)
     return a ? a + 0x18 : NULL;
 }
 
-/* Whether q (on the quad's plane, normal n) is within margin of the quad's corners. */
-static bool quad_holds(const uint8_t *pts, const AkevQuad *g, const float n[3], const float q[3], float margin)
+/* The quads of the last collision's hits (the list at 0x6a9080, its count at 0x6a906c), after those
+   found already, while there is room (0x4d6d97). */
+static uint32_t take_hits(const AkevHit *h, unsigned nh, uint32_t *found, uint32_t n)
 {
-    for (uint32_t e = 0; e < g->corners; e++) {
-        const uint8_t *a = pts + 12 * g->point[e], *b = pts + 12 * g->point[(e + 1) % g->corners];
-        float ax = rdf(a), ay = rdf(a + 4), az = rdf(a + 8);
-        float ed[3] = { rdf(b) - ax, rdf(b + 4) - ay, rdf(b + 8) - az }, in[3];
-        cross(n, ed, in);
-        float len = sqrtf(in[0] * in[0] + in[1] * in[1] + in[2] * in[2]);
-        if (len <= 0.0f) continue;
-        if (((q[0] - ax) * in[0] + (q[1] - ay) * in[1] + (q[2] - az) * in[2]) / len < -margin) return false;
-    }
-    return true;
-}
-
-/* A stand-in for AKrCollision_Point 0x441c80 (radius 0) and AKrCollision_Sphere 0x441cb0: the quads a
-   point or a sphere of the radius touches moving from p along v, without the skip flags (and without the
-   ghosts, which the octree the originals walk leaves out), at most max of them, in quad order (the
-   originals list them as their octree walk meets them). Brute force over the quads' boxes until the
-   collision is ported. */
-static int sweep(const void *env, const float p[3], const float v[3], float r, uint32_t skip, uint32_t *out, int max)
-{
-    uint32_t nc, np, nq = akev_quad_count(env);
-    const uint8_t *col = env_array(env, AKEV_QUAD_COLLISION, &nc), *pts = akev_points(env, &np);
-    if (!col || !pts || max <= 0) return 0;
-    float lo[3], hi[3];
-    for (int i = 0; i < 3; i++) {
-        lo[i] = fminf(p[i], p[i] + v[i]) - r;
-        hi[i] = fmaxf(p[i], p[i] + v[i]) + r;
-    }
-    int n = 0;
-    for (uint32_t i = 0; i < nq && i < nc && n < max; i++) {
-        const uint8_t *c = col + 28u * i;
-        if (hi[0] < rdf(c + 4) || lo[0] > rdf(c + 16) || hi[1] < rdf(c + 8) || lo[1] > rdf(c + 20) ||
-            hi[2] < rdf(c + 12) || lo[2] > rdf(c + 24)) continue;
-        AkevQuad g;
-        if (!akev_quad(env, i, &g) || (g.flags & (skip | AKEV_QUAD_GHOST))) continue;
-        const uint8_t *a = pts + 12 * g.point[0], *b = pts + 12 * g.point[1], *cc = pts + 12 * g.point[2];
-        float o[3] = { rdf(a), rdf(a + 4), rdf(a + 8) };
-        float e1[3] = { rdf(b) - o[0], rdf(b + 4) - o[1], rdf(b + 8) - o[2] };
-        float e2[3] = { rdf(cc) - o[0], rdf(cc + 4) - o[1], rdf(cc + 8) - o[2] }, nn[3];
-        cross(e1, e2, nn);
-        float len = sqrtf(nn[0] * nn[0] + nn[1] * nn[1] + nn[2] * nn[2]);
-        if (len <= 0.0f) continue;
-        for (int k = 0; k < 3; k++) nn[k] /= len;
-        float d0 = nn[0] * (p[0] - o[0]) + nn[1] * (p[1] - o[1]) + nn[2] * (p[2] - o[2]);
-        float d1 = d0 + nn[0] * v[0] + nn[1] * v[1] + nn[2] * v[2];
-        if ((d0 > r && d1 > r) || (d0 < -r && d1 < -r)) continue;
-        if (r <= 0.0f && ((d0 > 0 && d1 > 0) || (d0 < 0 && d1 < 0))) continue;
-        float ts[5] = { 0.0f, 1.0f, 0.0f, 0.0f, 0.0f };
-        int nt = r > 0.0f ? 2 : 0;
-        if (d0 != d1) {
-            ts[nt++] = d0 / (d0 - d1);
-            if (r > 0.0f) ts[nt++] = (d0 - r) / (d0 - d1), ts[nt++] = (d0 + r) / (d0 - d1);
-        }
-        bool hit = false;
-        for (int k = 0; k < nt && !hit; k++) {
-            float t = ts[k] < 0.0f ? 0.0f : ts[k] > 1.0f ? 1.0f : ts[k];
-            float s[3] = { p[0] + t * v[0], p[1] + t * v[1], p[2] + t * v[2] };
-            float dist = nn[0] * (s[0] - o[0]) + nn[1] * (s[1] - o[1]) + nn[2] * (s[2] - o[2]);
-            if (fabsf(dist) > r + 1e-3f) continue;
-            float q[3] = { s[0] - nn[0] * dist, s[1] - nn[1] * dist, s[2] - nn[2] * dist };
-            float m2 = r * r - dist * dist;
-            hit = quad_holds(pts, &g, nn, q, m2 > 0.0f ? sqrtf(m2) : 0.0f);
-        }
-        if (hit) out[n++] = i;
-    }
+    for (unsigned i = 0; i < nh && n < JELLO_MAX; i++) found[n++] = h[i].quad;
     return n;
 }
 
@@ -226,6 +165,7 @@ static void track_jello(void)
     const CameraTarget *c = &cam.target;
     uint32_t found[JELLO_MAX];
     uint32_t n = 0;
+    static AkevHit hits[AKEV_HITS_MAX];
     /* the probes: off to the side (up x view, times 3, its y raised by 2 first), around a point 12 over
        the feet; only the first runs (the count at 0x54d654 is 1) */
     float side[3];
@@ -252,15 +192,16 @@ static void track_jello(void)
             if (len <= 1.0f) len = 1.0f;
             float s[3] = { d[0], d[1], d[2] }, k = len / sqrtf(s[2] * s[2] + s[1] * s[1] + s[0] * s[0]);
             s[0] *= k, s[1] *= k, s[2] *= k;     /* 0x433d60 */
-            /* AKrCollision_Sphere 0x441cb0, skipping 0x42000 */
-            n += (uint32_t)sweep(env, cam.cur.location, s, cm_jello_radius, AKEV_QUAD_NO_DRAW, found + n, (int)(JELLO_MAX - n));
+            /* AKrCollision_Sphere 0x441cb0, skipping 0x42000, listing as many as there is room for */
+            float sph[4] = { cam.cur.location[0], cam.cur.location[1], cam.cur.location[2], cm_jello_radius };
+            n = take_hits(hits, akev_collide_sphere(env, sph, s, AKEV_QUAD_NO_DRAW, JELLO_MAX - n, hits), found, n);
         } else {
             /* AKrCollision_Point 0x441c80 */
-            n += (uint32_t)sweep(env, cam.cur.location, d, 0.0f, AKEV_QUAD_NO_DRAW, found + n, (int)(JELLO_MAX - n));
+            n = take_hits(hits, akev_collide_point(env, cam.cur.location, d, AKEV_QUAD_NO_DRAW, JELLO_MAX - n, hits), found, n);
         }
-        /* Here the original also tests the physics contexts with flag 2 (+0x17) against the same line
-           (PHrCollision_Point 0x4d5280) and marks those hit with 0x40, the objects' jello: not yet, there
-           are no physics contexts in the port. */
+        /* Here the original also tests the level's objects (GS+0x167708, 0xc0 bytes each) with flag 2
+           (+0x17) against the same line (PHrCollision_Point 0x4d5280, their physics contexts) and marks
+           those hit with 0x40 (+0x17), the objects' jello: not ported, the objects' draw has no jello. */
     }
     uint32_t nr, nq, npl, np;
     uint8_t *render = env_array(env, AKEV_QUAD_RENDER, &nr);

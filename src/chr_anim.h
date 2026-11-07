@@ -92,6 +92,8 @@ void chr_set_animation_interpolated(Character *c, uint16_t from_state, const voi
 /* The direct change (as in NextAnimation, DoAnimation and 0x4d7f90): no interpolation. */
 void chr_set_animation(Character *c, const void *tram);
 /* 0x4eb340: a script's animation (chr_animate), interpolated over interp ticks if > 0. */
+/* AI2rVocalize 0x48ba60 for an animation's cry (NewAnimationHook 0x4e97fb; chars.c sets it). */
+extern void (*chr_vocalize_hook)(Character *c, uint32_t type);
 void chr_set_animation_external(Character *c, uint16_t from_state, const void *tram, int32_t interp);
 /* ONrCharacter_UpdateAnimationForVarient 0x4eb1a0. */
 void chr_update_animation_for_varient(Character *c);

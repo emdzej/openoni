@@ -306,6 +306,33 @@ void physctx_box_bounds(PhysBox *box, const float b[6], const float pos[3])
     }
 }
 
+bool physctx_box_ray(const PhysBox *box, const float p[3], const float v[3], float hit[3])
+{
+    /* the box convex: the crossing from the front that a segment from outside enters by is the last
+       of the front faces' crossings within the back faces' */
+    float t0 = 0.0f, t1 = 1.0f;
+    int entered = -1;
+    for (int f = 0; f < 6; f++) {
+        const float *pl = box->planes[f];
+        float dn = pl[0] * v[0] + pl[1] * v[1] + pl[2] * v[2];
+        float dist = pl[0] * p[0] + pl[1] * p[1] + pl[2] * p[2] + pl[3];
+        if (dn == 0.0f) {
+            if (dist > 0.0f) return false;
+            continue;
+        }
+        float t = -dist / dn;
+        if (dn < 0.0f) {
+            if (dist > 0.0f && t >= t0) t0 = t, entered = f;
+        } else if (t < t1) {
+            t1 = t;
+        }
+        if (t0 > t1) return false;
+    }
+    if (entered < 0) return false;
+    for (int k = 0; k < 3; k++) hit[k] = p[k] + v[k] * t0;
+    return true;
+}
+
 bool physctx_box_contains(const PhysBox *box, const float p[3])
 {
     for (int f = 0; f < 6; f++) {

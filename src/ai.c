@@ -14,6 +14,8 @@
 #include "movement.h"
 #include "patrol.h"
 #include "pursuit.h"
+#include "chr_anim.h"
+#include "trac.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -87,6 +89,12 @@ bool ai_movement_modifier(AiState *a, float dir, float weight)
     a->move.counted++;
     if (a->move.nconfirmed || a->avoid != 1000.0f) a->move.reweigh = true;
     return true;
+}
+
+void ai_movement_avoid(AiState *a, float dir)
+{
+    a->avoid = dir;
+    a->move.reweigh = true;
 }
 
 /* AI2rIsHurrying 0x48b020: an AI hurries in the states the table at 0x52a4d8 doesn't mark calm (combat,
@@ -227,6 +235,16 @@ static uint32_t oncc_u32(const Character *c, unsigned off)
 {
     const uint8_t *p = (const uint8_t *)c->oncc + off;
     return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
+}
+
+/* 0x4ed280: standing still (state 7, in a standing type). */
+static bool standing_still(const Character *c)
+{
+    if (c->state != 7) return false;
+    switch (c->type) {
+    case 6: case 7: case 8: case 0xce: case 0xcf: case 0xd8: return true;
+    default: return false;
+    }
 }
 
 /* The class's combat block (ONCC+0x138, the combat state's +0x28): +0x154 the wait for a reload, +0x158
@@ -375,8 +393,18 @@ static bool combat_update(AiState *a, Character *c)
     if (!a->combat_wait_reload) {
         if (a->combat_wait && (!a->target || !((Chr *)a->target)->corpse_time)) {
             a->combat_wait--;
-            /* (the taunt over the body: +0x75, then the class's chance at ONCC+0x298 of type 0x5e and
-               the vocalization 0x48ba60) */
+            /* the taunt over the body of one it felled in melee (+0x75, 0x48b370): once, standing still
+               (0x4ed280), past half the wait; the taunt animation (0x5e) by the class's chance
+               (ONCC+0x298, percent) and the cry (type 3) */
+            if (a->combat_taunt_ready && !a->combat_taunted && standing_still(c) &&
+                a->combat_wait < oncc_u32(c, ONCC_COMBAT_WAIT) / 2) {
+                a->combat_taunted = true;
+                a->combat_taunt_ready = false;
+                uint32_t r = trac_random(), pct = oncc_u32(c, 0x298);
+                if (r < (uint32_t)(((uint64_t)((pct << 16) - pct) * 0x51eb851fu) >> 37))
+                    chr_do_animation(c, CHR_ANIM_WHEN_CAN, 0x5e);
+                ai_vocalize((Chr *)c, 3, false);
+            }
         }
         if (!a->combat_wait) ai_return_to_job(a);
     }
@@ -466,6 +494,30 @@ void ai_update(AiState *a, Character *c, const void *env)
         memcpy(a->job_pos, c->pos, sizeof a->job_pos);
     }
     chars_ai_scripts((Chr *)c);
+    /* the startle (C+0xfa8): while its animation plays (0x4e3ff0: types 0xc0..0xc3, now or queued, the
+       frame 0 for a queued one) the character turns toward its contact with the frames, stops aiming
+       and does nothing else */
+    if (a->startle_ticks) {
+        bool now = c->type >= 0xc0 && c->type <= 0xc3, queued = c->queued >= 0xc0 && c->queued <= 0xc3;
+        if (now || queued) {
+            uint16_t frame = now ? (uint16_t)c->frame : 0;
+            float f = a->startle_turn / (float)a->startle_ticks * (float)frame + a->startle_from;
+            if (f < 0.0f) f += TWO_PI;
+            else if (f >= TWO_PI) f -= TWO_PI;
+            if (a->aim.on) a->aim.stop = true;      /* AI2rExecutor_StopAiming 0x498da0 */
+            ai_executor_move(a, f, 0, 4, true);
+            ChrInput in;
+            executor_update(a, c, &in);
+            character_update_input(c, &in, env);
+            return;
+        }
+        a->startle_ticks = 0;
+    }
+    /* the cry put off (C+0xf8c): at its end the startled one (type 1) */
+    if (a->vocal_delay && --a->vocal_delay == 0) {
+        ai_vocalize((Chr *)c, 1, false);
+        a->flags |= AI_FLAG_STARTLED;
+    }
     /* AI2rMovement_Update 0x4a8550's glance: the delay first, then the ticks, a tick counted once the aim is done (A+0x1ab8,
        0x498e60) */
     if (a->glance_delay) a->glance_delay--;

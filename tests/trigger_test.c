@@ -60,13 +60,14 @@ int main(void)
             for (int z = -2000; z <= 2000 && v < 0; z += 8)
                 for (int y = -200; y <= 600 && v < 0; y += 8) {
                     float p[3] = { (float)x, (float)y, (float)z };
-                    for (int i = 0; i < n; i++) if (trigger_contains(i, p)) { v = i; memcpy(in, p, sizeof in); break; }
+                    for (int i = 0; i < n; i++) if (trigger_contains(i, p, p[1], p[1] + 18.0f)) { v = i; memcpy(in, p, sizeof in); break; }
                 }
         if (v < 0) {
             fprintf(stderr, "trigger_test: no volume found on the grid\n");
             failed++;
         } else {
-            TriggerActor a = { .team = 0, .player = true, .alive = true, .name = "konoko" };
+            TriggerActor a = { .team = 0, .player = true, .alive = true, .name = "konoko",
+                               .bottom = in[1], .top = in[1] + 18.0f };
             float away[3] = { in[0] + 5000, in[1], in[2] };
             memcpy(a.pos, away, sizeof a.pos);
             trigger_update(&a, 1);

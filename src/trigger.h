@@ -11,6 +11,7 @@
    between updates. */
 typedef struct {
     float pos[3];           /* the feet */
+    float bottom, top;      /* the body box's heights (C+0x190, C+0x1658) */
     uint32_t team;          /* bit in the volume's team mask */
     bool player;            /* the 0x80 flag (player only) passes just the player */
     bool alive;
@@ -39,8 +40,9 @@ const char *trigger_script(int i, int kind);
 void trigger_box(int i, float origin[3], float axis[3][3], float size[3]);
 /* Volume i's middle (the box: origin + axis * (0..size)). */
 void trigger_centre(int i, float c[3]);
-/* Whether a character (its feet at pos) is in volume i, ignoring the team and flags. */
-bool trigger_contains(int i, const float pos[3]);
+/* Whether a character (its feet at pos, its body box from bottom to top) is in volume i, ignoring the
+   team and flags. */
+bool trigger_contains(int i, const float pos[3], float bottom, float top);
 /* PHrCollision_Volume_Ray: the segment from a to b meets the volume. */
 bool trigger_segment(int i, const float a[3], const float b[3]);
 

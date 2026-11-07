@@ -533,6 +533,7 @@ static void start_scripts(void)
     camera_register_commands();
     sound_register_commands();
     envparticle_register_commands();
+    p3_register_commands();
     laser_register_commands();
     turret_register_commands();
     cinematic_register_commands();
@@ -1041,10 +1042,13 @@ static void route_input(const Character *c, CharacterInput *in)
                 if (dx * dx + dz * dz < bd) bd = dx * dx + dz * dz, best = pu;
             }
             if (!best) { route_next(); continue; }
-            /* the way there planned as "W" does, its last step within 6 (the pickup reaches 8) */
+            /* the way there planned as "W" does, its last step within 6 (the pickup reaches 8); one close
+               by on her own level (within 16, 4 up or down: on the same crate) walked to straight */
             float at[3] = { best->pos[0], best->pos[1], best->pos[2] };
             size_t len;
-            if (!route_plan(c, at, steps, sizeof steps - 16) || (len = strlen(steps)) < 2 || strcmp(steps + len - 2, ",3"))
+            if (bd < 256.0f && fabsf(best->pos[1] - c->pos[1]) < 4.0f)
+                snprintf(steps, sizeof steps, "%.1f,%.1f,P,6", at[0], at[2]);
+            else if (!route_plan(c, at, steps, sizeof steps - 16) || (len = strlen(steps)) < 2 || strcmp(steps + len - 2, ",3"))
                 snprintf(steps, sizeof steps, "%.1f,%.1f,P,6", at[0], at[2]);
             else
                 steps[len - 1] = '6';
@@ -1057,7 +1061,8 @@ static void route_input(const Character *c, CharacterInput *in)
         }
         if (*s == 'K') {
             /* "K<console id>[,tries]": uses the console: to its marker (as "W"), turned as it says, the
-               action key; again (up to 5 times in all) until the console is used */
+               action key; again (up to 5 times in all) until the console is used, the fighters near
+               fought off first (as "A600") on a retry (one in the way blocks the marker) */
             int id = atoi(s + 1), tries = 5;
             const char *comma = strchr(s, ',');
             const char *semi = strchr(s, ';');
@@ -1072,8 +1077,9 @@ static void route_input(const Character *c, CharacterInput *in)
             static char rest[16384];
             snprintf(rest, sizeof rest, "%s", semi ? semi + 1 : "");
             float h = m->facing * 57.29578f;
-            snprintf(route.buf, sizeof route.buf, "W%.1f,%.1f,%.1f;h%.0f;w10;S120;a;w40;K%d,%d%s%s", m->pos[0], m->floor,
-                     m->pos[2], h < 0 ? h + 360 : h, id, tries - 1, rest[0] ? ";" : "", rest);
+            snprintf(route.buf, sizeof route.buf, "%sW%.1f,%.1f,%.1f;h%.0f;w10;S120;a;w40;K%d,%d%s%s",
+                     tries < 5 ? "A600;" : "", m->pos[0], m->floor, m->pos[2], h < 0 ? h + 360 : h, id, tries - 1,
+                     rest[0] ? ";" : "", rest);
             route.step = route.buf;
             route.phase = 0;
             route.until = 0;
@@ -1859,10 +1865,11 @@ static int play(int level, int *next)
             igui_pause_screen(pause_key);
         }
         if (!ui_input_enabled()) memset(&in, 0, sizeof in);
-        /* ONrGameState_UpdateServerTime 0x4fbeb0: in slow motion (G+0x104, the "carousel" cheat) the
-           game's clock takes two of the machine's 60ths a tick: a tick every other frame */
+        /* ONrGameState_UpdateServerTime 0x4fbeb0: in slow motion (G+0x104, the "carousel" cheat, or the
+           slowmo timer G+0x108 running) the game's clock takes two of the machine's 60ths a tick: a tick
+           every other frame */
         static bool slow_skip;
-        slow_skip = cheat_slow_motion && !slow_skip;
+        slow_skip = (cheat_slow_motion || ui_slow_motion()) && !slow_skip;
         if (!slow_skip) {
             sl_update();
             /* ONrGameState_UpdateCharacters 0x4dccf0: the volumes first, then the characters */

@@ -299,7 +299,9 @@ objects by the movement the characters left in +0xc4, with the ground callbacks)
 19. **Pose and bounds**: *ONrCharacter_BuildQuaternions* 0x4e5360, matrices 0x4e5a30, body bounds
     0x4e5ff0, sphere tree 0x4dc160. Trigger segment, 0x4f2810. Shield and invisibility again. Weapon
     particles (0x428f90, 0x4fce30). Firing (*ONiCharacter_Fire* caller 0x4e9040) and stopping
-    (0x51a3b0).
+    (0x51a3b0). A gun through a wall (`ONrCharacter_IsGunThroughWall` 0x4f0150: from the pelvis's
+    middle to each shooter taking ammo and to the weapon node, a quad in the way skipping 0x44800 or an
+    object nearer, 0x4f0260) doesn't fire: its firing stops and A+0x21e3, A+0x21e4 are cleared.
 20. **Location** (C+0x160), C+0x1c4, hurt sound (0x516a00, *OSrImpulse_Play* 0x512480).
 
 `ONrCharacter_NextAnimation` 0x4e2ea0 (617 bytes), (C in ECX, A in EDX):
@@ -498,6 +500,13 @@ part.
 The contacts between characters, step 9 of `ONrGameState_UpdateCharacters` (0x4e7130, when byte
 0x54e164 is set):
 
+- **The knockdown** (`ONrCharacter_Knockdown` 0x4e4e10): fight mode on, the combo and the hold
+  dropped; the reaction remapped as a hit's is (in the air, lying, crouching); looked for from the
+  state, standing (7), the type asked from the state, its fallback (0x4d, 0x50, 0x56 or 0x59 by the
+  type's family) from the state, the type and the fallback from standing, and for an airborne state
+  0x25..0x2e from its falling half (the odd ones, +1) and from 0x26. Found, an AI's character knocked
+  down from not lying is told (0x48b530), the animation blends in over 8 ticks and the stand (6) is
+  queued.
 - **Pairs** (0x4e7130): every two characters on the active list, neither with flags 0x40004 nor dying
   (flag 2), closer than `[0x52a99c]` (squared distance), go to `iCollideTwoLikelyCharacters` 0x4e73e0.
   Afterwards each character with a knockdown asked (A+0x1b06) is knocked down (`ONrCharacter_Knockdown`
@@ -526,7 +535,10 @@ The contacts between characters, step 9 of `ONrGameState_UpdateCharacters` (0x4e
   reaction type, +0x14 stun, +0x16 block stun, +0x18 stagger, +0x1a priority.
 - **A hit that isn't blocked**: staggered (A+0x1c98 or A+0x1c9a) and heavy (stun > 20), the reaction
   becomes a knockdown (0x4d→0x50, 0x4e→0x51, 0x52→0x53, 0x55→0x58, 0x56→0x59, 0x57→0x5a, 0x5b→0x5c,
-  else 0x4f); heavy and not staggered, 0xc6. Lying (state 0x12 or 0x32) it is 0x54. From behind (the
+  else 0x4f); heavy and not staggered, 0xc6. In the air (A+0xf6, a reaction type) every hit knocks
+  down (0x4ecd70, the same table) and no behemoth's reaction applies; else lying (state 0x12 or 0x32) it
+  is 0x54 and crouching (0x13) the light hits 0x4c..0x4e become 0x52 and the knockdowns 0x4f..0x51 0x53
+  (`ONrAnimType_UpgradeToKnockdown` 0x4e5320). From behind (the
   attacker more than pi/2 from the facing): 0x4c→0x55, 0x4d/0x4e/0x7e/0x7f→0x56, 0x4f→0x58, 0x50→0x59,
   0x51→0x5a, 0x52→0x5b, 0x53→0x5c, 0xc6→0xd5, 0xd6→0xd7. The reaction goes to A+0x1b06; unless 0x54 or
   0xd4 the defender turns to face the attacker (and away for the ones from behind). Then the damage,
@@ -534,7 +546,12 @@ The contacts between characters, step 9 of `ONrGameState_UpdateCharacters` (0x4e
 - **`TakeDamage`**: the four stun countdowns cleared; nothing for the dead (flag 1); invincible (flag
   0x2000000) takes none; unkillable (0x20) keeps 1. A killing blow plays the reaction if it is one that
   leaves the character down, then `ONrCharacter_Die_1_Animating_Hook` 0x4eb550 sets flag 1 and
-  `ONiCharacter_RunDeathAnimation` 0x4eb970 knocks down by 0x4f unless already lying in a reaction. The
+  `ONiCharacter_RunDeathAnimation` 0x4eb970 knocks down by 0x4f unless already lying in a reaction.
+  The damage's owner (its top byte: 0x1000000 a weapon's, 0x2000000 a blow's or a throw's, 0x5000000 a
+  fall's, 0x6000000 the kill command's, which unkillable doesn't stop) goes to the AI's hurt notice
+  (0x48b480: only weapons and blows are known; a shot ends a daze; an alarm run fights on for its fight
+  time), and a blow between two fighters moves the melee cookie's time (0x4998f0: +10 ticks a point
+  for the attacker holding it, -6 for the victim). The
   knockback adds along the direction to A+0xb8 unless unstoppable (0x100); step 10 of DoCharacterFrame
   moves 0.07 of it a tick on the ground, keeping 0.93, and drops it under 0.01 squared or in the air.
 - **Stage 2**: when a dead character's next animation isn't a reaction, `NewAnimationHook` sets flag 2
@@ -553,8 +570,44 @@ The contacts between characters, step 9 of `ONrGameState_UpdateCharacters` (0x4e
 
 Ported in `src/chr_hit.c` (`hit_test`: Konoko's punches and kicks on a training dummy, 4 and 5 hit
 points each, once per blow, then a killing blow; a dummy's punch blocked facing it, 10 taken facing
-away). Not yet: the AI's block decision, the material and impact effects,
-the push apart, in-air hits, the knockdown's remaps.
+away). Not yet: the AI's block decision.
+
+### The pain
+
+`ONrCharacter_TakeDamage` 0x4e65f0, a hit that doesn't kill: `ONrCharacter_Pain` 0x4f2250 with the damage
+and a kind by the animation it is in (A+0x1b00: 1 for the knockdowns 0x4f..0x51, 0x58..0x5a, 0x8d; 2 for
+the blow-ups 0xd6, 0xd7; else 0), then the hypo's healing still to come (C+0x1ae) less 2.5 a point
+(0x52b308, rounded, 0x4340a0). A kill clears it and cries: after a medium cry (C+0x1695 over 0) the heavy
+one, else by the class's death chance (ONCC+0x82, percent of `UUrRandom`) the death one, at the head
+(A+0x247c, the part 10's matrix; inactive, the location 15 up, 0x529d84), the character's line cut short
+(0x516a00). A conversation in course ends first (`AI2rNeutral_Stop` 0x4acf70: not forced, aborted, back to
+the job).
+
+The class's pain block (ONCC+0x74.., u16s): the cry's chance at no damage and at its most (+0x74, +0x76,
+percent) and the damage for the most (+0x78), the ticks the damage summed lasts (+0x7a) and between cries
+(+0x7c), the light and the medium cries before a heavier one (+0x7e, +0x80), the death chance (+0x82),
+the damage for full volume (+0x84), for a medium and a heavy cry (+0x86, +0x88), the least volume (+0x8c,
+float). The cries' impulses are named at +0x90, +0xb0, +0xd0, +0xf0 (light, medium, heavy, death; 32
+bytes each, resolved into +0x110..+0x11c). Level 8's strikers: 35, 90, 15, 120, 35, 1, 2, 100, 10, 12, 22,
+0.5, `striker_hurt_light` and so on.
+
+The character's state (C+0x1688..0x169f, cleared together): the damage summed (+0x1688), its ticks left
+(+0x168a), the last cry's kind (+0x168c) and the time before another (+0x1690), the light and medium
+cries so far (+0x1694, +0x1695), the queued cry's ticks (+0x1696), kind (+0x1698) and volume (+0x169c).
+
+**Pain** (0x4f2250): no damage, nothing. An AI in a calm state (0x48b060: the table 0x52a4d8, not a
+patrol ignoring the player, its block's +0x540) is startled (C+0x1f0 0x8000) and cries for sure; else,
+with no damage summed yet, the chance (the least plus the span by the damage over +0x78, the most beyond)
+must pass. The damage sums, its ticks start again; before the last cry's time plus the wait, no more. The
+kind is no lighter than the last; a light one past the light count or the medium damage is medium, a
+medium one past the medium count or the heavy damage heavy. The volume: the least plus the rest by the
+damage over the full-volume damage, else 1. With none queued it is queued for 7 ticks; else the queued
+kind is raised to it.
+
+**Each frame** (`DoCharacterFrame` 0x4e07ef, after the body box): the damage's ticks run down (at 0
+everything is cleared); the queued cry's ticks run down and at 0 it plays at the head at its volume
+(`OSrImpulse_Play` 0x512480; the line cut short). A light one counts, the next after the wait from now; a
+medium one counts, the next after half the wait; a heavy one clears everything, the next after the wait.
 
 ## Throws
 

@@ -564,19 +564,8 @@ void melee_start(MeleeState *m, const MeleeProfile *p, const void *oncc)
 /* ONrCharacter_GetPelvisPosition 0x4e34f0 (the active record's A+0x229c). */
 static void pelvis_of(const Character *c, float out[3]) { memcpy(out, &c->bone_world[0][9], 3 * sizeof(float)); }
 
-/* AI2rManeuver_CheckBlockage 0x49ea60: the segment from the pelvis to p hits the environment (the
-   first hit, AKrCollision_Point 0x441c80, skipping 0x48800). Not yet: the objects nearer than p
-   (AMrRayToObject 0x4d52c0) and the characters on the way (AI2rManeuver_TrySphereTreeCollision
-   0x49ec30). */
-static bool check_blockage(const Character *c, const float p[3])
-{
-    float from[3], v[3];
-    pelvis_of(c, from);
-    for (int i = 0; i < 3; i++) v[i] = p[i] - from[i];
-    const void *env = p3_environment();
-    static AkevHit hit[AKEV_HITS_MAX];
-    return env && akev_collide_point(env, from, v, 0x48800, 0, hit) != 0;
-}
+/* AI2rManeuver_CheckBlockage 0x49ea60 (localpath.c). */
+static bool check_blockage(const Character *c, const float p[3]) { return local_blockage(p3_environment(), c, p); }
 
 void melee_test_local_environment(MeleeState *m, const Character *c, const Character *target)
 {
@@ -1557,10 +1546,6 @@ static void rotate_context(ChrIntersect *x, const Weighing *w)
     x->m_modified = true;
 }
 
-/* AI2rCombat_WaitingForShieldCharge 0x4904c0 asks the combat behaviour's handler (message 0x10); a
-   stand-in until the behaviours' messages are ported: never waiting. */
-static bool waiting_for_shield_charge(const Character *c) { (void)c; return false; }
-
 /* The position table's row (0x40 bytes at 0x5435b0): +0x20 the direction, +0x24 a delay, +0x28 the
    jump's dist[] slot (0 none; 1 down to a lower target), +0x2c the melee states it goes through, from
    +0x30. */
@@ -1679,7 +1664,7 @@ static void weigh_technique(const AiState *a, const Character *c, ChrIntersect *
                 w->weight = 0.0f;   /* ("BROKEN") */
                 return;
             }
-            if (tr_test_flag(mv->anim, 0x16) && waiting_for_shield_charge(c)) {
+            if (tr_test_flag(mv->anim, 0x16) && combat_waiting_for_shield_charge((AiState *)a, c)) {
                 w->weight = 0.0f;
                 return;
             }
@@ -1900,7 +1885,7 @@ static void weigh_technique(const AiState *a, const Character *c, ChrIntersect *
                     w->weight = 0.0f;
                     return;
                 }
-                if (tr_test_flag(mv->anim, 0x16) && waiting_for_shield_charge(c)) {
+                if (tr_test_flag(mv->anim, 0x16) && combat_waiting_for_shield_charge((AiState *)a, c)) {
                     w->weight = 0.0f;
                     return;
                 }

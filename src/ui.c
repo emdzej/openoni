@@ -13,6 +13,7 @@
 #include <string.h>
 
 static uint32_t now;
+static int32_t slowmo;             /* G+0x108: the slow motion timer's ticks */
 
 /* The fade: from and to (a, r, g, b), between two times. */
 static struct { float from[4], to[4]; uint32_t start, end; bool on; } fade;
@@ -52,6 +53,7 @@ uint32_t ui_message_time(const char *id)
 void ui_reset(void)
 {
     now = 0;
+    slowmo = 0;     /* ONrGameState_LevelBegin 0x4f54f1 */
     n_seen = 0;
     memset(&fade, 0, sizeof fade);
     memset(&box, 0, sizeof box);
@@ -131,7 +133,10 @@ void ui_update(void)
         timer.blink++;
         if (--timer.ticks == 0) timer.state = 0;
     }
+    if (slowmo > 0) slowmo--;       /* 0x4fa771, after the timer's tick */
 }
+
+bool ui_slow_motion(void) { return slowmo > 0; }
 
 /* ONrGameState_Timer_Display 0x4fd500's text: blinking under 1200 ticks left (every 15 ticks, 8 under
    600, 4 under 300; and every 15 once ended), tenths under ten seconds. */
@@ -235,6 +240,16 @@ void ui_print(int area, const char *text, const char *id, int32_t timer, uint32_
 
 static int32_t num(const SlValue *v) { return v->type == SL_FLOAT ? (int32_t)v->f : v->i; }
 static float fnum(const SlValue *v) { return v->type == SL_FLOAT ? v->f : (float)v->i; }
+
+/* slowmo duration (0x4bd230): the slow motion timer (G+0x108) to at least duration ticks; 0 stops it. */
+static bool cmd_slowmo(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    int32_t d = c >= 1 ? (int32_t)num(&v[0]) : 0;
+    if (d == 0) slowmo = 0;
+    else if (slowmo < d) slowmo = d;
+    return true;
+}
 static float clamp01(float v) { return v < 0.0f ? 0.0f : v > 1.0f ? 1.0f : v; }
 
 /* fade_out r g b ticks (0x4bccb0, 0x4fcc10): from clear to the colour, each clamped to 0..1. */
@@ -536,6 +551,7 @@ static bool cmd_message_remove(SlThread *t, int c, const SlValue *v, SlValue *r,
 void ui_register_commands(void)
 {
     sl_register("fade_out", cmd_fade_out, NULL);
+    sl_register("slowmo", cmd_slowmo, NULL);
     sl_register("fade_in", cmd_fade_in, NULL);
     sl_register("letterbox", cmd_letterbox, NULL);
     sl_register("input", cmd_input, NULL);

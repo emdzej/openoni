@@ -261,6 +261,7 @@ static unsigned find_all(Character *c, const void *env, const float mv[3], Hit *
     if (!(c->flags & 0x2u)) {
         unsigned n0 = n;
         n = physctx_find(me, mv, skip_other, h, n, HITS_MAX);
+        c->obj_hits = (uint16_t)(n - n0);
         /* 0x4ecc7e: the AI's movement told of each (0x4ab830) */
         if ((c->flags & 0x400000u) && chr_movement_hit_hook)
             for (unsigned i = n0; i < n; i++)
@@ -435,7 +436,7 @@ static bool find_ground(Character *c, const void *env)
         float x = (fall - lo) / (hi - lo) * (float)c->max_hit_points;
         if (x > 0.0f) dmg = (uint32_t)lrintf(x);
     }
-    if (dmg) chr_take_damage(c, dmg, 0.0f, NULL, 0, NULL);
+    if (dmg) chr_take_damage(c, dmg, 0.0f, NULL, 0, NULL, CHR_DAMAGE_FALL);
     memset(c->air_velocity, 0, sizeof c->air_velocity);
     c->air_ticks = 0;
     c->landing = true;

@@ -116,7 +116,7 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   character's own pursuit settings. Barabbas fights as his own behaviours say: he shoots, closes in firing his gun's second mode, fights
   hand to hand, and backs off to heal when hurt. Mutant Muro fights behind his shield, which drops when he casts his thunderbolt. The super
   ninja throws his fireballs, turns invisible, teleports behind his target or away when hit hard, and
-  comes back when he falls off the level. The paths the fighters take are stand-ins.
+  comes back when he falls off the level. The fighters advance on their targets by a path or a straight line, back away from them, and sidestep out of a gun's line of fire (the firing spreads of the pistol, the SMG and the plasma rifle) as the original's maneuvers do. Startled guards turn toward what startled them while the startle plays; the characters cry out as their classes say (alerted, startled, pursuing, cowering, the super moves' yells), and a fighter that fells an enemy hand to hand may taunt over the body.
 - **Neutral characters**: the civilians call Konoko over or answer the action key, talk with her line
   by line, with their animations and speech, hand over weapons and power-ups, and run their scripts
   when the talk is over; firing, a blow, walking off or a fight nearby breaks it off.

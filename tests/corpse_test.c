@@ -68,7 +68,7 @@ int main(void)
     Chr *t = fc.name[0] ? chars_spawn(fc.name, true) : NULL;
     int ticks = 0, made = -1;
     if (t) {
-        chr_die(&t->c);
+        chr_die(&t->c, NULL);
         for (; ticks < 2000; ticks++) {
             chars_update(&(CharacterInput){ 0 }, env);
             if (getenv("CORPSE_TRACE") && ticks % 50 == 0)

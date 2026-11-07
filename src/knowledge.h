@@ -4,9 +4,10 @@
    0x49b3f0) told to the state (C+0xf80: AI2rAlert_NotifyKnowledge 0x48ecc0 for the calm states), and
    forgotten with time (AI2rKnowledge_Update 0x499e80). Notes: docs/re/ai.md.
 
-   Sounds (AI2rKnowledge_Sound 0x49a8a0) are heard through the walls' gaps and the rooms. Not ported
-   yet: projectiles and firing spreads to dodge, the
-   alarm, the combat state's notifications, cloaked characters, aiming's view direction. */
+   Sounds (AI2rKnowledge_Sound 0x49a8a0) are heard through the walls' gaps and the rooms. The
+   dangerous projectiles and the guns' firing spreads are kept for the combat's dodge and alert the AIs
+   they pass near. Not ported yet: the combat state's notifications, cloaked characters, aiming's view
+   direction. */
 #pragma once
 #include "ai.h"
 
@@ -63,6 +64,23 @@ void knowledge_forget(struct Chr *c);
 /* AI2rKnowledgeState_Forget 0x49c480: owner's contacts of target (NULL: all of them) forgotten, the state
    told of each (strength 1), then dropped. */
 void knowledge_forget_contacts(struct Chr *owner, const struct Chr *target);
+/* The dangers (the AI's dodge, the combat's maneuvers): a dangerous projectile's record (0x638fa0, 64 of
+   0x4c bytes, AI2rKnowledge_NewDodgeProjectile 0x49bc00 and AI2rKnowledge_SetupDodgeProjectile 0x49bd20) made as the particle is (its class's
+   dodge and alert radii, +0x90 and +0x94), its index or -1 none; the particle deleted (AI2rKnowledge_DeleteDodgeProjectile 0x49bc70). */
+struct P3Class;
+struct P3Particle;
+struct Weapon;
+int knowledge_projectile_new(struct P3Class *c, struct P3Particle *p, float dodge_radius, float alert_radius);
+void knowledge_projectile_deleted(int slot, struct P3Class *c, struct P3Particle *p);
+/* A gun's firing spread (0x63adc0, 32 of 0x2c bytes: AI2rKnowledge_NewDodgeFiringSpread 0x49c160 and
+   AI2rKnowledge_SetupDodgeFiringSpread 0x49c210) as it starts firing, its index or -1 none; deleted
+   (AI2rKnowledge_DeleteDodgeFiringSpread 0x49c1e0) as it stops. */
+int knowledge_spread_new(const struct Weapon *w);
+void knowledge_spread_delete(int i);
+/* AI2rKnowledge_FindNearbyProjectiles 0x49bdf0 and _FindNearbyFiringSpreads 0x49c290: the projectiles and the firing spreads passing near ch, the dangers given to its
+   combat (combat_danger_projectile, combat_danger_spread). */
+void knowledge_dangers(struct Chr *ch);
+
 /* AI2rKnowledge_Update 0x499e80, once a tick before the characters. env: the AKEV for the sight lines. */
 void knowledge_update(const void *env);
 /* AI2rAlert_UpgradeStatus 0x48eee0 without a contact; AI2rAlert_DowngradeStatus 0x48f180 (force: in

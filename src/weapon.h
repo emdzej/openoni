@@ -54,6 +54,7 @@ typedef struct Weapon {
     uint16_t shooter_delay[WEAPON_SHOOTERS];    /* +0x5a: ticks until a shooter starts */
     uint32_t shooter_handle[WEAPON_SHOOTERS];   /* +0xbc: the shooters' particles' handles (+0x7c their pointers) */
     uint32_t sound_wait;            /* +0xfc */
+    int spread;                     /* +0x100: its firing spread while it fires (knowledge.h), -1 none */
 } Weapon;
 
 void weapons_reset(void);
@@ -110,6 +111,8 @@ void chr_force_draw(Character *c);
 /* ONrCharacter_PickupWeapon 0x4ed770 without a weapon: at once, the hand's stowed (forced: into an empty
    slot, dropped with none) or traded for the stowed one. */
 void chr_stow(Character *c, bool force);
+/* ONrCharacter_PickupWeapon 0x4ed770 with a weapon: the hand's dropped first, w taken into the hand. */
+void chr_pickup_weapon(Character *c, Weapon *w);
 /* The player's first weapon of a class (ONrInGameUI_NewWeapon 0x505050, set by the app to
    igui_new_weapon). */
 extern void (*weapon_new_hook)(const void *onwc);

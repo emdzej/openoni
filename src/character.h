@@ -230,6 +230,7 @@ typedef struct Character {
     float ground_height;            /* A+0x12c */
     float ground_point[3];          /* A+0xe4 */
     uint16_t wall_hits;             /* A+0xb0: walls met this tick */
+    uint16_t obj_hits;              /* A+0xb2: the other contexts met by the last collision pass (0x4ecc37) */
     uint16_t pushes;                /* A+0xb4: the characters it was pushed off this tick (0x4e8c50) */
     bool blocked_by_char;           /* A+0xb6: pushed off a character its AI would path through
                                        (AI2rTryToPathfindThrough 0x48b670) */
@@ -251,6 +252,16 @@ typedef struct Character {
        it (C+0x1630) */
     struct Character *talk_partner;
     uint32_t talk_moves;
+    /* the pain (ONrCharacter_Pain 0x4f2250, chr_hit.h): the damage summed lately (C+0x1688) and the ticks
+       before it is forgotten (+0x168a), the last cry's kind and when another may come (+0x168c, +0x1690),
+       the light and medium cries so far (+0x1694, +0x1695), the ticks before the cry queued, its kind and
+       volume (+0x1696, +0x1698, +0x169c) */
+    uint16_t pain_damage, pain_decay;
+    uint32_t pain_last, pain_until;
+    uint8_t pain_light, pain_medium;
+    uint16_t pain_wait;
+    uint32_t pain_kind;
+    float pain_volume;
 } Character;
 
 bool character_init(Character *c, const void *oncc, const float pos[3], float facing);

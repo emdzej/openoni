@@ -165,7 +165,7 @@ static int barabbas(AiState *a, Character *c, int msg, bool *handled, int arg)
     case MSG_EXIT:
         return 0;
     case MSG_MELEE:
-        s->melee_ok = false;
+        s->may_dodge = false;
         return 0;
     case MSG_FLAGS:
         s->targeting = true;
@@ -340,7 +340,7 @@ static bool muro(AiState *a, Character *c, int msg, bool *handled, int p5, const
         m->cooldown = down5(m->cooldown);
         return false;
     case MSG_MELEE:
-        a->combat.melee_ok = true;
+        a->combat.may_dodge = true;
         return false;
     case MSG_HURT:
         m->damage_timer = 75;
@@ -638,7 +638,7 @@ static int ninja(AiState *a, Character *c, int msg, bool *handled, int p5)
     case MSG_WEIGHTS:
         break;
     case MSG_MELEE:
-        s->melee_ok = true;
+        s->may_dodge = true;
         return 0;
     case MSG_FLAGS:
         s->check_env = s->check_friends = true;

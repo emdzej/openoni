@@ -365,8 +365,9 @@ before the characters move:
 - Skipped if the volume is off, or player only and the character isn't the player.
 - `OBJrTriggerVolume_IntersectsCharacter` 0x4cc680 decides. The character's team must be in the mask.
   Its bounding sphere must meet the volume's. Then a segment of the character (two points of the active
-  character, +0x140 and +0x14c) must cross a face (0x43f750), or its first point must be inside all six
-  planes (0x43f910).
+  character, +0x140 and +0x14c: the feet's x and z at the body box's bottom, C+0x190, and top, C+0x1658,
+  set in `DoCharacterFrame` at 0x4e04ad) must cross a face (0x43f750), or its first point must be inside
+  all six planes (0x43f910). A character without an active record (A) is never inside.
 - A character holds the ids of up to four volumes (+0x168 in the active character).
   - Entering takes the first free slot and fires the entry script. With no free slot, nothing is
     recorded.

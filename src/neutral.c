@@ -2,7 +2,10 @@
 #include "neutral.h"
 
 #include "chr_anim.h"
+#include "exe.h"
 #include "knowledge.h"
+#include "localpath.h"
+#include "particle.h"
 #include "objc.h"
 #include "powerup.h"
 #include "sound.h"
@@ -118,6 +121,31 @@ int speech_say(Character *c, const ChrSpeech *s, bool interrupt)
     return 0;
 }
 
+bool ai_vocalize(Chr *c, uint32_t type, bool force)
+{
+    if (c->c.ai && type == 0 && c->ai.state == AI_STATE_COMBAT && c->ai.combat_taunted) return false;
+    const uint8_t *oncc = (const uint8_t *)c->c.oncc;
+    if (!force && (uint16_t)(((uint32_t)trac_random() * 100u) >> 16) >= oncc[0x2a8 + type]) return false;
+    const uint8_t *name = oncc + 0x2b4 + 0x20 * type;
+    if (!name[0]) return false;
+    ChrSpeech s = { .type = force ? 7 : exe_u32(0x52a584 + 4 * type) };
+    memcpy(s.name, name, sizeof s.name - 1);
+    return speech_say(&c->c, &s, false) != 2;
+}
+
+void speech_stop(Character *c)
+{
+    if (c->speaking) {
+        if (c->speech_id != UINT32_MAX) {
+            sound_speech_stop(c->speech_id);
+            c->speech_id = UINT32_MAX;
+        }
+        c->speaking = false;
+    }
+    c->speech.type = 0;
+    c->speech_next.type = 0;
+}
+
 void speech_update(Chr *ch)
 {
     Character *c = &ch->c;
@@ -189,13 +217,8 @@ static float heading(const Character *c)
     return a < 0.0f ? a + TWO_PI : a >= TWO_PI ? a - TWO_PI : a;
 }
 
-/* AI2rManeuver_CheckBlockage 0x49ea60: the character's sphere tree swept to the point meets something.
-   (Not tested by the port yet, as for the consoles: action.c.) */
-static bool blocked(const Chr *c, const float p[3])
-{
-    (void)c, (void)p;
-    return false;
-}
+/* AI2rManeuver_CheckBlockage 0x49ea60 (localpath.c). */
+static bool blocked(const Chr *c, const float p[3]) { return local_blockage(p3_environment(), &c->c, p); }
 
 /* The player in front of c within 35 (1225 squared, 0x52af98), facing it within 60 degrees (0x52af90). */
 static bool facing_near(const Chr *c, const Chr *p)

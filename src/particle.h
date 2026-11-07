@@ -120,6 +120,15 @@ void p3_update_sound_pointers(void);
 /* ONrCharacter_Collide_Ray 0x4f1630 for anyone: the segment from s along d against the character's
    parts; the nearest point on them. */
 bool p3_character_ray(const Character *c, const float s[3], const float d[3], float point[3]);
+/* ONrCharacter_Collide_SphereRay 0x4f1b60: a sphere of the radius moved from s along d meets the
+   character's body sphere and then one of its parts'. */
+bool p3_character_sphere_ray(const Character *c, const float s[3], const float d[3], float radius);
+/* The body sphere's radius (A+0x13c, 0x4e5ff0: the pelvis's sphere grown to hold every part's); 0 without
+   a pose. */
+float p3_body_radius(const Character *c);
+/* WPrOwner_GetCharacter 0x51cda0: the character of an owner (P3_X_OWNER: the kinds 0x1000000 and
+   0x2000000), NULL if none. */
+struct Chr *p3_owner_character(uint32_t owner);
 /* The particle's block of the kind (P3_X_*), NULL if its class has none. */
 void *p3_block(P3Class *c, P3Particle *p, int x);
 /* The matrices particles hang from (P3_X_ATTACH holds an id): a weapon's, for its shooters. */

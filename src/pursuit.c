@@ -7,6 +7,7 @@
 #include "exe.h"
 #include "graph.h"
 #include "knowledge.h"
+#include "neutral.h"
 #include "trac.h"
 #include "ui.h"
 
@@ -388,7 +389,7 @@ void pursuit_update(AiState *a, Character *c, const void *env)
     if (p->timer && --p->timer == 0) next_mode(a, c);
     if (a->state != AI_STATE_PURSUIT) return;
     if (p->mode >= PURSUIT_WAIT && p->mode <= PURSUIT_HUNT && p->vocal && --p->vocal == 0) {
-        /* AI2rVocalize 0x48ba60 (4): with the vocalizations */
+        ai_vocalize((Chr *)c, 4, false);    /* AI2rVocalize 0x48ba60 */
         p->vocal = random_ticks(720, 180);
     }
     if (p->mode == PURSUIT_LOOK || p->mode == PURSUIT_GLANCE) {

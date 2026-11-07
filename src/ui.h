@@ -26,6 +26,9 @@ bool ui_fade(float rgba[4]);
 /* The letterbox bars' height now, in 640x480 pixels (0 to 75). */
 float ui_letterbox(void);
 bool ui_input_enabled(void);
+/* The slow motion timer (G+0x108, the slowmo command) running: the game's clock at half speed
+   (ONrGameState_UpdateServerTime 0x4fbeb0). */
+bool ui_slow_motion(void);
 /* G+0x1679ad, the player's input (the input command, begin_cutscene and end_cutscene). */
 void ui_set_input(bool on);
 /* The keys the scripts let through (lock_keys; all at the level's start), as the action bits

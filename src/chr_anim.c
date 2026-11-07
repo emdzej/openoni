@@ -454,17 +454,21 @@ static void old_animation_hook(Character *c, const void *next)
    type 0xdf with one set puts the character there (its position, the last one, the physics', the
    ground's; the location, C+0x160, isn't kept apart in the port; the room, 0x4e91c0, is found from the
    position), facing as given; an AI's path is made anew (chars.c). The sound serial (C+0x1dc)
-   counts up. An animation of flag 5 throws the hand's weapon (chr_drop_hook). Not ported: the
-   vocalization (0x428970), an attack's turn toward its target, and dying. The animation's
+   counts up; the animation's cry (TRAM+0x4e, 0x428970: below 10) is vocalized (chr_vocalize_hook). An
+   animation of flag 5 throws the hand's weapon (chr_drop_hook). Not ported: an attack's turn toward its
+   target, and dying. The animation's
    particles are made last. A throw (TRAM flag 15) starts its target's part through chr_throw_hook
    (throw.c); any other animation forgets the target. */
 void (*chr_animation_hook)(Character *c);
 void (*chr_drop_hook)(Character *c);
+void (*chr_vocalize_hook)(Character *c, uint32_t type);
 
 static void new_animation_hook(Character *c)
 {
     const void *t = c->anim;
     c->sound_serial++;
+    uint16_t cry = rd16((const uint8_t *)t + 0x4e);
+    if (cry < 10 && chr_vocalize_hook) chr_vocalize_hook(c, cry);
     bool fight = (tr_varient(t) & 0x200) != 0;
     if (c->teleport && tr_type(t) == 0xdf) {
         c->facing = c->desired_facing = c->teleport_facing;

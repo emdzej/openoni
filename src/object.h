@@ -59,6 +59,13 @@ void object_matrix(int i, float m[12]);
 bool object_obstacle(int i, uint16_t *flags, uint32_t *ctx_flags, float pos[3], float *radius);
 /* One tick: the playing animations step (PHrPhysics_Update_Animation). now: the game time, ticks. */
 void object_update(uint32_t now);
+/* AMrRayToObject 0x4d52c0: the nearest hit of the objects with flag 0x200 on the ray from p along dir (a
+   unit vector): its context's sphere (0x4d5430), or with the context's flag 0x200 its box
+   (PHrCollision_Volume_Ray, the ray 1000 long, 0x52a87c). hit: where (from inside a sphere, p). */
+bool object_ray(const float p[3], const float dir[3], float hit[3]);
+/* AKrLineOfSight 0x4410a0's objects: the segment a..b meets the sphere of an object with flag 0x200
+   whose context lacks flag 1 (CLrSphere_Line 0x43c7a0). */
+bool object_line_blocked(const float a[3], const float b[3]);
 
 /* obj_create, obj_kill, obj_show, obj_hide, env_setanim, env_setanim_block, env_anim, env_anim_block. */
 void object_register_commands(void);

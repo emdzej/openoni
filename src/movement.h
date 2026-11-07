@@ -95,6 +95,12 @@ void movement_hit_object(struct Chr *ch, uintptr_t id, const float point[3], con
 void movement_hit_character(struct Chr *ch, const struct Chr *other, const float point[3], const float plane[4]);
 /* AI2rPath_Update 0x4ae670: the arrival, the doors, the rooms passed and the local path's point. */
 void movement_path_update(struct Chr *ch, const void *env);
+/* AI2rPath_GoToPoint 0x4ae480 makes the path at once (the port makes a given path at the movement's
+   next update): a path given and not yet made is made now. True if it failed now (the pathfinding's
+   report, which AI2iManeuver_CheckAdvance's error hook 0x49e370 notes in 0x5eb8a4). */
+bool movement_path_now(struct Chr *ch, const void *env);
+/* AI2rPath_SimplePath 0x4aef90: the path arrived, or within one room with its local path's last waypoint next (0x4a9520). */
+bool movement_path_short(const struct Chr *ch);
 /* The movement state's update 0x4a97b0 (the collisions' decay, then Calculate_Movement), for
    AI2rMovement_Update 0x4a8550: the executor's move and aim. */
 void movement_update(struct Chr *ch);

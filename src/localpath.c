@@ -3,8 +3,11 @@
 
 #include "akev.h"
 #include "akev_collide.h"
+#include "chars.h"
 #include "exe.h"
 #include "graph.h"
+#include "object.h"
+#include "particle.h"
 #include "obstacle.h"
 #include "physics.h"
 
@@ -94,6 +97,31 @@ static bool tree_collides(const float tree[7][4], const float mv[3])
             return true;
     }
     return false;
+}
+
+bool local_blockage(const void *env, const Character *c, const float p[3])
+{
+    if (!env) return false;
+    /* ONrCharacter_GetPelvisPosition 0x4e34f0 (the active record's A+0x229c) */
+    const float from[3] = { c->bone_world[0][9], c->bone_world[0][10], c->bone_world[0][11] };
+    float v[3] = { p[0] - from[0], p[1] - from[1], p[2] - from[2] };
+    static AkevHit hit[AKEV_HITS_MAX];
+    if (akev_collide_point(env, from, v, 0x48800, 0, hit)) return true;
+    /* MUrVector_Normalize 0x4340f0 (not a zero vector, under 0x529d00), then the objects */
+    float vv = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+    if (fabsf(vv) >= 9.536743e-07f) {   /* 0x529d00 */
+        float k = 1.0f / sqrtf(vv), dir[3] = { v[0] * k, v[1] * k, v[2] * k }, h[3];
+        if (object_ray(from, dir, h)) {
+            float hh = (h[0] - from[0]) * (h[0] - from[0]) + (h[1] - from[1]) * (h[1] - from[1]) + (h[2] - from[2]) * (h[2] - from[2]);
+            if (hh < vv) return true;
+        }
+    }
+    if (!c->has_physics) return false;
+    const void *was = P.env;
+    P.env = env;
+    bool hits = tree_collides(c->spheres, v);
+    P.env = was;
+    return hits;
 }
 
 /* ASiCollisionTest 0x4be610: the character's tree moved to the cell; from the character, by the cell
@@ -655,6 +683,19 @@ bool local_find_nearby_point(const Character *c, const float from[3], float dist
     if (found && min * min < d) {
         memcpy(out, best, sizeof best);
         return true;
+    }
+    return false;
+}
+
+bool local_intervening(const Character *c, const float p[3])
+{
+    const float from[3] = { c->bone_world[0][9], c->bone_world[0][10], c->bone_world[0][11] };
+    const float v[3] = { p[0] - from[0], p[1] - from[1], p[2] - from[2] };
+    float r = (c->ai ? 3.0f : 4.0f) + 3.0f;
+    for (int i = 0; i < chars_slots(); i++) {
+        const Chr *o = chars_get(i);
+        if (!o || !chars_in_use(o) || &o->c == c || (o->c.flags & 0x40004u)) continue;
+        if (p3_character_sphere_ray(&o->c, from, v, r)) return true;
     }
     return false;
 }

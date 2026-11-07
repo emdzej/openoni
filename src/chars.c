@@ -390,18 +390,57 @@ TriggerActor *chars_trigger_actors(void)
         a->team = slots[i].team;
         a->dead = (slots[i].c.flags & 1) != 0;
         memcpy(a->pos, slots[i].c.pos, sizeof a->pos);
+        a->bottom = slots[i].c.bottom;
+        a->top = slots[i].c.top;
     }
     return actors;
 }
 
-/* 0x48b480, for the AI's characters TakeDamage hurts. */
-static void hurt(Character *c, Character *from, uint32_t damage, bool melee)
+/* 0x48b060: an AI hurt in a calm state (the table 0x52a4d8; not a patrol ignoring the player) is
+   startled (C+0x1f0 0x8000), and its pain cries for sure. */
+static bool calm_hurt(Character *c)
+{
+    AiState *a = &((Chr *)c)->ai;
+    if (a->state < 0 || a->state > 11 || !exe_data(0x52a4d8 + (uint32_t)a->state, 1)[0]) return false;
+    if (a->state == AI_STATE_PATROL && a->ignore_player) return false;
+    a->flags |= AI_FLAG_STARTLED;
+    return true;
+}
+
+/* 0x48b480, for the AI's characters TakeDamage hurts: only a weapon's or a blow's damage is known (a
+   fall's, poison's or the kill command's not). */
+static void hurt(Character *c, Character *from, uint32_t damage, uint32_t kind)
 {
     Chr *v = (Chr *)c;
     if (v->ai.flags & AI_FLAG_PASSIVE) return;
     v->ai.vocal_delay = 0;
-    if (!melee && v->ai.daze_timer) v->ai.daze_timer = 1;  /* a shot (kind 0x1000000) ends the daze */
-    knowledge_hurt_by(v, (Chr *)from, damage, melee);
+    if (kind == CHR_DAMAGE_WEAPON) {
+        if (v->ai.daze_timer) v->ai.daze_timer = 1;    /* a shot ends the daze */
+    } else if (kind != CHR_DAMAGE_MELEE) return;
+    /* an alarm run, hurt, fights on for the fight time */
+    if (v->ai.alarm_marker >= 0 && v->ai.state != AI_STATE_ALARM) v->ai.alarm_fight_timer = v->ai.combat_set.alarm_fight;
+    knowledge_hurt_by(v, (Chr *)from, damage, kind == CHR_DAMAGE_MELEE);
+}
+
+/* AI2rNotifyAttackLanded 0x48b700 (its report on a block let go for another attack than the one it was
+   held for, the AI's debugging, left out) and 0x48b9d0. */
+static void attack_landed(Character *attacker, Character *defender)
+{
+    Chr *d = (Chr *)defender;
+    if (d->ai.state == AI_STATE_COMBAT && d->ai.melee.target == attacker && d->ai.melee.blocking)
+        d->ai.melee.blocking = false;
+    if (d->ai.daze_timer) d->ai.daze_timer = 1;
+}
+
+static void vocalize(Character *c, uint32_t type) { ai_vocalize((Chr *)c, type, false); }
+
+/* 0x4998f0: the melee cookie's time, ten ticks longer a point the fighter deals, six shorter a point it
+   takes. */
+static void melee_score(Character *attacker, Character *victim, uint32_t damage)
+{
+    Chr *a = (Chr *)attacker, *v = (Chr *)victim;
+    if (attacker->ai && a->ai.state == AI_STATE_COMBAT && a->ai.melee.cookie) a->ai.melee.cookie_until += damage * 10;
+    if (victim->ai && v->ai.state == AI_STATE_COMBAT && v->ai.melee.cookie) v->ai.melee.cookie_until -= damage * 6;
 }
 
 /* 0x48b530, for an AI's character knocked down from not lying: a new daze to come. (Its other parts,
@@ -507,10 +546,14 @@ static void action_frame(Character *c) { combat_action(&((Chr *)c)->ai, c); }
 /* ONrCharacter_Die_1_Animating_Hook 0x4eb550's scripts: the defeated one unless it ran already, then
    the death one, deferred with the character's name and run at once (0x4f2120). The scripts are the
    CHAR object's (AI2rInitializeCharacter 0x48a6b0 copies them); a character made otherwise has none. */
-static void died(Character *c)
+static void died(Character *c, Character *killer)
 {
     Chr *ch = (Chr *)c;
-    neutral_died(ch);           /* 0x48b370 */
+    /* 0x48b370: killed by a fighter in melee (its maneuver 5), it may taunt over the body */
+    Chr *by = (Chr *)killer;
+    if (by && killer->ai && by->ai.state == AI_STATE_COMBAT && by->ai.combat.maneuver == COMBAT_MANEUVER_MELEE)
+        by->ai.combat_taunt_ready = true;
+    neutral_died(ch);
     /* C+0x1644: the body stays the class's time (ONCC+0xc8a) */
     const uint8_t *k = (const uint8_t *)c->oncc + 0xc8a;
     ch->corpse_time = (uint16_t)(k[0] | k[1] << 8);
@@ -602,12 +645,16 @@ static void player_key_filter(Character *c, CharacterInput *in)
 void chars_update(const CharacterInput *player_in, const void *env)
 {
     chr_hurt_hook = hurt;
+    chr_vocalize_hook = vocalize;
+    chr_melee_score_hook = melee_score;
+    chr_attack_landed_hook = attack_landed;
     chr_die_hook = died;
     chr_script_hook = script;
     chr_animation_hook = new_animation;
     chr_sound_hook = sound;
     character_action_frame_hook = action_frame;
     chr_block_hook = block;
+    chr_calm_hurt_hook = calm_hurt;
     chr_knockdown_hook = knocked_down;
     chr_path_through_hook = path_through;
     chr_movement_hit_hook = movement_hit;
@@ -671,6 +718,24 @@ static Chr *arg_char(const SlValue *v)
     return chars_find(v->s);
 }
 
+/* chr_vocalize char type (0x4b9e00..): the character (the player when not found, after the AI's report)
+   cries the vocalization by its name (0x52a4e4, 16 bytes each: taunt, alert, startle, checkbody,
+   pursue, cower, superpunch, superkick, super3, super4), forced (AI2rVocalize 0x48ba60). */
+static bool cmd_vocalize(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 2 || v[1].type != SL_STRING || !v[1].s) return true;
+    Chr *ch = arg_char(&v[0]);
+    if (!ch) ch = chars_player();
+    if (!ch) return true;
+    for (uint32_t i = 0; i < 10; i++)
+        if (!strcmp(exe_str(0x52a4e4 + 16 * i), v[1].s)) {
+            ai_vocalize(ch, i, true);   /* (refused: the AI's report) */
+            return true;
+        }
+    return true;    /* "unknown vocalization type" and the list */
+}
+
 /* chr_create id [start] (AI2iScript_ChrCreate 0x4b7710): a character from the level's setup of that
    script id at the setup's flag, if the flag (15 above it) is in a room. The second argument isn't
    read. */
@@ -716,7 +781,7 @@ static bool volume_delete(int c, const SlValue *v, bool corpses)
         Chr *in[CHARS_MAX];
         int n = 0;
         for (int i = 0; i < CHARS_MAX; i++)
-            if (used[i] && trigger_contains(k, slots[i].c.pos)) in[n++] = &slots[i];
+            if (used[i] && trigger_contains(k, slots[i].c.pos, slots[i].c.bottom, slots[i].c.top)) in[n++] = &slots[i];
         for (int i = 0; i < n; i++) {
             if (corpses) {
                 if (in[i]->c.flags & 1) in[i]->corpse_time = 1;
@@ -830,8 +895,8 @@ static bool cmd_spawn(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 }
 
 /* ai2_movetoflag char flag [setfacing] (AI2iScript_MoveToFlag 0x4b53e0): an AI character (not the
-   player, who needs ai2_takecontrol) walks to the flag, then faces the flag's way if asked. The walk
-   is the stand-in mover (ai.h) until the movement layer is ported. */
+   player, who needs ai2_takecontrol) walks to the flag (AI2rPath_GoToPoint 0x4ae480, within 3), then
+   faces the flag's way if asked (else the facing 1000, none). */
 static bool cmd_movetoflag(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;
@@ -1138,7 +1203,7 @@ static bool cmd_kill(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
         Chr *ch = used[i] ? &slots[i] : NULL;
         if (!ch || ch->player || (ch->c.flags & 1)) continue;
         if (except ? ch == one : (one && ch != one)) continue;
-        chr_take_damage(&ch->c, 0x6000000, 0.0f, NULL, 0, NULL);
+        chr_take_damage(&ch->c, ch->c.hit_points, 0.0f, NULL, 0, NULL, CHR_DAMAGE_KILL);
     }
     return true;
 }
@@ -1155,7 +1220,7 @@ static bool cmd_set_health(SlThread *t, int c, const SlValue *v, SlValue *r, voi
     if (hp <= 0) {
         if (!(ch->c.flags & 1)) {
             ch->c.hit_points = 0;
-            chr_die(&ch->c);
+            chr_die(&ch->c, NULL);
         }
         return true;
     }
@@ -1171,7 +1236,7 @@ static void poison(Chr *ch, uint32_t damage, int32_t interval, int32_t initial)
     if (ch->c.poison_last + 30 < now) ch->c.poison_count = 0;
     ch->c.poison_last = now;
     if (++ch->c.poison_count >= initial) {
-        chr_take_damage(&ch->c, damage, 0.0f, NULL, 0, NULL);
+        chr_take_damage(&ch->c, damage, 0.0f, NULL, 0, NULL, 0);
         ch->c.poison_count = initial - interval;
     }
 }
@@ -1540,6 +1605,7 @@ void chars_register_commands(void)
     sl_register("chr_wait_animation", cmd_wait_animation, NULL);
     sl_register("ai2_spawn", cmd_spawn, NULL);
     sl_register("chr_create", cmd_chr_create, NULL);
+    sl_register("chr_vocalize", cmd_vocalize, NULL);
     sl_register("ai2_takecontrol", cmd_takecontrol, NULL);
     sl_register("trigvolume_kill", cmd_trigvolume_kill, NULL);
     sl_register("ai2_lookatme", cmd_lookatme, NULL);

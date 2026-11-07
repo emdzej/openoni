@@ -202,8 +202,9 @@ When the jello is on (0x54d64c):
    **Quirk:** the plane index from AGQC is used as stored, times 16. Bit 31, which marks a negated
    plane, falls out, so the plane is taken unnegated.
 
-The port's sweep is a stand-in, a brute force over the quads' AGQC boxes. It finds the quads the point or
-sphere touches, in quad order. The port clears flag 0x20 on the quads it marked itself, not on Motoko's
+The quads come from the collision's hit list, nearest first (`src/akev_collide.c`, the octree walk). The
+objects' own jello (the level's objects with flag 2 at +0x17 the line meets, `PHrCollision_Point`
+0x4d5280, marked 0x40) isn't ported. The port clears flag 0x20 on the quads it marked itself, not on Motoko's
 visible list.
 
 ## Variables and commands

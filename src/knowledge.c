@@ -10,7 +10,12 @@
 #include "exe.h"
 #include "graph.h"
 #include "movement.h"
+#include "neutral.h"
+#include "object.h"
+#include "particle.h"
 #include "pursuit.h"
+#include "trac.h"
+#include "weapon.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -43,6 +48,7 @@ static uint32_t now;                       /* stand-in for the game time (GS+0x1
 uint32_t knowledge_now(void) { return now; }
 
 static float wrap_2pi(float a) { return a < 0.0f ? a + TWO_PI : a >= TWO_PI ? a - TWO_PI : a; }
+static float rdf32(const uint8_t *p) { float f; memcpy(&f, p, 4); return f; }
 
 static uint32_t oncc_u32(const Chr *c, unsigned off)
 {
@@ -65,6 +71,31 @@ static bool is_ai(const Chr *c) { return c && !c->player; }     /* C+0x1e8 2 */
    boss flag (C+4 0x10000000) too. */
 bool knowledge_boss_battle;
 
+/* The dangers: the dangerous projectiles' records and the guns' firing spreads (below). */
+enum { PROJECTILES_MAX = 64, SPREADS_MAX = 32, DANGER_IN_USE = 1, DANGER_GONE = 2 };
+typedef struct {
+    uint32_t flags;             /* +0x00: DANGER_IN_USE, DANGER_GONE (its particle deleted) */
+    float start[3];             /* +0x04: where it was made */
+    float prev[3], pos[3];      /* +0x10, +0x1c: its last two places (every 5 ticks) */
+    float vel[3];               /* +0x28: its velocity variable's (none: 0) */
+    float dodge_radius;         /* +0x34: the class's +0x90 */
+    float alert_radius;         /* +0x38: the class's +0x94 */
+    uint32_t handle;            /* +0x3c: the particle's when made */
+    P3Class *cls;               /* +0x40 */
+    P3Particle *p;              /* +0x44 */
+    uint32_t owner;             /* +0x48: its owner variable's (none: 0) */
+} Projectile;
+typedef struct {
+    uint32_t flags;             /* +0x00: DANGER_IN_USE */
+    float pos[3], dir[3];       /* +0x04, +0x10: the gun's place and the way it fires */
+    float length, radius, angle;    /* +0x1c..+0x24: the class's +0x144..+0x14c */
+    const Weapon *w;            /* +0x28 */
+} Spread;
+static Projectile projectiles[PROJECTILES_MAX];     /* 0x638fa0 */
+static unsigned nprojectiles;                       /* 0x63aba8: the last one's index + 1 */
+static Spread spreads[SPREADS_MAX];                 /* 0x63adc0 */
+static unsigned nspreads;                           /* 0x63aba4 */
+
 void knowledge_reset(void)
 {
     knowledge_boss_battle = false;
@@ -73,6 +104,10 @@ void knowledge_reset(void)
     free_list = NULL;
     npending = 0;
     now = 0;
+    memset(projectiles, 0, sizeof projectiles);
+    nprojectiles = 0;
+    memset(spreads, 0, sizeof spreads);
+    nspreads = 0;
 }
 
 bool ai_last_man_standing;
@@ -196,8 +231,9 @@ static void remove_entry(KnowEntry *e)
 
 /* AI2rAlert_UpgradeStatus 0x48eee0: the new alert level; above low, the startle (the animations of type
    0xc0..0xc3 by the contact's side) unless the class has none (ONCC+0x120 bit 0); at combat, the combat
-   state against the contact's character. Returns whether it startled. Not ported: the movement's
-   notification, the turn during the startle (C+0xfac, C+0xfb0). */
+   state against the contact's character. Returns whether it startled. The startle turns the character
+   toward the contact over its frames (C+0xfac, C+0xfb0: the way left after the animation's own turn,
+   TRAM+0x48), ai_update. */
 static bool upgrade_alert(Chr *c, int level, KnowEntry *e);
 bool knowledge_upgrade_alert(Chr *c, int level) { return upgrade_alert(c, level, NULL); }
 
@@ -228,7 +264,12 @@ static bool upgrade_alert(Chr *c, int level, KnowEntry *e)
             chr_enter_fight_mode(&c->c);
             const void *anim = chr_lookup(&c->c, type, c->c.from_state);
             if (anim) {
+                a->startle_from = c->c.facing;
                 a->startle_ticks = tr_duration(anim);
+                float turn = (to - c->c.facing) - rdf32((const uint8_t *)anim + 0x48);
+                if (turn < -PI) turn += TWO_PI;
+                else if (turn > PI) turn -= TWO_PI;
+                a->startle_turn = turn;
                 chr_set_animation_external(&c->c, tr_from(anim), anim, 8);
                 startled = true;
                 a->startle_time = e->posted;
@@ -248,8 +289,9 @@ static bool upgrade_alert(Chr *c, int level, KnowEntry *e)
 /* AI2rAlert_NotifyKnowledge 0x48ecc0, the calm states' reaction to a contact: an unimportant one is
    glanced at; a combat sound, or one with hostility, from the most important contact raises the
    alert to the type's level (0x52a624) if not already above it, and any alert sends a calm character
-   to pursue it. Not ported: the glance's look (0x4a8150), the vocalizations, the neutral state's
-   danger test. */
+   to pursue it (its cry, AI2rVocalize 0x48ba60 type 2, at once when startled or at combat, else after
+   60 to 90 ticks: type 1, AI2rUpdateAI); a talking (neutral) character meeting danger stops the
+   conversation. */
 void knowledge_alert_notify(Chr *c, KnowEntry *e, bool degraded)
 {
     AiState *a = &c->ai;
@@ -259,7 +301,14 @@ void knowledge_alert_notify(Chr *c, KnowEntry *e, bool degraded)
     uint32_t glance = exe_u32(0x52a64c + 4u * (uint32_t)e->type);
     bool combat_sound = e->type > 1 && e->type < 5;
     if (!combat_sound && e->hostility < 1) {
-        if (e->last_strength < e->strength) a->glance = glance;
+        if (e->last_strength < e->strength) {
+            /* the movement's glance at it (0x4a8150: a point, for the ticks, not a full turn, no delay) */
+            a->glance_kind = 1;
+            a->glance_ticks = glance;
+            a->glance_delay = 0;
+            memcpy(a->glance_at, e->pos, sizeof a->glance_at);
+            a->glance = glance;
+        }
         return;
     }
     if (e != a->know || e->strength <= 1) return;
@@ -269,12 +318,20 @@ void knowledge_alert_notify(Chr *c, KnowEntry *e, bool degraded)
         bool startled = upgrade_alert(c, level, e);
         if (before < a->alert && !(a->flags & AI_FLAG_STARTLED)) {
             if (startled || a->alert == 4) {
-                a->vocal_delay = 0;     /* AI2rVocalize: the sound */
+                ai_vocalize(c, 2, false);
+                a->vocal_delay = 0;
                 a->flags |= AI_FLAG_STARTLED;
             } else if (!a->vocal_delay) {
-                a->vocal_delay = 60;    /* + a random part of 30 (UUrRandom): with the vocalizations */
+                a->vocal_delay = 60 + (uint32_t)(((int32_t)trac_random() * 30) >> 16);  /* UUrRandom */
             }
         }
+    }
+    if (!a->alert) return;
+    if (a->state == AI_STATE_NEUTRAL) {
+        float loc[3];
+        chr_location(&c->c, loc);
+        if (!ai_dangerous_contact(c, a->talk.player, true, e, loc)) return;
+        neutral_stop(c, false, true, true, true);   /* AI2rNeutral_Stop 0x4acf70 */
     }
     if (a->alert && a->state != AI_STATE_PURSUIT && a->state != AI_STATE_COMBAT && a->state != AI_STATE_ALARM) {
         ai_pursue(a, e);    /* the pursuit state (C+0x8c0 the contact) */
@@ -455,9 +512,10 @@ void knowledge_sound(int type, const float pos[3], float radius, Chr *source, Ch
 {
     bool combat = type >= KNOW_SOUND_DANGER && type <= KNOW_SOUND_GUNFIRE;     /* 0x49ad70 */
     float at_source[3], at_target[3] = { 0, 0, 0 };
-    /* the places posted: the maker's location (C+0x160; the port keeps none apart), else the sound's */
-    memcpy(at_source, source ? source->c.pos : pos, sizeof at_source);
-    if (target) memcpy(at_target, target->c.pos, sizeof at_target);
+    /* the places posted: the maker's location (C+0x160), else the sound's */
+    if (source) chr_location(&source->c, at_source);
+    else memcpy(at_source, pos, sizeof at_source);
+    if (target) chr_location(&target->c, at_target);
     for (int i = 0; i < chars_slots(); i++) {
         Chr *c = chars_get(i);
         if (!c || !is_ai(c) || (c->ai.flags & (AI_FLAG_PASSIVE | AI_FLAG_DEAF))) continue;
@@ -467,15 +525,15 @@ void knowledge_sound(int type, const float pos[3], float radius, Chr *source, Ch
         float r = radius * oncc_float(c, 0x428);
         float dx = pos[0] - c->c.pos[0], dy = pos[1] - c->c.pos[1], dz = pos[2] - c->c.pos[2];
         if (dx * dx + dy * dy + dz * dz > r * r) continue;
-        /* heard in a line to the head (AKrLineOfSight 0x4410a0: the walls skipping 0x42080; its
-           objects' part, as the sight's, not ported), or by a way through the rooms no longer than the
+        /* heard in a line to the head (AKrLineOfSight 0x4410a0: the walls skipping 0x42080, then the
+           objects' spheres), or by a way through the rooms no longer than the
            radius (PHrPathDistance 0x50edb0, from the sound's room to the listener's node, C+0x188, with
            no character and the sound's type as the key: every door class has type 2 and danger 0.5, so only gunfire carries through the shut doors,
            their danger doubling the way beyond) */
         float head[3];
         knowledge_head_point(c, head);
         float v[3] = { head[0] - pos[0], head[1] - pos[1], head[2] - pos[2] };
-        bool heard = !sound_env || !akev_segment_hits(sound_env, pos, v, 0x42080);
+        bool heard = (!sound_env || !akev_segment_hits(sound_env, pos, v, 0x42080)) && !object_line_blocked(pos, head);
         if (!heard) {
             float loc[3];
             int from = graph_room_at(pos), to = chr_room(&c->c, loc);
@@ -602,13 +660,14 @@ static void check_visible(Chr *looker, const void *env)
             else if (dist < prange) strength = 2;
             else continue;
         }
-        /* the sight lines: from the eye to the other's pelvis, head and bottom (C+0x190: its feet
-           here), the first clear one the place posted */
+        /* the sight lines: from the eye to the other's pelvis, head and feet (ONrCharacter_GetFeetPosition
+           0x4e3590: the pelvis's x and z at the body's bottom, C+0x190, + 1), the first clear one (the
+           walls only, AKrCollision_Point 0x441c80) the place posted */
         float pts[3][3];
         pelvis_point(t, pts[0]);
         knowledge_head_point(t, pts[1]);
         memcpy(pts[2], pts[0], sizeof pts[2]);
-        pts[2][1] = t->c.pos[1] + 1.0f;
+        pts[2][1] = t->c.bottom + 1.0f;
         int seen = -1;
         for (int k = 0; k < 3 && seen < 0; k++) {
             float v[3] = { pts[k][0] - eye[0], pts[k][1] - eye[1], pts[k][2] - eye[2] };
@@ -619,6 +678,223 @@ static void check_visible(Chr *looker, const void *env)
     }
 }
 
+/* ---- the dangers: projectiles and firing spreads ---- */
+
+
+/* The particle's place (P3rGetRealPosition 0x45acc0) and its velocity variable (class flag 0x1000). */
+static void projectile_read(Projectile *r)
+{
+    p3_real_position(r->cls, r->p, r->pos);
+    const float *v = p3_block(r->cls, r->p, P3_X_VELOCITY);
+    if (v) memcpy(r->vel, v, sizeof r->vel);
+}
+
+int knowledge_projectile_new(P3Class *c, P3Particle *p, float dodge_radius, float alert_radius)
+{
+    /* AI2rKnowledge_NewDodgeProjectile 0x49bc00: the first free one ("out of projectile slots": 64) */
+    unsigned i = 0;
+    while (i < nprojectiles && (projectiles[i].flags & DANGER_IN_USE)) i++;
+    if (i >= PROJECTILES_MAX) return -1;
+    if (i >= nprojectiles) nprojectiles = i + 1;
+    Projectile *r = &projectiles[i];
+    memset(r, 0, sizeof *r);
+    r->flags = DANGER_IN_USE;
+    /* 0x49bd20 */
+    r->dodge_radius = dodge_radius;
+    r->alert_radius = alert_radius;
+    r->cls = c;
+    r->p = p;
+    p3_real_position(c, p, r->start);
+    memcpy(r->prev, r->start, sizeof r->prev);
+    memcpy(r->pos, r->start, sizeof r->pos);
+    const float *v = p3_block(c, p, P3_X_VELOCITY);
+    if (v) memcpy(r->vel, v, sizeof r->vel);
+    const uint32_t *o = p3_block(c, p, P3_X_OWNER);
+    r->owner = o ? *o : 0;
+    r->handle = p3_handle(p);
+    return (int)i;
+}
+
+void knowledge_projectile_deleted(int slot, P3Class *c, P3Particle *p)
+{
+    /* AI2rKnowledge_DeleteDodgeProjectile 0x49bc70: its last place, then gone (the record is let go at the next refresh) */
+    (void)c, (void)p;
+    if (slot < 0 || slot >= PROJECTILES_MAX) return;
+    Projectile *r = &projectiles[slot];
+    if (r->p && p3_handle(r->p) == r->handle) {
+        memcpy(r->prev, r->pos, sizeof r->prev);
+        projectile_read(r);
+    } else
+        r->flags &= ~(uint32_t)DANGER_IN_USE;
+    r->flags |= DANGER_GONE;
+    r->p = NULL;
+    r->cls = NULL;
+    r->handle = 0;
+}
+
+/* The gun's place and its firing direction (the class's +0x104 through the weapon's matrix,
+   MUrMatrix3x3_MultiplyPoint 0x433a40). */
+static void spread_place(Spread *f, const Weapon *w)
+{
+    const float *v = (const float *)(w->cls + 0x104), *m = w->m;
+    memcpy(f->pos, m + 9, sizeof f->pos);
+    for (int k = 0; k < 3; k++) f->dir[k] = v[0] * m[k] + v[1] * m[3 + k] + v[2] * m[6 + k];
+}
+
+int knowledge_spread_new(const Weapon *w)
+{
+    /* AI2rKnowledge_NewDodgeFiringSpread 0x49c160 ("out of firing spread slots": 32) */
+    unsigned i = 0;
+    while (i < nspreads && (spreads[i].flags & DANGER_IN_USE)) i++;
+    if (i >= SPREADS_MAX) return -1;
+    if (i >= nspreads) nspreads = i + 1;
+    Spread *f = &spreads[i];
+    f->flags |= DANGER_IN_USE;
+    /* AI2rKnowledge_SetupDodgeFiringSpread 0x49c210 */
+    const float *k = (const float *)(w->cls + 0x144);
+    f->length = k[0], f->radius = k[1], f->angle = k[2];
+    spread_place(f, w);
+    f->w = w;
+    return (int)i;
+}
+
+void knowledge_spread_delete(int i)
+{
+    /* AI2rKnowledge_DeleteDodgeFiringSpread 0x49c1e0 */
+    if (i < 0 || i >= SPREADS_MAX) return;
+    spreads[i].flags &= ~(uint32_t)DANGER_IN_USE;
+    if ((unsigned)i + 1 == nspreads) nspreads--;
+}
+
+/* AI2iKnowledge_UpdateProjectileAlertness (in AI2rKnowledge_Update 0x499e80): a projectile with an alert
+   radius and a character owner tells every AI not its friend (and neither passive nor deaf) that its
+   last 5 ticks' path passed within the radius of the pelvis of a gunshot of strength 3 from the owner,
+   at the place it was made. */
+static void projectile_alerts(void)
+{
+    for (unsigned i = 0; i < nprojectiles; i++) {
+        Projectile *r = &projectiles[i];
+        if (!(r->flags & DANGER_IN_USE) || r->alert_radius == 0.0f) continue;
+        uint32_t kind = r->owner & 0xff000000u;
+        if (kind != 0x1000000u && kind != 0x2000000u) continue;
+        Chr *owner = p3_owner_character(r->owner);
+        if (!owner) continue;
+        float v[3] = { r->pos[0] - r->prev[0], r->pos[1] - r->prev[1], r->pos[2] - r->prev[2] };
+        float a = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+        for (int k = 0; k < chars_slots(); k++) {
+            Chr *c = chars_get(k);
+            if (!c || !chars_in_use(c) || !alive(c) || !is_ai(c) || (c->ai.flags & (AI_FLAG_PASSIVE | AI_FLAG_DEAF)) ||
+                c == owner || ai_team_relation(c->team, owner->team) == 0)
+                continue;
+            float pel[3];
+            pelvis_point(c, pel);
+            float d[3] = { r->prev[0] - pel[0], r->prev[1] - pel[1], r->prev[2] - pel[2] };
+            float b = 2.0f * (d[0] * v[0] + d[1] * v[1] + d[2] * v[2]);
+            float cc = d[0] * d[0] + d[1] * d[1] + d[2] * d[2] - r->alert_radius * r->alert_radius;
+            bool near = cc <= 0.0f;
+            if (!near) {
+                if (!((double)fabsf(a) > 0.001)) continue;     /* 0x5296e0 */
+                float disc = b * b - cc * a * 4.0f;
+                if (!(disc > 0.0f)) continue;
+                float t = (sqrtf(disc) - b) / (a + a);
+                near = t > 0.0f && t < 1.0f;
+            }
+            if (near) knowledge_post(c, KNOW_SOUND_GUNFIRE, 3, r->start, owner, 0, false, false);
+        }
+    }
+}
+
+/* AI2rKnowledge_Update 0x499e80, every 5 ticks: the projectiles' places and velocities (a deleted one's
+   record let go, one whose particle is no longer its own dropped), the spreads' guns' places (a gun
+   no longer in use drops its spread). */
+static void dangers_refresh(void)
+{
+    for (unsigned i = 0; i < nprojectiles; i++) {
+        Projectile *r = &projectiles[i];
+        if (!(r->flags & DANGER_IN_USE)) continue;
+        if (r->flags & DANGER_GONE) {
+            r->flags &= ~(uint32_t)(DANGER_IN_USE | DANGER_GONE);
+            if (i + 1 == nprojectiles) nprojectiles--;
+        } else if (r->p && p3_handle(r->p) == r->handle) {
+            memcpy(r->prev, r->pos, sizeof r->prev);
+            projectile_read(r);
+        } else
+            r->flags &= ~(uint32_t)DANGER_IN_USE;
+    }
+    for (unsigned i = 0; i < nspreads; i++) {
+        Spread *f = &spreads[i];
+        if (!(f->flags & DANGER_IN_USE)) continue;
+        if (!f->w || !(f->w->flags & WEAPON_IN_USE)) f->flags &= ~(uint32_t)DANGER_IN_USE;    /* 0x518680 */
+        else spread_place(f, f->w);
+    }
+}
+
+void knowledge_dangers(Chr *ch)
+{
+    const void *env = p3_environment();
+    Character *c = &ch->c;
+    float pel[3];
+    pelvis_point(ch, pel);
+    float body = -1.0f;     /* A+0x13c, worked out when first needed */
+    /* AI2rKnowledge_FindNearbyProjectiles 0x49bdf0: each projectile with a dodge radius not of ch's own, its next 5 ticks' motion (its
+       velocity by 0.8333, 0x52a930) coming within the radius and the body sphere's of the pelvis: its
+       nearest point there in sight of the pelvis given as a projectile danger */
+    for (unsigned i = 0; i < nprojectiles; i++) {
+        Projectile *r = &projectiles[i];
+        if (!(r->flags & DANGER_IN_USE)) continue;
+        uint32_t kind = r->owner & 0xff000000u;
+        if ((kind == 0x1000000u || kind == 0x2000000u) && p3_owner_character(r->owner) == ch) continue;
+        if (!(r->dodge_radius > 0.0f)) continue;
+        if (body < 0.0f) body = p3_body_radius(c);
+        float d[3] = { r->pos[0] - pel[0], r->pos[1] - pel[1], r->pos[2] - pel[2] };
+        float w[3] = { r->vel[0] * 0.8333333f, r->vel[1] * 0.8333333f, r->vel[2] * 0.8333333f };
+        float rr = body + r->dodge_radius;
+        float a = w[0] * w[0] + w[1] * w[1] + w[2] * w[2];
+        float b = 2.0f * (d[0] * w[0] + d[1] * w[1] + d[2] * w[2]);
+        float cc = d[0] * d[0] + d[1] * d[1] + d[2] * d[2] - rr * rr;
+        float t;
+        if (cc <= 0.0f) t = 0.0f;
+        else {
+            if (!((double)fabsf(a) > 0.001) || !(b <= 0.0f)) continue;      /* 0x5296e0; going away */
+            float disc = b * b - cc * a * 4.0f;
+            if (!(disc > 0.0f)) continue;
+            float root = (sqrtf(disc) - b) / (a + a);
+            if (!(root > 0.0f) || !(root < 1.0f)) continue;
+            t = -(b / (a + a));
+        }
+        float q[3] = { t * w[0] + r->pos[0], t * w[1] + r->pos[1], t * w[2] + r->pos[2] };
+        float to[3] = { pel[0] - q[0], pel[1] - q[1], pel[2] - q[2] };
+        if (env && akev_segment_hits(env, q, to, 0x242000)) continue;
+        /* the nearest point on the 5 ticks' motion, and its distance from the world's origin, not from
+           the pelvis (so a projectile is dodged only near the origin): kept */
+        float k = t < 0.0f ? -t : t > 1.0f ? 1.0f - t : 0.0f;
+        float e[3] = { k * w[0] + q[0], k * w[1] + q[1], k * w[2] + q[2] };
+        float dist = sqrtf(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]);
+        combat_danger_projectile(ch, r, w, dist, q, r->dodge_radius);
+    }
+    /* AI2rKnowledge_FindNearbyFiringSpreads 0x49c290: each firing spread not of ch's own gun, its cone (as long as its length, widening from
+       its radius by its angle, and the body sphere's) holding the pelvis, the gun in sight of it: a
+       spread danger, with the way from the pelvis to the cone's axis */
+    for (unsigned i = 0; i < nspreads; i++) {
+        Spread *f = &spreads[i];
+        if (!(f->flags & DANGER_IN_USE)) continue;
+        if (f->w && f->w->owner == c) continue;     /* WPrGetOwner 0x518610 */
+        float d[3] = { pel[0] - f->pos[0], pel[1] - f->pos[1], pel[2] - f->pos[2] };
+        float dd = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+        if (!(dd <= f->length * f->length)) continue;
+        float along = f->dir[0] * d[0] + f->dir[1] * d[1] + f->dir[2] * d[2];
+        if (along < 0.0f) continue;
+        float perp[3] = { d[0] - along * f->dir[0], d[1] - along * f->dir[1], d[2] - along * f->dir[2] };
+        if (body < 0.0f) body = p3_body_radius(c);
+        float rr = sqrtf(dd) * tanf(f->angle) + f->radius + body;
+        float pp = perp[0] * perp[0] + perp[1] * perp[1] + perp[2] * perp[2];
+        if (!(pp <= rr * rr)) continue;
+        if (env && akev_segment_hits(env, f->pos, d, 0x242000)) continue;
+        float to_axis[3] = { -perp[0], -perp[1], -perp[2] };
+        combat_danger_spread(ch, f, d, rr, sqrtf(pp), to_axis);
+    }
+}
+
 void knowledge_update(const void *env)
 {
     /* the pending posts of last tick */
@@ -626,7 +902,10 @@ void knowledge_update(const void *env)
     for (int i = 0; i < npending; i++) post_now(&pending[i]);
     npending = 0;
     now++;
-    /* projectiles and firing spreads, sounds' places (every 5 ticks): with the weapons */
+    /* the projectiles' alerts (unless everyone is deaf or passive, 0x5ec0c1, 0x5ec0c4); every 5 ticks
+       the dangers' places */
+    projectile_alerts();
+    if (now % 5 == 0) dangers_refresh();
     if (now % 60 == 0) {
         for (int i = 0; i < entries_used; i++) {
             KnowEntry *e = &entries[i];

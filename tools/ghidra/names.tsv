@@ -198,10 +198,12 @@
 00428720	TRrAnimation_GetFrom	TR	med	name from the Intel Mac build (neighbours:1.00)
 00428740	TRrAnimation_GetDuration	TR	med	name from the Intel Mac build (neighbours:0.80)
 00428750	TRrAnimation_GetPosition	TR	med	name from the Intel Mac build (neighbours:1.00)
+00428970	TRrAnimation_GetVocalization	TR	med	Mac name: TRAM+0x4e
 00428980	TRrAnimation_TestAttackFlag	TR	med	name from the Intel Mac build (neighbours:1.00)
 00428a20	TRrAnimation_TestFlag	TR	med	name from the Intel Mac build (neighbours:1.00)
 00428aa0	TRrAnimation_IsAttack	TR	med	name from the Intel Mac build (neighbours:1.00)
 00428b00	TRrAnimation_IsShortcut	TR	med	name from the Intel Mac build (neighbours:0.75)
+00428c80	TRrAnimation_GetFinalRotation	TR	med	Mac name: TRAM+0x48 (float)
 00428cb0	TRrAnimation_GetEndInterpolation	TR	med	name from the Intel Mac build (strings:1)
 00428e10	TRrOverlay_Apply	TR	low	an overlay over a pose: TRAM +0x44 replaced, +0x40 added, ramps of 6 frames
 00429160	TRrAnimation_GetDamage	TR	low	the animation's own damage at a frame (TRAM +0x10 .raw, count +0x17b); Mac name by role
@@ -421,6 +423,8 @@
 00455e10	P3rSetCallbacks	P3	low	made up: the creation, deletion and detail callbacks (0x659ae4, 0x6a872c, 0x6a85c4)
 00455e40	P3rCreateParticle	P3	med	name from the Intel Mac build (neighbours:1.00)
 00456030	P3rCreateEffect	P3	med	name from the Intel Mac build (strings:2)
+00456e80	P3rKillTemporaryParticles	P3	med	Mac name: the particles of flag 0x400 killed, as in an update
+00456f80	P3rSetTemporaryCreation	P3	med	Mac name: 0x6a8b44, the particles made meanwhile temporary
 00456ff0	P3rUpdateSoundPointers	P3	low	made up: each class's flyby impulse by its name (+0x98)
 00457090	P3rListBrokenLinks	P3	med	name from the Intel Mac build (neighbours:0.83)
 00457240	P3rUpdateActionData	P3	med	name from the Intel Mac build (strings:1)
@@ -677,6 +681,7 @@
 0048ad50	AI2rEnterState	AI2	med	name from the Intel Mac build (strings:1)
 0048ae80	AI2rExitState	AI2	med	name from the Intel Mac build (strings:1)
 0048af80	AI2rReturnToJob	AI2	low	leaves the state for the job, or idle below the job alert C+0xf9c (name made up)
+0048b060	AI2rIsCalm	AI2	low	the calm hurt hook's test (table 0x52a4d8): an AI not on alert, a patrol ignoring the player false (name made up)
 0048b0d0	AI2rAllPassive	AI2	med	read: every AI character's passive bit (+0x1f0 bit 2); the Mac build's name
 0048b160	AI2rPassive	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0048b1d0	AI2rCharacter_IsHostile	AI2	low	whether a takes b for an enemy (teams, then past hits)
@@ -690,6 +695,7 @@
 0048b700	AI2rNotifyAttackLanded	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0048b850	AI2rTryingToAttack	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0048b870	AI2rBlockFunction	AI2	med	name from the Intel Mac build (neighbours:1.00)
+0048b9d0	AI2rStopDaze	AI2	med	Mac name: an AI's daze (C+0x1020) cut to its last tick
 0048b9f0	AI2rStartDazeTimer	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0048ba60	AI2rVocalize	AI2	med	name from the Intel Mac build (neighbours:0.80)
 0048bb40	AI2rTryNeutralInteraction	AI2	med	name from the Intel Mac build (neighbours:0.75)
@@ -766,6 +772,7 @@
 004993d0	AI2rExecutor_Report	AI2	med	name from the Intel Mac build (strings:6)
 00499600	AI2rFight_StopFight	AI2	med	name from the Intel Mac build (neighbours:1.00)
 00499820	AI2rFight_GetAttackCookie	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004998f0	AI2rFight_AdjustForDamage	AI2	med	Mac name: a blow moves the fighters' cookie time (+10 a point for the attacker, -6 for the victim)
 00499990	AI2rGuard_NewDirection	AI2	med	name from the Intel Mac build (neighbours:1.00)
 00499b50	AI2rGuard_UpdateScan	AI2	med	name from the Intel Mac build (neighbours:1.00)
 00499d00	AI2rGuard_RecalcScanDir	AI2	med	name from the Intel Mac build (neighbours:1.00)
@@ -783,8 +790,14 @@
 0049b8e0	AI2iKnowledge_RemoveEntry	AI2	med	back to the pool, the state told
 0049b990	AI2rKnowledge_Delete	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0049ba10	AI2rKnowledge_CompareFunc	AI2	med	the order of two contacts
+0049bc00	AI2rKnowledge_NewDodgeProjectile	AI2	med	the Mac build's order of the dodge projectiles' functions; 64 records at 0x638fa0
+0049bc70	AI2rKnowledge_DeleteDodgeProjectile	AI2	med	the Mac build's order; the particle's deletion callback 0x508e90 calls it
+0049bd20	AI2rKnowledge_SetupDodgeProjectile	AI2	med	the Mac build's order; the creation callback 0x508e20 calls it after New
+0049bdf0	AI2rKnowledge_FindNearbyProjectiles	AI2	med	the Mac build's name; the projectiles near a character to its dodge
 0049c160	AI2rKnowledge_NewDodgeFiringSpread	AI2	med	name from the Intel Mac build (neighbours:1.00)
+0049c1e0	AI2rKnowledge_DeleteDodgeFiringSpread	AI2	med	the Mac build's order; called as a weapon stops firing
 0049c210	AI2rKnowledge_SetupDodgeFiringSpread	AI2	med	name from the Intel Mac build (neighbours:1.00)
+0049c290	AI2rKnowledge_FindNearbyFiringSpreads	AI2	med	the Mac build's name; the spreads holding a character to its dodge
 0049c480	AI2rKnowledgeState_Forget	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0049c4f0	AI2rKnowledgeState_Report	AI2	med	name from the Intel Mac build (strings:3)
 0049c9f0	AI2rKnowledge_DisplayFiringSpreads	AI2	med	name from the Intel Mac build (neighbours:1.00)
@@ -807,7 +820,11 @@
 0049ec30	AI2rManeuver_TrySphereTreeCollision	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0049ee00	AI2rManeuver_TryEscapeMove	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0049f020	AI2rManeuver_TryRunningGunPickup	AI2	med	name from the Intel Mac build (neighbours:1.00)
+0049f2e0	AI2rManeuver_FindDodge	AI2	med	the Mac build's name; the dangers' times and weights, the dodge's way
+0049f460	AI2rManeuver_ApplyDodge	AI2	med	the Mac build's name; the dodge's movement modifier and the angle to avoid
 0049f570	AI2iManeuver_MakeDodgeFromDanger	AI2	med	name from the Intel Mac build (neighbours:1.00)
+0049f780	AI2rManeuver_NotifyNearbyProjectile	AI2	med	the Mac build's name; a projectile danger weighed and kept
+0049f8d0	AI2rManeuver_NotifyFiringSpread	AI2	med	the Mac build's name; a firing spread danger weighed and kept
 0049fa50	AI2rMelee_Initialize	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0049fc10	AI2rMelee_GlobalFinish	AI2	med	name from the Intel Mac build (strings:1)
 0049fd10	AI2rMelee_NotifyAnimation	AI2	med	name from the Intel Mac build (neighbours:0.75)
@@ -845,6 +862,7 @@
 004a8200	AI2rMovement_ChangeMovementMode	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a8230	AI2rMovement_NotifyAlertChange	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a8250	AI2rMovement_MovementModifier	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004a8340	AI2rMovement_MovementModifierAvoidAngle	AI2	med	the Mac build's name; C+0x1574, then 0x4ab5a0
 004a8550	AI2rMovement_Update	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a8670	AI2rMovement_Report	AI2	med	name from the Intel Mac build (strings:6)
 004a8d00	AI2rMovement_DefaultMode	AI2	low	the movement mode for the alert level (tables 0x52af18, 0x52af2c)
@@ -852,6 +870,7 @@
 004a9170	AI2iMovementState_FindClearPoint	AI2	high	read: a point off an obstacle it may not ignore (mode 0) to a nearby one (Mac name)
 004a9300	AI2rMovementState_NewMovementMode	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a93c0	AI2rMovementState_NoSidestep	AI2	low	a sidestep done as a turned run: no sideways moves walking (+9) or running (+0xa) (port name)
+004a9520	AI2iMovementState_LocalPathAtLastWaypoint	AI2	low	made up: AI2rPath_SimplePath's local path test
 004a95d0	AI2iMovementState_NextPoint	AI2	low	the vector to the local path's point; passed within 12/8/3, the next; true past the last (port name)
 004a97b0	AI2iMovementState_Update	AI2	low	the collisions' decay (distance, age, hits, plane), then Calculate_Movement, the hit flags cleared (port name)
 004a9b10	AI2iMovementState_ArrivedAndTurned	AI2	low	the arrival's facing (facing mode 3) set once, then reached within 5 degrees (port name)
@@ -859,6 +878,7 @@
 004aa0c0	AI2iMovementState_AdjustPathPoint	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004aa250	AI2iMovementState_Calculate_Movement	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004ab400	AI2iMovementState_AddArcRamp	AI2	low	the arcs' costs ramped from a breakpoint to an angle, a breakpoint put in (port name)
+004ab5a0	AI2rMovementState_NewAvoidAngle	AI2	med	the Mac build's name; the movement state's reweigh flag (+0x868)
 004ab5b0	AI2rMovementState_NotifyWallCollision	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004ab6b0	AI2iMovementState_MakeCollision	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004ab830	AI2rMovementState_NotifyObjectCollision	AI2	low	a physics context hit (0x4ecc7e): MakeCollision kind 1 (port name)
@@ -1036,6 +1056,7 @@
 004bd070	AIiScript_EnvShade	AI	med	name from the Intel Mac build (the env_shade registration)
 004bd1f0	SLiCmd_Win	SL	low	win: the level end at G+0x1679bc set to 1
 004bd210	SLiCmd_Lose	SL	low	lose: the level end set to 2
+004bd230	AIiScript_SlowMotion	AI	med	Mac name: slowmo, the timer G+0x108 to at least the duration (0 stops it)
 004bd270	SLiCmd_TimerStart	SL	low	timer_start: seconds as ticks, clamped to an hour
 004bd2d0	SLiCmd_TimerStop	SL	low	timer_stop
 004bd2e0	AIiScript_SaveGame	AI	med	name from the Intel Mac build (strings:1)
@@ -1139,6 +1160,7 @@
 004cc1f0	OBJiTrigger_SetOSD	OBJ	med	name from the Intel Mac build (strings:2)
 004cc5d0	OBJrTrigger_UpdateSoundPointers	OBJ	med	name from the Intel Mac build (neighbours:0.80)
 004cc630	OBJrTriggerVolume_IntersectsBBox_Approximate	OBJ	med	name from the Intel Mac build (neighbours:1.00)
+004cc680	OBJrTriggerVolume_IntersectsCharacter	OBJ	med	Mac name: the team, the spheres, then A+0x140..A+0x14c against the box
 004cc960	OBJrTriggerVolume_Initialize	OBJ	med	name from the Intel Mac build (strings:1)
 004cd580	OBJrTurret_RecreateParticles	OBJ	med	name from the Intel Mac build (neighbours:1.00)
 004cd5c0	OBJiTurret_CreateParticles	OBJ	med	name from the Intel Mac build (strings:1)
@@ -1178,6 +1200,7 @@
 004d5150	AMrRayToCharacter	AM	med	name from the Intel Mac build (neighbours:1.00)
 004d5280	PHrCollision_Point	PH	med	name from the Intel Mac build (neighbours:1.00)
 004d52c0	AMrRayToObject	AM	med	name from the Intel Mac build (neighbours:1.00)
+004d5430	AMiRayToSphere	AM	low	made up: AMrRayToObject's sphere test
 004d5580	ONiPlayMovie	ON	low	read: the movie by name (the game data folder) through 0x488080; name made up
 004d56f0	ONiPlayMovie_InGame	ON	low	read: the movie by name through 0x488ff0; name made up
 004d59a0	CArEnableJello	CA	med	name from the Intel Mac build (neighbours:1.00)
@@ -1270,10 +1293,13 @@
 004ecab0	ONrCharacter_Callback_ReceiveForce	ON	med	Mac name: into the knockback A+0xb8, unless the pusher is a weapon
 004ecb20	ONiCharacter_Callback_PostCollision	ON	low	a hit's move down cleared
 004ecb40	ONrCharacter_Callback_FindPhyCollisions	ON	med	Mac name: unless C+4 flag 2, the other contexts but the characters, the powerups and (for the player) the weapons
+004eccb0	ONrAnimType_IsKnockdown	ON	med	Mac name: the reactions that leave a character down (0x4ecce0)
+004ecd70	ONrAnimType_InAirKnockdown	ON	low	a hit's reaction in the air, always a knockdown (the falls, else 0x4f) (name made up)
 004ecdf0	ONrAnimState_IsFallen	ON	low	the lying states 0x12 and 0x32 (name made up)
 004ece10	ONrAnimState_IsCrouch	ON	med	name from the Intel Mac build (neighbours:1.00)
 004ecf30	ONrCharacter_SetPanicVarient	ON	low	the variant 0x8000 on or off (name made up)
 004ed080	ONiCharacter_SetPhysicsFlags	ON	low	the context's flags: 0x44 while animated, 0x8000 without a weapon, 0x10 by C+4 bit 2
+004ed100	ONrCharacter_HasWeaponOverlay	ON	low	made up: the active record's overlay in slot 1 (A+0x1c64)
 004ed280	ONrCharacter_IsStandingStill	ON	low	state 7 in a standing type (6, 7, 8, 0xce, 0xcf, 0xd8) (name made up)
 004ed420	DoFilmUpdate	-	med	name from the Intel Mac build (strings:5)
 004ed770	ONrCharacter_PickupWeapon	ON	med	name from the Intel Mac build (neighbours:1.00)
@@ -1296,6 +1322,7 @@
 004eff60	ONrCharacter_ForceHolster	ON	low	the hand's weapon holstered, forced (begin_cutscene, chr_forceholster)
 004effa0	ONrCharacter_ForceDraw	ON	low	the stowed weapon drawn into the empty hand (end_cutscene, chr_forceholster)
 004f0150	ONrCharacter_IsGunThroughWall	ON	med	name from the Intel Mac build (neighbours:1.00)
+004f0260	ONiCharacter_IsVectorThroughWall	ON	med	Mac name: a quad (first hit, skipping 0x44800) or a nearer object (AMrRayToObject) on p..p+d; a zero d counts
 004f0370	ONrStringToAnimType	ON	med	Mac name; sorts the type table at 0x54d7c0 once, searches it without case
 004f0450	ONrAnimState_FromString	ON	low	an animation state by its name in the table at 0x54df10 (name made up)
 004f0e80	ONrCharacter_PlayAnimationImpact	ON	med	name from the Intel Mac build (strings:1)
@@ -1462,6 +1489,9 @@
 00508ef0	ONiMotoko_Quality_Set	ON	med	Mac name: P3rChangeDetail by the quality
 005097f0	ONrParticle3_FindBodySurfacePosition	ON	med	name from the Intel Mac build (neighbours:1.00)
 00509dc0	ONrParticle3_FindBodyBonePosition	ON	med	name from the Intel Mac build (neighbours:1.00)
+00509fc0	ONiParticle3_Temporary_Start	ON	med	Mac name: particle_temp_start
+00509fd0	ONiParticle3_Temporary_Stop	ON	med	Mac name: particle_temp_stop
+00509fe0	ONiParticle3_Temporary_Kill	ON	med	Mac name: particle_temp_kill
 00509ff0	ONiParticle3_CreateParticle	ON	med	name from the Intel Mac build (neighbours:0.80)
 0050a4c0	ONiParticle3_Debug_KillNearestParticle	ON	med	name from the Intel Mac build (neighbours:1.00)
 0050a5a0	ONrParticle3_KillAll	ON	med	name from the Intel Mac build (neighbours:1.00)
@@ -1550,6 +1580,7 @@
 00515c90	OSrVariantList_Initialize	OS	med	name from the Intel Mac build (strings:1)
 00516670	OSiVariant_Impulse_Get	OS	med	name from the Intel Mac build (strings:1)
 00516940	ONrSpeech_Say	ON	med	name from the Intel Mac build (neighbours:1.00)
+00516a00	ONrSpeech_Stop	ON	med	name from the Intel Mac build; stops the character's speech
 00516a50	ONrSpeech_IsSpeaking	ON	low	C+0x15f0 (name made up)
 00516a60	ONrSpeech_Update	ON	med	name from the Intel Mac build (strings:1)
 00517790	ONrTextureMaterials_LevelLoad	ON	med	name from the Intel Mac build (neighbours:1.00)
@@ -1559,7 +1590,9 @@
 00518180	WPrFillAmmo	WP	low	ammo to the class's shots; the background events
 005181e0	WPrReloadDone	WP	low	the reload overlay's action: full ammo, the reload wait
 005182c0	WPiNewParticles	WP	med	name from the Intel Mac build (strings:1)
+00518610	WPrGetOwner	WP	med	weapon +0x08
 00518650	WPrGetPickupPosition	WP	med	name from the Intel Mac build (re/mac-matches.tsv)
+00518680	WPrInUse	WP	low	made up: weapon +0x02 bit 1, false for none
 00518690	WPrNew	WP	low	a new weapon of a class (a free slot, else the oldest unowned)
 00518930	WPiWeaponPhysics_PostCollision_Callback	WP	high	Mac name: a wall met faster than 0.35 into it plays the fall impact (0x5189c0); any hit but a character's sets the weapon's flag 2
 005189c0	WPiGenerateFallImpact	WP	med	name from the Intel Mac build (neighbours:1.00)

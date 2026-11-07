@@ -6,6 +6,10 @@
 #include "chr_anim.h"
 #include "impact.h"
 #include "m3gm.h"
+#include "neutral.h"
+#include "sound.h"
+#include "trac.h"
+#include "weapon.h"
 
 #include <math.h>
 #include <string.h>
@@ -38,32 +42,47 @@ static uint16_t knockdown_fallback(uint16_t t)
     }
 }
 
-/* ONrCharacter_Knockdown 0x4e4e10: fight mode, the combo and the hold dropped, then the reaction from the
-   state, else from standing (7), else its fallback the same way; at once. Not ported: the in-air remap
-   of the types and the upgrade from crouching (state 0x13), the airborne states' own reactions, and the
-   interpolation it changes with (the decompiler loses the values of its switches). */
+/* ONrCharacter_Knockdown 0x4e4e10: fight mode, the combo and the hold dropped, then the reaction: in the
+   air a hit's fall (0x4ecd70), lying the hit on the ground (0x54), crouching the reaction upgraded to a
+   knockdown (0x4e5320). Looked for from the state, then standing (7), then the type asked and its
+   fallback the same way, then for an airborne state (0x25..0x2e) from its falling half and from 0x26;
+   blended in over 8 ticks, the stand next. */
 static bool down_type(uint16_t t);
+static uint16_t in_air(uint16_t t);
+static uint16_t upgrade_to_knockdown(uint16_t t);
 void (*chr_knockdown_hook)(Character *c);
 bool (*chr_path_through_hook)(const Character *c, const Character *o);
 void (*chr_movement_hit_hook)(Character *c, int kind, uintptr_t id, const float point[3], const float plane[4]);
 
 void chr_knockdown(Character *c, uint16_t type)
 {
-    /* a knockdown that leaves an AI's character down, from not lying: the AI told (0x48b530) */
-    if (down_type(type) && c->state != 0x12 && c->state != 0x32 && c->ai && chr_knockdown_hook) chr_knockdown_hook(c);
     c->varient |= 0x200;
     c->fight_timer = chr_class_fight_time(c->oncc);
     c->combo_type = 0;
     c->combo_time = 0;
     c->hold = 0;
-    const void *t = chr_lookup(c, type, c->state);
+    uint16_t r = type, s = c->state;
+    if (chr_is_victim_type(type) && c->air_ticks) r = in_air(type);
+    else if (s == 0x12 || s == 0x32) r = 0x54;
+    else if (s == 0x13) r = upgrade_to_knockdown(type);
+    uint16_t f = knockdown_fallback(type);
+    const void *t = chr_lookup(c, r, s);
+    if (!t) t = chr_lookup(c, r, 7);
+    if (!t) t = chr_lookup(c, type, s);
+    if (!t) t = chr_lookup(c, f, s);
     if (!t) t = chr_lookup(c, type, 7);
-    if (!t) {
-        uint16_t f = knockdown_fallback(type);
-        t = chr_lookup(c, f, c->state);
-        if (!t) t = chr_lookup(c, f, 7);
+    if (!t) t = chr_lookup(c, f, 7);
+    if (!t && s >= 0x25 && s <= 0x2e) {
+        /* the jumps' rising states (the odd ones) look in their falling half first; the original tests
+           the fallback's low byte, never zero for a reaction */
+        if (s & 1) t = chr_lookup(c, type, s + 1);
+        if (!t && (uint8_t)f) t = chr_lookup(c, type, 0x26);
     }
-    if (t) chr_set_animation_external(c, c->state, t, 0);   /* else "failed to find knockdown animation" */
+    if (!t) return;     /* "failed to find knockdown animation" */
+    /* a knockdown that leaves an AI's character down, from not lying: the AI told (0x48b530) */
+    if (down_type(type) && s != 0x12 && s != 0x32 && c->ai && chr_knockdown_hook) chr_knockdown_hook(c);
+    chr_set_animation_external(c, s, t, 8);     /* the remap hook only changes throws */
+    c->queued = CHR_TYPE_STAND;
 }
 
 /* ONiCharacter_RunDeathAnimation 0x4eb970 (and the same test in TakeDamage): unless already lying
@@ -77,7 +96,9 @@ static void death_knockdown(Character *c, uint16_t type)
     chr_knockdown(c, chr_is_victim_type(type) ? type : 0x4f);
 }
 
-/* The reactions that leave the character down, which a killing hit plays (TakeDamage's switch). */
+/* The reactions that leave the character down, which a killing hit plays (TakeDamage's switch; the
+   same table as ONrAnimType_IsKnockdown 0x4eccb0's). */
+bool chr_is_down_type(uint16_t t) { return down_type(t); }
 static bool down_type(uint16_t t)
 {
     switch (t) {
@@ -89,9 +110,11 @@ static bool down_type(uint16_t t)
     }
 }
 
-void (*chr_hurt_hook)(Character *c, Character *from, uint32_t damage, bool melee);
+void (*chr_hurt_hook)(Character *c, Character *from, uint32_t damage, uint32_t kind);
+void (*chr_melee_score_hook)(Character *attacker, Character *victim, uint32_t damage);
 bool (*chr_block_hook)(Character *c);
-void (*chr_die_hook)(Character *c);
+void (*chr_attack_landed_hook)(Character *attacker, Character *defender);
+void (*chr_die_hook)(Character *c, Character *killer);
 void (*chr_script_hook)(Character *c, int script);
 
 bool chr_cheat_unthrowable, chr_cheat_unstoppable, chr_cheat_invincible, chr_cheat_omnipotent, chr_cheat_fists;
@@ -103,15 +126,138 @@ void chr_cheats_clear(void)
 
 bool chr_is_unstoppable(const Character *c) { return (chr_cheat_unstoppable && !c->ai) || (c->flags & 0x100); }
 
-void chr_die(Character *c)
+void chr_die(Character *c, Character *killer)
 {
     c->flags |= 1;
-    if (chr_die_hook) chr_die_hook(c);
+    if (chr_die_hook) chr_die_hook(c, killer);
     death_knockdown(c, 0);
 }
 
+/* ---- the pain ---- */
+
+/* The class's pain block (ONCC+0x74..0x8c, u16s but the last): the cry's chance at no damage and at the
+   most (+0x74, +0x76, percent) and the damage for the most (+0x78); the ticks before the damage summed is
+   forgotten (+0x7a) and between cries (+0x7c); the light and medium cries before a heavier one (+0x7e,
+   +0x80); a death cry's chance (+0x82); the damage for full volume (+0x84) and for a medium and a heavy
+   cry (+0x86, +0x88); the volume at none (+0x8c, a float). The cries' impulses are named at +0x90,
+   +0xb0, +0xd0, +0xf0 (light, medium, heavy, death; resolved into +0x110..+0x11c). */
+static uint16_t pain_u16(const Character *c, unsigned off) { const uint8_t *k = (const uint8_t *)c->oncc + off; return (uint16_t)(k[0] | k[1] << 8); }
+static const void *pain_sound(const Character *c, uint32_t kind)
+{
+    char name[33];
+    memcpy(name, (const uint8_t *)c->oncc + 0x90 + 0x20 * kind, 32);
+    name[32] = 0;
+    return name[0] ? sound_impulse_find(name) : NULL;
+}
+
+/* The head (A+0x247c, the part 10's place), the cries' place; inactive, the location 15 up (0x529d84). */
+static void cry_place(const Character *c, float p[3])
+{
+    if (c->has_physics) memcpy(p, &c->bone_world[10][9], 3 * sizeof(float));
+    else p[0] = c->pos[0], p[1] = c->pos[1] + 15.0f, p[2] = c->pos[2];
+}
+
+bool (*chr_calm_hurt_hook)(Character *c);
+
+/* ONrCharacter_Pain 0x4f2250: damage of a kind (0 light, 1 knocked down, 2 blown up). A calm AI (0x48b060,
+   chr_calm_hurt_hook) always cries; else the first hurt cries by a chance growing with the damage. The
+   damage sums (forgotten after the class's ticks); between cries the class's wait; the kind no lighter than
+   the last, light ones becoming medium past the class's count or damage, medium ones heavy. The cry is
+   queued 7 ticks, its volume by the damage summed (the class's least at none, full at its damage). */
+static void pain(Character *c, uint32_t damage, uint32_t kind)
+{
+    if (!damage) return;
+    if (!(c->ai && chr_calm_hurt_hook && chr_calm_hurt_hook(c)) && c->pain_damage == 0) {
+        uint32_t lo = pain_u16(c, 0x74), hi = pain_u16(c, 0x76), top = pain_u16(c, 0x78);
+        uint32_t chance = damage < top ? ((hi - lo) * damage) / top + lo : hi;
+        if ((chance * 0xffffu) / 100u <= (uint32_t)trac_random()) return;     /* UUrRandom 0x426e10 */
+    }
+    c->pain_damage = (uint16_t)(c->pain_damage + damage);
+    c->pain_decay = pain_u16(c, 0x7a);
+    if (c->time < pain_u16(c, 0x7c) + c->pain_until) return;
+    if (kind <= c->pain_last) kind = c->pain_last;
+    if (kind == 0) {
+        if (c->pain_light < pain_u16(c, 0x7e) && c->pain_damage < pain_u16(c, 0x86)) goto queue;
+        kind = 1;
+    } else if (kind != 1)
+        goto queue;
+    if (c->pain_medium >= pain_u16(c, 0x80) || c->pain_damage >= pain_u16(c, 0x88)) kind = 2;
+queue:;
+    float vol = 1.0f, least;
+    memcpy(&least, (const uint8_t *)c->oncc + 0x8c, 4);
+    if (c->pain_damage < pain_u16(c, 0x84)) vol = ((1.0f - least) * (float)c->pain_damage) / (float)pain_u16(c, 0x84) + least;
+    if (c->pain_wait == 0) {
+        c->pain_volume = vol;
+        c->pain_wait = 7;
+        c->pain_kind = kind;
+    } else if (c->pain_kind < kind)
+        c->pain_kind = kind;
+}
+
+static void pain_forget(Character *c)
+{
+    c->pain_damage = c->pain_decay = 0;
+    c->pain_last = c->pain_until = 0;
+    c->pain_light = c->pain_medium = 0;
+    c->pain_wait = 0;
+    c->pain_kind = 0;
+    c->pain_volume = 0.0f;
+}
+
+void chr_pain_frame(Character *c)
+{
+    /* DoCharacterFrame 0x4e07ef: the damage summed forgotten in time (everything with it); the queued cry
+       played at the head as its wait runs out (the character's line cut short, 0x516a00), then counted:
+       a light one, a medium one (the next not before half the wait), a heavy one (all forgotten, the next
+       after the wait) */
+    if (c->pain_decay > 0 && --c->pain_decay == 0) pain_forget(c);
+    if (c->pain_wait == 0 || --c->pain_wait != 0) return;
+    uint32_t kind = c->pain_kind;
+    const void *imp = kind <= 3 ? pain_sound(c, kind) : NULL;
+    if (imp) {
+        speech_stop(c);
+        float p[3];
+        cry_place(c, p);
+        sound_impulse_play_at(imp, p, &c->pain_volume);
+    }
+    uint32_t wait = pain_u16(c, 0x7c);
+    if (kind == 0) {
+        c->pain_light++;
+        c->pain_last = 0;
+        c->pain_until = c->time;
+    } else if (kind == 1) {
+        c->pain_medium++;
+        c->pain_last = 1;
+        c->pain_until = c->time + (wait >> 1);
+    } else if (kind == 2) {
+        pain_forget(c);
+        c->pain_last = 2;
+        c->pain_until = c->time + wait;
+    }
+    c->pain_kind = 0;
+    c->pain_volume = 0.0f;
+}
+
+/* TakeDamage's death cry: after a medium cry the heavy one, else by the class's chance (+0x82) the
+   death one, at the head at full volume. */
+static void death_cry(Character *c)
+{
+    const void *imp;
+    if (c->pain_medium > 0) imp = pain_sound(c, 2);
+    else {
+        uint32_t chance = pain_u16(c, 0x82);
+        if ((uint32_t)(uint16_t)trac_random() >= (chance * 0xffffu) / 100u) return;
+        imp = pain_sound(c, 3);
+    }
+    if (!imp) return;
+    speech_stop(c);
+    float p[3];
+    cry_place(c, p);
+    sound_impulse_play_at(imp, p, NULL);
+}
+
 void chr_take_damage(Character *c, uint32_t damage, float knockback, const float dir[3], uint16_t knockdown,
-                     Character *from)
+                     Character *from, uint32_t kind)
 {
     c->block_pause = c->stun_pause = c->countdown_1c98 = c->countdown_1c9a = 0;
     if (c->flags & 1) {                 /* dead already: the "defeated" script, once */
@@ -125,26 +271,46 @@ void chr_take_damage(Character *c, uint32_t damage, float knockback, const float
         float k = (float)(damage < 5 ? 5 : damage > 15 ? 15 : damage);
         for (int i = 0; i < 3; i++) c->hit_velocity[i] = k * dir[i];
     }
+    /* a conversation ends (AI2rNeutral_Stop 0x4acf70: not forced, aborted, back to the job) */
+    if (c->talk_partner) neutral_stop((Chr *)c, false, true, false, true);
+    if (kind == CHR_DAMAGE_MELEE && from && chr_melee_score_hook) chr_melee_score_hook(from, c, damage);
     if (!(chr_cheat_invincible && !c->ai) && !(c->flags & 0x2000000)) {      /* not invincible */
         if (chr_script_hook) chr_script_hook(c, CHR_SCRIPT_HURT);   /* once (C+0x44 bit 0x10) */
-        if ((c->flags & 0x20) && c->hit_points <= damage) {
+        if ((c->flags & 0x20) && c->hit_points <= damage && kind != CHR_DAMAGE_KILL) {
             /* unkillable (chr_unkillable): one hit point left and the defeated script, except for the
-               damage of kind 0x6000000 (the port has none of that kind yet) */
+               kill command's damage (kind 0x6000000) */
             damage = c->hit_points - 1;
             if (chr_script_hook) chr_script_hook(c, CHR_SCRIPT_DEFEATED);
         }
         if (damage < c->hit_points) {
-            c->hit_points -= damage;    /* ONrCharacter_Pain: the sound */
-            if (c->ai && chr_hurt_hook) chr_hurt_hook(c, from, damage, from != NULL);
+            c->hit_points -= damage;
+            /* the pain: knocked down (0x4f..0x51, 0x58..0x5a, 0x8d) or blown up (0xd6, 0xd7) by the
+               animation it is in; the hypo's healing still to come cut by 2.5 a point (0x52b308, rounded
+               by 0x4340a0) */
+            uint32_t kind = 0;
+            switch (c->type) {
+            case 0x4f: case 0x50: case 0x51: case 0x58: case 0x59: case 0x5a: case 0x8d: kind = 1; break;
+            case 0xd6: case 0xd7: kind = 2; break;
+            default: break;
+            }
+            pain(c, damage, kind);
+            float hh = (float)damage * 2.5f + 8388608.0f;
+            uint32_t hb;
+            memcpy(&hb, &hh, 4);
+            hb &= 0x7fffff;
+            c->hypo_heal = c->hypo_heal < hb ? 0 : (uint16_t)(c->hypo_heal - hb);
+            if (c->ai && chr_hurt_hook) chr_hurt_hook(c, from, damage, kind);
         } else {
             c->hit_points = 0;
+            c->hypo_heal = 0;
+            death_cry(c);
             /* the reaction that kills, if it leaves the character down (else the death's) */
             uint16_t k = knockdown ? knockdown : c->knockdown_type;
             if (knockdown || down_type(k)) death_knockdown(c, chr_is_victim_type(c->type) ? k : 0x4f);
             /* ONrCharacter_Die_1_Animating_Hook 0x4eb550: dead (no more animations asked), then
-               ONiCharacter_RunDeathAnimation 0x4eb970. The scripts go through chr_die_hook; not
-               ported: the weapons and powerups dropped, the living list, the particles, the sound. */
-            chr_die(c);
+               ONiCharacter_RunDeathAnimation 0x4eb970. The scripts go through chr_die_hook (the
+               weapons and powerups dropped there, chars.c). */
+            chr_die(c, from);
         }
     }
     if (!chr_is_unstoppable(c) && knockback != 0.0f && dir)
@@ -158,6 +324,31 @@ void chr_take_damage(Character *c, uint32_t damage, float knockback, const float
         int side = z <= x ? (-z <= x ? 1 : 2) : (-z <= x ? 0 : 3);
         c->hit_flash[side] = 0xff;
     }
+}
+
+/* 0x4ecd70: a hit in the air, which always knocks down: the falls of the hits that have one, else the
+   knockdown. */
+static uint16_t in_air(uint16_t t)
+{
+    switch (t) {
+    case 0x4d: return 0x50;
+    case 0x4e: return 0x51;
+    case 0x52: return 0x53;
+    case 0x55: return 0x58;
+    case 0x56: return 0x59;
+    case 0x57: return 0x5a;
+    case 0x5b: return 0x5c;
+    default: return 0x4f;
+    }
+}
+
+/* ONrAnimType_UpgradeToKnockdown 0x4e5320: a crouching character's hits, the light ones to the crouch's
+   hit 0x52, the knockdowns to its 0x53. */
+static uint16_t upgrade_to_knockdown(uint16_t t)
+{
+    if (t >= 0x4c && t <= 0x4e) return 0x52;
+    if (t >= 0x4f && t <= 0x51) return 0x53;
+    return t;
 }
 
 /* The angle from d's facing to the direction of x, in (-pi, pi]. */
@@ -214,10 +405,11 @@ static bool block_state(const Character *c)
 
 /* ONrCharacter_CouldBlock 0x4e62b0: in a state to block, not stunned (A+0x1c94), with a block (0x17)
    from the state in the fight variant, and the attacker within 20 degrees (0x54e168) of where the
-   character aims (C+0x170 - C+0x174). high, low: the block animation's flags 3 and 2. Not ported: the
-   weapon's test (none are held yet). */
+   character aims (C+0x170 - C+0x174). high, low: the block animation's flags 3 and 2. An AI holding a
+   weapon never blocks, the player not with a rifle (ONWC+0xcc 8). */
 bool chr_could_block(const Character *d, const Character *x, bool *high, bool *low)
 {
+    if (d->weapon && (d->ai || (weapon_options(d->weapon) & 8))) return false;
     if (!block_state(d) || d->block_pause) return false;
     const void *b = chr_lookup_varient(d, 0x17, d->state, (uint16_t)(d->varient | 0x200));
     if (!b) return false;
@@ -274,6 +466,7 @@ static void attack_lands(Character *x, Character *d, const uint8_t *e, uint32_t 
         if (blocked && (aflags & 4) && !high) blocked = false;
         if (blocked && d->ai && chr_block_hook) blocked = chr_block_hook(d);
     }
+    if (d->ai && chr_attack_landed_hook) chr_attack_landed_hook(x, d);
     /* the attacker seen again if invisible (its ticks from 0), and both shown to at least 0.6 */
     inventory_reveal(x, true);
     inventory_reveal(d, false);
@@ -284,8 +477,8 @@ static void attack_lands(Character *x, Character *d, const uint8_t *e, uint32_t 
         int outcome = shielded ? 2 : (aflags & 8) ? 0 : 1;
         float a = angle_to(d, x);
         d->facing = wrap_2pi(d->facing + a);
-        if (aflags & 8) chr_take_damage(d, (damage & ~1u) < 2 ? 1 : damage >> 1, knock * 0.5f, dir, 0, x);
-        else chr_take_damage(d, 0, 1.0f, dir, 0, x);
+        if (aflags & 8) chr_take_damage(d, (damage & ~1u) < 2 ? 1 : damage >> 1, knock * 0.5f, dir, 0, x, CHR_DAMAGE_MELEE);
+        else chr_take_damage(d, 0, 1.0f, dir, 0, x, CHR_DAMAGE_MELEE);
         if (unstoppable) d->flags |= 0x80;
         else if (rd16(e + 0x18)) {
             d->knockdown_type = 0xc6;
@@ -322,8 +515,11 @@ static void attack_lands(Character *x, Character *d, const uint8_t *e, uint32_t 
         uint16_t r = react;
         /* a behemoth (a class with ONCC +0xc8f, or the player with the cheat, 0x5ece90) */
         bool behemoth = ((const uint8_t *)d->oncc)[0xc8f] || (!d->ai && chr_cheat_unthrowable);
-        if (!(chr_is_victim_type(react) && d->air_ticks)) {
+        if (chr_is_victim_type(react) && d->air_ticks) r = in_air(r);
+        else {
+            /* lying: the hit on the ground; crouching: the reaction upgraded to a knockdown */
             if (d->state == 0x12 || d->state == 0x32) r = 0x54;
+            else if (d->state == 0x13) r = upgrade_to_knockdown(r);
             if (behemoth) r = behemoth_reaction(r);
         }
         if (r == 0x39) {
@@ -357,7 +553,7 @@ static void attack_lands(Character *x, Character *d, const uint8_t *e, uint32_t 
 hurt:;
     bool killed = d->hit_points <= damage;
     if (killed) d->flags |= 0x20000000;   /* killed by a blow */
-    chr_take_damage(d, damage, knock, dir, 0, x);
+    chr_take_damage(d, damage, knock, dir, 0, x, CHR_DAMAGE_MELEE);
     if (heavy) d->countdown_1c9a = stun;
     else d->block_pause = stun;
     impact_melee(x, d, e, killed ? 3 : 0, amask, dmask);

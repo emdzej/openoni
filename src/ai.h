@@ -192,6 +192,22 @@ typedef struct {
     uint32_t fallen;            /* +0x58: ticks below the level (message 13) */
 } NinjaState;
 
+/* A danger the combat dodges (the maneuver's, B+0x200 + 0x48 i: a projectile or a firing spread passing
+   near, AI2iManeuver_MakeDodgeFromDanger 0x49f570). */
+enum { COMBAT_DANGERS = 8, COMBAT_DANGER_NONE = 0, COMBAT_DANGER_PROJECTILE = 1, COMBAT_DANGER_SPREAD = 2 };
+typedef struct {
+    uint32_t age;               /* +0x00: counted up by 5 each update, from when it was first seen */
+    uint32_t left, total;       /* +0x04, +0x08: its time, counted down by 5 */
+    float weight0, weight;      /* +0x0c, +0x10: its weight as seen, and as its time runs out */
+    float dir;                  /* +0x14: the way to it */
+    bool made;                  /* +0x18: the dodge's way chosen */
+    float from[3];              /* +0x1c: a projectile's motion, a spread's line from the gun */
+    float near[3];              /* +0x28: the nearest point's (x, 0, z) */
+    float dodge[3];             /* +0x34: the way to dodge (x, 0, z) */
+    int kind;                   /* +0x40: COMBAT_DANGER_* */
+    const void *source;         /* +0x44: the knowledge's record of it */
+} CombatDanger;
+
 /* The combat state's block (C+0x8b8, its +8 on: what the behaviours get). */
 enum { COMBAT_MANEUVERS = 7 };
 typedef struct {
@@ -221,6 +237,8 @@ typedef struct {
     float weight[COMBAT_MANEUVERS];     /* +0x194 */
     float adv_near, adv_far;    /* +0x1b8, +0x1bc: the advance's */
     float ret_near, ret_far;    /* +0x1c4, +0x1c8: the retreat's */
+    float move_dir, move_weight;    /* +0x1b0, +0x1b4: the maneuver's own move by a local line (1000, 0
+                                       none), a movement modifier each tick */
     float gun_near, gun_far;    /* +0x1cc, +0x1d0: the gun's (the farthest looked for) */
     bool gun_running;           /* +0x1d4: picked up running */
     struct Weapon *gun;         /* +0x1d8: the one it goes for */
@@ -229,9 +247,14 @@ typedef struct {
     uint32_t gun_ignored_n;     /* +0x1e4 */
     const struct Weapon *gun_ignored[4];    /* +0x1e8: the ones found out of reach */
     int alarm_marker;           /* +0x200: the alarm maneuver's console marker */
+    unsigned ndanger;           /* +0x204: the dangers in use (the last one's index + 1) */
+    CombatDanger danger[COMBAT_DANGERS];    /* +0x208 */
+    float dodge_weight;         /* +0x448: the heaviest danger's weight (0 none) */
+    float dodge_danger;         /* +0x44c: the way to it (1000 none) */
+    float dodge_dir;            /* +0x450: the way to dodge, the dangers' summed by weight */
     bool dazed;                 /* +0x189: lying through the daze (behaviour message 6) */
     int getup;                  /* +0x1f8: 4 none, else the getting up's weight is given */
-    bool melee_ok;              /* +0x454: may fight hand to hand */
+    bool may_dodge;             /* +0x454: may dodge (behaviour message 4) */
     bool fall_check;            /* +0x5d8: message 13 below fall_y */
     float fall_y;               /* +0x5dc */
 } CombatState;
@@ -331,6 +354,7 @@ typedef struct {
     uint32_t vocal_delay;   /* C+0xf8c */
     uint32_t startle_time;  /* C+0xfa4 */
     uint32_t startle_ticks; /* C+0xfa8 */
+    float startle_from, startle_turn;   /* C+0xfac, C+0xfb0: the facing it starts from, the turn over it */
     struct Chr *target;     /* C+0x8c0: the state's target (combat, pursuit) */
     struct KnowEntry *target_entry;  /* C+0x8c8 (combat), C+0x8c0 (pursuit) */
     MeleeState melee;
@@ -449,6 +473,9 @@ void ai_halt(AiState *a);
 void ai_executor_move(AiState *a, float facing, int mode, int kind, bool full_turn);
 /* AI2rMovement_MovementModifier 0x4a8250: move toward the direction this tick (false: 8 already). */
 bool ai_movement_modifier(AiState *a, float dir, float weight);
+/* AI2rMovement_MovementModifierAvoidAngle 0x4a8340: the direction to keep away from (1000 none), the modifiers'
+   weights worked out again (0x4ab5a0). */
+void ai_movement_avoid(AiState *a, float dir);
 /* One tick of a character the AI moves: its states, the path and the movement, then the executor,
    then the character's update with the input it made. */
 void ai_update(AiState *a, Character *c, const void *env);

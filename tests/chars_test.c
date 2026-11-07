@@ -165,7 +165,7 @@ int main(void)
         /* the port's melee positioning is a stand-in: a fight may stall with neither down. Once demo2
            has been hurt, a last blow from demo3 at 6000 ticks ends it */
         if (d2->c.hit_points < d2_hp) hurt = true;
-        if (fight_ticks == 6000 && hurt && !((d2->c.flags | d3->c.flags) & 1)) chr_take_damage(&d2->c, d2->c.hit_points, 0.0f, NULL, 0, &d3->c);
+        if (fight_ticks == 6000 && hurt && !((d2->c.flags | d3->c.flags) & 1)) chr_take_damage(&d2->c, d2->c.hit_points, 0.0f, NULL, 0, &d3->c, CHR_DAMAGE_MELEE);
         ui_update();    /* the game time: the combat state thinks every fifth tick of it */
         chars_update(&(CharacterInput){ 0 }, env);
         sl_update();

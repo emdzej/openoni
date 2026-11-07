@@ -12,7 +12,8 @@ enum { COMBAT_RANGE_NONE = 0, COMBAT_RANGE_LONG = 1, COMBAT_RANGE_MEDIUM = 2, CO
    takes those a behaviour leaves). */
 enum { MSG_ENTER = 0, MSG_WEIGHTS = 1, MSG_EXIT = 2, MSG_REPORT = 3, MSG_MELEE = 4, MSG_FLAGS = 5,
        MSG_DAZE = 6, MSG_CLOSE = 7, MSG_FIRE = 8, MSG_KEEP_AIM = 9, MSG_HURT = 10, MSG_ACTION = 11,
-       MSG_ANIM_END = 12, MSG_FELL = 13, MSG_STATE = 14, MSG_RANGE = 15 };
+       MSG_ANIM_END = 12, MSG_FELL = 13, MSG_STATE = 14, MSG_RANGE = 15,
+       MSG_SHIELD_CHARGE = 16 };
 enum { COMBAT_MANEUVER_HOLD, COMBAT_MANEUVER_ADVANCE, COMBAT_MANEUVER_RETREAT, COMBAT_MANEUVER_GUN,
        COMBAT_MANEUVER_ALARM, COMBAT_MANEUVER_MELEE, COMBAT_MANEUVER_GETUP };
 
@@ -33,9 +34,20 @@ bool combat_may_fire(const Character *c);
 void combat_settings(AiState *a, uint16_t id);
 /* The settings of a character with no combat profile (FUN_004936b0's defaults). */
 void combat_default_settings(AiState *a);
-/* AI2rCombat_Enter 0x48f290's resets: the maneuver (0x49db70: none, the gun's search and the guns out
-   of reach forgotten) and the gun's chances. */
+/* AI2rCombat_Enter 0x48f290's resets: the maneuver (0x49db70: none, the dangers, the gun's search and
+   the guns out of reach forgotten) and the gun's chances. */
 void combat_enter(AiState *a);
+/* The dangers the knowledge finds near ch (knowledge_dangers) given to its combat: a projectile
+   (AI2rManeuver_NotifyNearbyProjectile 0x49f780: src its record, motion its next 5 ticks', dist its nearest point's distance (from the
+   world's origin), nearest that point, radius its dodge radius) and a firing spread (AI2rManeuver_NotifyFiringSpread 0x49f8d0: src its
+   record, from the line from the gun to the pelvis, radius the cone's there, dist the pelvis's from the
+   cone's axis, to_axis the way to it). Each weighed by how near, kept a while (the class's dodge time
+   and weight factors, ONCC+0x130 and +0x134), its way to dodge chosen (0x49f570). */
+struct Chr;
+void combat_danger_projectile(struct Chr *ch, const void *src, const float motion[3], float dist,
+                              const float nearest[3], float radius);
+void combat_danger_spread(struct Chr *ch, const void *src, const float from[3], float radius, float dist,
+                          const float to_axis[3]);
 /* AI2rCombat_SetNewTarget 0x4908e0's targeting part: the targeting's new target, the range to it and
    the behaviour for that range. */
 void combat_new_target(AiState *a, Character *c, const Character *target);
@@ -51,6 +63,9 @@ void combat_aim(AiState *a, Character *c);
 void combat_animation(AiState *a, const Character *c);
 /* DoCharacterFrame's message 11 (0x48b770): the animation's action frame (its type) to the behaviour. */
 void combat_action(AiState *a, const Character *c);
+/* AI2rCombat_WaitingForShieldCharge 0x4904c0: whether the behaviour (Mutant Muro's) keeps its shield
+   attacks (TRAM flag 22) back while the shield charges (message 16). */
+bool combat_waiting_for_shield_charge(AiState *a, const Character *c);
 struct KnowEntry;
 void combat_hurt(AiState *a, const Character *c, const struct KnowEntry *e);
 

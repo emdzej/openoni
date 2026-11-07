@@ -6,11 +6,16 @@
 #include "chars.h"
 #include "chr_anim.h"
 #include "chr_hit.h"
+#include "exe.h"
+#include "localpath.h"
+#include "movement.h"
+#include "object.h"
 #include "film.h"
 #include "graph.h"
 #include "knowledge.h"
 #include "melee.h"
 #include "objc.h"
+#include "particle.h"
 #include "trac.h"
 #include "ui.h"
 #include "weapon.h"
@@ -253,7 +258,7 @@ static int no_gun(AiState *a, int msg, bool *handled)
         s->check_env = s->check_friends = s->aim = false;
         s->targeting = s->maneuver != COMBAT_MANEUVER_GUN || s->lof2;
     } else if (msg == MSG_MELEE) {
-        if (s->maneuver != COMBAT_MANEUVER_GUN) s->melee_ok = true;
+        if (s->maneuver != COMBAT_MANEUVER_GUN) s->may_dodge = true;
     } else
         *handled = false;
     return 0;
@@ -270,7 +275,7 @@ static int behaviour(AiState *a, Character *c, int id, int msg, bool *handled, i
     switch (id) {
     case 1:
         if (msg == MSG_WEIGHTS) s->weight[COMBAT_MANEUVER_HOLD] = 1.0f;
-        else if (msg == MSG_MELEE) s->melee_ok = true;
+        else if (msg == MSG_MELEE) s->may_dodge = true;
         else if (msg == MSG_FLAGS) {
             s->check_env = true;
             s->check_friends = s->aim = false;
@@ -291,7 +296,7 @@ static int behaviour(AiState *a, Character *c, int id, int msg, bool *handled, i
                 s->weight[COMBAT_MANEUVER_HOLD] = 0.2f;
             }
         } else if (msg == MSG_MELEE)
-            s->melee_ok = true;
+            s->may_dodge = true;
         else if (msg == MSG_FLAGS)
             s->check_env = s->check_friends = s->targeting = s->aim = s->fire = true;
         else if (msg != MSG_ENTER && msg != MSG_EXIT)
@@ -299,7 +304,7 @@ static int behaviour(AiState *a, Character *c, int id, int msg, bool *handled, i
         return 0;
     case 4:
         if (msg == MSG_WEIGHTS) s->weight[COMBAT_MANEUVER_MELEE] = 1.0f;
-        else if (msg == MSG_MELEE) s->melee_ok = s->maneuver != COMBAT_MANEUVER_MELEE;
+        else if (msg == MSG_MELEE) s->may_dodge = s->maneuver != COMBAT_MANEUVER_MELEE;
         else if (msg == MSG_FLAGS) {
             s->targeting = true;
             s->check_env = s->check_friends = s->aim = s->fire = false;
@@ -329,7 +334,7 @@ static int behaviour_default(AiState *a, const Character *c, int msg, float *arg
     CombatState *s = &a->combat;
     switch (msg) {
     case MSG_MELEE:
-        s->melee_ok = true;
+        s->may_dodge = true;
         return 0;
     case MSG_DAZE:
         /* lying: the daze first (once a fall: a new knockdown starts another), lying still with the
@@ -425,6 +430,11 @@ void combat_animation(AiState *a, const Character *c)
     if (a->state == AI_STATE_COMBAT && a->combat.behaviour) send_args(a, c, MSG_ANIM_END, c->type, 0, c->anim, NULL);
 }
 
+bool combat_waiting_for_shield_charge(AiState *a, const Character *c)
+{
+    return send(a, c, MSG_SHIELD_CHARGE, NULL) != 0;
+}
+
 void combat_action(AiState *a, const Character *c)
 {
     if (a->state == AI_STATE_COMBAT && a->combat.behaviour) send_args(a, c, MSG_ACTION, c->type, 0, NULL, NULL);
@@ -467,6 +477,8 @@ void combat_enter(AiState *a)
     s->gun = NULL;
     s->gun_thwarted = s->gun_below = s->gun_ignored_n = 0;
     memset(s->gun_ignored, 0, sizeof s->gun_ignored);
+    s->ndanger = 0;
+    memset(s->danger, 0, sizeof s->danger);
     s->gun_rolled = s->gun_go = s->run_rolled = s->run_go = false;
     a->flags |= AI_FLAG_COMBAT_SCRIPT;      /* the character's combat script, run by AI2rUpdateAI */
     /* AI2rMovement_ChangeMovementMode(0): the alert level's mode, whatever a script set (a creeping
@@ -623,9 +635,425 @@ static bool try_gun_pickup(AiState *a, Character *c, const void *env, float seco
     return false;
 }
 
+/* The local lines' quality by the worst cell they cross (0x52a944, by AI2rTryLocalMovement's kind). */
+static float line_quality(uint8_t kind)
+{
+    const uint8_t *q = kind < 9 ? exe_data(0x52a944, 9 * 4) : NULL;
+    return q ? rdf(q + 4u * kind) : 0.0f;
+}
+
+static float angle_to(const float from[3], const float to[3])
+{
+    float a = atan2f(to[0] - from[0], to[2] - from[2]);
+    return a < 0.0f ? a + 6.2831855f : a;
+}
+
+/* ---- the running gun pickup ---- */
+
+/* 0x4e3b10: free to act: neither of the animation's states (A+0x1afc, A+0x1afe) a fall or a lying one,
+   and its type a standing, walking or running one. */
+static bool free_to_act(const Character *c)
+{
+    static const uint16_t down[] = { 4, 0xc, 0x12, 0x1e, 0x1f, 0x32 };
+    static const uint16_t moving[] = { 2, 3, 6, 7, 8, 9, 10, 0xb, 0xd, 0xe, 0xf, 0x11, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e,
+                                       0x3f, 0x40, 0x41, 0x5d, 0x8e, 0x8f, 0xce, 0xcf, 0xd0, 0xd1, 0xd2, 0xd3,
+                                       0xd8, 0xd9, 0xda };
+    for (unsigned i = 0; i < sizeof down / sizeof down[0]; i++)
+        if (c->from_state == down[i] || c->state == down[i]) return false;
+    for (unsigned i = 0; i < sizeof moving / sizeof moving[0]; i++)
+        if (c->type == moving[i]) return true;
+    return false;
+}
+
+/* An animation that picks up as it goes: TRAM flag 20 and not 23. */
+static bool picks_up(const void *t) { return t && tr_test_flag(t, 20) && !tr_test_flag(t, 23); }
+
+/* AI2rManeuver_TryEscapeMove 0x49ee00: the escape move of a direction (0..3: the types 0x90..0x93; 4
+   the active record's A+0xa1c), from the character's state and variant, else the generic one (type 4);
+   with pickup, only one that picks up as it goes. Its last frame's position (0x4292d0, hundredths,
+   0x5295bc) turned by the facing (C+0x16c) from the location must be reached by a straight line
+   (tolerance 3), not blocked when it crossed a blocked start. The animation, and its end in out. */
+static const void *escape_move(const Character *c, int dir, bool pickup, float out[3])
+{
+    const void *t = NULL;
+    if (dir >= 0 && dir <= 3) {
+        t = chr_lookup_varient(c, (uint16_t)(0x90 + dir), c->state, c->varient);
+        if (t && pickup && !picks_up(t)) t = NULL;
+    }
+    if (!t) {
+        t = chr_lookup_varient(c, 4, c->state, c->varient);
+        if (!t || (pickup && !picks_up(t))) return NULL;
+    }
+    float s = sinf(c->desired_facing), co = cosf(c->desired_facing);
+    uint16_t n = tr_duration(t);
+    const uint8_t *q = tr_raw_block(t, 0x28, 8u * (uint16_t)(n - 1), 4);
+    float px = q ? (float)(int16_t)(q[0] | q[1] << 8) : 0.0f, pz = q ? (float)(int16_t)(q[2] | q[3] << 8) : 0.0f;
+    float loc[3], end[3], o[3];
+    chr_location(c, loc);
+    end[0] = (px * co + pz * s) * 0.01f + loc[0];
+    end[1] = loc[1];
+    end[2] = (pz * co - px * s) * 0.01f + loc[2];
+    bool reached = false, crossed = false;
+    uint8_t kind = 0;
+    if (!local_try_movement(c, loc, end, 3, &reached, o, &kind, &crossed) || !reached) return NULL;
+    if (crossed && local_blockage(p3_environment(), c, end)) return NULL;
+    if (out) memcpy(out, end, sizeof end);
+    return t;
+}
+
+/* AI2rManeuver_TryRunningGunPickup 0x49f020: going for a gun (the maneuver 3). Free to act, the gun's
+   handle level with the location (within 5) and between 5 and 70 away (25, 4900 squared): an escape
+   move toward it (ahead, behind, to the right or the left, within 20 degrees of the facing's way, else
+   none) that picks up as it goes and ends 10 past the handle (0x52a190) is played (from the state, 6
+   ticks' interpolation), the gun its pickup's (C+0x1d8), the hand's gun dropped (0x4e4ab0). Busy: in a
+   move that picks up as it goes (not one of the pickups, 0x9d..0x9f, 0x4dc850), the gun picked up
+   within 16 (256 squared). True while it runs this way. */
+static bool try_running_pickup(AiState *a, Character *c)
+{
+    CombatState *s = &a->combat;
+    if (s->maneuver != COMBAT_MANEUVER_GUN || !s->gun) return false;
+    float h[3], loc[3];
+    weapon_pickup_position(s->gun, h);
+    chr_location(c, loc);
+    float dx = h[0] - loc[0], dy = h[1] - loc[1], dz = h[2] - loc[2], d2 = dx * dx + dz * dz;
+    if (!free_to_act(c)) {
+        if (c->type == 0x9d || c->type == 0x9e || c->type == 0x9f) return false;
+        if (!picks_up(c->anim)) return false;
+        if (d2 < 256.0f) chr_pickup_weapon(c, s->gun);
+        return true;
+    }
+    if (!((double)fabsf(dy) <= 5.0) || !(d2 <= 4900.0f) || d2 < 25.0f) return false;
+    float ang = atan2f(dx, dz);
+    if (ang < 0.0f) ang += TWO_PI;
+    float rel = wrap_pi(ang - c->desired_facing);
+    const double w20 = 0.3490658476948738;      /* 0x52a9b0 */
+    const float HALF_PI = 1.5707963705062866f;  /* 0x529cd0 */
+    int dir;
+    if (fabsf(rel) < w20) dir = 0;
+    else if (fabsf(rel - HALF_PI) < w20) dir = 2;
+    else if (fabsf(rel + HALF_PI) < w20) dir = 3;
+    else if (fabsf(rel) > 2.7925268933176994) dir = 1;     /* 0x52a9a8 */
+    else return false;
+    float end[3];
+    const void *t = escape_move(c, dir, true, end);
+    if (!t) return false;
+    float along = (end[0] - loc[0]) * sinf(ang) + (end[2] - loc[2]) * cosf(ang);
+    float d = sqrtf(d2);
+    if (!(d + 10.0f <= along)) return true;
+    c->pickup = s->gun, c->pickup_powerup = NULL;
+    chr_set_animation_external(c, c->state, t, 6);
+    if (c->weapon) chr_drop_weapon(c);
+    return true;
+}
+
+/* ---- the dodge ---- */
+
+/* MUrUnsignedSmallFloat_To_Uns_Round 0x4340a0: 2^23 added, the mantissa's bits. */
+static uint32_t round_unsigned(float x)
+{
+    float t = x + 8388608.0f;
+    uint32_t b;
+    memcpy(&b, &t, 4);
+    return b & 0x7fffff;
+}
+
+/* AI2iManeuver_MakeDodgeFromDanger 0x49f570: the way to the danger (to its nearest point, or with that
+   within 10 (0x52a190), against its motion) and the way to dodge it: away from the nearest point, or,
+   that close, across the motion to whichever side a straight line of 20 (0x5296c0) reaches (both or
+   neither: either, by an even chance). A way chosen stays unless the nearest point comes round to it. */
+static void make_dodge(const Character *c, CombatDanger *d)
+{
+    const float *v = d->near;
+    bool close = !(sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) >= 10.0f);
+    d->dir = close ? atan2f(-d->from[0], -d->from[2]) : atan2f(v[0], v[2]);
+    if (d->dir < 0.0f) d->dir += TWO_PI;
+    if (d->made && (close || v[0] * d->dodge[0] + v[1] * d->dodge[1] + v[2] * d->dodge[2] < 0.0f)) return;
+    if (!close) {
+        d->dodge[0] = -v[0], d->dodge[1] = 0.0f, d->dodge[2] = -v[2];
+        d->made = true;
+        return;
+    }
+    float *g = d->dodge;
+    g[0] = d->from[2], g[1] = 0.0f, g[2] = -d->from[0];
+    float gg = g[0] * g[0] + g[2] * g[2];
+    if (!(fabsf(gg) >= 9.536743e-07f)) {       /* MUrVector_Normalize_ZeroTest 0x4340f0 (0x529d00) */
+        g[0] = 1.0f, g[1] = g[2] = 0.0f;
+        d->made = true;
+        return;
+    }
+    float k = 1.0f / sqrtf(gg);
+    g[0] *= k, g[2] *= k;
+    float loc[3], to[3], out[3];
+    chr_location(c, loc);
+    bool ok[2];
+    for (int side = 0; side < 2; side++) {
+        float sg = side ? -20.0f : 20.0f;
+        to[0] = loc[0] + g[0] * sg, to[1] = loc[1], to[2] = loc[2] + g[2] * sg;
+        bool reached = false, crossed = false;
+        uint8_t kind = 0;
+        ok[side] = local_try_movement(c, loc, to, 3, &reached, out, &kind, &crossed) && reached;
+    }
+    bool flip = ok[0] == ok[1] ? trac_random() < 0x7fff : ok[1];     /* UUrRandom 0x426e10 */
+    if (flip) g[0] = -g[0], g[1] = -g[1], g[2] = -g[2];
+    d->made = true;
+}
+
+/* A danger kept (the one of the same kind and source again, else the last free one, else a new one
+   up to 8): its time (the class's dodge time factor, ONCC+0x130, times scale, rounded) and weight,
+   its places, its way to dodge. */
+static void add_danger(Chr *ch, int kind, const void *src, float weight, float scale, const float from[3],
+                       const float nearest[3])
+{
+    CombatState *s = &ch->ai.combat;
+    CombatDanger *d = NULL, *spare = NULL;
+    for (unsigned i = 0; i < s->ndanger; i++) {
+        CombatDanger *e = &s->danger[i];
+        if (e->kind == kind && e->source == src) {
+            d = e;
+            break;
+        }
+        if (e->kind == COMBAT_DANGER_NONE) spare = e;
+    }
+    if (!d) {
+        if (!spare) {
+            if (s->ndanger >= COMBAT_DANGERS) return;
+            spare = &s->danger[s->ndanger++];
+        }
+        d = spare;
+        d->made = false;
+        d->age = 0;
+    }
+    d->left = d->total = round_unsigned(rdf((const uint8_t *)ch->c.oncc + 0x130) * scale);
+    d->weight0 = weight;
+    d->kind = kind;
+    d->source = src;
+    memcpy(d->from, from, sizeof d->from);
+    d->near[0] = nearest[0], d->near[1] = 0.0f, d->near[2] = nearest[2];
+    make_dodge(&ch->c, d);
+}
+
+/* The class's dodge weight factor (ONCC+0x134): the weight less what it falls short of 1. */
+static float dodge_weight(const Chr *ch, float w) { return w - (1.0f - rdf((const uint8_t *)ch->c.oncc + 0x134)); }
+
+void combat_danger_projectile(Chr *ch, const void *src, const float motion[3], float dist, const float nearest[3],
+                              float radius)
+{
+    /* AI2rManeuver_NotifyNearbyProjectile 0x49f780: 0.1 a unit within the dodge radius (0x52a9d0), at most 0.8; up to 3 beyond it 0.3 */
+    float w = (radius - dist) * 0.1f;
+    if (w > 0.8f) w = 0.8f;
+    else if (w < -0.3f) return;
+    else if (w < 0.3f) w = 0.3f;
+    w = dodge_weight(ch, w);
+    if (w < 0.0f) return;
+    add_danger(ch, COMBAT_DANGER_PROJECTILE, src, w, 45.0f, motion, nearest);   /* 0x52a9c8 */
+}
+
+void combat_danger_spread(Chr *ch, const void *src, const float from[3], float radius, float dist,
+                          const float to_axis[3])
+{
+    /* AI2rManeuver_NotifyFiringSpread 0x49f8d0: 0.8 within 0.6 of the cone's radius there (0x52a9d4), down to 0.3 at its edge */
+    float f = (dist - radius * 0.6f) / (radius - radius * 0.6f);
+    float w;
+    if (f < 0.0f) w = 0.8f;
+    else if (f < 1.0f) w = 0.8f - f * 0.5f;
+    else if (radius * 1.2f < dist) return;      /* 0x529504 */
+    else w = 0.3f;
+    w = dodge_weight(ch, w);
+    if (w < 0.0f) return;
+    add_danger(ch, COMBAT_DANGER_SPREAD, src, w, 20.0f, from, to_axis);
+}
+
+/* AI2rManeuver_FindDodge 0x49f2e0, each tick of the combat: the dangers' times run down by 5 (one with 5 or less left goes),
+   the knowledge's new ones taken, and those seen for the class's reaction time (ONCC+0x12c, in the
+   same units) weighed as their time runs out: the heaviest (B+0x440) and the way to it (B+0x444), and
+   the way to dodge them all (B+0x448: their ways summed by weight). */
+static void dodge_update(AiState *a, Chr *ch)
+{
+    CombatState *s = &a->combat;
+    s->dodge_weight = 0.0f;
+    s->dodge_danger = 1000.0f;
+    knowledge_dangers(ch);
+    uint32_t react = rd32((const uint8_t *)ch->c.oncc + 0x12c);
+    unsigned seen = 0;
+    float sx = 0.0f, sz = 0.0f;
+    for (unsigned i = 0; i < s->ndanger; i++) {
+        CombatDanger *d = &s->danger[i];
+        if (d->kind != COMBAT_DANGER_NONE) {
+            if (d->left > 5) {
+                d->left -= 5;
+                d->age += 5;
+                if (d->age >= react) {
+                    if (d->total == 0) d->weight = 0.0f;
+                    else {
+                        d->weight = (float)d->left * d->weight0 / (float)(int32_t)d->total;
+                        if (d->weight > s->dodge_weight) {
+                            s->dodge_weight = d->weight;
+                            s->dodge_danger = d->dir;
+                        }
+                    }
+                    seen++;
+                    sx += d->weight * d->dodge[0];
+                    sz += d->weight * d->dodge[2];
+                }
+                continue;
+            }
+            d->left = 0;
+            d->kind = COMBAT_DANGER_NONE;
+        }
+        if (i + 1 == s->ndanger) s->ndanger--;
+    }
+    if (!seen) {
+        s->dodge_weight = 0.0f;
+        return;
+    }
+    s->dodge_dir = atan2f(sx, sz);
+    if (s->dodge_dir < 0.0f) s->dodge_dir += TWO_PI;
+}
+
+/* AI2rManeuver_ApplyDodge 0x49f460, each tick after the melee: weighing over 0.001 (0x529dfc), a straight line 20 the way to
+   dodge, else up to 4 steps of 8.75 degrees (0x3e1c61aa) to either side (AI2rFindLocalPath; threshold
+   5, tolerance 3), a movement modifier toward its end three times the weight (0x529808); over 0.5
+   (0x529560), the way to the heaviest danger kept away from (AI2rMovement_MovementModifierAvoidAngle 0x4a8340). */
+static void dodge_apply(AiState *a, Character *c)
+{
+    CombatState *s = &a->combat;
+    if (!(s->dodge_weight >= 0.001f)) return;
+    float loc[3], out[3];
+    chr_location(c, loc);
+    bool reached = false, crossed = false;
+    uint8_t kind = 0;
+    if (local_find_path(c, loc, 20.0f, s->dodge_dir, 0.15271631f, 4, 5, 3, &reached, out, &kind, &crossed) && reached) {
+        float dir = atan2f(out[0] - loc[0], out[2] - loc[2]);
+        if (dir < 0.0f) dir += TWO_PI;
+        ai_movement_modifier(a, dir, s->dodge_weight * 3.0f);
+    }
+    ai_movement_avoid(a, s->dodge_weight > 0.5f && s->dodge_danger != 1000.0f ? s->dodge_danger : 1000.0f);
+}
+
+/* AI2iManeuver_CheckAdvance 0x49df80: toward the target's point (the targeting's, B+0xcc; none: no
+   advance), weighted by how far it is between the advance's near and far (1 beyond, 0 within). Within
+   50 (2500 squared, 0x52a998) a straight line over the grids to it (AI2rTryLocalMovement, the target let
+   through, C+0x14ac; tolerance 3), checked for blockage when it crossed a blocked start. Weighed (by
+   the fraction, at least 0.5) and still the heaviest: a straight line clear and fair (its worst cell
+   under 5) is taken as the maneuver's own move (B+0x1a8, its weight times the line's quality);
+   otherwise a path to within 4 of the point (AI2rPath_GoToPoint), and, when that fails or is no way at
+   all (0x4aef90), a line 15 toward it, up to 4 steps of 15 degrees (0x3e860a92) to either side
+   (AI2rFindLocalPath). With the fraction 0, only a point more than 6 away (36, 0x52a994) the way to
+   which is blocked is advanced on. No advance within 45 degrees (0x52a67c) of the way to a danger
+   weighing over 0.5 (B+0x444, B+0x440). */
+static bool check_advance(AiState *a, Character *c, const void *env, float w)
+{
+    CombatState *s = &a->combat;
+    float *weight = &s->weight[COMBAT_MANEUVER_ADVANCE];
+    if (!s->t.has_point) {
+        ai_halt(a);
+        *weight = 0.0f;
+        return false;
+    }
+    float loc[3], p[3];
+    chr_location(c, loc);
+    memcpy(p, s->t.point, sizeof p);
+    float ang = angle_to(loc, p);
+    if (s->dodge_weight > 0.5f && s->dodge_danger != 1000.0f && fabsf(wrap_pi(ang - s->dodge_danger)) < 0.7853982f) {
+        *weight = 0.0f;
+        return false;
+    }
+    float dx = p[0] - loc[0], dy = p[1] - loc[1], dz = p[2] - loc[2], d2 = dx * dx + dy * dy + dz * dz;
+    float f;
+    if (d2 > s->adv_far * s->adv_far) f = 1.0f;
+    else if (d2 >= s->adv_near * s->adv_near) f = (sqrtf(d2) - s->adv_near) / (s->adv_far - s->adv_near);
+    else f = 0.0f;
+    bool reached = false, crossed = false, failed = false;
+    uint8_t kind = 0;
+    float out[3];
+    if (d2 < 2500.0f) {
+        const Character *was = a->ignore;
+        a->ignore = s->t.target;
+        failed = !local_try_movement(c, loc, p, 3, &reached, out, &kind, &crossed);
+        a->ignore = was;
+        if (reached && crossed) reached = !local_blockage(env, c, p);
+    }
+    if (!(f > 0.0f) && (d2 < 36.0f || reached || !local_blockage(env, c, p))) {
+        ai_halt(a);
+        *weight = 0.0f;
+        return false;
+    }
+    *weight *= f > 0.5f ? f : 0.5f;
+    if (*weight < w) {
+        ai_halt(a);
+        *weight = 0.0f;
+        return false;
+    }
+    if (failed || !reached || kind > 4) {
+        /* the path, its failure noted by the error hook (0x49e370, 0x5eb8a4) */
+        ai_move_near(a, p, 4.0f, false, 0.0f);
+        bool error = movement_path_now((Chr *)c, env);
+        if (!error && !movement_path_short((const Chr *)c)) return true;
+        if (!local_find_path(c, loc, 15.0f, ang, 0.2617994f, 4, 5, 3, &reached, out, &kind, &crossed)) {
+            *weight = 0.0f;
+            return false;
+        }
+    }
+    ai_halt(a);
+    if (!reached) {
+        *weight = 0.0f;
+        return false;
+    }
+    *weight *= line_quality(kind);
+    if (*weight < w) return false;
+    s->move_dir = angle_to(loc, out);
+    s->move_weight = *weight;
+    return true;
+}
+
+/* The retreat (AI2iManeuver_Select's case 2): the melee's weight gone; a line 15 straight away from the
+   target (from its position to the character's location), up to 4 steps of 22.5 degrees (0x3ec90fdb)
+   to either side (AI2rFindLocalPath); none: no retreat. Weighed by the distance (1 within the retreat's
+   near, 0 at its far, none beyond) and the line's quality; still the heaviest, the line is the
+   maneuver's own move. */
+static bool check_retreat(AiState *a, Character *c, float w)
+{
+    CombatState *s = &a->combat;
+    float *weight = &s->weight[COMBAT_MANEUVER_RETREAT];
+    s->weight[COMBAT_MANEUVER_MELEE] = 0.0f;
+    const Character *t = s->t.target;
+    if (!t) {
+        *weight = 0.0f;
+        return false;
+    }
+    float loc[3];
+    chr_location(c, loc);
+    float d[3] = { loc[0] - t->pos[0], loc[1] - t->pos[1], loc[2] - t->pos[2] };
+    bool reached = false, crossed = false;
+    uint8_t kind = 0;
+    float out[3];
+    if (!local_find_path(c, loc, 15.0f, atan2f(d[0], d[2]), 0.3926991f, 4, 5, 3, &reached, out, &kind, &crossed)) {
+        *weight = 0.0f;
+        return false;
+    }
+    if (!reached) {
+        ai_halt(a);
+        *weight = 0.0f;
+        return false;
+    }
+    float d2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2], f = 1.0f;
+    if (s->ret_near * s->ret_near <= d2) {
+        if (s->ret_far * s->ret_far < d2) {
+            *weight = 0.0f;
+            return false;
+        }
+        f = (sqrtf(d2) - s->ret_far) / (s->ret_near - s->ret_far);
+    }
+    *weight = f * line_quality(kind) * *weight;
+    if (*weight < w) return false;
+    ai_halt(a);
+    s->move_dir = angle_to(loc, out);
+    s->move_weight = *weight;
+    return true;
+}
+
 /* 0x49dbf0: the heaviest maneuver that can be done (a failing one's weight goes, and the next is
-   tried). The local paths' tests (AI2rTryLocalMovement, AI2rFindLocalPath, the blockage) are the
-   port's stand-ins: the advance runs to the target's point, the retreat backs straight away 15. */
+   tried). */
 static void select_maneuver(AiState *a, Character *c, const void *env)
 {
     CombatState *s = &a->combat;
@@ -649,36 +1077,16 @@ static void select_maneuver(AiState *a, Character *c, const void *env)
             ai_halt(a);
             ok = true;
             break;
-        case COMBAT_MANEUVER_ADVANCE: {     /* AI2iManeuver_CheckAdvance 0x49df80 */
-            if (!s->t.has_point) break;
-            float d = dist_to(c, s->t.point), f;
-            if (d > s->adv_far) f = 1.0f;
-            else if (d >= s->adv_near) f = (d - s->adv_near) / (s->adv_far - s->adv_near);
-            else f = 0.0f;
-            if (f > 0.0f) {
-                s->weight[best] *= f > 0.5f ? f : 0.5f;
-                if (s->weight[best] >= w) {
-                    ai_move_near(a, s->t.point, 4.0f, false, 0.0f);    /* AI2rPath_GoToPoint (4) */
-                    ok = true;
-                }
-            }
-            break;
-        }
-        case COMBAT_MANEUVER_RETREAT: {
-            const Character *t = s->t.target;
-            if (!t) break;
-            float dx = c->pos[0] - t->pos[0], dz = c->pos[2] - t->pos[2], dd = dx * dx + dz * dz;
-            float d2 = dd + (c->pos[1] - t->pos[1]) * (c->pos[1] - t->pos[1]), f = 1.0f;
-            if (s->ret_near * s->ret_near > d2) f = 1.0f;
-            else if (s->ret_far * s->ret_far < d2) break;
-            else f = (sqrtf(d2) - s->ret_far) / (s->ret_near - s->ret_far);
-            s->weight[best] = f * s->weight[best];      /* (the path's quality, 0x52a944, taken as clear) */
-            if (s->weight[best] < w || dd <= 0.0f) break;
-            float r = sqrtf(dd), to[3] = { c->pos[0] + dx / r * 15.0f, c->pos[1], c->pos[2] + dz / r * 15.0f };
-            ai_move_near(a, to, 4.0f, false, 0.0f);
+        /* (these two set their own weights: a failure isn't zeroed here, a weight left lowered may
+           come round again) */
+        case COMBAT_MANEUVER_ADVANCE:       /* AI2iManeuver_CheckAdvance 0x49df80 */
+            if (!check_advance(a, c, env, w)) continue;
             ok = true;
             break;
-        }
+        case COMBAT_MANEUVER_RETREAT:
+            if (!check_retreat(a, c, w)) continue;
+            ok = true;
+            break;
         case COMBAT_MANEUVER_GUN:
             ok = try_gun_pickup(a, c, env, w, arrived);
             break;
@@ -740,12 +1148,23 @@ static void select_maneuver(AiState *a, Character *c, const void *env)
 }
 
 /* FUN_00490c50: the line from p along v clear of the environment (AKrCollision_Point, flags 0x242000)
-   and of everyone not an enemy (a cylinder of radius 4 up to 8 over the pelvis). The objects
-   (AMrRayToObject) aren't tested. */
+   and of the objects (AMrRayToObject, a hit nearer along the line than its end), then of everyone not
+   an enemy (a cylinder of radius 4 up to 8 over the pelvis). */
 static bool line_clear(AiState *a, const Character *c, const void *env, const float p[3], const float v[3])
 {
     CombatState *s = &a->combat;
-    if (s->check_env && env && akev_segment_hits(env, p, v, 0x242000)) return false;
+    if (s->check_env) {
+        if (env && akev_segment_hits(env, p, v, 0x242000)) return false;
+        /* MUrVector_Normalize_ZeroTest 0x4340f0: a zero line tests no objects */
+        float vv = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+        if (fabsf(vv) >= 9.536743e-07f) {   /* 0x529d00 */
+            float k = 1.0f / sqrtf(vv), dir[3] = { v[0] * k, v[1] * k, v[2] * k }, h[3];
+            if (object_ray(p, dir, h)) {
+                float dh = (h[0] - p[0]) * dir[0] + (h[1] - p[1]) * dir[1] + (h[2] - p[2]) * dir[2];
+                if (v[0] * dir[0] + v[1] * dir[1] + v[2] * dir[2] > dh) return false;
+            }
+        }
+    }
     if (!s->check_friends) return true;
     const Chr *self = (const Chr *)c;
     for (int i = 0; i < chars_slots(); i++) {
@@ -777,11 +1196,11 @@ static void debug_line(const AiState *a, const Character *c)
     const CombatState *s = &a->combat;
     char b[320];
     snprintf(b, sizeof b, "%s: range %d beh %d man %d dist %.0f lof %d aim %d fire %d look %d tgt %d err %.1f tol %.1f "
-             "trig %d ammo %d self %u hp %u lr %.2f ud %.2f st %x daze %u/%d/%d getup %d mode %d/%d kind %d at %s", a->name, s->range, s->behaviour, s->maneuver, s->dist, s->lof,
+             "trig %d ammo %d self %u hp %u lr %.2f ud %.2f st %x daze %u/%d/%d getup %d mode %d/%d kind %d dodge %u/%.2f at %s", a->name, s->range, s->behaviour, s->maneuver, s->dist, s->lof,
              s->aim, s->fire, a->aim.look, s->targeting, s->t.error, s->t.tolerance, a->aim.fire,
              c->weapon ? c->weapon->ammo : -1, c->hit_points, chars_player() ? chars_player()->c.hit_points : 0, c->aim_lr, c->aim_ud, c->state,
              a->daze_timer, s->dazed, a->daze_started, s->getup, a->mode, a->movement_mode, a->kind,
-             a->target ? a->target->ai.name : "-");
+             s->ndanger, s->dodge_weight, a->target ? a->target->ai.name : "-");
     combat_log(b);
 }
 
@@ -848,14 +1267,36 @@ void combat_tick(AiState *a, Character *c, const void *env, bool has_target)
                     float v[3] = { s->t.point[0] - s->t.muzzle[0], s->t.point[1] - s->t.muzzle[1], s->t.point[2] - s->t.muzzle[2] };
                     if (rdf(s->t.params + 0x6c) <= 0.0f) s->lof = line_clear(a, c, env, s->t.muzzle, v);
                     else if (!s->t.ballistic) s->lof = false;
-                    /* (else the arc tested in steps (0x4264e0): taken as clear) */
+                    else {
+                        /* the arc in steps, one more than every 20 across (0x52a734, truncated by
+                           __ftol 0x4264e0): each the time for its share of the way at the solution's
+                           speed, falling by the firing mode's gravity (+0x70) times 98 (0x52a054) */
+                        float hd = sqrtf(v[2] * v[2] + v[0] * v[0]);
+                        int32_t n = 1 - (int32_t)(hd * -0.05f);
+                        float t = hd / ((float)n * s->t.bal_h);
+                        float step[3] = { t * sinf(s->t.bal_angle) * s->t.bal_h, t * s->t.bal_v,
+                                          t * cosf(s->t.bal_angle) * s->t.bal_h };
+                        float g = t * t * rdf(s->t.params + 0x70) * 98.0f;
+                        step[1] -= g * 0.5f;
+                        float q[3] = { s->t.muzzle[0], s->t.muzzle[1], s->t.muzzle[2] };
+                        for (int32_t k = 0; k < n; k++) {
+                            if (!line_clear(a, c, env, q, step)) {
+                                s->lof = false;
+                                break;
+                            }
+                            for (int j = 0; j < 3; j++) q[j] += step[j];
+                            step[1] -= g;
+                        }
+                    }
                     if (!s->lof) s->lof2 = false;
                 }
             } else {
                 s->lof = s->lof2 = false;
             }
         }
-        memset(s->weight, 0, sizeof s->weight);     /* 0x49dbc0 */
+        memset(s->weight, 0, sizeof s->weight);     /* 0x49dbc0, the maneuver's own move too */
+        s->move_dir = 1000.0f;
+        s->move_weight = 0.0f;
         send(a, c, MSG_WEIGHTS, NULL);
         if (s->getup != 4) s->weight[COMBAT_MANEUVER_GETUP] = 1.5f;
         /* (the melee wait of an empty weapon, +0x64 from the firing mode's +0x68: with the clips) */
@@ -896,7 +1337,7 @@ void combat_tick(AiState *a, Character *c, const void *env, bool has_target)
         select_maneuver(a, c, env);
         if (a->state != AI_STATE_COMBAT) return;
         /* going for a gun: once, the class's chance (ONCC+0x138 +0x168) to pick it up running
-           (AI2rManeuver_TryRunningGunPickup 0x49f020, not ported: it fails) */
+           (AI2rManeuver_TryRunningGunPickup 0x49f020) */
         s->gun_running = false;
         if (s->maneuver == COMBAT_MANEUVER_GUN && s->gun) {
             if (!s->run_rolled) {
@@ -904,21 +1345,35 @@ void combat_tick(AiState *a, Character *c, const void *env, bool has_target)
                 s->run_rolled = true;
                 s->run_go = trac_random() < (uint16_t)((chance * 0xffffu) / 100u);     /* UUrRandom */
             }
+            s->gun_running = s->run_go && try_running_pickup(a, c);
         } else {
             s->run_rolled = s->run_go = false;
             s->gun_thwarted = 0;
         }
         send(a, c, MSG_MELEE, NULL);
-        /* (an attack of opportunity, 0x49f2e0, with ONCC+0x120 bit 2: not yet) */
+        /* the dodge, when the behaviour allows it (message 4, B+0x44c), not picking up a gun running, and
+           the class dodges (ONCC+0x120 bit 2): with the class's bits 4 or 8, or with no gun firing or
+           playing its overlay (WPrIsFiring 0x51a3a0, 0x4ed100); dodging with bit 8, no aim nor fire */
+        bool dodging = false;
+        uint32_t cf = rd32((const uint8_t *)c->oncc + 0x120);
+        if (s->may_dodge && !s->gun_running && (cf & 2)) {
+            bool busy = c->weapon && ((c->weapon->flags & WEAPON_FIRING) || c->overlay[CHR_OVERLAY_WEAPON].anim);
+            if ((cf & 0xc) || !busy) dodge_update(a, (Chr *)c);
+            dodging = s->dodge_weight > 0.0f && (cf & 8);
+        }
         send(a, c, MSG_FLAGS, NULL);
-        if (fight || s->maneuver == COMBAT_MANEUVER_MELEE) s->aim = s->fire = false;
+        if (dodging || fight || s->maneuver == COMBAT_MANEUVER_MELEE) s->aim = s->fire = false;
         else if (waiting) s->fire = false;
     }
+    /* the maneuver's own move (B+0x1a8, B+0x1ac), a movement modifier over 0.001 (0x529dfc;
+       AI2rMovement_MovementModifier 0x4a8250, 0x48ff3e) */
+    if (s->move_weight > 0.001f) ai_movement_modifier(a, s->move_dir, s->move_weight);
     /* the melee maneuver */
     bool fought = false;
     if (s->maneuver == COMBAT_MANEUVER_MELEE && target) {
         fought = melee_update(a, c, target);
     }
+    dodge_apply(a, c);
     /* an alarm run left for the fight: a target within the chase distance keeps it fighting for the
        fight time; one beyond the ignore distance sends it back to the alarm (AI2rAlarm_Setup) */
     if (a->alarm_marker >= 0) {

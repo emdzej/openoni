@@ -3,10 +3,8 @@
    the push apart (HandleGenericMask 0x4e8c50), and ONrCharacter_TakeDamage 0x4e65f0. Notes:
    docs/re/character.md, "Hits".
 
-   Not ported yet: the AI's block decision (the AI doesn't block), the hit's material,
-   impact effects and sounds, AI notification, throws, the difficulty
-   and boss damage factors, in-air hits (0x4ecd70), the knockdown upgrades (0x4e8b80,
-   ONrAnimType_UpgradeToKnockdown), and the death's own animation hook. */
+   The pain (ONrCharacter_Pain 0x4f2250): the hurt's cries. Not ported yet: in-air hits (0x4ecd70),
+   Knockdown's in-air remap, and TakeDamage's fight cookie for a blow's owner (0x4998f0). */
 #pragma once
 #include "character.h"
 
@@ -16,19 +14,35 @@ void chr_hit_init(Character *c, int32_t extra);
    reactions the hits asked for. */
 void chr_collide_all(Character **chars, int n);
 /* ONrCharacter_TakeDamage 0x4e65f0: damage hit points, knockback along dir (the world, may be NULL),
-   knockdown the reaction when it kills (0: the one asked, A+0x1b06). */
+   knockdown the reaction when it kills (0: the one asked, A+0x1b06); kind the damage owner's kind (its
+   top byte: 0x1000000 a weapon's, 0x2000000 a blow's or a throw's (WPrOwner_MakeMeleeDamageFromCharacter
+   0x51ce00), 0x5000000 a fall's, 0x6000000 the kill command's, 0 none). */
 /* ONrCharacter_Die_1_Animating_Hook 0x4eb550: dead (no more animations asked), the die hook, then
    ONiCharacter_RunDeathAnimation 0x4eb970. */
-void chr_die(Character *c);
+void chr_die(Character *c, Character *killer);
 void chr_take_damage(Character *c, uint32_t damage, float knockback, const float dir[3], uint16_t knockdown,
-                     Character *from);
+                     Character *from, uint32_t kind);
+enum { CHR_DAMAGE_WEAPON = 0x1000000, CHR_DAMAGE_MELEE = 0x2000000, CHR_DAMAGE_FALL = 0x5000000,
+       CHR_DAMAGE_KILL = 0x6000000 };
 /* What TakeDamage tells the AI of a character it hurt and didn't kill (0x48b480, for the AI's
-   characters): from the attacker, melee (WPrOwner_MakeMeleeDamageFromCharacter 0x51ce00, kind
-   0x2000000) or not. Set by the AI's side (chars.c). */
-extern void (*chr_hurt_hook)(Character *c, Character *from, uint32_t damage, bool melee);
+   characters): from the attacker, with the damage's owner kind. Set by the AI's side (chars.c). */
+extern void (*chr_hurt_hook)(Character *c, Character *from, uint32_t damage, uint32_t kind);
+/* 0x4998f0, a blow or a throw between characters: an AI fighting (the combat state) with the melee
+   cookie keeps it longer for the damage it deals, and loses it sooner for the damage it takes (chars.c
+   sets it). */
+/* AI2rNotifyAttackLanded 0x48b700 and 0x48b9d0, an attack landing on an AI's character, blocked or
+   not: a block held against its target's attack let go, a daze cut to its last tick (chars.c sets
+   it). */
+extern void (*chr_attack_landed_hook)(Character *attacker, Character *defender);
+extern void (*chr_melee_score_hook)(Character *attacker, Character *victim, uint32_t damage);
+/* 0x48b060 for an AI hurt: in a calm state (the table 0x52a4d8; a patrol ignoring the player not) it is
+   startled (C+0x1f0 0x8000) and cries for sure (chars.c sets it). */
+extern bool (*chr_calm_hurt_hook)(Character *c);
+/* DoCharacterFrame's pain (0x4e07ef): the damage summed forgotten in time, the queued cry played. */
+void chr_pain_frame(Character *c);
 /* The death hook's scripts (ONrCharacter_Die_1_Animating_Hook 0x4eb550), as a character dies: set
    by chars.c, which keeps the scripts. */
-extern void (*chr_die_hook)(Character *c);
+extern void (*chr_die_hook)(Character *c, Character *killer);
 /* The other scripts of ONrCharacter_TakeDamage 0x4e65f0, each deferred once (C+0x44's bits): the hurt
    script (C+0xc8, bit 0x10) at a hit that isn't stopped by invincibility; the defeated one (C+0xe8, bit
    0x20) at a hit on the dead, or the hit an unkillable character survives. Set by chars.c. */
@@ -63,6 +77,8 @@ extern bool (*chr_block_hook)(Character *c);
 bool chr_part_point(const Character *c, unsigned part, float out[3]);
 /* ONrCharacter_Knockdown 0x4e4e10. */
 void chr_knockdown(Character *c, uint16_t type);
+/* ONrAnimType_IsKnockdown 0x4eccb0: a reaction that leaves the character down. */
+bool chr_is_down_type(uint16_t t);
 
 /* The weapon node's matrix (the active record's matrix 19, A+0x2608): the fist's, turned by the hand
    (3x3 by columns, then the place). False without a body. */

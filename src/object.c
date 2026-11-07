@@ -5,6 +5,8 @@
 #include "body.h"
 #include "oban.h"
 #include "physctx.h"
+
+#include <math.h>
 #include "sl.h"
 #include "tm.h"
 
@@ -189,6 +191,73 @@ void object_matrix(int i, float m[12])
     body_quat_to_matrix(o->rot, r);
     for (int k = 0; k < 9; k++) m[k] = r[k] * o->scale;
     memcpy(m + 9, o->pos, sizeof o->pos);
+}
+
+/* 0x4d5430: the ray from p along the unit dir meets the sphere ahead (inside it: at once, the original
+   leaving the point unset; the port gives p) */
+static bool sphere_ray(const float s[4], const float p[3], const float dir[3], float hit[3])
+{
+    float w[3] = { s[0] - p[0], s[1] - p[1], s[2] - p[2] };
+    float ww = w[0] * w[0] + w[1] * w[1] + w[2] * w[2], rr = s[3] * s[3];
+    if (ww < rr) {
+        memcpy(hit, p, 3 * sizeof *hit);
+        return true;
+    }
+    float proj = w[0] * dir[0] + w[1] * dir[1] + w[2] * dir[2];
+    float disc = rr - (ww - proj * proj);
+    if (disc < 0.0f) return false;
+    float t = proj - sqrtf(disc);
+    float q[3] = { t * dir[0], t * dir[1], t * dir[2] };
+    if (q[0] * dir[0] + q[1] * dir[1] + q[2] * dir[2] < 0.0f) return false;
+    for (int k = 0; k < 3; k++) hit[k] = q[k] + p[k];
+    return true;
+}
+
+/* CLrSphere_Line 0x43c7a0: either end inside the sphere, or the segment's nearest point to its centre
+   strictly between the ends and inside it (0x432d70, 0x432df0). */
+static bool sphere_line(const float s[4], const float a[3], const float b[3])
+{
+    float r2 = s[3] * s[3];
+    float da[3] = { a[0] - s[0], a[1] - s[1], a[2] - s[2] }, db[3] = { b[0] - s[0], b[1] - s[1], b[2] - s[2] };
+    if (da[0] * da[0] + da[1] * da[1] + da[2] * da[2] < r2) return true;
+    if (db[0] * db[0] + db[1] * db[1] + db[2] * db[2] < r2) return true;
+    float ab[3] = { b[0] - a[0], b[1] - a[1], b[2] - a[2] };
+    float l2 = ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2];
+    float t = ((s[0] - a[0]) * ab[0] + (s[1] - a[1]) * ab[1] + (s[2] - a[2]) * ab[2]) / l2;
+    if (!(t > 0.0f) || !(t < 1.0f)) return false;
+    float q[3] = { a[0] + ab[0] * t - s[0], a[1] + ab[1] * t - s[1], a[2] + ab[2] * t - s[2] };
+    return q[0] * q[0] + q[1] * q[1] + q[2] * q[2] < r2;
+}
+
+bool object_line_blocked(const float a[3], const float b[3])
+{
+    for (int i = 0; i < nobjs; i++) {
+        const Object *o = &objs[i];
+        if ((o->flags & 0x200) && !(o->ctx_flags & 1) && sphere_line(o->sphere, a, b)) return true;
+    }
+    return false;
+}
+
+bool object_ray(const float p[3], const float dir[3], float hit[3])
+{
+    float best = 3.4028235e+38f;
+    bool any = false;
+    for (int i = 0; i < nobjs; i++) {
+        const Object *o = &objs[i];
+        if (!(o->flags & 0x200)) continue;
+        float h[3];
+        bool met;
+        if (!(o->ctx_flags & 0x200)) {
+            met = sphere_ray(o->sphere, p, dir, h);
+        } else {
+            const float v[3] = { dir[0] * 1000.0f, dir[1] * 1000.0f, dir[2] * 1000.0f };
+            met = physctx_box_ray(&o->box, p, v, h);
+        }
+        if (!met) continue;
+        float d = (h[0] - p[0]) * (h[0] - p[0]) + (h[1] - p[1]) * (h[1] - p[1]) + (h[2] - p[2]) * (h[2] - p[2]);  /* 0x433220 */
+        if (d < best) best = d, memcpy(hit, h, sizeof h), any = true;
+    }
+    return any;
 }
 
 void object_update(uint32_t now)

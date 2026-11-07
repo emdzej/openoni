@@ -277,7 +277,9 @@ static bool ctx_get(int i, PhysCtx *out)
    stands, a part of c's last hit (A+0xd4, 0.055) and 1.5 up. */
 void powerup_drop(const Character *c, int type, uint16_t amount, bool ahead)
 {
-    float p[3] = { c->pos[0], c->pos[1] + c->pelvis_height, c->pos[2] };
+    float p[3];
+    chr_location(c, p);
+    p[1] += c->pelvis_height;
     deviate_xz(p, 1.0f);
     if (ahead) p[0] += sinf(c->facing) * 10.0f, p[2] += cosf(c->facing) * 10.0f;
     float facing = (float)trac_random() * 6.2831855f * (1.0f / 65535.0f);   /* 0x529548, 0x5294fc */

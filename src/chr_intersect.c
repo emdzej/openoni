@@ -106,13 +106,21 @@ void chr_intersect_setup(const Character *a, const Character *t, bool melee, Chr
     memcpy(x->m0, m, sizeof m);
     memcpy(x->m, m, sizeof m);
 
-    /* the target's motion: the animation's estimate (stand-in: the original takes the move made when the
-       character collided this tick, A+0xb0..0xb4, which aren't counted yet), and the climb */
-    float v[3];
-    chr_velocity_estimate(t, v);
-    x->t_velocity[0] = v[0];
-    x->t_velocity[1] = v[2];
-    x->t_velocity[2] = t->pos[1] - t->prev_pos[1];
+    /* the target's motion: the animation's estimate, or, when it met a wall, an object or a character this
+       tick (A+0xb0, 0xb2, 0xb4), the move it made turned into its facing; the original's x takes the x
+       move's sine where the z move's belongs (0x4eec54), kept. Then the climb. */
+    float d[3] = { t->pos[0] - t->prev_pos[0], t->pos[1] - t->prev_pos[1], t->pos[2] - t->prev_pos[2] };
+    if (!t->wall_hits && !t->obj_hits && !t->pushes) {
+        float v[3];
+        chr_velocity_estimate(t, v);
+        x->t_velocity[0] = v[0];
+        x->t_velocity[1] = v[2];
+    } else {
+        float co = cosf(t->facing), si = sinf(t->facing);
+        x->t_velocity[1] = co * d[2] + si * d[0];
+        x->t_velocity[0] = co * d[0] - si * d[0];
+    }
+    x->t_velocity[2] = d[1];
 
     /* the target's parts (0x54e1e0: the part, "in the melee's set", "not for the radius"); the melee's
        set ends at the first part out of it */

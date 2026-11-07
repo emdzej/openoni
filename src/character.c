@@ -520,10 +520,10 @@ static bool in_air_knocked_down(uint16_t t)
     }
 }
 
-/* ONrCharacter_Knockdown 0x4e4e10 (type 0x19): a stand-in until its port, the fall at once. */
+/* ONrCharacter_Knockdown 0x4e4e10 with the fall (0x19), from HandleFallThrough (0x4f9d1a). */
 static void knockdown(Character *c)
 {
-    chr_do_animation(c, CHR_ANIM_NOW, 0x19);
+    chr_knockdown(c, 0x19);
 }
 
 /* HandleStartJumping 0x4fa2f0: the jump key gone down, unless jumping already. 0x4dc7e0 first keeps the
@@ -801,10 +801,10 @@ static void super_level_step(Character *c)
     c->super_level = want;
 }
 
-/* ONrGameState_DoCharacterFrame 0x4ddba0, the steps this port has: 6 (the countdowns), 9 and 10 (the
-   jump and fall, the motion turned by the facing; the physics is a stand-in), 17 (the animation), 19
-   (the pose). Pickup, aim, weapons, overlays, particles, footsteps, damage, knockback and the trigger
-   segment are not. */
+/* ONrGameState_DoCharacterFrame 0x4ddba0 (docs/re/character.md, its steps): the countdowns, the
+   jump and fall, the knockback, the physics' move (physics.c), the pickup, aim, weapons and overlays
+   (through character_frame_hook), the animation, the pose and the body box, the pain. Not kept: the
+   footstep display (A+0x281c). */
 /* Step 4 of DoCharacterFrame, the player's sprint (variant 0x0100): forward gone down twice within 15
    ticks starts it (A+0x2190 = -1, else the time of the last); it lasts while forward is held. */
 static void sprint(Character *c, const ChrInput *in)
@@ -862,6 +862,7 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
         chr_build_quaternions(c);
         chr_bone_matrices(c);
         inventory_invis_update(c);
+        chr_pain_frame(c);
         return;
     }
     if (!c->has_physics) physics_start(c);
@@ -874,8 +875,9 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
     chr_bone_matrices(c);       /* 0x4e5a30: the parts' matrices (the pelvis, where particles hang) */
     inventory_invis_update(c);                          /* ONrCharacter_Invis_Update, after the matrices */
     physics_body(c);                                    /* step 19 */
-    c->wall_hits = c->pushes = 0;                       /* (0x4e06cb: A+0xb0..0xb6 cleared) */
+    c->wall_hits = c->obj_hits = c->pushes = 0;         /* (0x4e06cb: A+0xb0..0xb6 cleared) */
     c->blocked_by_char = false;
+    chr_pain_frame(c);                                  /* 0x4e07ef: the pain's cries */
     /* OBiPhysics_Update runs after all the characters' frames and contacts (chr_physics_later) */
     if (chr_physics_later) c->phys_pending = true;
     else physics_update(c, env);

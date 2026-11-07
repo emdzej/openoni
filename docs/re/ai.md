@@ -224,6 +224,72 @@ scale 1. A blow's (`HandleAttackMask` 0x4e8946) passes scale 2, 1.5 or 1 by the 
 attacker at the defender ([impact.md](impact.md)). The footsteps' (`PlayAnimationImpact`) are of the
 character, scale 1; the weapons' falls (scale 1, no one) wait for the weapons' physics.
 
+### The dangers
+
+The knowledge keeps two tables the combat dodges by (`src/knowledge.c`):
+
+- **The dangerous projectiles** (0x638fa0, 64 of 0x4c bytes, the count 0x63aba8): a record is made as a
+  particle of a class with a dodge or alert radius (+0x90, +0x94) is (the game's creation callback
+  0x508e20, `AI2rKnowledge_NewDodgeProjectile` 0x49bc00 and `_SetupDodgeProjectile` 0x49bd20; the record's index in the particle's
+  +0x02). +0x00 flags (1 in use, 2 deleted), +0x04 where it was made, +0x10 and +0x1c its two last places,
+  +0x28 its velocity variable's (class flag 0x1000; else 0), +0x34 and +0x38 the radii, +0x3c the
+  particle's handle, +0x40 its class, +0x44 the particle, +0x48 its owner variable's (class flag
+  0x100000; else 0). The particle's deletion (0x508e90, 0x49bc70) takes its last place and marks it
+  deleted. Every 5 ticks (`AI2rKnowledge_Update` 0x499e80) the places move on (+0x10 takes +0x1c, which
+  takes the particle's real place, `P3rGetRealPosition` 0x45acc0, and the velocity again); a deleted
+  record is let go; one whose particle's handle changed is dropped.
+- **The firing spreads** (0x63adc0, 32 of 0x2c bytes, the count 0x63aba4): a gun whose class has one
+  (ONWC+0x144 over 0) makes one as it starts firing (`WPrDepressTrigger`'s 0x51a220,
+  `AI2rKnowledge_NewDodgeFiringSpread` 0x49c160, `_Setup...` 0x49c210; its index in the weapon's
+  +0x100), and lets it go as it stops (0x51a3b0), is let go (`WPrRelease` 0x51a550) or deleted
+  (0x518f90; 0x49c1e0). +0x04 the gun's place (the weapon's matrix's), +0x10 the way it fires (the class's
+  +0x104 through the matrix, `MUrMatrix3x3_MultiplyPoint` 0x433a40), +0x1c..+0x24 the class's length,
+  radius and angle (+0x144..+0x14c), +0x28 the weapon. Every 5 ticks the place and the way follow the
+  gun; a weapon no longer in use (0x518680) drops it. The player's guns make them as the AIs' do.
+
+**The alert** (`AI2iKnowledge_UpdateProjectileAlertness`, in the update, every tick unless 0x5ec0c1 or
+0x5ec0c4): a projectile with an alert radius and an owner that is a character (the kinds 0x1000000 and
+0x2000000, `WPrOwner_GetCharacter` 0x51cda0) is heard by each AI (in use, alive, C+0x1e8 2, neither
+passive nor deaf, not the owner, not its friend, 0x48b2c0) whose pelvis its last 5 ticks' path (from
++0x10 to +0x1c) passes within the radius of (the start inside it, or the segment's far crossing between
+0 and 1): a post of type 4 (gunfire), strength 3, of the owner at the place it was made.
+
+**The dodge's scan** (`AI2rManeuver_FindDodge` 0x49f2e0's `AI2rKnowledge_FindNearbyProjectiles` 0x49bdf0 and `_FindNearbyFiringSpreads` 0x49c290):
+
+- Each projectile with a dodge radius, not of the character's own: its next motion (the velocity by
+  0.8333, 0x52a930), within the radius plus the body sphere's (A+0x13c) of the pelvis now (the time 0)
+  or coming within it (the motion toward the pelvis, the entry between 0 and 1): the nearest point
+  then (the time of closest approach, `−b / 2a`), in sight of the pelvis (`AKrCollision_Point` 0x441c80,
+  skipping 0x242000), is a danger (`AI2rManeuver_NotifyNearbyProjectile` 0x49f780) with its distance, the motion and the point. The distance
+  is the point's own length, from the world's origin rather than from the pelvis (the original's; kept),
+  and the point's own place is the "nearest" the dodge uses, so a projectile is dodged only near the
+  level's origin.
+- Each firing spread not of the character's own gun (`WPrGetOwner` 0x518610): the pelvis within its
+  length of the gun, ahead of it (along the way it fires), and within the cone (its radius there: the
+  distance by the angle's tangent, plus its radius and the body sphere's), the gun in sight of it: a
+  danger (`AI2rManeuver_NotifyFiringSpread` 0x49f8d0) with the line from the gun, the cone's radius, the distance from its axis and the way
+  to the axis.
+
+**A danger** (B+0x200, eight of 0x48 bytes, the count B+0x1fc; `AI2iManeuver_ClearWeights`'s 0x49db70
+clears them as the combat starts): +0x00 its age, +0x04 its time left, +0x08 its time, +0x0c its weight,
++0x10 the weight now, +0x14 the way to it, +0x18 the dodge chosen, +0x1c the motion (a spread's: the line
+from the gun), +0x28 the nearest point's (x, 0, z) (a spread's: the way to its axis), +0x34 the way to
+dodge, +0x40 its kind (1 projectile, 2 spread), +0x44 its record. A projectile's weight: 0.1 a unit the
+distance is within the dodge radius, at most 0.8, at least 0.3 up to 3 beyond, none farther (0x52a9d0,
+0x5296d8, 0x52a9cc, 0x5295a8). A spread's: 0.8 within 0.6 of the cone's radius (0x52a9d4), down to
+0.3 at its edge (by half the fraction), 0.3 up to 1.2 of it (0x529504), none beyond. Both less what the
+class's dodge weight (ONCC+0x134) falls short of 1; none under 0. The same danger again (its kind and
+record) is taken up again, its age and dodge kept; else the last free one, else a new one up to 8. Its
+time: the class's dodge time (ONCC+0x130) by 45 (0x52a9c8) for a projectile, 20 for a spread, rounded
+(0x4340a0).
+
+**Its way** (`AI2iManeuver_MakeDodgeFromDanger` 0x49f570): the way to it is the nearest point's, or,
+with that within 10 (0x52a190), against the motion. The dodge goes away from the nearest point; within
+10, across the motion (its z, 0, −x, normalised; a zero one is (1, 0, 0)), to whichever side a straight
+line of 20 (`AI2rTryLocalMovement`, tolerance 3) reaches, or, both or neither reaching, either by an even
+chance (`UUrRandom` under 0x7fff). Once chosen it stays, unless (not that close) the nearest point comes
+to lie the dodge's way.
+
 ### Teams
 
 `AI2rTeam_FriendOrFoe` 0x48b2c0 (a, b) returns 0 for friends, 1 for neutral and 2 for enemies. If the
@@ -264,7 +330,28 @@ works by the contact's type t:
   - Otherwise, if no vocalization is waiting, one is set for 60 + random(30) ticks.
 
   With any alert, a character that isn't in combat, pursuit or alarm goes to pursuit (state 6, the
-  contact at C+0x8c0). A neutral (state 8) first checks the contact is dangerous.
+  contact at C+0x8c0). A neutral (state 8) first checks the contact is dangerous
+  (`AI2rCharacter_IsDangerousContact` 0x4ae070, with its partner, at its location); a dangerous one
+  ends the conversation (`AI2rNeutral_Stop` 0x4acf70: aborted, an enemy, back to the job).
+
+**The vocalizations** (`AI2rVocalize` 0x48ba60, c, type, forced): the types are named at 0x52a4e4 (16
+bytes each): taunt, alert, startle, checkbody, pursue, cower, superpunch, superkick, super3, super4.
+None for an AI fighter's taunt (0) once it has taunted (+0x76). Unforced, the class's chance
+(ONCC+0x2a8 + type, percent) must beat `(UUrRandom & 0xffff) × 100 >> 16`. The class's ambient for the
+type (ONCC+0x2b4 + 0x20 type, none if empty) is said (`ONrSpeech_Say` 0x516940) at the type's
+priority (0x52a584: 4, 3, 6, 3, 3, 3, 7, 7, 7, 7), 7 when forced. Callers: `AI2rUpdateAI` (the delay
+C+0xf8c run out: alert, then the bit 0x8000), the alert above (startle), the combat's taunt over a
+body (checkbody), the pursuit (pursue), the panic (cower), `chr_vocalize` (forced) and
+`NewAnimationHook` (the animation's cry, TRAM+0x4e, below 10: the superpunch and kicks). The taunt
+over a body: killed by a fighter in melee (its maneuver 5, `0x48b370` sets +0x75), the fighter,
+standing still (0x4ed280) with its wait past half, plays type 0x5e by the class's chance
+(ONCC+0x298, percent of 0xffff against `UUrRandom`) and cries checkbody, once (+0x76).
+
+**The startle** (`UpgradeStatus` sets C+0xfa8 the animation's duration, C+0xfac the facing,
+C+0xfb0 the turn still wanted after the animation's own, TRAM+0x48, wrapped to ±π): while the
+character plays a type 0xc0..0xc3 (or has one queued, frame 0) `AI2rUpdateAI` turns it to
+C+0xfac + C+0xfb0 × frame / C+0xfa8, stops its aim (0x498da0), moves it with kind 4 and a full turn
+(`AI2rExecutor_Move` 0x498b00), runs the executor and nothing else.
 
 `AI2rAlert_UpgradeStatus` (character, level, contact) does the following:
 
@@ -556,22 +643,70 @@ After the lost-target part (above), `AI2rCombat_Update`:
    stops, the trigger is let go and the tick ends.
 4. Every fifth tick, by the character's index (C+0) against the game time: the range; the line of fire
    (beyond the weapon's farthest, +0x60, none; else 0x490c50 from the muzzle to the point, or the arc of
-   a ballistic weapon in steps); the weights cleared (0x49dbc0), message 1, the lost target's and the
-   no-line-of-fire's weights (advance 1.2 to 12..30), message 7; the maneuver (0x49dbf0); messages 4
-   and 5. A getting up that isn't 4 weighs 1.5.
-5. The melee maneuver runs `AI2rMelee_Update`.
+   a ballistic weapon in steps: with the firing mode's +0x6c over 0 and a solution (the targeting's
+   +0xe0; none: no line), 1 + trunc(across / 20) steps (`__ftol` 0x4264e0 of across × −0.05,
+   0x52a734), each the time t = across / (steps × the solution's speed, +0xe4), the step t × (sin yaw × speed,
+   the vertical speed +0xe8, cos yaw × speed; the yaw +0xec), falling by t² × the
+   mode's +0x70 × 98 (0x52a054), half of it on the first; each step tested by 0x490c50); the weights cleared (0x49dbc0), message 1, the lost target's and the
+   no-line-of-fire's weights (advance 1.2 to 12..30), message 7; the maneuver (0x49dbf0); message 4;
+   **the dodge**; message 5. A getting up that isn't 4 weighs 1.5. The dodge (0x48fe24): when message
+   4 allowed it (B+0x44c), the gun isn't picked up running (B+0x1cc) and the class dodges (ONCC+0x120
+   bit 2), its update (`AI2rManeuver_FindDodge` 0x49f2e0) runs with the class's bits 4 or 8, or with no gun firing nor playing
+   its overlay (`WPrIsFiring` 0x51a3a0, 0x4ed100: A+0x1c64). Each danger's time runs down by 5, its age
+   up by 5 (5 or less left, it goes); the knowledge's scan (above) adds the new; those as old as the
+   class's reaction (ONCC+0x12c) weigh their weight by the time left over the time: the heaviest is
+   B+0x440 with its way B+0x444 (none: 0 and 1000), the dodge's way B+0x448 the ways summed by weight.
+   Dodging (B+0x440 over 0 with the class's bit 8), like holding the line of fire (B+0x68), picking up
+   running or meleeing, stops the aim and the fire.
+5. The melee maneuver runs `AI2rMelee_Update`. Then the dodge's move (`AI2rManeuver_ApplyDodge` 0x49f460): weighing at least
+   0.001, a straight line 20 the dodge's way, else up to 4 steps of 8.75 degrees (0x3e1c61aa) to either
+   side (`AI2rFindLocalPath`, threshold 5, tolerance 3): a movement modifier toward its end, three times
+   the weight (0x529808); over 0.5 (0x529560) the way to the heaviest danger is the direction to keep
+   away from (`AI2rMovement_MovementModifierAvoidAngle` 0x4a8340, C+0x1574), else none (1000).
 6. The trigger: unless meleeing, in an animation of the types 0xc0..0xc3, backing off too close, in an
    attack, with an attack override, or against a player whose input is off (`AI2rAllowedToAttack`
    0x48bc30), the fire decision; else the aim stops and the trigger is let go (0x490a50).
 
 **The maneuvers** (0x49dbf0, B+0x194, seven weights): the heaviest is tried, with the next heaviest
 weight as the bar it must still clear once its own test has scaled it down; one that can't be done
-loses its weight and the next is tried. 0 hold (the path halted); 1 advance (`AI2iManeuver_CheckAdvance`
-0x49df80: by how far beyond the near distance, at least half, then a path to the point); 2 retreat (a
-local path away, 15 long, by the distance between the near and far ones and the path's quality,
-0x52a944); 3 a gun to pick up; 4 the alarm; 5 melee (0x49e910: within 80 of the target, else an advance
+loses its weight and the next is tried (the advance and the retreat set their own: a weight they
+leave lowered may come round again). 0 hold (the path halted); 1 advance; 2 retreat; 3 a gun to pick up; 4 the alarm; 5 melee (0x49e910: within 80 of the target, else an advance
 to 15..20); 6 getting up (lying, the forward key for one tick, `AI2rExecutor_MoveOverride` 0x498b60;
 standing, it fails).
+
+- **Advance** (`AI2iManeuver_CheckAdvance` 0x49df80; B+0x1b8 set as it starts, cleared as a path is
+  taken, never read): toward the targeting's point (B+0xcc; none, no advance), from the location
+  (C+0x160). The fraction: 1 beyond the advance's far (B+0x1b0), (d − near) / (far − near) between,
+  0 within the near (B+0x1ac). Within 50 (2500 squared, 0x52a998), a straight line over the grids to
+  the point (`AI2rTryLocalMovement` 0x49d560, tolerance 3, the target let through as C+0x14ac); a line
+  that got there across a blocked start is checked for blockage (0x49ea60) and lost if blocked. A
+  fraction of 0 still advances on a point more than 6 away (36, 0x52a994) the way to which isn't clear
+  and is blocked. The weight is scaled by the fraction (at least 0.5); under the bar, no advance. A
+  line clear with its worst cell under 5 is the advance itself; otherwise a path to within 4 of the
+  point (`AI2rPath_GoToPoint`, its errors caught by the hook 0x49e370 into 0x5eb8a4) unless it failed
+  or is no way at all (0x4aef90: arrived, or one room with its local path at the last waypoint); then
+  `AI2rFindLocalPath` 0x49d220: a line 15 long toward the point, else 15 degrees (0x3e860a92) to one
+  side then the other, up to 4 steps (threshold 5, tolerance 3). A line found is weighed by its
+  quality (0x52a944: 1, 0.85, 0.7, 0.6, 0.3, then 0, by its worst cell), and still over the bar it is
+  the maneuver's own move: its direction B+0x1a8 and weight B+0x1ac. (A danger's way, B+0x444 with
+  B+0x440 over 0.5, forbids an advance within 45 degrees of it, 0x52a67c: its weight 0, no halt.)
+- **Retreat** (`AI2iManeuver_Select`'s case 2): the melee's weight (B+0x1a0) cleared; with a target,
+  `AI2rFindLocalPath` a line 15 long straight away from it (from its position to the location), steps
+  of 22.5 degrees (0x3ec90fdb), up to 4 each way; none found, no retreat. Weighed by the distance (1
+  within the retreat's near, B+0x1bc; 0 at its far, B+0x1c0; none beyond) and the line's quality; over
+  the bar, the line is the maneuver's own move.
+- **The own move**: `AI2iManeuver_ClearWeights` 0x49dbc0 sets B+0x1a8 to 1000 and B+0x1ac to 0 with
+  the weights. `AI2rCombat_Update`, after the modifiers are cleared (0x4a8370), adds it as a movement
+  modifier (`AI2rMovement_MovementModifier` 0x4a8250) every tick its weight is over 0.001 (0x529dfc).
+  The movement then goes that way with no path (`src/movement.c`'s modifiers).
+
+**The blockage** (`AI2rManeuver_CheckBlockage` 0x49ea60, `local_blockage` in `src/localpath.c`): from
+the pelvis (`ONrCharacter_GetPelvisPosition` 0x4e34f0) to the point, blocked by the environment's
+first hit (`AKrCollision_Point` 0x441c80 skipping 0x48800), by an object nearer than the point
+(`AMrRayToObject` 0x4d52c0: the objects of flag 0x200, by their context's sphere, 0x4d5430, or with
+the context's flag 0x200 their box, `PHrCollision_Volume_Ray` 0x43f750 along 1000; the nearest), or by
+the character's sphere tree swept there (`AI2rManeuver_TrySphereTreeCollision` 0x49ec30). The melee's
+local environment, the neutrals' talk and the advance use it.
 
 **The gun** (`AI2iManeuver_CheckGun` 0x49e390; the no-gun behaviour 0x491060 gives it weight 1 with
 its distances, B+0x1cc 30 and B+0x1d0 200). The block's fields: B+0x71/0x72 the chance to look drawn
@@ -601,11 +736,24 @@ closer from the retreats, draws the chance again.
   made again; else the gun is out of reach: it goes to the front of the list, which is shifted with a
   forward copy (every entry becomes the first; the original's), and the count is at least 4.
 - **After the maneuvers** (`AI2rCombat_Update`), going for a gun, once the class's other percentage
-  (+0x168) for a running pickup (`AI2rManeuver_TryRunningGunPickup` 0x49f020); with another
-  maneuver, that chance is forgotten and B+0x1dc cleared.
+  (+0x168) for a running pickup; each tick it holds, `AI2rManeuver_TryRunningGunPickup` 0x49f020 sets
+  B+0x1cc (else it's clear); with another maneuver, that chance is forgotten and B+0x1dc cleared.
+- **The running pickup** (0x49f020, the gun maneuver 3 with a gun). Free to act (0x4e3b10), the handle
+  within 5 of the location's height (0x52a9c0) and between 5 and 70 of it across (25, 4900 squared,
+  0x52a1d0, 0x52a9b8): the way to it against the facing (C+0x16c) within 20 degrees (0x52a9b0) of
+  ahead, right, left (±90, 0x529cd0) or (beyond 160, 0x52a9a8) behind picks the escape move 0, 2, 3 or 1
+  (else none). `AI2rManeuver_TryEscapeMove` 0x49ee00: the animation of the type 0x90 + the direction (4:
+  the active record's A+0xa1c) from the state (A+0x1afc) and variant (A+0x1ca0, `TRrCollection_Lookup`
+  0x427f00), else type 4, each only if it picks up as it goes (TRAM flag 20, not 23); its last frame's
+  position (0x4292d0, hundredths: 0x5295bc) turned by the facing from the location reached by a straight
+  line (tolerance 3) not blocked (0x49ea60) after crossing a blocked start; the animation and its end.
+  The move along the way to the handle must pass it by 10 (0x52a190), else it waits (true); then the gun
+  is the pickup's (C+0x1d8), the animation plays (0x4eb340, 6 ticks' interpolation, from the state) and
+  the hand's gun is dropped (0x4e4ab0). Busy and not in a pickup (0x9d..0x9f, 0x4dc850), in a move that
+  picks up as it goes: within 16 (256 squared, 0x5295ac) of the handle, `ONrCharacter_PickupWeapon`
+  0x4ed770 takes it; true either way.
 
-The port (`src/combat.c`, its test `tests/gun_test.c`: a THUG_Wh 50 from a pistol picks it up)
-has no running pickup. The path stops within its 8, so an AI may stand 4 or 5 from the handle until
+The port (`src/combat.c`, its test `tests/gun_test.c`: a THUG_Wh 50 from a pistol picks it up). The path stops within its 8, so an AI may stand 4 or 5 from the handle until
 another maneuver carries it closer, or give the gun up after 40 maneuvers.
 
 **The daze** (the default behaviour's message 6, 0x493120; the combat block's dazed flag at B+0x189,
@@ -615,8 +763,8 @@ ONCC+0x128 to ONCC+0x12a, the span times `UUrRandom & 0xffff` over 0x10000), and
 with one done, the getting up is set to 0 (so it weighs) and the answer 0. Dazed: with no ticks left
 the flag goes and the answer is 0; else the targeting and the line-of-fire checks and the aim are off
 and the answer 1. `AI2rUpdateAI` 0x489d40 counts the ticks down while the character lies. A shot
-(damage kind 0x1000000 to `AI2rNotifyDamage` 0x48b480) cuts them to 1, and so does a block's
-decision (0x48b9d0, not ported yet). `ONrCharacter_Knockdown` 0x4e4e10, for an AI's character knocked down (the types 0x4f..0x5c that
+(damage kind 0x1000000 to `AI2rNotifyDamage` 0x48b480) cuts them to 1, and so does any attack
+that lands, blocked or not (0x48b9d0, from `HandleAttackMask` after the block's decision). `ONrCharacter_Knockdown` 0x4e4e10, for an AI's character knocked down (the types 0x4f..0x5c that
 lie, 0x8d, 0xd6, 0xd7) while not lying, calls 0x48b530, which clears C+0x101c: a new fall, a new
 daze.
 
@@ -658,9 +806,7 @@ the feet, toward it at the aiming speed (A+0x1ab4 × 6° a tick, by the weapon's
 states, 0x52a4d8); more than 130° off the facing it aims ahead. `DoCharacterFrame` turns the point into
 the character's aim (A+0x21bc, 0x21c0) for an AI's character not under a film.
 
-Not ported yet: the running gun pickup, Run For Alarm, the getting up, the attack of
-opportunity (0x49f2e0), the melee wait of an empty weapon (B+0x64), the objects in the line of fire,
-the arc's steps; the local paths of the advance and the retreat are the port's stand-ins.
+Not ported yet: Run For Alarm (behaviour 11, used by no level).
 
 ## The alarm
 
@@ -792,7 +938,7 @@ range about it, +0x0c the centre of the pick (1000 all round), +0x10 the first l
   waits.
 - **The tick** (0x4b0fb0). Lying, the forward key (to get up). The hold, then the mode's timer, count
   down. Waiting, looking, moving and hunting, the vocalization's timer runs (720 to 900 ticks;
-  `AI2rVocalize` 4 not ported). Looking and glancing run the scan. Going: the contact's fading is held
+  `AI2rVocalize` 4). Looking and glancing run the scan. Going: the contact's fading is held
   back a tick (its +0x38); then by the squared distance to the path's goal (the height ignored within
   22.5, from the path's 0x4af030):
   - beyond 200: on its way, hurrying when alerted, not looking;
@@ -872,7 +1018,7 @@ them):
   (`AI2rReturnToJob` 0x48af80). A loop to a later point the original would go round for good; the
   port stops it at the path's points.
 
-Not ported: the vocalizations, the glance's look (0x4a8150) and the facing held, the report
+Not ported: the facing held, the report
 (`AI2rPursuit_Report` 0x4b18e0, debug text). A contact removed without the forget's notice leaves
 the exe with a stale pointer; the port goes back to the job.
 
@@ -967,7 +1113,7 @@ the panic state (C+0x1f8 9). Confirmed:
   else the panic ends 180 ticks after the fear's last post.
 - **The state** (`AI2rPanic_Enter` 0x4adbe0): out of fight mode, the weapon hidden and the variant
   0x8000 (0x4ed030, 0x4ecf80, 0x4ecf30), halted, running, the first cry in 45 ticks. The update
-  (0x4adc80): past its end, back to the job; a cry (`AI2rVocalize` type 5, not ported) every 1500 +
+  (0x4adc80): past its end, back to the job; a cry (`AI2rVocalize` type 5) every 1500 +
   0..499 ticks; crouching (mode 3) once crouched or the fear within 20; lying, the class's daze once a
   fall, then up with the move override: back when facing the fear within 90 degrees (or with none),
   else forward, crouched if cowering. The exit (0x4adc50) undoes the flags.
@@ -1121,7 +1267,9 @@ past.
    `HandleNoTechnique`. A new one is set up (+0x38 its first move), its memory + 0.4, the cookie given
    back if it isn't an attack, and its first move started.
 
-At most two attackers (0x545774) hold the fight cookie at once; a cookie is held for 180 ticks.
+At most two attackers (0x545774) hold the fight cookie at once; a cookie is held for 180 ticks. A blow (damage of
+kind 0x2000000) a fighter holding it deals keeps it 10 ticks longer a point; one it takes, 6 shorter
+(0x4998f0, from `ONrCharacter_TakeDamage`).
 
 **The local environment** (`AI2rMelee_TestLocalEnvironment` 0x49fe60, from the combat's melee test
 0x49e910 while within 80 of the target): a straight way over the grids from the location toward the
@@ -1143,8 +1291,10 @@ the profile's single one. In combat, with n attackers on the same target (the fi
 single + (group − single) × (n − 1) / 3 (the third at 0x52a5ac) below four and the group chance from
 four. That times the difficulty's factor, from the game settings' table at +0xabc (0.6, 1, 1.3 for
 easy, normal, hard: `ONrPersist_GetDifficulty` 0x50f240, normal at start-up), must exceed a random
-0..100 (`(UUrRandom & 0xffff) × 100 / 0xffff`). After the decision come the combat report
-(`AI2rNotifyAttackLanded` 0x48b700) and the daze timer's cut to 1 (0x48b9d0); neither is ported yet.
+0..100 (`(UUrRandom & 0xffff) × 100 / 0xffff`). After the decision come
+`AI2rNotifyAttackLanded` 0x48b700 (a fighter holding a block against its melee target lets it go;
+for another attack than the one it was held for, +0x130, it also files the AI's debugging report
+0x4936b0, left out) and the daze timer's cut to 1 (0x48b9d0).
 
 Stand-ins, marked in `src/melee.c`: throws; the blockage's objects and characters. The movement's
 modifiers and facing mode go through `AI2iMovementState_Calculate_Movement` (`src/movement.c`). A maneuver's step toward the target searches about the angle as
@@ -1385,7 +1535,7 @@ from the exe (confirmed); ported in `src/movement.c` (see "The port" below).
 | +0x14ac | — (cleared with the modifiers) |
 | +0x14b0 | Modifiers this tick (8 at most) |
 | +0x14b4 | The modifiers, 0x18 bytes each: the direction, its vector (sin, 0, cos), the weight (+0x10), the weight left after the collisions (+0x14) |
-| +0x1574 | A direction to keep away from (1000 none; the dodge from danger, 0x49f460, sets it) |
+| +0x1574 | A direction to keep away from (1000 none; the dodge, 0x49f460, sets it) |
 | +0x1578 | The facing mode: 0 free, 1 a fixed kind of move (+0x157c), 2 a fixed facing (+0x157c), 3 none (the facing left alone) |
 | +0x1580, +0x1581 | The aiming byte forced (and its value) |
 | +0x1584 | The look: 0 none, 1 a point, 2 a direction, 3 a character (+0x1588) |
@@ -1514,5 +1664,5 @@ mode's weapon (`AI2rMovementState_NewMovementMode` 0x4a9300: walk_noaim and run_
 at the alert's change too, 0x4a8230), the clear point at the start (0x4a8d60's
 `AI2iMovementState_FindClearPoint`) and the ghost waypoint's look ahead ([pathfinding.md](pathfinding.md)).
 Not kept: the repath after a teleport (0x4ae3d0 from 0x4e9210), the forced aiming byte (C+0x1580, no
-caller ported), the direction to keep away from (C+0x1574: the dodge that sets it, 0x49f460, isn't ported) and the combat
-state's own modifier (+0x1a8, +0x1ac).
+caller ported), the direction to keep away from (C+0x1574: the dodge's, 0x49f460). The combat
+state's own modifier (+0x1a8, +0x1ac) is the maneuvers' own move, above.

@@ -74,7 +74,13 @@ From the pelvis p to the marker m, with the marker's facing f:
 - Ahead, −(sin f·dx + cos f·dz), in [−2, 10] ("distance").
 - Sideways, |cos f·dx − sin f·dz| ≤ 8, or 16 for the wide test ("sideways").
 - The facing (the player's 0x4e33a0, an AI's C+0x16c) within 1.2217 of f, or 1.8326 wide ("facing").
-- Within 3 (squared 9): yes. Farther: the way to it mustn't be blocked (0x49ea60, 0x49eb80).
+- Within 3 (squared 9, 0x52a5b0): yes. Farther: the way from the pelvis to the point 3 before the marker
+  (the marker's place less 3 along its facing, 0x529808, at its height) mustn't be blocked: by the
+  environment, an object or the character's swept spheres (`AI2rManeuver_CheckBlockage` 0x49ea60, "can't
+  use console, blocked by environment"), nor by another character (`AI2rManeuver_CheckInterveningCharacters`
+  0x49eb80: each character in use (GS+0x1670f0) but itself and those with C+4 0x40004, a sphere of the
+  character's radius, 0x4dc100: 3 for an AI, 4 for the player, plus 3, swept against its body and parts,
+  `ONrCharacter_Collide_SphereRay` 0x4f1b60; "blocked by character(s)").
 
 ### The console action (`ONrCharacter_ConsoleAction_Update` 0x4ee220)
 
@@ -106,12 +112,11 @@ time. Konoko's sprint runs (`KONSPRrun_lt`, `_rt`) are runs (type 3) of variant 
 
 Ported: the consoles' start, the commands, OnActivate with its sounds and events, the screen's draw;
 the event lists (scripts, consoles, door locks); the action key's console and door; the console action;
-the sprint.
+the sprint; the blocked-way test past 3 (its blockage from the active record's pelvis).
 
 Not yet:
 
 - The pelvis is the location raised by the pelvis height (the active record's pelvis matrix isn't kept).
-- The blocked-way test past 3 (0x49ea60, 0x49eb80).
 - The overlay range test (no overlays yet), weapons, the film, neutral talk.
 - Turrets, alarms and laser triggers in events.
 - Sound positions.

@@ -39,6 +39,15 @@ bool local_try_movement(const Character *c, const float from[3], const float to[
 bool local_find_path(const Character *c, const float from[3], float dist, float angle, float step, unsigned n, uint8_t threshold,
                      int tolerance, bool *reached, float out[3], uint8_t *kind, bool *crossed_blocked);
 
+/* AI2rManeuver_CheckBlockage 0x49ea60: the way from c's pelvis to p blocked: the environment (the first
+   hit, AKrCollision_Point 0x441c80, skipping 0x48800), an object nearer than p (AMrRayToObject 0x4d52c0)
+   or c's sphere tree swept there (AI2rManeuver_TrySphereTreeCollision 0x49ec30). env: the AKEV. */
+bool local_blockage(const void *env, const Character *c, const float p[3]);
+/* AI2rManeuver_CheckInterveningCharacters 0x49eb80: the way from c's pelvis to p meets another character
+   (in use, not dying nor fading, C+4 0x40004) with a sphere of c's own radius (0x4dc100: 3 for an AI,
+   4 for the player) plus 3 (0x529808; ONrCharacter_Collide_SphereRay 0x4f1b60). */
+bool local_intervening(const Character *c, const float p[3]);
+
 /* AI2rFindNearbyPoint 0x49cec0: a point dist from `from` toward angle reached by a straight line over the
    grids (threshold: the cells' value it stays under, tolerance: blocked cells allowed at its start), else
    the angle a step to either side, two steps, ... n steps; failing all, the farthest point a line got to

@@ -85,3 +85,6 @@ void physctx_box_place(PhysBox *box, const float m[12]);
 void physctx_box_bounds(PhysBox *box, const float b[6], const float pos[3]);
 /* 0x43f910: p is in front of none of the box's planes. */
 bool physctx_box_contains(const PhysBox *box, const float p[3]);
+/* PHrCollision_Volume_Ray 0x43f750: the segment from p along v enters the box through a face it crosses
+   from the front (0x43c8c0, the most head-on of those it crosses); hit: where. None from inside. */
+bool physctx_box_ray(const PhysBox *box, const float p[3], const float v[3], float hit[3]);

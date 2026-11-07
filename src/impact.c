@@ -537,12 +537,13 @@ void impact_animation(Character *c, const float *pos)
     int material = -1;
     if ((q.texture & 0xffff) != 0xffff) material = impact_material_index(material_of_texture(akev_texture(env, q.texture & 0xffff)));
     if (material < 0) material = 0;
-    /* at pos, else the location (C+0x160; the port keeps none apart), owned by its melee */
+    /* at pos, else the location (C+0x160), owned by its melee */
     P3EffectLoc loc;
     memset(&loc, 0, sizeof loc);
     loc.tick = p3_tick();
     loc.owner = 0x2000000u | c->id;
-    memcpy(loc.pos, pos ? pos : c->pos, sizeof loc.pos);
+    if (pos) memcpy(loc.pos, pos, sizeof loc.pos);
+    else chr_location(c, loc.pos);
     impact_effect(type, material, modifier_by_name(oc + 0x43c), &loc, 1.0f, c, NULL);
 }
 

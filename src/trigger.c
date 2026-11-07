@@ -149,14 +149,14 @@ static bool segment_hits(const Volume *v, const float a[3], const float b[3])
 /* OBJrTriggerVolume_IntersectsCharacter 0x4cc680: the team in the mask; then the character's segment
    crossing one of the box's six faces (0x43f750), or its first point inside all six planes (0x43f910),
    which together are the segment touching the box. The original first compares the character's and the
-   volume's bounding spheres, a shortcut that changes nothing here. The segment is two points of the active
-   character (+0x140, +0x14c) the port doesn't have yet; a stand-in: from the feet up a character's height. */
-enum { BODY_HEIGHT = 18 };
+   volume's bounding spheres, a shortcut that changes nothing here. The segment is the active character's
+   A+0x140 to A+0x14c, set in DoCharacterFrame (0x4e04ad) as the body box is: the feet's x and z, from the
+   box's bottom (C+0x190) to its top (C+0x1658). */
 static bool intersects(const Volume *v, const TriggerActor *a)
 {
     if (!a->alive || a->team >= 32 || !(v->teams & 1u << a->team)) return false;
-    float top[3] = { a->pos[0], a->pos[1] + BODY_HEIGHT, a->pos[2] };
-    return segment_hits(v, a->pos, top);
+    float bottom[3] = { a->pos[0], a->bottom, a->pos[2] }, top[3] = { a->pos[0], a->top, a->pos[2] };
+    return segment_hits(v, bottom, top);
 }
 
 bool trigger_segment(int i, const float a[3], const float b[3])
@@ -164,11 +164,11 @@ bool trigger_segment(int i, const float a[3], const float b[3])
     return i >= 0 && i < nvols && segment_hits(&vols[i], a, b);
 }
 
-bool trigger_contains(int i, const float pos[3])
+bool trigger_contains(int i, const float pos[3], float bottom, float top)
 {
     if (i < 0 || i >= nvols) return false;
-    float top[3] = { pos[0], pos[1] + BODY_HEIGHT, pos[2] };
-    return segment_hits(&vols[i], pos, top);
+    float a[3] = { pos[0], bottom, pos[2] }, b[3] = { pos[0], top, pos[2] };
+    return segment_hits(&vols[i], a, b);
 }
 
 /* The deferred scripts (0x4f2070 queues one: the function, the character, the cause; 128 at most), run

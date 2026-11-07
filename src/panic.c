@@ -150,7 +150,7 @@ void panic_update(Chr *c)
     }
     if (a->panic_vocal) a->panic_vocal--;
     if (!a->panic_vocal) {
-        /* (the panic's cry, AI2rVocalize 0x48ba60 type 5, isn't ported) */
+        ai_vocalize(c, 5, false);   /* the panic's cry, AI2rVocalize 0x48ba60 */
         a->panic_vocal = ((trac_random() * 500u) >> 16) + 1500;
     }
     if (!a->panic_cower) {

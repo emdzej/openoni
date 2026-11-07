@@ -267,6 +267,6 @@ void throw_update(Character **chars, int n)
         /* a victim's is its thrower's (WPrOwner_MakeMeleeDamageFromCharacter 0x51ce00) */
         Character *from = tr_test_flag(c->anim, TRAM_FLAG_THROW_TARGET) ? c->thrown_by : NULL;
         if (from && chr_cheat_omnipotent && !from->ai && d <= c->hit_points) d = c->hit_points;   /* 0x4dd862 */
-        chr_take_damage(c, d, 0.0f, NULL, 0, from);
+        chr_take_damage(c, d, 0.0f, NULL, 0, from, CHR_DAMAGE_MELEE);
     }
 }

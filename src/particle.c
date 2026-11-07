@@ -868,6 +868,7 @@ static void free_particle(P3Class *c, P3Particle *p)
 }
 
 static bool global_tint_on;
+static bool temporary_mode;             /* 0x6a8b44 (particle_temp_start) */
 static uint32_t global_tint;
 
 void p3_global_tint(bool on, uint32_t tint)
@@ -890,10 +891,16 @@ static bool tint_variable(P3Class *c, P3Particle *p, uint32_t tint)
 bool p3_set_tint(P3Class *c, P3Particle *p, uint32_t tint) { return c && p && tint_variable(c, p, tint); }
 
 /* The game's creation callback (0x659ae4, 0x508e20), after a create event the particle lives through:
-   the AI's record of a dangerous projectile (a class with a dodge or alert radius, +0x90, +0x94: not
-   ported), and a class with a flyby impulse a flyby record (0x5156f0). */
+   the AI's record of a dangerous projectile (a class with a dodge or alert radius, +0x90, +0x94:
+   AI2rKnowledge_NewDodgeProjectile 0x49bc00, its index in the particle's +0x02), and a class with a flyby
+   impulse a flyby record (0x5156f0). */
 static void created(P3Class *c, P3Particle *p)
 {
+    float dodge = rdf(c->def + D_DODGE), alert = rdf(c->def + D_ALERT);
+    if (dodge > 0.0f || alert > 0.0f) {
+        int slot = knowledge_projectile_new(c, p, dodge, alert);
+        if (slot >= 0) p->ai_slot = (uint8_t)slot;
+    }
     float pos[3];
     if (!c->flyby || !p3_real_position(c, p, pos)) return;
     int slot = sound_flyby_add(c->flyby, p->handle, pos);
@@ -914,6 +921,10 @@ P3Particle *p3_create(P3Class *c, uint32_t tick)
     p->sound = -1;
     p->ai_slot = p->flyby_slot = 0xff;
     if (flags2(c) & F2_HIDDEN) p->flags = P_HIDDEN;
+    if (temporary_mode) {
+        p->flags |= P_TEMPORARY;
+        c->flags |= C_TEMPORARIES;
+    }
     p->prev = c->tail;
     if (c->tail) c->tail->next = p;
     else c->head = p;
@@ -976,10 +987,14 @@ static void unlink_particle(P3Class *c, P3Particle *p)
 static bool run_event(P3Class *c, P3Particle *p, int event, const uint8_t *list, float time, float dt, bool collided);
 
 /* 0x456ce0 and its callers' free list: the die event, the deletion callback (0x6a872c, 0x508e90: the
-   AI's projectile record, not ported, and the flyby's last step, 0x515a00), the decal (P3rDeleteDecal 0x453630), the ambient sound's stop, the particle gone. */
+   AI's projectile record, AI2rKnowledge_DeleteDodgeProjectile 0x49bc70, and the flyby's last step, 0x515a00), the decal (P3rDeleteDecal 0x453630), the ambient sound's stop, the particle gone. */
 static void end_particle(P3Class *c, P3Particle *p)
 {
     run_event(c, p, P3_EV_DIE, c->def + D_EVENTS + 4 * P3_EV_DIE, p->time, 0.0f, false);
+    if (p->ai_slot != 0xff) {
+        knowledge_projectile_deleted(p->ai_slot, c, p);
+        p->ai_slot = 0xff;
+    }
     if (p->flyby_slot != 0xff) {
         float pos[3];
         bool ok = p3_real_position(c, p, pos);
@@ -1245,6 +1260,8 @@ enum {
 };
 
 /* The character of an owner (WPrOwner_GetCharacter 0x51cda0): the kinds 0x1000000 and 0x2000000. */
+static Chr *owner_character(uint32_t owner);
+Chr *p3_owner_character(uint32_t owner) { return owner_character(owner); }
 static Chr *owner_character(uint32_t owner)
 {
     uint32_t kind = owner & 0xff000000u;
@@ -1900,6 +1917,13 @@ static void make_parts(Parts *x, const Character *c)
     x->ok = true;
 }
 
+float p3_body_radius(const Character *c)
+{
+    Parts x;
+    make_parts(&x, c);
+    return x.ok ? x.body[3] : 0.0f;
+}
+
 /* ONrCharacter_Collide_Ray 0x4f1630 (radius 0) and ONrCharacter_Collide_SphereRay 0x4f1b60: the move
    from s along d (bounded to its length) against the body sphere, then each part's sphere: the part's
    own sphere's centre taken from the part's place unturned (the original subtracts the part's place from
@@ -1957,6 +1981,14 @@ bool p3_character_ray(const Character *c, const float s[3], const float d[3], fl
     make_parts(&x, c);
     float t, n[3];
     return char_ray(&x, s, d, 0.0f, &t, point, n);
+}
+
+bool p3_character_sphere_ray(const Character *c, const float s[3], const float d[3], float radius)
+{
+    Parts x;
+    make_parts(&x, c);
+    float t, point[3], n[3];
+    return char_ray(&x, s, d, radius, &t, point, n);
 }
 
 /* WPrParticleBelongsToSelf 0x51ce20: the owner is the character itself. */
@@ -3359,7 +3391,54 @@ void p3_each_contrail(const float eye[3], uint32_t now, P3ContrailFn fn, void *u
 
 /* ---- the script commands ---- */
 
-void p3_register_commands(void) {}
+/* The temporary particles: while the mode is on (0x6a8b44, set by 0x456f80; cleared only by
+   P3rInitialize 0x455a50) each particle made is temporary (+0x04 0x400) and its class has some (+0x40
+   2); 0x456e80 kills them, as an update would (the classes' list changes kept for after it, 0x4583b0). */
+
+static void kill_temporaries(void)
+{
+    updating = true;
+    pending = 0xffff;
+    removed_during = false;
+    for (uint16_t i = active_head; i != 0xffff;) {
+        P3Class *c = &classes[i];
+        i = c->next;
+        if (!(c->flags & C_TEMPORARIES)) continue;
+        for (P3Particle *p = c->head, *n; p; p = n) {
+            n = p->next;
+            if ((p->flags & P_TEMPORARY) && !(p->flags & P_DEAD)) kill_now(c, p);
+        }
+        c->flags &= ~(uint32_t)C_TEMPORARIES;
+    }
+    after_update();
+}
+
+/* particle_temp_start, particle_temp_stop (0x509fc0, 0x509fd0) and particle_temp_kill (0x509fe0). */
+static bool cmd_temp_start(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)c, (void)v, (void)r, (void)u;
+    temporary_mode = true;
+    return true;
+}
+static bool cmd_temp_stop(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)c, (void)v, (void)r, (void)u;
+    temporary_mode = false;
+    return true;
+}
+static bool cmd_temp_kill(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)c, (void)v, (void)r, (void)u;
+    kill_temporaries();
+    return true;
+}
+
+void p3_register_commands(void)
+{
+    sl_register("particle_temp_start", cmd_temp_start, NULL);
+    sl_register("particle_temp_stop", cmd_temp_stop, NULL);
+    sl_register("particle_temp_kill", cmd_temp_kill, NULL);
+}
 
 /* P3rCreateEffect 0x456030, its common part: a particle of the class at pos, moving at vel, turned by
    orient (3x3, NULL: along the velocity), at the tick, its create event. Not ported: the decals, the

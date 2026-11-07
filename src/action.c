@@ -6,7 +6,9 @@
 #include "chr_anim.h"
 #include "console.h"
 #include "door.h"
+#include "localpath.h"
 #include "neutral.h"
+#include "particle.h"
 #include "physics.h"
 #include "tram.h"
 
@@ -47,8 +49,14 @@ bool action_can_use(const Character *c, int marker, bool wide)
     if (f < -3.1415927f) f += 6.2831855f;
     else if (f >= 3.1415927f) f -= 6.2831855f;
     if (fabsf(f) > (wide ? 1.8325957f : 1.2217305f)) return false; /* "facing" */
-    /* within 3 (squared 9): fine; farther, the way mustn't be blocked (0x49ea60, 0x49eb80: the character's
-       sphere tree swept to the marker), which the port doesn't test yet */
+    /* within 3 (squared 9, 0x52a5b0): fine; farther, the way to 3 before the marker (0x529808) mustn't be
+       blocked, by the environment (AI2rManeuver_CheckBlockage 0x49ea60) nor by another character
+       (AI2rManeuver_CheckInterveningCharacters 0x49eb80) */
+    if (dx * dx + dy * dy + dz * dz > 9.0f) {
+        float q[3] = { m->pos[0] - s * 3.0f, m->pos[1], m->pos[2] - co * 3.0f };
+        if (local_blockage(p3_environment(), c, q)) return false;   /* "blocked by environment" */
+        if (local_intervening(c, q)) return false;                  /* "blocked by character(s)" */
+    }
     return true;
 }
 
