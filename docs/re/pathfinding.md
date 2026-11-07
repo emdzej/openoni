@@ -93,7 +93,16 @@ pushed out of a slot keeps its door.
 The character's search (below) skips a link whose door `OBJrDoor_CharacterCanOpen` 0x4c24b0 refuses
 for that side. It refuses when the door is jammed, or locked and not one way with the side let through
 (−1 passes), and without the key. The cheat byte 0x5ec5f5 passes every door. A search without a
-character uses the door's danger factor (+0x8c) instead.
+character holds a shut door (S+0xc not 1) of a class (+0x8c) to the class's danger: by its type (DOOR
++0x10; the jump table 0x50c380) type 0 any search, 1 a search with the key 2, 3 or 4, 2 the key 4 only,
+3 none; then a danger (DOOR +0xc) above 0.99 (0x52a03c) none, and one above 0 makes the rooms beyond cost
+1 / (1 − danger) times as much (the factor kept at the room's +0x8c). Every class in the game has type 2
+and danger 0.5. The key is `PHrPathDistance`'s (edx): −1 for the characters' searches; the sounds
+(`AI2rKnowledge_Sound` 0x49a8a0, the only search without a character) give their type, so only gunfire
+(4) is heard through a shut door, at twice the way beyond. The flag-1 links are skipped only with a
+character. `PHrPathDistance`'s callers: the alarm console's (`AI2iAlarm_ConsoleCallback` 0x48ebc0), the
+gun's (`AI2iManeuver_TryPathToGun` 0x49e810), the patrol's start (`AI2rPatrol_Enter` 0x4af970) and the
+pursuit's (`AI2iPursuit_DesirePursuit` 0x4b1620, twice) pass the character.
 
 `AI2rPath_Update` 0x4ae670 keeps the door of the path's current link in C+0x1144. It is set when the
 path is made (`AI2iPath_MakePath`) and as each link is passed, and is none in the destination's room.
@@ -258,6 +267,30 @@ Not ignored, the cell is impassable and blocked (9). The modes: the local path (
 with 2; the local movement's tests (`AI2rTryLocalMovement`, `AI2rFindLocalPath`, `AI2rFindNearbyPoint`)
 with 1 (0x5eb860, 0x5eb864), for the character moved.
 
+## The clear point
+
+`AI2rMovementState_Initialize` 0x4a8d60, from `ONrGameState_NewCharacter` 0x4dac50 for a character the AI
+moves (C+4 0x400000), with no path to restore (the argument C+0x15b0 only with the creation's flag), ends
+by `AI2iMovementState_FindClearPoint` 0x4a9170 at the character's position (C+0x148), and
+`ONrCharacter_Teleport` 0x4e9210 if it moved:
+
+1. The room under the point (`AKrNodeFromPoint`), its layer made (`PHrPrepareRoomForPath`), the point's
+   cell clamped to the grid.
+2. The cell's obstacle, if there is one and `PHrIgnoreObstruction` (mode 0, as the character) doesn't let
+   it through: a character (0x50d960: an active one, C+4 0x8000) more than 6 away (its location,
+   C+0x160; 36 squared, 0x52a994) keeps the point; a door (0x50d9b0, the first of the id) the character
+   can't open (`OBJrDoor_CharacterCanOpen`, side 0xff) keeps it.
+3. Otherwise `AI2rFindNearbyPoint` 0x49cec0: 15 toward the character's facing (C+0x16c), at least 5,
+   steps of 30 degrees (0x3f060a92), 6 of them, cells under 8, 5 blocked at the start. Found, the point
+   takes its x and z.
+
+So a character spawned onto another (`ai2_spawn` at a flag someone stands on) or onto a crate steps
+aside. Port: `movement_find_clear_point`, `movement_place_clear` (`src/movement.c`), from the
+characters' creation in `src/chars.c`. The port loads the level's objects and doors after its first
+characters, so their placement at the level's start sees the characters only (inferred; the original's
+order of `OBJrLevel_Load` and the characters wasn't checked); the layers are made again once the objects
+and doors are in (`obstacle_invalidate`).
+
 ## The port
 
 `src/graph.c` builds the graph once per environment (`graph_for`), with the blockages from the rooms'
@@ -285,8 +318,8 @@ rate (0x498520) exceeds 0.9 of that radius, it stops and turns (+0x898) until it
 
 The port (`src/movement.c`) has the turns, the obstacle list's 40 degrees and the turning-circle test.
 Stand-ins left: the ghost waypoint's look ahead; the character's node looked up from its position each
-time; the doors' danger factors. The grids' run-time obstacle layer is ported ("The run-time
-obstacles"). Keys need nothing: none are ever given ([door.md](door.md)).
+time. The doors' danger factors, the grids' run-time obstacle layer and the clear point are ported
+(above, "The run-time obstacles" and "The clear point"). Keys need nothing: none are ever given ([door.md](door.md)).
 
 `tests/graph_test.c`: level 1's 240 rooms and 528 links, each with one back, 32 blocked; the training
 room apart from the warehouse; a 68-room path across the warehouse. `tests/ai_test.c` walks a thug

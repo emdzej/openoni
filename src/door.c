@@ -769,6 +769,14 @@ static int find_id(uint16_t id)
 
 int door_find(uint16_t id) { return find_id(id); }
 
+bool door_danger(int i, uint32_t *type, float *danger)
+{
+    if (i < 0 || i >= ndoors || !doors[i].cls) return false;
+    *danger = rdf(doors[i].cls + 0x0c);
+    *type = rd32(doors[i].cls + 0x10);
+    return true;
+}
+
 static bool cmd_open(SlThread *t, int c, const SlValue *v, SlValue *r, void *u) { (void)t, (void)r, (void)u; door_open(find_id(arg_id(c, v))); return true; }
 static bool cmd_close(SlThread *t, int c, const SlValue *v, SlValue *r, void *u) { (void)t, (void)r, (void)u; door_close(find_id(arg_id(c, v))); return true; }
 

@@ -819,6 +819,12 @@ range about it, +0x0c the centre of the pick (1000 all round), +0x10 the first l
   when its timer is out a new offset is drawn within the range. The look is the pick's vector, or it
   turned by the offset (0x499d00); the movement looks along it (0x4a8090).
 
+`AI2rPatrol_Enter` 0x4af970 keeps the patrol's current waypoint (+0x528; past the last, an error and
+the first). With the path's flag 1 (PATR +0x26, [objc.md](../formats/objc.md)) it then takes the
+waypoint whose flag (0x4b05e0: the types 0, 3, 5, 10, 15 and 19) is the shortest way from the character
+(`PHrPathDistance` 0x50edb0 as the character, unbounded, from 1e9), if any has one. Port:
+`patrol_nearest` in `src/patrol.c`.
+
 The patrol runs the same scan for two of its waypoints (`AI2rPatrol_Update` 0x4afc90; its block keeps
 the scan at +0x560, with +0x558 scanning, +0x559 guarding, +0x55a the guard begun and +0x55c the ticks
 left). `AI2iPatrol_DoWaypoint` 0x4b0650 clears +0x559, +0x55a and +0x55c as a guard point starts. The

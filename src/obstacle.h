@@ -17,11 +17,24 @@ typedef struct {
     uint64_t asked, ignored;
 } ObstacleCache;
 
+/* A cell's obstacle: its kind (OBSTACLE_*), the object's index or the door's id, the character. */
+enum { OBSTACLE_OBJECT = 0, OBSTACLE_DOOR = 0x4000, OBSTACLE_CHARACTER = 0x8000 };
+typedef struct {
+    int kind, index;
+    const Character *c;
+} ObstacleInfo;
+
 /* The level's start: no room has its layer. */
 void obstacle_level_begin(void);
+/* Every room's layer made again at its next search (the level's objects and doors loaded). */
+void obstacle_invalidate(void);
 /* PHrPrepareRoomForPath: the room's layer made (again on the room's first search, or 20 ticks after the
    last). */
 void obstacle_prepare(int room, const GraphGrid *g);
 /* The cell's obstacle in the room's layer, for c's search in the mode (0, 1 the AI's local movement, 2
    the local path): true if it is in the way (not ignored). cache: cleared for another room. */
 bool obstacle_blocks(int room, const GraphGrid *g, int x, int z, const Character *c, int mode, ObstacleCache *cache);
+/* The obstacle over the cell of the room's layer (made), false none. */
+bool obstacle_at(int room, int x, int z, ObstacleInfo *out);
+/* PHrIgnoreObstruction 0x50d9f0: whether c's search in the mode may ignore it. */
+bool obstacle_ignored(const ObstacleInfo *o, const Character *c, int mode);

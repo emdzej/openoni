@@ -80,5 +80,8 @@ int graph_room_at(const float p[3]);
    (by_character) avoids the links with flag 1. */
 int graph_find_path(int a, const float pa[3], int b, const float pb[3], bool by_character, int *path);
 /* The same with the way's length (0x50bdb0's +0x20): *distance, if above 0, bounds the search (no room
-   reached beyond it is kept), and is set to the length found. path may be NULL. */
-int graph_find_path_within(int a, const float pa[3], int b, const float pb[3], bool by_character, int *path, float *distance);
+   reached beyond it is kept), and is set to the length found. path may be NULL. mode: the search's key
+   (PHrPathDistance's, -1 none; the sounds give their type), which a search without a character holds
+   up to a shut door's danger type (DOOR +0x10, +0xc the danger). */
+int graph_find_path_within(int a, const float pa[3], int b, const float pb[3], bool by_character, int mode, int *path,
+                           float *distance);

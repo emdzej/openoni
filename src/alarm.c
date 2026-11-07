@@ -66,7 +66,7 @@ int alarm_find_console(const AiState *a, const Character *c)
         if (!m || !usable(m->console)) continue;
         float d = a->combat_set.alarm_find;
         int to = graph_room_at(m->pos);
-        if (from < 0 || to < 0 || !graph_find_path_within(from, c->pos, to, m->pos, false, NULL, &d)) continue;   /* PHrPathDistance */
+        if (from < 0 || to < 0 || !graph_find_path_within(from, c->pos, to, m->pos, true, -1, NULL, &d)) continue;   /* PHrPathDistance */
         if (best >= 0 && best_d <= d) continue;
         best = i, best_d = d;
     }

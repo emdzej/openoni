@@ -339,7 +339,9 @@ The order to port it, each step with a test on level 1:
    mover walks it room by room, each room by its local path through the grid (`src/localpath.c`:
    `ASrPath_Generate`, `ASiList_CalcWaypoints`). The movement state's steering and the doors
    on the links followed (`src/movement.c`). The grids' run-time obstacle layer
-   (`PHrPrepareRoomForPath` 0x50d660: characters, objects, the doors' panels; `src/obstacle.c`). Still
+   (`PHrPrepareRoomForPath` 0x50d660: characters, objects, the doors' panels; `src/obstacle.c`), the
+   doors' danger factors in the A*, the searches as the character, and the clear point a new
+   character steps to (`AI2iMovementState_FindClearPoint` 0x4a9170). Still
    stand-ins: those listed in [pathfinding.md](pathfinding.md).
 5. **Combat and melee**: `AI2rCombat_Update`, the melee profiles (`CJBOMelee Profile`),
    `AI2rMelee_Update` 0x4a01f0 and its technique weighting 0x4a2580, blocking

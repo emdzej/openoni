@@ -88,6 +88,9 @@ const void *door_panel(int i, int k, float m[12]);
    2 points (one line) or 4 (two, a double door's); a line whose ends are both 15 or more above the door's
    base is dropped. Returns the points' count (0, 2, 4); *id: the door's id. */
 int door_obstruction(int i, uint16_t *id, float out[4][3]);
+/* The class's danger for the searches without a character (DOOR +0x10 its type, +0xc the factor):
+   false without a class. */
+bool door_danger(int i, uint32_t *type, float *danger);
 /* OBJrDoor_FindDoorWithID 0x4c1d30: the first door of the id, -1 none. */
 int door_find(uint16_t id);
 

@@ -26,8 +26,11 @@ int patrol_find_id(uint16_t id);
 const char *patrol_name(int path);
 int patrol_points(int path, const PatrolPoint **out);
 
-/* AI2rPatrol_Enter: start the path at its first waypoint. */
+/* AI2rPatrol_Enter: start the path at its first waypoint (patrol_nearest's, with the path's flag 1). */
 void patrol_start(AiState *a, int path);
+/* AI2rPatrol_Enter 0x4af970's end: a path with flag 1 goes on from the waypoint whose flag is nearest the
+   character by the rooms' way (the AiState is a character's). */
+void patrol_nearest(AiState *a);
 /* AI2rPatrol_Update, one tick of a patrolling character (before the mover). env: the AKEV (the guard's
    scan keeps its looks off the walls); who: its name, for the waypoints' scripts. */
 void patrol_update(AiState *a, const Character *c, const void *env, const char *who);

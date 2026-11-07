@@ -1,11 +1,14 @@
 /* Patrol paths and the patrol: see patrol.h. */
 #include "patrol.h"
 
+#include "chars.h"
+#include "graph.h"
 #include "movement.h"
 #include "objc.h"
 #include "pursuit.h"
 #include "sl.h"
 
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -14,6 +17,7 @@ enum { PATHS_MAX = 256 };
 typedef struct {
     char name[32];
     uint16_t id;
+    uint16_t flags;     /* the u16 at 0x26 (+0x22): 1 the patrol starts at the nearest waypoint */
     int n;
     PatrolPoint p[PATROL_MAX_POINTS];
 } Path;
@@ -36,6 +40,7 @@ static bool add_path(const ObjcObject *o, void *user)
     memcpy(pa->name, o->data, 31);
     uint32_t n = rd32(o->data + 0x20);
     pa->id = rd16(o->data + 0x24);
+    pa->flags = rd16(o->data + 0x26);
     const uint8_t *q = o->data + 0x28, *end = o->data + o->size;
     for (uint32_t i = 0; i < n && i < PATROL_MAX_POINTS && q + 4 <= end; i++) {
         PatrolPoint *w = &pa->p[pa->n];
@@ -112,6 +117,37 @@ void patrol_start(AiState *a, int path)
     a->glance_wait = false;
     a->scanning = a->guarding = a->guard_begun = a->point_scan_set = false;
     a->scan_ticks = 0;
+    patrol_nearest(a);
+}
+
+/* 0x4b05e0: a waypoint's flag (+4 in the original's waypoint) for the types 0, 3, 5, 10, 15 and 19 */
+static bool point_flag(const PatrolPoint *w, uint16_t *id)
+{
+    switch (w->type) {
+    case 0: case 3: case 5: case 10: case 0xf: case 0x13: *id = w->a; return true;
+    default: return false;
+    }
+}
+
+void patrol_nearest(AiState *a)
+{
+    if (a->patrol < 0 || a->patrol >= npaths || !(paths[a->patrol].flags & 1)) return;
+    /* AI2rPatrol_Enter 0x4afa2e: the waypoint whose flag is the shortest way (PHrPathDistance, as the
+       character) from the character, if any (from 1e9, 0x4e6e6b28) */
+    const Character *c = &((const Chr *)((const char *)a - offsetof(Chr, ai)))->c;
+    const Path *pa = &paths[a->patrol];
+    float best = 1e9f;
+    int at = -1;
+    for (int i = 0; i < pa->n; i++) {
+        uint16_t id;
+        ObjcObject f;
+        if (!point_flag(&pa->p[i], &id) || !objc_flag_find(id, &f)) continue;     /* ONrLevel_Flag_ID_To_Flag */
+        int from = graph_room_at(c->pos), to = graph_room_at(f.pos);
+        float d = 0.0f;
+        if (from < 0 || to < 0 || !graph_find_path_within(from, c->pos, to, f.pos, true, -1, NULL, &d)) continue;
+        if (d < best) best = d, at = i;
+    }
+    if (at >= 0) a->point = at;
 }
 
 static bool flag_at(uint16_t id, float pos[3], float *facing)

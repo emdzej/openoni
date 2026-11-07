@@ -48,6 +48,7 @@
 #include "particle_draw.h"
 #include "powerup.h"
 #include "object.h"
+#include "obstacle.h"
 #include "platform.h"
 #include "tm.h"
 #include "trac.h"
@@ -1129,7 +1130,13 @@ static void route_input(const Character *c, CharacterInput *in)
             snprintf(rest, sizeof rest, "%s", semi ? semi + 1 : "");
             /* no way to it (on a walkway the rooms don't reach): tried for N frames, then given up */
             if (hunted != t) hunted = t, hunt_until = now + (uint32_t)n;
-            if (dx * dx + dz * dz > 900.0f || fabsf(dy) > 15.0f) {
+            /* near but behind a wall: the way round, through the rooms */
+            bool far = dx * dx + dz * dz > 900.0f || fabsf(dy) > 15.0f;
+            if (!far && route_env) {
+                const float from[3] = { c->pos[0], c->pos[1] + 5.0f, c->pos[2] }, v[3] = { dx, dy, dz };
+                far = akev_segment_hits(route_env, from, v, 0x42080);
+            }
+            if (far) {
                 static char steps[16384];
                 if (!route_plan(c, t->c.pos, steps, sizeof steps)) {
                     if (now < hunt_until) return;
@@ -1138,7 +1145,7 @@ static void route_input(const Character *c, CharacterInput *in)
                     continue;
                 }
             }
-            if (dx * dx + dz * dz > 900.0f || fabsf(dy) > 15.0f)
+            if (far)
                 snprintf(route.buf, sizeof route.buf, "W%.1f,%.1f,%.1f;X%s,%d%s%s%s", t->c.pos[0], t->c.pos[1], t->c.pos[2],
                          name, n, again ? "!" : "", rest[0] ? ";" : "", rest);
             else if (again && dy < -10.0f) {
@@ -1733,6 +1740,7 @@ static int play(int level, int *next)
     trigger_load();
     object_load();
     door_load((void *)env);
+    obstacle_invalidate();      /* the characters' layers again, with the objects and doors */
     material_level_load();                  /* ONrTextureMaterials_LevelLoad */
     material_mark_breakable((void *)env);   /* AKrLevel_Begin: the glass */
     p3_load();      /* the PAR3 classes of the loaded files (the binary data's loader), set up at the start */

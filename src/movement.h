@@ -70,12 +70,21 @@ typedef struct {
 
 struct AiState_;
 struct Chr;
+struct Character;
 
 /* AI2rMovementState_Initialize 0x4a8d60's: the state as a character starts. */
 void movement_init(MoveState *m);
 /* AI2rMovementState_NewMovementMode 0x4a9300 (AI2rMovement_ChangeMovementMode 0x4a8200 after the mode
    is set; AI2rMovement_NotifyAlertChange 0x4a8230 when it is by the alert): the weapon out or not. */
 void movement_new_mode(struct Chr *ch);
+/* AI2iMovementState_FindClearPoint 0x4a9170: p moved (x and z) off an obstacle of its room's layer the
+   character may not ignore (mode 0), to a nearby point (AI2rFindNearbyPoint: 15 toward its facing, at
+   least 5, 30 degrees a step, 6 steps): not off a door it can't open, nor off a character farther than 6
+   (its location). True if moved. */
+bool movement_find_clear_point(const struct Character *c, float p[3]);
+/* AI2rMovementState_Initialize 0x4a8d60's end without a path (ONrGameState_NewCharacter, a character the
+   AI moves): put on a clear point (ONrCharacter_Teleport 0x4e9210) if it stands on an obstacle. */
+void movement_place_clear(struct Chr *ch);
 void movement_alert_change(struct Chr *ch);
 /* HandleStartSidestep 0x4f83f0's 0x4a93c0: a sidestep done as a turned run, walking or not. */
 void movement_no_sidestep(struct Chr *ch, bool walk);

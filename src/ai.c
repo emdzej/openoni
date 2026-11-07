@@ -281,6 +281,7 @@ void ai_return_to_job(AiState *a)
     if (a->job == AI_STATE_PATROL && a->job_patrol >= 0) {
         patrol_start(a, a->job_patrol);
         a->point = a->job_point;
+        patrol_nearest(a);
     }
 }
 

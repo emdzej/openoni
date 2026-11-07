@@ -241,7 +241,7 @@ The patrol path type (`CJBOPatrol Path`, the tag stored as `RTAP`), read by 0x4c
 | 0x00 | 32 | Name (`ai2_dopath` finds the path by it, `AI2rPatrol_FindByName` 0x4b04c0) |
 | 0x20 | 4 | Waypoint count |
 | 0x24 | 2 | Id: what a character's job path (CHAR +0x1ac) gives |
-| 0x26 | 2 | Unknown |
+| 0x26 | 2 | Flags: 1, the patrol starts at the waypoint whose flag is the shortest way from the character (`AI2rPatrol_Enter` 0x4af970) |
 | 0x28 | | The waypoints: each a type (u32) and its fields |
 
 The fields by type, and what `AI2iPatrol_DoWaypoint` 0x4b0650 does with them:

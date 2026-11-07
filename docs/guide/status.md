@@ -93,7 +93,8 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   of the enemies' view.
 - **The other characters**: they spawn from the level's objects and scripts, follow their patrol paths,
   and see, hear and react to the player: they hear the shots, the hits, the throws, the slides and
-  the doors within each sound's reach, where it carries through the rooms. In combat they pick a behaviour for the range to their target
+  the doors within each sound's reach, where it carries through the rooms (only gunfire through a
+  shut door). In combat they pick a behaviour for the range to their target
   from the level's combat settings, hold, advance or back off, fight hand to hand (their melee profile's
   techniques weighed as the original does: whether the target could block, which side they stand on,
   how the moves' transitions and timing reach it, the attack predicted; stepping into reach as
@@ -105,7 +106,8 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   a dropped weapon or power-up falls, lands with the sound of the floor's material, slides to rest
   and, a weapon, fades away a minute and a half later; both lie on their glows. Their paths through
   a room go round the other characters, the crates and the open doors' panels in it, which the
-  original marks in the room's grid every 20 ticks. The characters
+  original marks in the room's grid every 20 ticks; one spawned onto another or a crate steps aside,
+  and a patrol starts from its nearest waypoint where the path asks for it. The characters
   stop at the level's crates and boxes, a falling weapon stops on a character, and the guards kick
   the weapons on the ground aside (but not the one they are going for). Without a gun they may go for one lying
   nearby, by their class's chance. They run to alarm consoles when their scripts or combat settings say so, and an

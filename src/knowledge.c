@@ -469,9 +469,9 @@ void knowledge_sound(int type, const float pos[3], float radius, Chr *source, Ch
         if (dx * dx + dy * dy + dz * dz > r * r) continue;
         /* heard in a line to the head (AKrLineOfSight 0x4410a0: the walls skipping 0x42080; its
            objects' part, as the sight's, not ported), or by a way through the rooms no longer than the
-           radius (PHrPathDistance 0x50edb0, from the sound's room to the listener's node, C+0x188; the
-           original hands the sound's type to the search as its door key, which the port's search
-           doesn't take: it keeps the key -1) */
+           radius (PHrPathDistance 0x50edb0, from the sound's room to the listener's node, C+0x188, with
+           no character and the sound's type as the key: every door class has type 2 and danger 0.5, so only gunfire carries through the shut doors,
+           their danger doubling the way beyond) */
         float head[3];
         knowledge_head_point(c, head);
         float v[3] = { head[0] - pos[0], head[1] - pos[1], head[2] - pos[2] };
@@ -479,7 +479,7 @@ void knowledge_sound(int type, const float pos[3], float radius, Chr *source, Ch
         if (!heard) {
             int from = graph_room_at(pos), to = graph_room_at(c->c.pos);
             float d = r;
-            heard = from >= 0 && to >= 0 && graph_find_path_within(from, pos, to, head, false, NULL, &d) != 0;
+            heard = from >= 0 && to >= 0 && graph_find_path_within(from, pos, to, head, false, type, NULL, &d) != 0;
         }
         if (!heard) continue;
         /* a hint is strong; a fight's sound within 40 of the head definite */

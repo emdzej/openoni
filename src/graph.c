@@ -706,10 +706,11 @@ static void propagate(int r, int depth, float delta)
 
 int graph_find_path(int a, const float pa[3], int b, const float pb[3], bool by_character, int *path)
 {
-    return graph_find_path_within(a, pa, b, pb, by_character, path, NULL);
+    return graph_find_path_within(a, pa, b, pb, by_character, -1, path, NULL);
 }
 
-int graph_find_path_within(int a, const float pa[3], int b, const float pb[3], bool by_character, int *path, float *distance)
+int graph_find_path_within(int a, const float pa[3], int b, const float pb[3], bool by_character, int mode, int *path,
+                           float *distance)
 {
     if (a < 0 || a >= nrooms || b < 0 || b >= nrooms) return 0;
     bool bounded = distance && *distance > 0.0f;
@@ -756,9 +757,23 @@ int graph_find_path_within(int a, const float pa[3], int b, const float pb[3], b
             if (l->to == c->parent || (by_character && (l->flags & 1))) continue;
             float step = c->via < 0 ? dist(pa, l->mid)
                                     : matrix[c->matrix + (uint32_t)(links[c->via].in_index * c->nout + l->out_index)];
-            /* a character's search passes a link's door by its lock (OBJrDoor_CharacterCanOpen); the others
-               (the doors' danger factors, +0x8c) aren't ported: a cost of 1 */
-            if (by_character && l->door >= 0 && !door_side_passes(l->door, l->door_side)) continue;
+            /* a character's search passes a link's door by its lock (OBJrDoor_CharacterCanOpen); the
+               others a shut door by its class's danger: type 0 any search, 1 the modes 2 to 4, 2 mode 4, 3
+               none; a danger above 0.99 (0x52a03c) none, above 0 the rooms beyond cost 1 / (1 - danger) */
+            float factor = 1.0f;
+            if (l->door >= 0) {
+                if (by_character) {
+                    if (!door_side_passes(l->door, l->door_side)) continue;
+                } else if (door_state(l->door) != 1) {
+                    uint32_t type;
+                    float danger;
+                    if (door_danger(l->door, &type, &danger)) {
+                        bool passes = type == 0 || (type == 1 && mode >= 2 && mode <= 4) || (type == 2 && mode == 4);
+                        if (!passes || danger > 0.99f) continue;
+                        if (danger > 0.0f) factor = 1.0f / (1.0f - danger);
+                    }
+                }
+            }
             float g = step * c->cost + c->g;
             float h = dist(l->mid, pb) * c->cost;
             float f = h + g;
@@ -771,7 +786,7 @@ int graph_find_path_within(int a, const float pa[3], int b, const float pb[3], b
             t->via = li;
             t->depth = (uint16_t)(depth0 + 1);
             t->f = f, t->h = h, t->g = g;
-            t->cost = 1.0f * c->cost;
+            t->cost = factor * c->cost;
             if (t->state == 2) {
                 propagate(l->to, depth0 - depth1 + 1, delta);
                 list_remove(&closed_head, l->to);

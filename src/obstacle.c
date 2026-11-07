@@ -14,7 +14,7 @@
 enum {
     OBSTACLES = 32,             /* the list at the node's +0x38: a count from 1, then 31 entries */
     REMAKE_TICKS = 0x14,
-    KIND_OBJECT = 0, KIND_DOOR = 0x4000, KIND_CHARACTER = 0x8000,
+    KIND_OBJECT = OBSTACLE_OBJECT, KIND_DOOR = OBSTACLE_DOOR, KIND_CHARACTER = OBSTACLE_CHARACTER,
 };
 
 typedef struct {
@@ -47,6 +47,11 @@ void obstacle_level_begin(void)
     free(link_pass);
     link_pass = NULL;
     nlinks = 0;
+}
+
+void obstacle_invalidate(void)
+{
+    for (int i = 0; i < nrooms; i++) rooms[i].time = 0;
 }
 
 /* 0x43c000: a cell set, if inside the grid */
@@ -256,4 +261,21 @@ bool obstacle_blocks(int room, const GraphGrid *g, int x, int z, const Character
         if (ignored(&r->list[n], c, mode)) cache->ignored |= bit;
     }
     return !(cache->ignored & bit);
+}
+
+bool obstacle_at(int room, int x, int z, ObstacleInfo *out)
+{
+    if (room < 0 || room >= nrooms || !rooms[room].made) return false;
+    const Room *r = &rooms[room];
+    if (x < 0 || (uint32_t)x >= r->w || z < 0 || (uint32_t)z >= r->h) return false;
+    uint8_t n = r->layer[(uint32_t)z * r->w + (uint32_t)x];
+    if (!n || n >= r->count) return false;
+    *out = (ObstacleInfo){ r->list[n].kind, r->list[n].index, r->list[n].c };
+    return true;
+}
+
+bool obstacle_ignored(const ObstacleInfo *o, const Character *c, int mode)
+{
+    const Obstacle ob = { (uint16_t)o->kind, o->index, o->c };
+    return ignored(&ob, c, mode);
 }

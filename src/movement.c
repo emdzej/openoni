@@ -7,6 +7,8 @@
 #include "exe.h"
 #include "graph.h"
 #include "localpath.h"
+#include "obstacle.h"
+#include "physics.h"
 #include "weapon.h"
 
 #include <math.h>
@@ -1000,4 +1002,42 @@ void movement_update(Chr *ch)
     decay(ch);
     calculate(ch);
     for (unsigned i = 0; i < ch->ai.move.ncoll; i++) ch->ai.move.coll[i].flags &= ~(uint32_t)MOVE_HIT;
+}
+
+bool movement_find_clear_point(const Character *c, float p[3])
+{
+    int room = graph_room_at(p);       /* AKrNodeFromPoint 0x440600 */
+    GraphGrid g;
+    if (room < 0 || !graph_grid(room, &g) || !g.w || !g.h) return false;
+    obstacle_prepare(room, &g);
+    int16_t x, z;
+    graph_to_cell(&g, p, &x, &z);
+    /* the cell clamped to the grid (16-bit) */
+    x = x < 0 ? 0 : x > (int16_t)(g.w - 1) ? (int16_t)(g.w - 1) : x;
+    z = z < 0 ? 0 : z > (int16_t)(g.h - 1) ? (int16_t)(g.h - 1) : z;
+    ObstacleInfo o;
+    if (!obstacle_at(room, x, z, &o) || obstacle_ignored(&o, c, 0)) return false;
+    if (o.kind == OBSTACLE_CHARACTER) {
+        /* 0x50d960: an active one (C+4 0x8000) only within 6 (36 squared, 0x52a994) of its location */
+        float l[3];
+        chr_location(o.c, l);
+        float dx = p[0] - l[0], dz = p[2] - l[2];
+        if (!(dx * dx + dz * dz <= 36.0f)) return false;      /* MUrPoint_Distance_SquaredXZ 0x433250 */
+    } else if (o.kind == OBSTACLE_DOOR) {
+        int d = door_find((uint16_t)o.index);   /* 0x50d9b0 */
+        if (d >= 0 && !door_side_passes(d, -1)) return false;
+    }
+    float out[3];
+    /* 15 (0x41700000) at least 5 (0x40a00000), toward C+0x16c, 0.5236 (0x3f060a92) a step, 6 steps,
+       the cells under 8, 5 blocked at the start */
+    if (!local_find_nearby_point(c, p, 15.0f, 5.0f, c->facing, 0.52359879f, 6, 8, 5, out)) return false;
+    p[0] = out[0], p[2] = out[2];
+    return true;
+}
+
+void movement_place_clear(Chr *ch)
+{
+    if (!(ch->c.flags & CHR_FLAG_AI_MOVEMENT)) return;
+    float p[3] = { ch->c.pos[0], ch->c.pos[1], ch->c.pos[2] };
+    if (movement_find_clear_point(&ch->c, p)) physics_place(&ch->c, p);
 }

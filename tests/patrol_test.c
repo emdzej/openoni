@@ -64,8 +64,9 @@ int main(void)
     objc_each("Character", list_char, NULL);
     printf("paths=%d waypoints=%d\n", n, points);
     int failed = n == 0;
-    /* Bay2_Thug_1's job is patrol_62: two waypoints 0x13 (to a flag, face it, wait) and a loop. It
-       walks to the first flag, waits, walks to the second, waits, and is back at the first. */
+    /* Bay2_Thug_1's job is patrol_62: two waypoints 0x13 (to a flag, face it, wait) and a loop. The path
+       has flag 1, so it starts at the waypoint whose flag is the nearest way (AI2rPatrol_Enter): it
+       walks to that flag, waits, walks to the other, waits, and is back at the first. */
     chars_load();
     Chr *t = chars_find("Bay2_Thug_1");
     if (!t) t = chars_spawn("Bay2_Thug_1", false);     /* a script spawns it */
@@ -73,7 +74,7 @@ int main(void)
     int path = patrol_find("patrol_62");
     if (!t || path < 0 || patrol_points(path, &w) != 3 || t->ai.patrol != path) failed |= 2;
     else {
-        int reached = 0, last = 0;
+        int reached = 0, last = t->ai.point, first = last;
         for (int tick = 0; tick < 6000 && reached < 3; tick++) {
             chars_update(&(CharacterInput){ 0 }, env);
             if (t->ai.point != last) {
@@ -90,6 +91,7 @@ int main(void)
             }
         }
         if (reached < 3) failed |= 8;
+        printf("started at waypoint %d\n", first);
         printf("thug at %.1f %.1f %.1f, waypoint %d, moving %d, wait %u, failed %d\n", t->c.pos[0], t->c.pos[1], t->c.pos[2], t->ai.point, t->ai.moving, t->ai.wait, failed);
     }
     chars_unload();

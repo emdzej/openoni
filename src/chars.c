@@ -1,6 +1,7 @@
 /* The level's characters: see chars.h. */
 #include "chars.h"
 #include "movement.h"
+#include "obstacle.h"
 #include "corpse.h"
 #include "neutral.h"
 #include "boss.h"
@@ -184,6 +185,7 @@ static Chr *create(int object)
     c->ai.job_patrol = c->ai.patrol;
     /* AI2rMovementState_Initialize 0x4a8d60 (ONrGameState_NewCharacter): the weapon out by the mode */
     if (!c->player) movement_new_mode(c);
+    movement_place_clear(c);    /* its end, without a path: off any obstacle it stands on */
     c->ai.job_alert = (int)objc_char_job_alert(o);
     c->ai.pursue_alert = (int)objc_char_pursue_alert(o);
     c->ai.pursue_strong_low = (int)objc_char_pursuit(o, 0);
@@ -291,6 +293,7 @@ int chars_load(void)
     chars_unload();
     corpse_level_begin();   /* (0x4d9d50) */
     level_graph();      /* for the AIs' ways (the pursuit's distances) before any of them moves */
+    obstacle_level_begin();     /* the rooms' obstacle layers made anew (their times are the last level's) */
     patrol_load();      /* the paths first: the patrol jobs start with their characters */
     melee_initialize();
     melee_load();
