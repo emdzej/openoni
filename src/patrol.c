@@ -303,7 +303,7 @@ static bool do_point(AiState *a, const Character *c, const PatrolPoint *w, const
             a->moving = false;
             return false;
         }
-        return !a->glance_wait || !a->glance_ticks;
+        return !a->glance_wait || (!a->glance_ticks && !a->scanning);
     case 0x10: {    /* loop to a waypoint (0x4b0650): to itself, the next one (the first after the last) */
         int n = paths[a->patrol].n, to = (int)w->n < n - 1 ? (int)w->n : n - 1;
         if (to == a->point) to = (a->point + 1) % n;
@@ -311,9 +311,13 @@ static bool do_point(AiState *a, const Character *c, const PatrolPoint *w, const
         return true;
     }
     case 0x11:  /* scan for the frames: the guard's scan all round, held (10000), swept within the angle every
-                   60 to 100 ticks; done when its ticks run out (patrol_update) */
-        if (!a->scanning && !a->point_scan_set) {
-            if (a->glance_ticks) return false;      /* (C+0x1598: a glance under way first) */
+                   60 to 100 ticks, ended when its ticks run out (patrol_update). As the glance: still on
+                   the way, or arrived with no facing to keep, the patrol goes on at once, the scan
+                   played as it goes; else the move stopped and the point waits for the glance and the
+                   scan to end (+0x541) */
+        if (!a->point_scan_set) {
+            /* (C+0x1598, +0x558: a glance or a scan under way first) */
+            if (a->glance_ticks || a->scanning) return false;
             ai_scan_set(&a->scan, c->facing);
             a->scanning = true;
             a->guarding = false;
@@ -323,8 +327,12 @@ static bool do_point(AiState *a, const Character *c, const PatrolPoint *w, const
             a->scan.hold_base = 10000, a->scan.hold_rand = 0;
             a->scan.sweep_base = 60, a->scan.sweep_rand = 40;
             a->scan.sweep_range = w->f[0] * 0.017453292f;
+            a->glance_wait = !a->moving && a->goal_facing;
+            if (!a->glance_wait) return true;
+            a->moving = false;
+            return false;
         }
-        return !a->scanning;
+        return !a->glance_wait || (!a->glance_ticks && !a->scanning);
     case 0x13:  /* guard: to the flag, facing its way; there, the guard's scan within the angle of that
                    facing (a look held 240 to 480 ticks, swept by up to 45 degrees every 90 to 150) for
                    the frames (0: for good; patrol_update ends it) */
@@ -388,7 +396,14 @@ static bool do_point(AiState *a, const Character *c, const PatrolPoint *w, const
             a->shoot_ticks = (uint32_t)(int32_t)(int16_t)w->b;
         }
         return a->shoot_ticks == 0;
-    default:    /* the scan's turn: not ported */
+    case 0x12:  /* the scan stopped: one under way ends (+0x550, its ticks +0x554), and the look as 0x0c */
+        if (a->scanning) {
+            a->scanning = false;
+            a->scan_ticks = 0;
+            a->aim.look = 0;
+        }
+        return true;
+    default:
         (void)pos;
         return true;
     }

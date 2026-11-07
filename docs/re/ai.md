@@ -835,8 +835,14 @@ ticks running out end either one: the look stops (`AI2rMovement_StopAiming`) and
   within the angle (in degrees, held to 0..180). Looks are held 240 to 480 ticks and swept by up to 45
   degrees every 90 to 150. With 0 frames it guards for good. A guard turns where it looks, so it
   notices what comes from behind: level 19's C_Sb25 in its booth.
-- **Scan** (0x11: the frames, an angle): once no glance is under way (C+0x1598), a scan all round, a
-  look held 10,000 ticks and swept within the angle every 60 to 100. While the character moves, the
+- **Scan** (0x11: the frames, an angle): once no glance (C+0x1598) nor scan (+0x558) is under way, a
+  scan all round, a look held 10,000 ticks and swept within the angle every 60 to 100. As the glance
+  (0xe): still on the way, or arrived with no facing to keep (C+0x112c, 0x4aefb0), the patrol goes on
+  at once (+0x541 clear) and the scan plays as it walks; else the path halts (0x4ae660) and the point
+  waits until neither a glance nor a scan is under way. The ticks running out advance the point from
+  wherever the patrol then is (the original's; a scan left behind so skips a later point).
+- **Stop the scan** (0x12): a scan under way ends (+0x558, its ticks +0x55c cleared) and the look
+  with it, as 0xc. While the character moves, the
   scan looks the way it goes (0x4a83e0, the movement's +0x880) once that is more than 3 degrees
   (0x52ade0) off the look: 100 along it.
 
