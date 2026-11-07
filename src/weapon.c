@@ -1350,11 +1350,11 @@ static int face_along(Character *c, const float d[3])
    0x5179f0: a particle hurts once (A+0x18c); the class's resistance to the damage's type (ONCC+0xc60)
    lessens the stun and the knockback; ONrCharacter_TakeDamage; the type's reaction: 1 a light stun (0xd4),
    2 a heavy one (0xc6, 0xd5 from behind), 3 a knockdown when the knockback is strong, 4 a knockdown
-   (0x4f, 0x58), 5 the blow-up (0xd6, 0xd7). Not ported: the super shield (C+0x1b8) and the Daodan's
-   (C+4 0x40000000), the hit flash (0x4eb0b0), the hit overlay of type 0 (0x4f1210), the HUD's direction,
+   (0x4f, 0x58), 5 the blow-up (0xd6, 0xd7). A force shield (C+0x1b8) or the super shield takes the hit
+   first, lit where it is hit. Not ported: the hit flash (0x4eb0b0), the hit overlay of type 0 (0x4f1210), the HUD's direction,
    and type 6 (the pickup's). True when the particle already hurt the character. */
-static bool inflict_damage(Character *c, const float dir[3], int type, uint32_t dmg, uint32_t st, float knockback,
-                           uint32_t handle, uint32_t owner);
+static bool inflict_damage(Character *c, const float at[3], float reach, const float dir[3], int type, uint32_t dmg,
+                           uint32_t st, float knockback, uint32_t handle, uint32_t owner);
 
 static bool particle_damage(Character *c, const float point[3], const float move[3], int type, float damage,
                             float stun, float knockback, uint32_t owner, uint32_t handle, bool self_immune)
@@ -1373,18 +1373,32 @@ static bool particle_damage(Character *c, const float point[3], const float move
     }
     l = 1.0f / sqrtf(l);
     dir[0] *= l, dir[1] *= l, dir[2] *= l;
-    return inflict_damage(c, dir, type, (uint32_t)lrintf(damage), (uint32_t)lrintf(stun), knockback, handle, owner);
+    return inflict_damage(c, point, 4.0f, dir, type, (uint32_t)lrintf(damage), (uint32_t)lrintf(stun), knockback, handle,
+                          owner);
 }
 
 /* InflictDamage 0x5179f0 */
-static bool inflict_damage(Character *c, const float dir[3], int type, uint32_t dmg, uint32_t st, float knockback,
-                           uint32_t handle, uint32_t owner)
+static bool inflict_damage(Character *c, const float at[3], float reach, const float dir[3], int type, uint32_t dmg,
+                           uint32_t st, float knockback, uint32_t handle, uint32_t owner)
 {
     if (handle) {
         if (c->last_particle == handle) return true;
         c->last_particle = handle;
     }
+    /* a force shield left (C+0x1b8), the Daodan's (C+0x04 bit 0x40000000) or the super shield up: the
+       shield's glow lit on the parts near the hit (within the reach: 4 for a particle's, the blast's
+       radius, inferred) (0x4ef8e0, 0x4ef850); the super shield takes the hit */
+    bool super = chr_super_shielded(c);
+    if (c->shield || (c->flags & 0x40000000u) || super) inventory_shield_hit(c, chr_parts_near(c, at, reach));
+    if (super) return false;
     if (c->flags & 0x80000000u) return false;
+    /* the force shield takes the whole hit: what it has goes, the rest of the damage with it (a hit
+       bigger than the shield is lost); the HUD's arc, and nothing more */
+    if (c->shield) {
+        c->shield = c->shield >= dmg ? (uint16_t)(c->shield - dmg) : 0;
+        chr_hit_direction(c, dir);
+        return false;
+    }
     if (type >= 0 && type < 7) {
         float r = rdf((const uint8_t *)c->oncc + 0xc60 + 4 * type);
         if (r > 0.0f) {
@@ -1461,8 +1475,8 @@ static void blast_damage(const void *env, const float pos[3], int type, float da
         if (!(t <= 1.0f) || (env && akev_collide_point(env, pos, d, 0x242000, 0, hit))) continue;
         float f = falloff == 2 ? 1.0f / ((1.0f + t) * (1.0f + t)) : falloff == 1 ? 1.0f - t : 1.0f;
         if (l > 0.0f) d[0] /= l, d[1] /= l, d[2] /= l;
-        inflict_damage(c, d, type, (uint32_t)lrintf(f * damage), (uint32_t)lrintf(f * stun), knockback * f, handle,
-                       owner);
+        inflict_damage(c, pos, radius, d, type, (uint32_t)lrintf(f * damage), (uint32_t)lrintf(f * stun), knockback * f,
+                       handle, owner);
     }
 }
 

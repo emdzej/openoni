@@ -152,6 +152,9 @@ typedef struct Character {
     uint16_t heal_wait;             /* C+0x1b0: ticks to the next point healed (or lost over the maximum) */
     uint32_t invisible_ticks;       /* C+0x1bc: ticks invisible since the last hit (the AI sees through
                                        the first 90) */
+    bool shield_on;                 /* A+0x2800: the shield's effect drawn */
+    bool shield_super;              /* A+0x2801: the super shield's (its texture the Daodan's) */
+    uint8_t shield_alpha[19];       /* A+0x2802: the effect's alpha on each part */
     bool invisible_shown;           /* A+0x2815: the invisibility's effect on */
     float visibility;               /* A+0x2818: how much of the body shows (1 all), while it is on or a
                                        teleport (0xde) fades it (C+4 0x40000) */

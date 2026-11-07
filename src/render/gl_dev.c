@@ -272,6 +272,16 @@ static struct { const void *txmp; GLuint name; } texs[TEX_SLOTS];
 
 unsigned gl_dev_white(void) { return white; }
 
+/* The draw state's time (M3cDrawState_Time, 10): the game's ticks in a level's display (0x4fb81f), 0
+   otherwise (the states' reset 0x508370); the animated textures' frames follow it (M3rDraw_State_Commit
+   0x41e340 through 0x41e500, txmp_resolve). */
+static uint32_t draw_time;
+void gl_dev_set_time(uint32_t t) { draw_time = t; }
+uint32_t gl_dev_time(void) { return draw_time; }
+
+/* The texture of an animated TXMP at the draw time (the state's offset, 11, is 0). */
+unsigned gl_dev_texture_now(const void *txmp) { return gl_dev_texture(txmp_resolve(txmp, draw_time, 0)); }
+
 unsigned gl_dev_texture(const void *txmp)
 {
     if (!txmp) return white;

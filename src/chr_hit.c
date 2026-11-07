@@ -315,15 +315,25 @@ void chr_take_damage(Character *c, uint32_t damage, float knockback, const float
     }
     if (!chr_is_unstoppable(c) && knockback != 0.0f && dir)
         for (int k = 0; k < 3; k++) c->knockback[k] += dir[k] * knockback;
-    /* the HUD's hit arc on the side the hit came from: the direction turned by the facing wanted, less
-       the run's turn (wrapped once into [0, 2 pi)), into the quarter around front, right, back or left */
-    if (dir) {
-        float a = wrap_2pi(c->desired_facing - c->facing_offset);
-        float co = cosf(a), si = sinf(a);
-        float x = co * dir[2] + si * dir[0], z = co * dir[0] - si * dir[2];
-        int side = z <= x ? (-z <= x ? 1 : 2) : (-z <= x ? 0 : 3);
-        c->hit_flash[side] = 0xff;
-    }
+    chr_hit_direction(c, dir);
+}
+
+/* 0x4e6530: the HUD's hit arc on the side the hit came from: the direction turned by the facing wanted,
+   less the run's turn (wrapped once into [0, 2 pi)), into the quarter around front, right, back or left. */
+void chr_hit_direction(Character *c, const float dir[3])
+{
+    if (!dir) return;
+    float a = wrap_2pi(c->desired_facing - c->facing_offset);
+    float co = cosf(a), si = sinf(a);
+    float x = co * dir[2] + si * dir[0], z = co * dir[0] - si * dir[2];
+    int side = z <= x ? (-z <= x ? 1 : 2) : (-z <= x ? 0 : 3);
+    c->hit_flash[side] = 0xff;
+}
+
+/* 0x4e64d0: the class has the super shield (ONCC+0xc8e) and it is up (C+0x1668 over 0.5). */
+bool chr_super_shielded(const Character *c)
+{
+    return ((const uint8_t *)c->oncc)[0xc8e] && c->super_level > 0.5f;
 }
 
 /* 0x4ecd70: a hit in the air, which always knocks down: the falls of the hits that have one, else the
@@ -579,6 +589,23 @@ static void part_spheres(const Character *c, Spheres *out)
         out->s[b][3] = sph[3];
     }
     out->n = bones;
+}
+
+/* 0x4ef8e0: the parts whose bounding spheres (the class's lowest body, ONCC+0xc34's first; PNTA +0x24
+   under the part's matrix, A+0x2278) are within r of the point past their radius: their bits. */
+uint32_t chr_parts_near(const Character *c, const float p[3], float r)
+{
+    const void *body = body_of_class(c->oncc, 0);
+    uint32_t bones = body ? body_bones(body) : 0, mask = 0;
+    if (bones > 19) bones = 19;
+    for (uint32_t b = 0; b < bones; b++) {
+        float box[6], sph[4] = { 0, 0, 0, 0 }, w[3];
+        if (!m3gm_bounds(body_geometry(body, b), box, sph)) continue;
+        body_transform(c->bone_world[b], sph, w);
+        float dx = w[0] - p[0], dy = w[1] - p[1], dz = w[2] - p[2], rr = sph[3] + r;
+        if (dx * dx + dy * dy + dz * dz < rr * rr) mask |= 1u << b;
+    }
+    return mask;
 }
 
 bool chr_part_point(const Character *c, unsigned part, float out[3])

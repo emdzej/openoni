@@ -114,9 +114,9 @@ int impact_character_material(const Character *c, int part, bool ignore_shield)
     /* ONrCharacter_GetMaterialType 0x4e6200: shielded, the shield's material; else the part's, from the
        class's body part materials (CBPM, ONCC+0xc3c, a Mtrl link a part); "Character" without */
     if (!ignore_shield) {
-        if (c->flags & 0x40000000u) return impact_material_by_name("Super_Shield");    /* 0x550f28 */
-        if (((const uint8_t *)c->oncc)[0xc8e] && c->super_level > 0.5f) return impact_material_by_name("Super_Shield");
-        if (c->shield) return impact_material_by_name("Shield");      /* 0x550f20 */
+        if (c->flags & 0x40000000u) return impact_material_by_name(exe_str(0x550f28));    /* Super_Shield */
+        if (((const uint8_t *)c->oncc)[0xc8e] && c->super_level > 0.5f) return impact_material_by_name(exe_str(0x550f28));
+        if (c->shield) return impact_material_by_name(exe_str(0x550f20));      /* Shield */
     }
     const uint8_t *cbpm = tm_link((const uint8_t *)c->oncc + 0xc3c);
     const void *m = cbpm && part >= 0 && part < 19 ? tm_link(cbpm + 4 * part) : NULL;

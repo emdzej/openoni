@@ -142,7 +142,8 @@ static void shadow(const Character *c, int slot, float fade)
 void char_draw_character(const Character *c, int slot)
 {
     float a = (c->invisible_shown || (c->flags & 0x40000)) ? c->visibility : 1.0f;
-    const void *body = body_of_class(c->oncc, chr_lod_draw(c, a));
+    int lod = chr_lod_draw(c, a);
+    const void *body = body_of_class(c->oncc, lod);
     if (!body || body_bones(body) != CHR_BONES) {
         char_draw_pose(c->oncc, c->pos, c->facing, c->pelvis_height, c->aimed, CHR_BONES);
         return;
@@ -153,6 +154,24 @@ void char_draw_character(const Character *c, int slot)
         uint8_t alpha = a < 1.0f ? (uint8_t)lrintf(a * 255.0f) : 255;
         for (uint32_t b = 0; b < CHR_BONES; b++) geom_draw_alpha(body_geometry(body, b), m[b], body_texture(c->oncc, b), alpha);
     }
+    /* the shield's and the invisibility's bodies: the class's at the detail drawn, at most 1 (ONCC+0xc34,
+       A+0x221c) */
+    const void *magic = body_of_class(c->oncc, lod < 1 ? lod : 1);
+    if (!magic || body_bones(magic) != CHR_BONES) magic = body;
+    /* the shield (A+0x2800): the SHIELD texture, the Daodan's (0x550e88) for the super shield or the
+       Daodan's flag (C+4 0x40000000), else the force field's (0x550e80), animated at the game time, over
+       the body scaled 1.4 with each part's alpha (A+0x2802) */
+    if (c->shield_on) {
+        const void *tex = tm_instance_get(TM_TAG("TXMP"),
+                                          exe_str(c->shield_super || (c->flags & 0x40000000u) ? 0x550e88 : 0x550e80));
+        for (uint32_t b = 0; tex && b < CHR_BONES; b++) {
+            if (!c->shield_alpha[b]) continue;
+            BodyMatrix s;
+            memcpy(s, m[b], sizeof s);
+            for (int k = 0; k < 9; k++) s[k] *= 1.4f;
+            geom_draw_alpha(body_geometry(magic, b), s, tex, c->shield_alpha[b]);
+        }
+    }
     if (c->invisible_shown) {
         const void *tex = tm_instance_get(TM_TAG("TXMP"), exe_str(0x550e78));
         uint8_t alpha = (uint8_t)lrintf((1.0f - c->visibility) * 56.099998474121094f);
@@ -161,7 +180,7 @@ void char_draw_character(const Character *c, int slot)
                 BodyMatrix s;
                 memcpy(s, m[b], sizeof s);
                 for (int k = 0; k < 9; k++) s[k] *= 1.4f;
-                geom_draw_alpha(body_geometry(body, b), s, tex, alpha);
+                geom_draw_alpha(body_geometry(magic, b), s, tex, alpha);
             }
         }
     }

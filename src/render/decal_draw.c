@@ -32,7 +32,7 @@ static void one(const DecalDraw *d, void *user)
     }
     uint32_t a = (uint32_t)d->alpha * qa * 2 >> 8;
     if (a > 0xff) a = 0xff;
-    unsigned tex = gl_dev_texture(d->texture);
+    unsigned tex = gl_dev_texture_now(d->texture);
     if (!tex) tex = gl_dev_white();
     static GlVertex v[VERTS_MAX];
     uint32_t n = d->nverts > VERTS_MAX ? VERTS_MAX : d->nverts;

@@ -126,10 +126,10 @@ static void draw(const void *g, const float m[12], const void *tex, uint8_t alph
         }
         for (int32_t k = 0; k < 3 * nt; k++) idx[k] = (uint16_t)tris[k];
         if (rv) {
-            gl_dev_draw(rv, np, idx, (uint32_t)(3 * nt), gl_dev_texture(refl), GL_DEV_OPAQUE);
-            gl_dev_draw(v, np, idx, (uint32_t)(3 * nt), gl_dev_texture(tex), GL_DEV_REFLECT);
+            gl_dev_draw(rv, np, idx, (uint32_t)(3 * nt), gl_dev_texture_now(refl), GL_DEV_OPAQUE);
+            gl_dev_draw(v, np, idx, (uint32_t)(3 * nt), gl_dev_texture_now(tex), GL_DEV_REFLECT);
         } else
-            gl_dev_draw(v, np, idx, (uint32_t)(3 * nt), gl_dev_texture(tex), mode);
+            gl_dev_draw(v, np, idx, (uint32_t)(3 * nt), gl_dev_texture_now(tex), mode);
     }
     free(v), free(rv), free(tris), free(idx);
 }

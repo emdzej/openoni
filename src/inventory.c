@@ -90,6 +90,52 @@ bool inventory_use_hypo(Character *c)
     return true;
 }
 
+/* ONrCharacter_Shield_Update 0x4ef710: the shield's effect. Its strength: the super shield's (its level, as
+   a hundredth, rounded) at 39 % with the class's super shield up (C+0x1668 above 0), else the force
+   shield's shown part (C+0x1b6) at 69 %; 20 more while any. While on or any: each part's alpha goes toward
+   it, down by 7 a tick (to it), up by 1 for the living, down by 1 every third tick for the dead (C+0x04
+   bit 1); on while any part has some. */
+void inventory_shield_update(Character *c)
+{
+    uint32_t level, rate;
+    if (!((const uint8_t *)c->oncc)[0xc8e] || !(c->super_level > 0.0f)) {
+        c->shield_super = false;
+        level = c->shield_shown, rate = 0x45;
+    } else {
+        c->shield_super = true;
+        level = round_u(c->super_level * 100.0f) & 0xffff, rate = 0x27;
+    }
+    if (!c->shield_on && !level) return;
+    uint32_t want = level * rate / 100;
+    if (level) want += 0x14;
+    if (want > 0xff) want = 0xff;
+    bool any = false;
+    for (int i = 0; i < 19; i++) {
+        int a = c->shield_alpha[i];
+        if ((uint32_t)a > want) {
+            a -= 7;
+            if (a <= (int)want) a = (int)want;
+        } else if (!(c->flags & 1)) {
+            if ((uint32_t)a < want && (uint32_t)++a > want) a = (int)want;
+        } else if (ui_time() % 3) {
+            if (--a <= 0) a = 0;
+        }
+        if (a > 0) any = true;
+        c->shield_alpha[i] = (uint8_t)a;
+    }
+    c->shield_on = any;
+}
+
+/* 0x4ef850: the parts of the mask lit full, the effect on, when it is or the Daodan's (C+0x04 bit
+   0x40000000) is. */
+void inventory_shield_hit(Character *c, uint32_t parts)
+{
+    if (!c->shield_on && !(c->flags & 0x40000000u)) return;
+    c->shield_on = true;
+    for (int i = 0; i < 19; i++)
+        if (parts & 1u << i) c->shield_alpha[i] = 0xff;
+}
+
 void inventory_invis_update(Character *c)
 {
     uint16_t left = c->invisibility;

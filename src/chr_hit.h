@@ -69,6 +69,11 @@ extern bool chr_cheat_fists;
 void chr_cheats_clear(void);
 /* Unstoppable: C+0x04 0x100 (chr_unstoppable), or the player with the cheat. */
 bool chr_is_unstoppable(const Character *c);
+/* 0x4e6530: the HUD's hit arc for a hit from dir (NULL: none). 0x4e64d0: the super shield up. */
+void chr_hit_direction(Character *c, const float dir[3]);
+bool chr_super_shielded(const Character *c);
+/* 0x4ef8e0: the bits of the parts within r of p (their bounding spheres). */
+uint32_t chr_parts_near(const Character *c, const float p[3], float r);
 /* The AI characters' block function (C+0x15ec): whether c blocks an attack it could block. */
 extern bool (*chr_block_hook)(Character *c);
 /* A part's place in the world (the translation of its matrix, A+0x2278 + 0x30 part + 0x24): 0 the

@@ -11,7 +11,7 @@
 #include <string.h>
 
 typedef struct {
-    unsigned tex;
+    const void *txmp;       /* its frame picked at the draw (gl_dev_texture_now) */
     uint32_t first, count;
     int mode;
 } Range;
@@ -92,11 +92,10 @@ bool env_draw_load(const void *env)
         const AkevQuad *e = &q[order[k]];
         bool transparent = e->flags & AKEV_QUAD_TRANSPARENT;
         const void *txmp = e->texture < nt ? akev_texture(env, e->texture) : NULL;
-        unsigned tex = gl_dev_texture(txmp);
         int mode = transparent ? GL_DEV_BLEND : solid_mode(txmp);
-        if (!n_ranges || ranges[n_ranges - 1].tex != tex || ranges[n_ranges - 1].mode != mode) {
+        if (!n_ranges || ranges[n_ranges - 1].txmp != txmp || ranges[n_ranges - 1].mode != mode) {
             range_drawn[n_ranges] = n_drawn;
-            ranges[n_ranges++] = (Range){ tex, ni, 0, mode };
+            ranges[n_ranges++] = (Range){ txmp, ni, 0, mode };
             if (!transparent) n_solid = n_ranges;
         }
         drawn[n_drawn++] = (Drawn){ order[k], ni, e->corners == 4 ? 6u : 3u };
@@ -129,7 +128,7 @@ void env_draw(void)
     /* the quads' flags changed (env_show): the mesh again, once a frame at most */
     if (loaded_env && loaded_serial != akev_flags_serial()) env_draw_load(loaded_env);
     if (replaced) gl_dev_mesh_indices(mesh, static_idx, ranges && n_ranges ? ranges[n_ranges - 1].first + ranges[n_ranges - 1].count : 0), replaced = false;
-    for (uint32_t r = 0; r < n_ranges; r++) gl_dev_draw_mesh(mesh, ranges[r].first, ranges[r].count, ranges[r].tex, ranges[r].mode);
+    for (uint32_t r = 0; r < n_ranges; r++) gl_dev_draw_mesh(mesh, ranges[r].first, ranges[r].count, gl_dev_texture_now(ranges[r].txmp), ranges[r].mode);
 }
 
 /* AKiEnvironment_ComputeVis 0x444030: the quads the visibility rays have marked, the first 0x2000 of them
@@ -161,5 +160,6 @@ void env_draw_visible(void)
     gl_dev_mesh_indices(mesh, frame_idx, ni);
     replaced = true;
     for (uint32_t r = 0; r < n_ranges; r++)
-        if (frame_ranges[r].count) gl_dev_draw_mesh(mesh, frame_ranges[r].first, frame_ranges[r].count, frame_ranges[r].tex, frame_ranges[r].mode);
+        if (frame_ranges[r].count) gl_dev_draw_mesh(mesh, frame_ranges[r].first, frame_ranges[r].count, gl_dev_texture_now(frame_ranges[r].txmp),
+                             frame_ranges[r].mode);
 }

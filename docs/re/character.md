@@ -609,6 +609,31 @@ everything is cleared); the queued cry's ticks run down and at 0 it plays at the
 (`OSrImpulse_Play` 0x512480; the line cut short). A light one counts, the next after the wait from now; a
 medium one counts, the next after half the wait; a heavy one clears everything, the next after the wait.
 
+### The shields against a particle's damage
+
+A particle's damage (0x5179f0, after 0x5178c0's direction; a particle hurts once, A+0x18c): with a force
+shield left (C+0x1b8), the Daodan's (C+0x04 bit 0x40000000) or the super shield up (0x4e64d0: ONCC+0xc8e
+and C+0x1668 over 0.5), the shield's hit glow on the part hit (0x4ef8e0, 0x4ef850: G+0xb6268's
+records). The super shield then takes the hit, nothing more. Unless C+0x04 bit 0x80000000, a force shield
+takes the whole hit: it loses the damage, or all of itself when the damage is more, and the rest of the
+damage is lost (confirmed: no remainder reaches the hit points); the HUD's arc for the direction
+(0x4e6530); no stun, knockback or reaction. The blows don't meet the force shield: the particle damage is
+the only damage that reads C+0x1b8 (the hit material, 0x4e6200, makes a shielded character's impact
+"Shield"). Ported in `weapon.c`.
+
+The glow: 0x4ef8e0 takes the parts whose bounding spheres (the class's lowest body, ONCC+0xc34's first,
+PNTA +0x24 under A+0x2278) are within the reach of the hit point past their radius (4 for a particle's
+hit; a blast passes its own, inferred); 0x4ef850 lights them full (A+0x2802, 255), the effect on
+(A+0x2800), when it is on or the Daodan's flag is. `ONrCharacter_Shield_Update` 0x4ef710, each tick for
+the living: the strength the super shield's (its level as a hundredth, at 39 %) with the class's super
+shield up, else the force shield shown (C+0x1b6) at 69 %, 20 more when any, at most 255; each part's
+alpha down by 7 to it, up by 1 for the living, down by 1 on two ticks in three for the dead; on while
+any part has some. `ONiCharacter_Display_Body` 0x4e1d70 draws it after the body, before the
+invisibility: the class's body at the drawn detail, at most 1, each part scaled 1.4 (`TRrBody_DrawMagic`
+0x427770) with its own alpha, the texture `DAODAN_S` (0x550e88) for the super shield or the Daodan's,
+else `SHIELD` (0x550e80), at the game time (an animated texture). The invisibility's body is the same
+capped detail. Ported in `inventory.c`, `chr_hit.c` and `render/char_draw.c`.
+
 ## Throws
 
 A throw is a move that turns into another as it starts: `RemapAnimationHook` 0x4ea550, called for every

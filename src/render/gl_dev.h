@@ -37,6 +37,11 @@ void gl_dev_fog(float start, float end, float r, float g, float b);
 float gl_dev_fog_factor(const float p[3]);
 /* The GL texture of a TXMP (all its mip levels), uploaded on first use; 0 if it doesn't decode. */
 unsigned gl_dev_texture(const void *txmp);
+/* The draw state's time (M3cDrawState_Time): the frames of the animated textures; gl_dev_texture_now: the
+   TXMP's frame at it. */
+void gl_dev_set_time(uint32_t t);
+uint32_t gl_dev_time(void);
+unsigned gl_dev_texture_now(const void *txmp);
 /* The texture of white texels, for untextured draws. */
 unsigned gl_dev_white(void);
 /* A texture of white texels with the given alpha (w * h bytes), kept under key (a glyph, say) and

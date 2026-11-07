@@ -89,8 +89,9 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   original's fixed-function pipeline on gasm's GL.
 - **Konoko**, with her movement, jumps, melee moves, throws and being hit, ported from the character
   engine. She can also pick up, carry, aim, fire, reload, holster and draw weapons, and pick up ammo and other
-  power-ups. Hypos (Tab) heal her, past her maximum too, and invisibility fades her out of sight and out
-  of the enemies' view. Her condition is heard: the heartbeat of low health, the rush of health over
+  power-ups. Hypos (Tab) heal her, past her maximum too, invisibility fades her out of sight and out
+  of the enemies' view, and the force shield, glowing round her where she is hit, takes the shots until it
+  is spent (not the blows). Her condition is heard: the heartbeat of low health, the rush of health over
   her maximum and the hum of invisibility, each louder as it grows.
 - **The other characters**: they spawn from the level's objects and scripts, follow their patrol paths,
   and see, hear and react to the player: they hear the shots, the hits, the throws, the slides and
@@ -192,6 +193,8 @@ It can be tried in the browser on the <a href="/play/" target="_self">play page<
   material.
 - **Decals**: the bullet holes, scorch marks and the characters' shadows, laid on the walls, cut to their shapes and folded
   round their corners; they fade, and the oldest give way to new ones as the original's do.
+- **Animated textures**: the frames of an animated texture (the helicopter's rotor, the shields) follow
+  the game's clock, as the draw engine picks them.
 - **The lighting** of the characters, weapons and objects: the game's ambient and its directional
   lights, one or two by the graphics quality, and the reflection maps on the shiny surfaces. The dead
   stay where they fell, as corpses, and so do the bodies each level sets into its scenes.

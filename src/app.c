@@ -1622,6 +1622,7 @@ static void game_display(void)
         view_matrix(view, eye, 3.14159265f - display.ct->facing, -0.3f);
     }
     if (display.ticks) fog_step(display.ticks);
+    gl_dev_set_time(display.ticks);     /* the draw state's time, the game's (0x4fb81f) */
     gl_dev_begin(w, h, 0.0f, 0.0f, 0.0f);
     gl_dev_matrices(proj, view);
     gl_dev_fog(fog_start, fog_end, fog_rgb[0], fog_rgb[1], fog_rgb[2]);    /* the frame's start, 0x4058a3 */

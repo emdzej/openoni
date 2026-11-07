@@ -861,6 +861,7 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
         if (character_frame_hook) character_frame_hook(c, CHR_FRAME_FIRE);
         chr_build_quaternions(c);
         chr_bone_matrices(c);
+        inventory_shield_update(c);
         inventory_invis_update(c);
         chr_pain_frame(c);
         return;
@@ -873,6 +874,7 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
     if (character_frame_hook) character_frame_hook(c, CHR_FRAME_FIRE);
     chr_build_quaternions(c);
     chr_bone_matrices(c);       /* 0x4e5a30: the parts' matrices (the pelvis, where particles hang) */
+    inventory_shield_update(c);                         /* ONrCharacter_Shield_Update, the living's */
     inventory_invis_update(c);                          /* ONrCharacter_Invis_Update, after the matrices */
     physics_body(c);                                    /* step 19 */
     c->wall_hits = c->obj_hits = c->pushes = 0;         /* (0x4e06cb: A+0xb0..0xb6 cleared) */

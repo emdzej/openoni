@@ -14,6 +14,8 @@ extern bool inventory_cheat_regeneration;
    maximum. True if used. */
 bool inventory_use_hypo(Character *c);
 /* ONrCharacter_Invis_Update 0x4ef530, late in DoCharacterFrame (and for the dying). */
+void inventory_shield_update(Character *c);     /* ONrCharacter_Shield_Update 0x4ef710 */
+void inventory_shield_hit(Character *c, uint32_t parts);    /* 0x4ef850: the parts' bits */
 void inventory_invis_update(Character *c);
 /* A hit (HandleAttackMask 0x4e7740: the attacker's ticks) or a throw (both): the invisible seen again
    (its ticks from 0) and its body shown to at least 0.6. */
