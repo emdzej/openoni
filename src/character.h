@@ -112,6 +112,12 @@ typedef struct Character {
     uint16_t lod_frames;            /* A+0x2224 */
     float camera_d2;                /* C+0x1660: from the camera, squared */
     uint32_t unseen;                /* C+0x163c: frames out of the camera's view */
+    /* the activity (activity.c): without an active record (C+0x02 0) the character has no animation,
+       physics nor draw, an AI's movement stub moving it; the ticks since it was last kept active
+       (C+0x1640); the body's box (C+0x1648, min xyz, max xyz: 0x4e5ff0's, kept while inactive) */
+    bool inactive;
+    uint32_t active_ticks;
+    float box[6];
     bool interpolating;             /* A+0x1b08 */
     float interp_height;            /* A+0x1b0c */
     uint16_t interp_state;          /* A+0x1b10 */
@@ -284,12 +290,19 @@ typedef struct Character {
 } Character;
 
 bool character_init(Character *c, const void *oncc, const float pos[3], float facing);
+/* ONrForceActiveCharacter 0x4f11b0: an inactive character given its active record (0x4db830 from its
+   stub, through chr_activate_hook), an active one's ticks (C+0x1640) cleared. */
+extern void (*chr_activate_hook)(Character *c, bool from_stub);
+void chr_make_active(Character *c);
 /* ONrCharacter_SetCharacterClass 0x4d7c30, for a living character: false if the class lacks its parts. */
 bool chr_set_class(Character *c, const void *oncc);
 /* The location (C+0x160, docs/re/character.md "The location"), which the port doesn't keep apart: the
    pelvis's x and z; for y the body's bottom (C+0x190), or at least the ground's height (A+0xe8) while on
    the ground; then 0.5 up. */
 void chr_location(const Character *c, float out[3]);
+/* ONrCharacter_GetPelvisPosition 0x4e34f0: the active record's pelvis (A+0x229c, the bone matrix's
+   origin); without one the location raised by the pelvis height (C+0x18c). */
+void chr_pelvis_position(const Character *c, float out[3]);
 /* PHrPathDistance 0x50edb0's start, as its callers give it: the location (C+0x160) to loc and the room
    (C+0x188), or, without one, the room found from the location. */
 int chr_room(const Character *c, float loc[3]);

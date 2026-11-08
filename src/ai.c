@@ -1,5 +1,6 @@
 /* The AI: see ai.h. */
 #include "ai.h"
+#include "physics.h"
 #include "chars.h"
 #include "combat.h"
 #include "door.h"
@@ -291,6 +292,24 @@ void ai_combat_set_target(AiState *a, KnowEntry *e)
     if (e && e->owner) combat_new_target(a, &e->owner->c, a->target ? &a->target->c : NULL);
 }
 
+void ai_entered_state(AiState *a)
+{
+    /* AI2rEnterState 0x48ad50: a state the table 0x52a4d8 doesn't mark calm, or a patrol ignoring the
+       player (its block's +0x540), needs the active record (0x4f10f0 from the stub) */
+    const uint8_t *calm = exe_data(0x52a4d8 + (uint32_t)a->state, 1);
+    if ((calm && calm[0]) && !(a->state == AI_STATE_PATROL && a->ignore_player)) return;
+    Character *c = &((Chr *)((char *)a - offsetof(Chr, ai)))->c;
+    if (c->inactive && chr_activate_hook) chr_activate_hook(c, true);
+}
+
+void ai_return_to_job_forced(AiState *a)
+{
+    /* AI2rReturnToJob 0x48af80 with both its flags: whatever the alert and the state, unless in the
+       job's block already */
+    if (a->state == a->job && a->state != AI_STATE_IDLE) return;
+    ai_return_to_job(a);
+}
+
 void ai_return_to_job(AiState *a)
 {
     ai_exit_state(a);
@@ -305,6 +324,7 @@ void ai_return_to_job(AiState *a)
         a->point = a->job_point;
         patrol_nearest(a);
     }
+    ai_entered_state(a);
 }
 
 /* AI2iCombat_LostTarget 0x4909a0: the target is lost; the waits start from the class's. (The best other
@@ -325,6 +345,7 @@ void ai_pursue(AiState *a, KnowEntry *e)
 {
     ai_exit_state(a);
     a->state = AI_STATE_PURSUIT;
+    ai_entered_state(a);
     a->target = e->target;
     a->target_entry = e;
     pursuit_enter(a, &e->owner->c);
@@ -370,14 +391,8 @@ static bool combat_update(AiState *a, Character *c)
         if (!a->target || !chars_in_use(a->target) || (a->target->c.flags & 1)) {
             combat_lost(a, c);      /* "target is gone" */
         } else {
-            /* the contact's place follows the target's pelvis (ONrCharacter_GetPelvisPosition 0x4e34f0;
-               the port's: the location raised by the pelvis height) */
-            if (a->target_entry) {
-                const Character *t = &a->target->c;
-                a->target_entry->pos[0] = t->pos[0];
-                a->target_entry->pos[1] = t->pos[1] + t->pelvis_height;
-                a->target_entry->pos[2] = t->pos[2];
-            }
+            /* the contact's place follows the target's pelvis (ONrCharacter_GetPelvisPosition 0x4e34f0) */
+            if (a->target_entry) chr_pelvis_position(&a->target->c, a->target_entry->pos);
             if (!a->combat_pursue_delay) return true;
             /* (as the exe does: any delay left pursues at once, counting it down by one) */
             a->combat_pursue_delay--;
@@ -446,6 +461,16 @@ static void movement_tick(AiState *a, Character *c, const void *env)
     Chr *ch = (Chr *)c;
     a->ticks++;
     movement_path_update(ch, env);
+    if (c->inactive) {
+        /* AI2rMovement_Update 0x4a8550 without the record: the stub's step, the character turned and
+           put along its line while it is on (ONrCharacter_Teleport 0x4e9210) */
+        movement_stub_update(ch);
+        if (a->stub.on) {
+            c->facing = a->stub.facing;
+            physics_place(c, a->stub.pos);
+        }
+        return;
+    }
     movement_update(ch);
     combat_aim(a, c);
 }
@@ -515,6 +540,7 @@ void ai_update(AiState *a, Character *c, const void *env)
             else if (f >= TWO_PI) f -= TWO_PI;
             if (a->aim.on) a->aim.stop = true;      /* AI2rExecutor_StopAiming 0x498da0 */
             ai_executor_move(a, f, 0, 4, true);
+            if (c->inactive) return;    /* the executor (0x498550) and the frame need the record */
             ChrInput in;
             executor_update(a, c, &in);
             character_update_input(c, &in, env);
@@ -541,6 +567,7 @@ void ai_update(AiState *a, Character *c, const void *env)
         alarm_fight_tick(a, c);
     }
     movement_tick(a, c, env);
+    if (c->inactive) return;
     ChrInput in;
     executor_update(a, c, &in);
     character_update_input(c, &in, env);

@@ -32,21 +32,36 @@ void physics_body(Character *c)
     const void *body = body_of_class(c->oncc, 4);
     uint32_t bones = body ? body_bones(body) : 0;
     float lo = c->pos[1], hi = c->pos[1] + 12.0f;
+    bool boxed = false;
     if (bones && bones <= BODY_MAX_BONES && bones == CHR_BONES) {
         BodyMatrix root, m[BODY_MAX_BONES];
     chr_root_matrix(c, root);
         if (body_matrices(body, root, c->quats, m)) {
+            boxed = true;
             for (uint32_t b = 0; b <= 10 && b < bones; b++) {
                 float box[6], sph[4] = { 0, 0, 0, 0 }, w[3];
                 m3gm_bounds(body_geometry(body, b), box, sph);
                 body_transform(m[b], sph, w);
                 if (!b || w[1] - sph[3] < lo) lo = b ? (w[1] - sph[3] < lo ? w[1] - sph[3] : lo) : w[1] - sph[3];
                 if (!b || w[1] + sph[3] > hi) hi = b ? (w[1] + sph[3] > hi ? w[1] + sph[3] : hi) : w[1] + sph[3];
+                /* the box (C+0x1648): the pelvis's sphere's (0x433e80), grown by the others' (0x433f00) */
+                for (int k = 0; k < 3; k++) {
+                    if (!b || w[k] - sph[3] < c->box[k]) c->box[k] = w[k] - sph[3];
+                    if (!b || w[k] + sph[3] > c->box[k + 3]) c->box[k + 3] = w[k] + sph[3];
+                }
             }
         }
     }
     c->bottom = c->pos[1] < lo ? lo : c->pos[1];
     c->top = hi < lo + 16.0f ? lo + 16.0f : hi;
+    if (!boxed)
+        for (int k = 0; k < 3; k++) c->box[k] = c->box[k + 3] = c->pos[k];
+    c->box[4] = c->top;     /* the top (C+0x1658) is the box's */
+    /* then the feet's sphere of 2 in the box, after the bottom and the top */
+    for (int k = 0; k < 3; k++) {
+        if (c->pos[k] - 2.0f < c->box[k]) c->box[k] = c->pos[k] - 2.0f;
+        if (c->pos[k] + 2.0f > c->box[k + 3]) c->box[k + 3] = c->pos[k] + 2.0f;
+    }
     /* 0x4dc160: the sphere tree, from the feet (or the bottom in the air) to the top */
     float r = c->ai ? 3.0f : 4.0f;      /* 0x529808 for an AI, 0x5296c8 for the player */
     float base = c->air_ticks ? c->bottom : c->pos[1];
@@ -345,6 +360,9 @@ static int clip(const float *in, int n, int k, float l, bool below, float *out)
 
 /* FindGroundCollision 0x4ec040: down from above the feet, the highest floor under the step's height
    that the feet's square (1.5 each way) stands on. Returns whether one was found. */
+static bool find_ground(Character *c, const void *env);
+bool physics_find_ground(Character *c, const void *env) { return find_ground(c, env); }
+
 static bool find_ground(Character *c, const void *env)
 {
     bool landing_type = c->type == 0x18 || (c->type > 0x27 && c->type < 0x2c);

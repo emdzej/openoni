@@ -58,6 +58,7 @@ void (*chr_movement_hit_hook)(Character *c, int kind, uintptr_t id, const float 
 
 void chr_knockdown(Character *c, uint16_t type)
 {
+    if (c->inactive && chr_activate_hook) chr_activate_hook(c, true);   /* 0x4db830 first */
     c->varient |= 0x200;
     c->fight_timer = chr_class_fight_time(c->oncc);
     c->combo_type = 0;
@@ -260,10 +261,11 @@ static void death_cry(Character *c)
 
 /* 0x4f1210: the hit overlay (A+0x1c70) of type 0xe8 for an AI (C+0x1e8 2), 0x39 else, or 0x39, from
    state 1 in its variant. (The type is (C+0x1e8 == 2 ? 0 : 0x51) + 0xe8 with the 0x51 in a register's
-   low byte over all ones: 0x39 once the add wraps.) The original first makes an inactive character
-   active (0x4db830) or clears an active one's C+0x1640; the port's are always active. */
+   low byte over all ones: 0x39 once the add wraps.) An inactive character is made active first
+   (0x4db830), an active one's C+0x1640 cleared. */
 void chr_hit_overlay(Character *c)
 {
+    chr_make_active(c);
     const void *o = chr_lookup_varient(c, c->ai ? 0xe8 : 0x39, 1, c->varient);
     if (!o) o = chr_lookup_varient(c, 0x39, 1, c->varient);
     if (o) chr_overlay_set(c, CHR_OVERLAY_HIT, o, 0);
@@ -648,6 +650,7 @@ uint32_t chr_parts_near(const Character *c, const float p[3], float r)
 
 bool chr_part_point(const Character *c, unsigned part, float out[3])
 {
+    if (c->inactive) return false;      /* the parts are the active record's */
     const void *body = body_of_class(c->oncc, 4);
     uint32_t bones = body ? body_bones(body) : 0;
     if (!bones || bones > BODY_MAX_BONES || bones != CHR_BONES || part >= bones) return false;

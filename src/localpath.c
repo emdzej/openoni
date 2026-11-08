@@ -102,8 +102,8 @@ static bool tree_collides(const float tree[7][4], const float mv[3])
 bool local_blockage(const void *env, const Character *c, const float p[3])
 {
     if (!env) return false;
-    /* ONrCharacter_GetPelvisPosition 0x4e34f0 (the active record's A+0x229c) */
-    const float from[3] = { c->bone_world[0][9], c->bone_world[0][10], c->bone_world[0][11] };
+    float from[3];
+    chr_pelvis_position(c, from);       /* ONrCharacter_GetPelvisPosition 0x4e34f0 */
     float v[3] = { p[0] - from[0], p[1] - from[1], p[2] - from[2] };
     static AkevHit hit[AKEV_HITS_MAX];
     if (akev_collide_point(env, from, v, 0x48800, 0, hit)) return true;
@@ -689,7 +689,8 @@ bool local_find_nearby_point(const Character *c, const float from[3], float dist
 
 bool local_intervening(const Character *c, const float p[3])
 {
-    const float from[3] = { c->bone_world[0][9], c->bone_world[0][10], c->bone_world[0][11] };
+    float from[3];
+    chr_pelvis_position(c, from);       /* 0x4e34f0 */
     const float v[3] = { p[0] - from[0], p[1] - from[1], p[2] - from[2] };
     float r = (c->ai ? 3.0f : 4.0f) + 3.0f;
     for (int i = 0; i < chars_slots(); i++) {

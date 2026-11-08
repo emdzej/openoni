@@ -23,14 +23,7 @@ enum {
     CONSOLE_TIME = 180,             /* ticks to reach the marker */
 };
 
-/* ONrCharacter_GetPelvisPosition 0x4e34f0. The active record's pelvis matrix (A+0x229c) isn't kept by
-   the port: the inactive form, the location raised by the pelvis height. */
-static void pelvis(const Character *c, float p[3])
-{
-    p[0] = c->pos[0];
-    p[1] = c->pos[1] + c->pelvis_height;
-    p[2] = c->pos[2];
-}
+static void pelvis(const Character *c, float p[3]) { chr_pelvis_position(c, p); }
 
 bool action_can_use(const Character *c, int marker, bool wide)
 {
@@ -131,6 +124,7 @@ static void console_action(Character *c)
         return;
     }
     if (c->type != TYPE_CONSOLE_WALK) {
+        chr_make_active(c);         /* 0x4f10f0, or C+0x1640 cleared */
         const void *t = chr_lookup(c, TYPE_CONSOLE_WALK, c->state);
         if (t) chr_set_animation_interpolated(c, c->state, t, 12);
     }

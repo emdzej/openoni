@@ -439,6 +439,19 @@ typedef struct {
     struct LocalPoint *local;   /* LOCAL_PATH_MAX of them, +0x8b8 */
     int local_n, local_k;       /* +0x18b8, +0x18ba */
     int local_seg;              /* the global path's link it was made for (path_n: the last room), -1 none */
+    float local_end[3];         /* A+0x8ac: where it goes (the link out's crossing, or the goal) */
+    /* the movement stub (C+0x15b0..0x15e8, AI2rMovementStub 0x4ac0f0..): an inactive AI goes along a
+       straight line, from (its location) to (the local path's end) at the mode's speed, its height
+       kept on the floor under it */
+    struct {
+        bool on;                /* +0x15b0 */
+        float from[3], to[3];   /* +0x15b4, +0x15c0 */
+        float length, done;     /* +0x15cc, +0x15d0 */
+        uint32_t floor_wait;    /* +0x15d4: ticks to the next floor ray */
+        int32_t floor_quad;     /* +0x15d8: the floor's quad, -1 none */
+        float facing;           /* +0x15dc */
+        float pos[3];           /* +0x15e0 */
+    } stub;
     /* the neutral behaviour (neutral.h, C+0x1000..0x1018) */
     int neutral_id;             /* C+0x100c: the Neutral object's id, -1 none */
     uint16_t neutral_line;      /* C+0x100e: the line a conversation starts (or resumes) at */
@@ -471,7 +484,11 @@ void ai_combat_set_target(AiState *a, struct KnowEntry *e);
 void ai_combat_notify(AiState *a, const Character *c, struct KnowEntry *e, bool degraded);
 /* 0x48af80 (with both flags, as the combat state calls it): back to the job, or idle when the alert is
    below the job's start level. */
+/* AI2rEnterState 0x48ad50's activation, after a state is set. */
+void ai_entered_state(AiState *a);
 void ai_return_to_job(AiState *a);
+/* AI2rReturnToJob 0x48af80 forced (MakeInactive's): back to the job unless in it already. */
+void ai_return_to_job_forced(AiState *a);
 /* AI2rPath_Halt 0x4ae660: no path (+0x10f0) and the movement's modifiers cleared (0x4a8440). */
 void ai_halt(AiState *a);
 /* AI2rExecutor_Move 0x498b00. */

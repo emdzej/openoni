@@ -125,6 +125,7 @@ static const void *attempt_throw(Character *c, uint16_t front, uint16_t behind)
     float angle;
     Character *t = find_target(c, &angle, 0.0f, 24.0f, 0.7853982f, true);
     if (!t || !can_be_thrown(t) || (!t->ai && chr_cheat_unthrowable)) return NULL;
+    if (t->inactive && chr_activate_hook) chr_activate_hook(t, true);     /* 0x4db830 */
     if (!t->anim || tr_test_flag(t->anim, 1) || invulnerable_frame(t->anim, t->frame)) return NULL;
     float diff = t->facing - c->facing;
     if (diff < 0.0f) diff += TWO_PI;
@@ -165,6 +166,7 @@ static const void *remap_ai(Character *c, const void *next)
     const void *anim, *victim;
     Character *t;
     if (!throw_ai_hook || !throw_ai_hook(c, &anim, &victim, &t) || !t) return next;
+    if (t->inactive && chr_activate_hook) chr_activate_hook(t, true);     /* 0x4db830 */
     float a = wrap_2pi(atan2f(t->pos[0] - c->pos[0], t->pos[2] - c->pos[2]));
     float f = wrap_2pi(c->desired_facing - c->facing_offset);   /* C+0x170 less C+0x174 */
     float d = a - f;
@@ -221,6 +223,7 @@ static void throw_starts(Character *c)
 {
     Character *t = c->throw_target;
     if (!t) return;     /* "throwtarget was NULL" */
+    if (t->inactive && chr_activate_hook) chr_activate_hook(t, true);     /* 0x4db830 ("failed to make throw target active") */
     if ((t->flags & 1) || !chars_in_use((Chr *)t)) return;
     if (tr_varient(c->anim) & 0x200) chr_enter_fight_mode(t);
     if (t->ai && chr_knockdown_hook) chr_knockdown_hook(t);    /* an AI's victim told (0x48b530) */

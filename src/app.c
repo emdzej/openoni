@@ -3,6 +3,7 @@
    loads the shared data with TMrLevel_Load), then a test screen that runs its own loop the way the original's loops
    do: draw, plat_wait_frame, until Esc. The bars are the level files' sizes, read through the file layer. */
 #include "app.h"
+#include "activity.h"
 #include "akev.h"
 #include "bink.h"
 #include "akev_collide.h"
@@ -1443,7 +1444,7 @@ static void particles_update(uint32_t tick, bool gameplay)
     int n = 0;
     for (int i = 0; i < chars_slots(); i++) {
         Chr *c = chars_get(i);
-        if (c && chars_in_use(c)) list[n++] = &c->c;
+        if (c && chars_in_use(c) && !c->c.inactive) list[n++] = &c->c;     /* the active ones (A+0x2278) */
     }
     p3_update(tick, gameplay, list, n);
 }
@@ -1738,10 +1739,14 @@ static void game_display(void)
         Chr *ch = chars_get(i);
         if (!ch) continue;
         if (!chr_lod_visible(&ch->c, &lc)) {
-            ch->c.lod_frames = 0;
-            ch->c.lod_shown = ch->c.lod_wanted = 6;
+            if (!ch->c.inactive) {
+                ch->c.lod_frames = 0;
+                ch->c.lod_shown = ch->c.lod_wanted = 6;
+            }
             continue;
         }
+        activity_seen(ch);      /* in view: made active (0x4f11b0), its ticks cleared */
+        if (ch->c.inactive) continue;
         seen[nseen] = &ch->c;
         slot_of[nseen++] = i;
     }
@@ -1896,6 +1901,7 @@ static int play(int level, int *next)
         return 1;
     }
     load_step(28);
+    activity_set_environment(env);
     chars_load();
     load_step(30);
     if (plat_param("ailog", at_dummy, sizeof at_dummy)) combat_log = plat_log;
@@ -1909,8 +1915,13 @@ static int play(int level, int *next)
     char at[96];
     if (first && plat_param("at", at, sizeof at)) {
         float deg = player->c.facing / 0.017453293f;
-        if (sscanf(at, "%f,%f,%f,%f", &player->c.pos[0], &player->c.pos[1], &player->c.pos[2], &deg) >= 3)
+        float p[3];
+        if (sscanf(at, "%f,%f,%f,%f", &p[0], &p[1], &p[2], &deg) >= 3) {
             player->c.facing = deg * 0.017453293f;
+            physics_place(&player->c, p);   /* the record made at the class's start: its physics here */
+            memcpy(player->c.ground_point, p, sizeof player->c.ground_point);
+            physics_start(&player->c);
+        }
     }
     trigger_load();
     object_load();
@@ -2107,11 +2118,12 @@ static int play(int level, int *next)
                 if (!c || c->player) continue;
                 const KnowEntry *e = c->ai.know;
                 const TmInstance *ci = c->c.anim ? tm_handle_instance(tm_handle_of(c->c.anim)) : NULL;
-                snprintf(m, sizeof m, "OpenOni:   %s: %.1f %.1f %.1f facing %.2f state %d alert %d hp %u know %d/%d anim %u/%u %s frame %u flags %x interp %u/%u q %u",
+                snprintf(m, sizeof m, "OpenOni:   %s: %.1f %.1f %.1f facing %.2f state %d alert %d hp %u know %d/%d anim %u/%u %s frame %u flags %x interp %u/%u q %u%s",
                          c->name, c->c.pos[0], c->c.pos[1], c->c.pos[2], c->c.facing, c->ai.state, c->ai.alert, c->c.hit_points,
                          e ? e->strength : 0, e ? e->type : -1, c->c.type, c->c.state, ci && ci->name ? ci->name : "",
                          (unsigned)c->c.frame, (unsigned)c->c.flags, c->c.interpolating ? c->c.interp_tick : 0u,
-                         c->c.interpolating ? c->c.interp_length : 0u, (unsigned)c->c.queued);
+                         c->c.interpolating ? c->c.interp_length : 0u, (unsigned)c->c.queued,
+                         c->c.inactive ? " INACTIVE" : "");
                 plat_log(m);
             }
         }

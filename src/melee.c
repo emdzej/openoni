@@ -562,8 +562,7 @@ void melee_start(MeleeState *m, const MeleeProfile *p, const void *oncc)
 
 /* ---- running ---- */
 
-/* ONrCharacter_GetPelvisPosition 0x4e34f0 (the active record's A+0x229c). */
-static void pelvis_of(const Character *c, float out[3]) { memcpy(out, &c->bone_world[0][9], 3 * sizeof(float)); }
+static void pelvis_of(const Character *c, float out[3]) { chr_pelvis_position(c, out); }   /* 0x4e34f0 */
 
 /* AI2rManeuver_CheckBlockage 0x49ea60 (localpath.c). */
 static bool check_blockage(const Character *c, const float p[3]) { return local_blockage(p3_environment(), c, p); }
@@ -2381,6 +2380,7 @@ bool melee_update(AiState *a, Character *c, const Character *target)
 {
     MeleeState *m = &a->melee;
     m->target = target;
+    chr_make_active(c);         /* 0x4f11b0 */
     if (!target || !m->profile) return no_technique(a, c);
     chr_enter_fight_mode(c);    /* 0x4eb0b0 */
     update_facing(m, c);
@@ -2391,6 +2391,8 @@ bool melee_update(AiState *a, Character *c, const Character *target)
         m->override = false;    /* AI2rExecutor_ClearAttackOverride */
         return no_technique(a, c);
     }
+    chr_make_active(c);         /* both active (0x4f11b0) */
+    chr_make_active((Character *)target);
     const MeleeProfile *p = m->profile;
     if (m->target != m->last_target) {
         m->blocking = false;

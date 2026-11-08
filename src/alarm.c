@@ -115,6 +115,7 @@ bool alarm_setup(AiState *a, Character *c, int marker)
     if (a->state == AI_STATE_ALARM) leave(a);
     ai_exit_state(a);
     a->state = AI_STATE_ALARM;
+    ai_entered_state(a);
     enter(a);
     return true;
 }

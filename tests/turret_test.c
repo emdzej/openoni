@@ -3,9 +3,11 @@
    side, turns its head toward her within its limits, fires its shooters (the targeting's trigger) and
    its shots reach her; deactivated, it turns back to rest. */
 #include "akev.h"
+#include "chr_anim.h"
 #include "chars.h"
 #include "exe.h"
 #include "particle.h"
+#include "physics.h"
 #include "tm.h"
 #include "trac.h"
 #include "turret.h"
@@ -18,6 +20,14 @@
 #include <stdio.h>
 #include <string.h>
 #include "gametime.h"
+
+/* Konoko put at p: her active record's body (the bones and the spheres the shots hit) moved with her. */
+static void stand_at(Character *c, const float p[3])
+{
+    physics_place(c, p);
+    chr_bone_matrices(c);
+    physics_body(c);
+}
 
 static void prepare(void)
 {
@@ -69,7 +79,7 @@ int main(void)
         float at[3];
         for (int j = 0; j < 3; j++) at[j] = t->pos[j] + t->base[6 + j] * 60.0f + t->base[j] * 20.0f;
         at[1] = t->pos[1] - 25.0f;     /* (the walkway's floor is about 40 below the turret) */
-        memcpy(p->c.pos, at, sizeof at);
+        stand_at(&p->c, at);
         uint32_t hp0 = p->c.hit_points;
         turret_activate(t->id);
         int fired = -1, firing_ticks = 0;
@@ -83,7 +93,7 @@ int main(void)
                 firing_ticks++;
                 if (fired < 0) fired = k;
             }
-            memcpy(p->c.pos, at, sizeof at);       /* she stands */
+            stand_at(&p->c, at);       /* she stands */
         }
         float want = atan2f(20.0f, 60.0f);
         printf("active: target %s, yaw %.3f (her side %.3f), pitch %.3f, los %d, firing from tick %d (%d ticks), hp %u -> %u\n",

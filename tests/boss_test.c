@@ -4,6 +4,7 @@
    0xdb), gaining hit points. On level 19 Mutant Muro's shield and thunderbolt; on level 12 the super
    ninja's fireball, teleports (behind her, to a flag when hit hard) and his return from below the
    level. */
+#include "activity.h"
 #include "akev.h"
 #include "chars.h"
 #include "exe.h"
@@ -63,6 +64,7 @@ int main(void)
     }
     int failed = 0;
     weapons_install();
+    chr_all_active = true;      /* the characters as if in view: their active records kept (chr_all_active) */
     chars_load();
     for (int i = 0; i < chars_slots(); i++) {
         Chr *c = chars_get(i);

@@ -280,6 +280,7 @@ static bool upgrade_alert(Chr *c, int level, KnowEntry *e)
         /* AI2rExitState, then the combat state (C+0x8c0 the target, C+0x8c8 the contact) */
         ai_exit_state(a);
         a->state = AI_STATE_COMBAT;
+        ai_entered_state(a);
         combat_enter(a);
         ai_combat_set_target(a, e);
     }
@@ -601,12 +602,15 @@ void knowledge_forget_contacts(Chr *owner, const Chr *target)
    (0x4e3590: the pelvis's x and z, the body's bottom + 1). */
 void knowledge_head_point(const Chr *c, float p[3])
 {
-    if (!chr_part_point(&c->c, 10, p)) p[0] = c->c.pos[0], p[1] = c->c.pos[1] + 15.0f, p[2] = c->c.pos[2];
+    if (c->c.inactive || !chr_part_point(&c->c, 10, p)) {
+        chr_location(&c->c, p);
+        p[1] += 15.0f;
+    }
 }
 
 static void pelvis_point(const Chr *c, float p[3])
 {
-    if (!chr_part_point(&c->c, 0, p)) p[0] = c->c.pos[0], p[1] = c->c.pos[1] + c->c.pelvis_height, p[2] = c->c.pos[2];
+    chr_pelvis_position(&c->c, p);
 }
 
 /* AI2iKnowledge_CheckVisible 0x49adf0: what looker sees of the characters. Each one in range is seen
@@ -648,7 +652,8 @@ static void check_visible(Chr *looker, const void *env)
             if (e->target == t) { known = e->strength > 3; break; }
             if (e->strength < 4) break;
         }
-        float at[3] = { t->c.pos[0], t->c.pos[1] + t->c.pelvis_height, t->c.pos[2] };
+        float at[3];
+        chr_pelvis_position(&t->c, at);     /* 0x4e34f0 */
         float d[3] = { at[0] - eye[0], at[1] - eye[1], at[2] - eye[2] };
         float dist2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
         if (dist2 > cdist * cdist) continue;

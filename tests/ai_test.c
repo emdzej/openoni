@@ -1,5 +1,6 @@
 /* The AI's executor (OPENONI_DATA=<dir>, default ./game; skipped without it): on level 1, a thug told
    to walk to a point behind it on the training room's floor turns round, walks there and stops. */
+#include "activity.h"
 #include "akev.h"
 #include "chars.h"
 #include "chr_anim.h"
@@ -54,6 +55,7 @@ int main(void)
         const TmInstance *in = tm_file_instance(f, i);
         if (in->tmpl->tag == AKEV_TAG && in->data) env = in->data;
     }
+    chr_all_active = true;      /* the characters as if in view: their active records kept (chr_all_active) */
     chars_load();
     Chr *p = chars_player(), *t = chars_spawn("Bay2_Thug_1", false);
     if (!p || !t || !env) {
@@ -116,6 +118,27 @@ int main(void)
     printf("across: arrived=%d after %d ticks, %.2f from the goal, %d rooms, path of %d links, at (%.1f %.1f %.1f)\n",
            !t->ai.moving, ticks, sqrtf(dx * dx + dz * dz), rooms, t->ai.path_n, t->c.pos[0], t->c.pos[1], t->c.pos[2]);
     if (t->ai.moving || rooms < 4) failed |= 2;
+    /* the activity: unseen (no display here), the thug goes inactive after 0x5a ticks; its stub then
+       moves it along a straight line toward the path's next crossing without an animation; made active
+       again it takes up its mode's move (walking at its alert: 0.22 a tick, type 2) */
+    chr_all_active = false;
+    physics_place(&t->c, start);
+    ai_halt(&t->ai);
+    int idle = 0;
+    for (; idle < 200 && !t->c.inactive; idle++) chars_tick(&(CharacterInput){ 0 }, env);
+    ai_move_to(&t->ai, far, false, 0.0f);
+    float from[3];
+    memcpy(from, t->c.pos, sizeof from);
+    const void *anim = t->c.anim;
+    for (int k = 0; k < 60; k++) chars_tick(&(CharacterInput){ 0 }, env);
+    dx = t->c.pos[0] - from[0], dz = t->c.pos[2] - from[2];
+    float moved = sqrtf(dx * dx + dz * dz);
+    bool still = t->c.inactive && t->c.anim == anim && t->ai.stub.on;
+    chr_make_active(&t->c);
+    printf("activity: inactive after %d ticks, the stub moved it %.1f in 60 ticks (%s), active again: type 0x%02x\n", idle,
+           moved, still ? "no animation" : "animated", t->c.type);
+    if (idle != 0x5a || !still || fabsf(moved - 60 * 0.22f) > 0.1f || t->c.inactive || t->c.type != 2)
+        failed |= 4;
     chars_unload();
     tm_terminate();
     exe_free();

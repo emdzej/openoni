@@ -1,6 +1,7 @@
 /* The AI's alarm (OPENONI_DATA=<dir>, default ./game; skipped without it): on level 1, ai2_doalarm sends
    Bay4_Comguy_1 to alarm console 6, as the warehouse's hurt1 does: the alarm state runs it to the
    console's marker, where it uses the console (the console action, then OnActivate). */
+#include "activity.h"
 #include "akev.h"
 #include "chars.h"
 #include "action.h"
@@ -62,6 +63,7 @@ int main(void)
     int failed = 0;
     weapons_install();
     action_install();
+    chr_all_active = true;      /* the characters as if in view: their active records kept (chr_all_active) */
     chars_load();
     console_load();
     for (int i = 0; i < chars_slots(); i++) {

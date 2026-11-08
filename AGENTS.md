@@ -46,7 +46,8 @@ Steps 4 (renderer), 6 (character) and 7 (scripts) have begun:
   [docs/formats/crsa.md](docs/formats/crsa.md)).
 - `src/trac.c`: the animation collections.
 - `src/chars.c`: the level's characters (from `CHAR` objects and `ai2_spawn`), their scripts (die,
-  defeated, hurt) and the `chr_*`/`ai2_*` commands. `src/ai.c` (the AI's executor), `src/movement.c` (the AI's path and movement layer: collisions, steering, turning and slowing), `src/patrol.c` (patrol paths and jobs), `src/alarm.c` (the alarm state and event), `src/pursuit.c` (the pursuit state and the guard's look around),
+  defeated, hurt) and the `chr_*`/`ai2_*` commands; `src/activity.c` their activity (an AI unseen for 90 ticks
+  loses its active record, its movement stub moving it, until seen or needed again; `chr_all_active`). `src/ai.c` (the AI's executor), `src/movement.c` (the AI's path and movement layer: collisions, steering, turning and slowing), `src/patrol.c` (patrol paths and jobs), `src/alarm.c` (the alarm state and event), `src/pursuit.c` (the pursuit state and the guard's look around),
   `src/knowledge.c` (sight, hurts, the alert), `src/combat.c` (the combat settings, behaviours,
   maneuvers, the gun pickup, targeting and the executor's aim) `src/melee.c` (the melee profiles and techniques), `src/neutral.c` (the neutral characters'
   conversations and the characters' speech) and `src/panic.c` (the non-combatants' panic; all

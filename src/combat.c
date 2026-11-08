@@ -490,6 +490,7 @@ void combat_enter(AiState *a)
 void combat_new_target(AiState *a, Character *c, const Character *target)
 {
     CombatState *s = &a->combat;
+    if (target) chr_make_active((Character *)target);  /* AI2rCombat_SetNewTarget 0x4908e0 */
     s->melee_wait = s->backed = s->backed2 = 0;
     s->hurt_time = 0;
     const KnowEntry *e = a->target_entry;

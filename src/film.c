@@ -14,6 +14,7 @@ static uint64_t rd64(const uint8_t *p) { return rd32(p) | (uint64_t)rd32(p + 4) 
 bool film_start(Character *c, const void *film, int mode, uint32_t ticks)
 {
     const uint8_t *f = film;
+    chr_make_active(c);             /* ONrFilm_Start 0x4f4060 */
     c->varient &= 0xfeff;           /* 0x4ece70(c, 0) */
     /* A+0x2190, the time of the last key press: not kept */
     c->film = film;

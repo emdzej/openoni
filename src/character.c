@@ -981,6 +981,14 @@ void chr_input_mask(CharacterInput *in, uint64_t keys)
     in->extra &= keys;
 }
 
+void (*chr_activate_hook)(Character *c, bool from_stub);
+
+void chr_make_active(Character *c)
+{
+    if (!c->inactive) c->active_ticks = 0;
+    else if (chr_activate_hook) chr_activate_hook(c, true);
+}
+
 bool character_init(Character *c, const void *oncc, const float pos[3], float facing)
 {
     memset(c, 0, sizeof *c);
@@ -1162,8 +1170,9 @@ bool chr_pose_matrices(const Character *c, float (*m)[12])
 
 void chr_location(const Character *c, float out[3])
 {
-    /* at creation, or put somewhere (0x4e9210), until the next frame: the position, y + 0.5 */
-    if (c->placed || (c->bone_world[0][9] == 0.0f && c->bone_world[0][10] == 0.0f && c->bone_world[0][11] == 0.0f)) {
+    /* at creation, or put somewhere (0x4e9210), until the next frame, and without an active record (the
+       stub's place): the position, y + 0.5 */
+    if (c->placed || c->inactive || (c->bone_world[0][9] == 0.0f && c->bone_world[0][10] == 0.0f && c->bone_world[0][11] == 0.0f)) {
         out[0] = c->pos[0], out[1] = c->pos[1] + 0.5f, out[2] = c->pos[2];
         return;
     }
@@ -1174,6 +1183,16 @@ void chr_location(const Character *c, float out[3])
     if (c->no_ground_ticks == 0 && c->air_ticks == 0 && !(c->flags & 0x20000) && y < c->ground_point[1])
         y = c->ground_point[1];
     out[1] = y + 0.5f;
+}
+
+void chr_pelvis_position(const Character *c, float out[3])
+{
+    if (!c->inactive) {
+        memcpy(out, &c->bone_world[0][9], 3 * sizeof(float));
+        return;
+    }
+    chr_location(c, out);
+    out[1] += c->pelvis_height;
 }
 
 int chr_room(const Character *c, float loc[3])

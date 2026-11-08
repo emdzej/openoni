@@ -342,6 +342,73 @@ objects by the movement the characters left in +0xc4, with the ground callbacks)
 the current type from A+0x1afe with the variant now in A+0x1ca0; if that animation's variant (0x428700,
 TRAM+0x168) is higher than the current one's, switches to it with an 8-tick interpolation (0x4e41e0).
 
+## The activity
+
+A character has an active record (GS+0xb6268, 64 of 0x2838 bytes, C+0x02 its index and salt) only while
+it is *active*. The record holds the animation, the pose, the physics context, the overlays, the
+particles; without it a character isn't animated, collided with, hit by particles nor drawn. Confirmed
+from the disassembly:
+
+- **Made**: `ONrGameState_NewActiveCharacter` 0x4db830 clears the record and sets it up: the rest pose,
+  no overlays, the levels of detail none (6), the invisible faded in; the first animation
+  (`ONrCharacter_FirstAnimation` 0x4d7f90: from an AI's stub, the move of its mode while the line is on
+  (creep 0x3a/0x39, walk 2/5, run 3/2), else standing (6/7, crouched 0x13 when creeping), the weapon
+  hidden in modes 4 and 6, the panic's variant 0x8000); the body (0x4e5ff0), the physics. Off the
+  ground (`FindGroundCollision` 0x4ec040 false), the floor under it: a ray from 12 above the feet,
+  ONCC+0x00 + 12 long, flags 0x148800. An AI-moved one's movement state starts on the stub's line
+  (`AI2rMovementState_Initialize` 0x4a8d60: its facing, the room's local path) or, without one, off any
+  obstacle; the executor's start (0x498490). C+0x1640 cleared.
+- **Deleted**: `ONrCharacter_MakeInactive` 0x4f1120, for an AI only: back to its job
+  (`AI2rReturnToJob` 0x48af80 with both flags: unless in its job's block), then
+  `ONrGameState_DeleteActiveCharacter` 0x4dc580: the stub set from the local path's end (A+0x8ac), the
+  animation's and super particles killed without their stop events, the record's decal and sound, the
+  physics context.
+- **At creation** (`ONrGameState_NewCharacter` 0x4dac50) only the player (C+0x1e8 0) gets one, after
+  `AI2rInitializeCharacter` set C+0x1e8. An AI starts inactive, its stub off.
+- **Going inactive**, at the end of `ONrGameState_UpdateCharacters` 0x4dccf0, over the active list: C+0x1640
+  counts up; past 0x59, an AI (C+0x1e8 2) not playing a film, not about to be deleted (C+0x1644), on the
+  ground, whose state doesn't keep it (`AI2rKeepsActive` 0x48b090: not calm in the table 0x52a4d8 but the
+  panic, the neutral's, a conversation C+0x162c, a patrol shooting at a flag: its block's +0x5b9), without
+  C+0x04 flags 0x300000 (0x100000 `chr_lock_active`) or 1, goes inactive ("%s going inactive"). With
+  `chr_all_active` (0x5ecbac) none does, and every inactive one is made active at the update's start.
+- **Seen**: the characters' display 0x4e1540 makes each one in the camera's view (0x4e27d0) active and
+  clears C+0x1640, unless `chr_disable_visactive` (0x5ecbad). The view's test asks, with
+  `gs_show_environment` (0x5533dc, on), for the body's box (C+0x1648) to be in a leaf the octree shows
+  (0x440bb0). The box is the active record's work (0x4e5ff0): an inactive character keeps the last one
+  it had, and one never active the cleared record's zeros, so it is seen when the leaves at the world's
+  origin are. (On level 1 the warehouse is around the origin, and its guards are seen there.)
+- **Needed**: `ONrForceActiveCharacter` 0x4f11b0 (made active, or C+0x1640 cleared, the record returned)
+  and `ONrCharacter_MakeActive` 0x4f10f0 (made active) are called wherever the record is: entering a
+  state the table doesn't mark calm, or a patrol ignoring the player (`AI2rEnterState` 0x48ad50), the
+  melee (itself and its target), a new combat target, a knockdown (0x4e4e10), the hit overlay (0x4f1210),
+  the fight mode (0x4eb0b0), the scripts' animations (0x4eb340), films (0x4f4060), the intersection
+  tests (0x4eee20), the throw's target, a shot's recoil, a reload, the bosses' behaviours, the scripts'
+  `chr_lock_active`, `playback`, `chr_animate`, `chr_envanim`, the patrol's shot at a flag, the console's
+  walk.
+- **The points without a record**: `ONrCharacter_GetPelvisPosition` 0x4e34f0 gives the record's pelvis
+  (A+0x229c, the bone matrix's origin), or without one the location (C+0x160) raised by C+0x18c;
+  `ONrCharacter_GetHeadPosition` 0x4e3460 the record's head (A+0x247c) or the location 15 up. The
+  inactive AIs' sight (0x49adf0), the neutral's trigger (`AI2rNeutral_CheckTrigger` 0x4ac950: its
+  line from the AI's pelvis to the player's) and the maneuvers' blockage tests run on these: an inactive
+  neutral still starts its conversation (level 8's LSI, unseen until it runs up to Konoko).
+
+### The movement stub
+
+An inactive AI's movement (C+0x15b0..0x15e8): `AI2rMovement_Update` 0x4a8550 runs
+`AI2rMovementStub_Update` 0x4ac220 instead of the movement state and the executor, and while the line is on
+turns the character to it (C+0x16c) and puts it at the stub's place (`ONrCharacter_Teleport` 0x4e9210).
+The path's calls branch the same way (0x4a84f0..0x4a8640): the line from the location to the link out's
+crossing (`AI2rPath_FindGhostWaypoint`) or, in the last room, the goal (0x4ac590; past the first room its
+start's height the link's, `PHrGetConnectionHeight` 0x50ed50); its end counts as the local path's last
+point passed (0x4ac200); the arrival takes the goal's facing and counts as turned (0x4ac490); no
+failures (0x4bece0). `AI2iMovementStub_SetupPath` 0x4ac4d0 makes the line: its facing, length, from the
+start. A tick (0x4ac220) moves it on by the class's forward speed in the mode (0x4ee020: aiming with a
+weapon in the hand, a rifle's flag 8), x and z along the line; at its end the place is the end's, put on
+the floor (`ONrCharacter_FindFloorWithRay` 0x4daa10: a ray down ONCC+0x00 + 12 from the point, flags
+0x148800) and the line off. Every 30 ticks (the first after 1 to 30 at random) the floor's ray again,
+30 steps long; between, the height on that floor's plane (no lower than the room's bottom and 2, its
+BNV's box), taken if within 8 of it.
+
 ## Making a character
 
 `ONrGameState_NewCharacter` 0x4dac50: ECX the `CHAR` object (or 0), EDX an AI setup (or 0), then a

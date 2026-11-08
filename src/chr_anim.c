@@ -202,7 +202,7 @@ void chr_recalculate_idle_delay(Character *c)
 
 void chr_enter_fight_mode(Character *c)
 {
-    /* For an inactive character the original makes it active first (0x4db830); the port's are always. */
+    if (c->inactive && chr_activate_hook) chr_activate_hook(c, true);   /* 0x4eb0b0: 0x4db830 first */
     c->varient |= 0x200;
     c->fight_timer = chr_class_fight_time(c->oncc);
 }
@@ -416,6 +416,22 @@ static P3Particle *anim_particle_live(Character *c, unsigned i)
     return p && pc == c->anim_particle[i].cls ? p : NULL;
 }
 
+void chr_anim_particles_delete(Character *c)
+{
+    for (unsigned i = 0; i < c->super_count; i++) {
+        P3Class *pc;
+        P3Particle *p = p3_from_handle(c->super_particle[i].handle, &pc);
+        if (p && pc == c->super_particle[i].cls) p3_kill(pc, p);    /* 0x456c70 */
+    }
+    c->super_count = 0;
+    c->super_made = c->super_started = false;
+    for (unsigned i = 0; i < c->anim_particles; i++) {
+        P3Particle *p = anim_particle_live(c, i);
+        if (p) p3_kill(c->anim_particle[i].cls, p);
+    }
+    c->anim_particles = 0;
+}
+
 uint32_t chr_health_tint(const Character *c) { return health_colour_of(c); }
 
 void chr_anim_particles_pulse(Character *c, uint32_t parts)
@@ -624,6 +640,7 @@ void chr_set_animation_interpolated(Character *c, uint16_t from_state, const voi
    gives (chr_animate passes the character's own from state, A+0x1afe, not its state). */
 void chr_set_animation_external(Character *c, uint16_t from_state, const void *tram, int32_t interp)
 {
+    if (c->inactive && chr_activate_hook) chr_activate_hook(c, true);   /* 0x4db830 first */
     const void *t = remap_hook(c, tram);
     old_animation_hook(c, t);
     if (interp > 0) {

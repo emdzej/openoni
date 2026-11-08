@@ -82,6 +82,7 @@ void panic_start(Chr *c, KnowEntry *e, uint32_t ticks)
     if (a->state != AI_STATE_PANIC) {
         ai_exit_state(a);
         a->state = AI_STATE_PANIC;
+        ai_entered_state(a);
         enter(c);
     }
     if (e && e->hostility > 0) a->panic_known = true;

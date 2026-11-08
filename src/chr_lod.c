@@ -1,6 +1,7 @@
 /* The characters' levels of detail: see chr_lod.h. */
 #include "chr_lod.h"
 
+#include "akev_vis.h"
 #include "body.h"
 #include "m3gm.h"
 #include "persist.h"
@@ -34,14 +35,15 @@ bool chr_lod_visible(Character *c, const LodCamera *cam)
     d[0] *= k, d[1] *= k, d[2] *= k;
     float cs = d[2] * cam->view[2] + d[1] * cam->view[1] + d[0] * cam->view[0];     /* 0x433e00 */
     cs = cs < -1.0f ? -1.0f : cs > 1.0f ? 1.0f : cs;
-    /* (chr_draw_all_characters, 0x5ecba2, would skip the test; the environment's own, 0x440bb0 through
-       the octree's visible nodes, isn't ported: in the cone and range counts as seen) */
-    if (!(acos((double)cs) > (double)cam->fov + (double)0.39269909f) && !(cam->far * cam->far < c->camera_d2)) {   /* 0x52b304 */
+    /* (chr_draw_all_characters, 0x5ecba2, would skip the test.) In the cone and the range, the body's box
+       (C+0x1648: the last one it had while active) must be in a leaf the octree shows (0x440bb0) */
+    if (!(acos((double)cs) > (double)cam->fov + (double)0.39269909f) && !(cam->far * cam->far < c->camera_d2) &&   /* 0x52b304 */
+        vis_box(c->box)) {
         c->unseen = 0;
         return true;
     }
     c->unseen++;
-    return c->unseen < 4 && c->lod_shown != 6;
+    return c->unseen < 4 && !c->inactive && c->lod_shown != 6;
 }
 
 /* The triangles of a class's body at a detail (its parts' face normals). */

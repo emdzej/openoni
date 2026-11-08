@@ -71,6 +71,8 @@ void graph_waypoint(uint32_t quad, const float *near, float out[3]);
 void graph_project_onto_link(int link, const float near[3], float p[3]);
 /* Its BNV's flags (+0x5c): 4 a room, 1 stairs. */
 uint32_t graph_room_flags(int room);
+/* 0x50ed50: the height of the link's bottom edge (its two corners', by the flags' bits 16..19, halved). */
+float graph_link_height(int link);
 /* Its BNV's box (+0x30): min xyz, max xyz. */
 void graph_room_box(int room, float box[6]);
 

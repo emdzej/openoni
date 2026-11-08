@@ -427,6 +427,16 @@ void graph_waypoint(uint32_t quad, const float *near, float out[3])
     }
 }
 
+float graph_link_height(int link)
+{
+    if (link < 0 || link >= nlinks) return 0.0f;
+    const GraphLink *l = &links[link];
+    float a[3], b[3];
+    point_of(quad_point(l->quad, (int)(l->flags >> 18 & 3)), a);
+    point_of(quad_point(l->quad, (int)(l->flags >> 16 & 3)), b);
+    return (a[1] + b[1]) * 0.5f;
+}
+
 /* PHrProjectOntoConnection 0x50e9a0: the line from near to p (in x and z) crossed with the link's edge
    (its corners by the flags' bits 16..19); along the edge, kept 10 from an end the flags 4, 8 mark (0
    from the others), and out of a blocked run (the side with room, or the nearer); a parallel line, or

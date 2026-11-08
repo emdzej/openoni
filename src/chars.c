@@ -1,5 +1,6 @@
 /* The level's characters: see chars.h. */
 #include "chars.h"
+#include "activity.h"
 #include "gametime.h"
 #include "movement.h"
 #include "obstacle.h"
@@ -203,6 +204,7 @@ static Chr *create(int object)
     chr_hit_init(&c->c, objc_char_extra_health(o));
     difficulty_health(c);
     if (armed) arm(c);
+    activity_new_character(c);  /* the end of NewCharacter: the player's active record; an AI inactive */
     return c;
 }
 
@@ -279,6 +281,7 @@ static Chr *create_setup(const uint8_t *r, const ObjcObject *flag)
     c->ai.job_alert = 1;
     chr_hit_init(&c->c, 0);
     difficulty_health(c);
+    activity_new_character(c);
     return c;
 }
 
@@ -656,6 +659,7 @@ static void player_key_filter(Character *c, CharacterInput *in)
 
 void chars_update(const CharacterInput *player_in, const void *env)
 {
+    activity_install();
     chr_hurt_hook = hurt;
     chr_vocalize_hook = vocalize;
     chr_melee_score_hook = melee_score;
@@ -685,7 +689,9 @@ void chars_update(const CharacterInput *player_in, const void *env)
             continue;
         }
         if (dying_update(&slots[i])) continue;
-        speech_update(&slots[i]);     /* ONrSpeech_Update 0x516a60, first in the character's update 0x4ddba0 */
+        /* the frame (DoCharacterFrame 0x4ddba0) is the active ones' (0x4fc9b0's list); an inactive AI's
+           own update moves it by its stub */
+        if (!slots[i].c.inactive) speech_update(&slots[i]);     /* ONrSpeech_Update 0x516a60, first in the frame */
         if (slots[i].player && (slots[i].c.flags & CHR_FLAG_AI_MOVEMENT)) ai_control_update(&slots[i].ai, &slots[i].c, env);
         else if (slots[i].player) {
             CharacterInput in = *player_in;
@@ -699,7 +705,7 @@ void chars_update(const CharacterInput *player_in, const void *env)
     Character *list[CHARS_MAX];
     int n = 0;
     for (int i = 0; i < CHARS_MAX; i++)
-        if (used[i]) list[n++] = &slots[i].c;
+        if (used[i] && !slots[i].c.inactive) list[n++] = &slots[i].c;
     chr_collide_all(list, n);
     throw_update(list, n);
     /* 0x4dda33: each one's room from its location (C+0x184, C+0x188), before the physics */
@@ -712,6 +718,7 @@ void chars_update(const CharacterInput *player_in, const void *env)
     chr_physics_later = false;
     for (int i = 0; i < n; i++)
         if (list[i]->phys_pending) list[i]->phys_pending = false, physics_update(list[i], env);
+    activity_update();      /* the end of ONrGameState_UpdateCharacters 0x4dccf0 */
 }
 
 /* ---- the commands ---- */
@@ -1119,13 +1126,27 @@ static bool cmd_setjobstate(SlThread *t, int c, const SlValue *v, SlValue *r, vo
 }
 
 /* chr_lock_active char (AI2iScript_LockActive 0x4b94b0): an AI character made active
-   (ONrCharacter_MakeActive 0x4f11b0) and kept so, C+0x04 flag 0x100000. The port's characters are all
-   active: only the flag is kept. */
+   (ONrForceActiveCharacter 0x4f11b0) and kept so, C+0x04 flag 0x100000. */
 static bool cmd_lock_active(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;
     Chr *ch = c >= 1 ? arg_char(&v[0]) : NULL;
-    if (ch && !ch->player) ch->c.flags |= 0x100000u;    /* else "chr_lock_active: no such AI" */
+    if (!ch || ch->player) return true;     /* "chr_lock_active: no such AI" */
+    chr_make_active(&ch->c);
+    ch->c.flags |= 0x100000u;
+    return true;
+}
+
+/* ai2_active char (AI2iScript_MakeActive 0x4b89c0) and ai2_inactive char (AI2iScript_MakeInactive
+   0x4b8a70): an AI character (C+0x1e8 2) made active from its stub (ONrCharacter_MakeActive 0x4f10f0)
+   or inactive (ONrCharacter_MakeInactive 0x4f1120). */
+static bool cmd_ai_active(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r;
+    Chr *ch = c >= 1 ? arg_char(&v[0]) : NULL;
+    if (!ch || ch->player || !ch->c.ai) return true;    /* the AI's error: no such AI */
+    if (u) activity_make_inactive(ch);
+    else if (ch->c.inactive && chr_activate_hook) chr_activate_hook(&ch->c, true);
     return true;
 }
 
@@ -1344,6 +1365,7 @@ static bool cmd_playback(SlThread *t, int c, const SlValue *v, SlValue *r, void 
     if (c < 2) return true;
     Chr *ch = arg_char(&v[0]);
     if (!ch || v[1].type != SL_STRING) return true;     /* "character %s cannot be made active" */
+    chr_make_active(&ch->c);
     if (chr_envanim_playing(&ch->c)) chr_envanim_start(&ch->c, NULL, false);
     const void *film = tm_instance_get(TM_TAG("FILM"), v[1].s);
     if (!film) {                                        /* "can not find any film named %s" */
@@ -1483,6 +1505,7 @@ static bool animate(int c, const SlValue *v, bool block)
     if (c < 2 || v[1].type != SL_STRING) return true;
     Chr *ch = arg_char(&v[0]);
     if (!ch) return true;
+    chr_make_active(&ch->c);     /* 0x4f11b0 */
     if (block && ch->c.hold > 1) return false;
     const void *tram = tm_instance_get(TM_TAG("TRAM"), v[1].s);
     if (!tram) return true;      /* failed to find animation */
@@ -1515,6 +1538,7 @@ static bool envanim(int c, const SlValue *v, bool block)
     if (c < 2 || v[1].type != SL_STRING) return true;
     Chr *ch = arg_char(&v[0]);
     if (!ch) return true;       /* "chr_envanim or chr_envanim_block: no such character" */
+    chr_make_active(&ch->c);     /* 0x4f11b0 */
     if (!ch->c.has_physics) return true;    /* "has no physics context" */
     if (block && ch->c.envanim.oban && ch->c.envanim.frame + 1 < (int)(((const uint8_t *)ch->c.envanim.oban)[OBAN_FRAMES] | ((const uint8_t *)ch->c.envanim.oban)[OBAN_FRAMES + 1] << 8))
         return false;
@@ -1663,6 +1687,8 @@ void chars_register_commands(void)
     sl_register("ai2_passive", cmd_passive, NULL);
     sl_register("chr_neutral", cmd_passive, NULL);     /* the same handler (0x4b4be0) */
     sl_register("ai2_neutralbehavior", cmd_neutralbehavior, NULL);
+    sl_register_bool("chr_all_active", &chr_all_active);            /* 0x5ecbac */
+    sl_register_bool("chr_disable_visactive", &chr_disable_visactive);   /* 0x5ecbad */
     sl_register_bool("ai2_boss_battle", &knowledge_boss_battle);
     sl_register_bool("ai2_barabbas_run", &boss_barabbas_run);
     sl_register("ai2_setjobstate", cmd_setjobstate, NULL);
@@ -1678,6 +1704,8 @@ void chars_register_commands(void)
     sl_register("chr_nocollision", cmd_nocollision, NULL);
     sl_register("chr_forceholster", cmd_forceholster, NULL);
     sl_register("chr_lock_active", cmd_lock_active, NULL);
+    sl_register("ai2_active", cmd_ai_active, NULL);
+    sl_register("ai2_inactive", cmd_ai_active, (void *)1);
     sl_register("chr_death_lock", cmd_death_lock, NULL);
     sl_register("chr_unkillable", cmd_unkillable, NULL);
     sl_register("chr_invincible", cmd_invincible, NULL);

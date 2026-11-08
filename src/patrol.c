@@ -378,6 +378,7 @@ static bool do_point(AiState *a, const Character *c, const PatrolPoint *w, const
         if (start) {
             if (!flag_at(w->a, p, &face)) return true;      /* AI2rError (0x4936b0) */
             Chr *ch = (Chr *)((char *)a - offsetof(Chr, ai));
+            chr_make_active(&ch->c);
             if (!a->shoot_init) {
                 const uint8_t *cls = (const uint8_t *)c->oncc + 0x138;
                 targeting_init(&a->shoot, 0, &patrol_ops, ch, NULL, cls, cls + 0x1c);

@@ -59,10 +59,10 @@ static void matrix_rotate_y(float m[12], float a)
 
 /* ---- the context ---- */
 
-/* 0x4eee20: a character's half. The original's characters without an active record (none here) keep
-   no animation. */
+/* 0x4eee20: a character's half, an inactive one made active first (0x4db830). */
 static void get_state(const Character *c, ChrIntersectChar *h)
 {
+    if (c->inactive && chr_activate_hook) chr_activate_hook((Character *)c, true);
     memset(h, 0, sizeof *h);
     h->c = c;
     h->anim = c->anim;

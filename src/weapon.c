@@ -149,6 +149,7 @@ static void pulse(Weapon *w, const uint8_t *sh)
        kick by it over the delay's */
     bool gatling = weapon_cheat_gatling && !c->ai;
     w->delay = w->delay2 = rd16(sh + (gatling ? SH_DELAY_GATLING : SH_DELAY));
+    chr_make_active(c);     /* 0x4f11b0: the recoil overlay is the active record's */
     const void *t = chr_lookup_varient(c, rd16(w->cls + ONWC_RECOIL_ANIM), 1, c->varient);
     if (t) chr_overlay_set(c, CHR_OVERLAY_RECOIL, t, 0);
     /* the AI's kick is less by its shooting skill (ONCC +0x154): with the AI's weapons */
@@ -307,6 +308,7 @@ static bool empty_unreloadable(Character *c)
 
 bool weapon_try_reload(Character *c, Weapon *w, bool *full, bool *none)
 {
+    chr_make_active(c);     /* WPrTryReload 0x51c560 */
     if (full) *full = false;
     if (none) *none = false;
     if (!w || !c->weapon) return false;

@@ -12,6 +12,9 @@
 
 /* The character's context as the others' searches see it (false: none, no physics). */
 bool physics_ctx(Character *c, PhysCtx *out);
+/* FindGroundCollision 0x4ec040: the floor under the feet, standing on it (ground_quad, ground_height);
+   whether one was found. */
+bool physics_find_ground(Character *c, const void *env);
 /* The context for a character made active (FUN_004dc2b0): at its position, its tree built. */
 void physics_start(Character *c);
 /* 0x4e9210: the character put at pos, the physics' position and the old one with it. */

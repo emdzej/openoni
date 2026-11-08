@@ -106,3 +106,12 @@ bool movement_path_short(const struct Chr *ch);
 void movement_update(struct Chr *ch);
 /* 0x4a9510: the way the movement goes this tick (+0x880), 1000 none. */
 float movement_direction(const struct Chr *ch);
+/* The movement stub's (AI2rMovementStub, an inactive AI's): Initialize 0x4ac0f0, its line from the
+   location to the active local path's end (from_local, if it has one; else none), and the tick's step
+   (Update 0x4ac220). */
+void movement_stub_init(struct Chr *ch, bool from_local);
+void movement_stub_update(struct Chr *ch);
+/* The movement state's start on an AI made active (AI2rMovementState_Initialize 0x4a8d60, after
+   movement_init): on the stub's line (on_line), its facing and the room's local path to its end; else
+   off any obstacle, without a local path. */
+void movement_activated(struct Chr *ch, bool on_line);

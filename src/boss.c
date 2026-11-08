@@ -55,6 +55,7 @@ static uint32_t heal_wait(const Character *c) { return c->hit_points * 90 / c->m
    for; damage: a hit's). */
 static int barabbas(AiState *a, Character *c, int msg, bool *handled, int arg)
 {
+    chr_make_active(c);     /* 0x4f11b0 */
     CombatState *s = &a->combat;
     BarabbasState *b = &s->barabbas;
     *handled = true;
@@ -303,6 +304,7 @@ static uint32_t down5(uint32_t t) { return t > 5 ? t - 5 : 0; }
    for 30, off 360). True when the message is taken. */
 static bool muro(AiState *a, Character *c, int msg, bool *handled, int p5, const void *tram, int *r)
 {
+    chr_make_active(c);     /* 0x4f11b0 */
     MuroState *m = &a->combat.muro;
     *r = 0;
     switch (msg) {

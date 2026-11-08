@@ -149,6 +149,9 @@ uint16_t chr_class_fight_time(const void *oncc);
 uint32_t chr_health_colour(float fraction);
 /* The bones' matrices (A+0x2278) the animation's particles hang from, from the pose shown. */
 void chr_bone_matrices(Character *c);
+/* The active record's delete (0x4dc580): the super particles and the animation's killed, without
+   their stop events. */
+void chr_anim_particles_delete(Character *c);
 /* The animation's particles (A+0x1ca4): DoCharacterFrame's start and stop by their frames, and their
    end (OldAnimationHook 0x4ead30, the character's deletion). */
 void chr_anim_particles_frame(Character *c);

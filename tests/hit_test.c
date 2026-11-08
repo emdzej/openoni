@@ -1,6 +1,7 @@
 /* Hits (OPENONI_DATA=<dir>, default ./game; skipped without it): on level 1, Konoko faces a training
    dummy a step away and punches and kicks; the blows land once per animation, take hit points, turn
    the dummy and play its reactions, and enough of them knock it down for good. */
+#include "activity.h"
 #include "akev.h"
 #include "chars.h"
 #include "chr_anim.h"
@@ -55,6 +56,7 @@ int main(void)
         const TmInstance *in = tm_file_instance(f, i);
         if (in->tmpl->tag == AKEV_TAG && in->data) env = in->data;
     }
+    chr_all_active = true;      /* the characters as if in view: their active records kept (chr_all_active) */
     chars_load();
     Chr *p = chars_player(), *d = chars_spawn("Train_TD_1", false);
     if (!p || !d || !env) {

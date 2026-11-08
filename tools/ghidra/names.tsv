@@ -713,6 +713,7 @@
 0048ae80	AI2rExitState	AI2	med	name from the Intel Mac build (strings:1)
 0048af80	AI2rReturnToJob	AI2	low	leaves the state for the job, or idle below the job alert C+0xf9c (name made up)
 0048b060	AI2rIsCalm	AI2	low	the calm hurt hook's test (table 0x52a4d8): an AI not on alert, a patrol ignoring the player false (name made up)
+0048b090	AI2rKeepsActive	AI2	low	whether the AI's state keeps it active: not calm (but the panic), the neutral's, a conversation, a patrol shooting (name made up)
 0048b0d0	AI2rAllPassive	AI2	med	read: every AI character's passive bit (+0x1f0 bit 2); the Mac build's name
 0048b160	AI2rPassive	AI2	med	name from the Intel Mac build (neighbours:1.00)
 0048b1d0	AI2rCharacter_IsHostile	AI2	low	whether a takes b for an enemy (teams, then past hits)
@@ -918,9 +919,15 @@
 004abc30	AI2rMovementState_RenderCollision	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004abe40	AI2rMovementState_RenderPath	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004ac0f0	AI2rMovementStub_Initialize	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004ac1d0	AI2rMovementStub_GetFacing	AI2	low	the stub's line's facing while it is on, else 1000 (name made up)
+004ac1f0	AI2rMovementStub_Stop	AI2	low	the stub's line off (name made up)
+004ac200	AI2rMovementStub_IsDone	AI2	low	the stub's line done, or the path arrived (name made up)
 004ac220	AI2rMovementStub_Update	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004ac490	AI2rMovementStub_Arrived	AI2	low	the arrival's facing taken (facing mode 3), turned at once (name made up)
 004ac4d0	AI2iMovementStub_SetupPath	AI2	med	name from the Intel Mac build (neighbours:1.00)
+004ac590	AI2rMovementStub_MakePath	AI2	med	name from the Intel Mac build (caller); the line to the ghost waypoint or the goal
 004ac640	AI2rMovementStub_Report	AI2	med	name from the Intel Mac build (strings:2)
+004ac730	AI2rMovementStub_RenderPath	AI2	med	name from the Intel Mac build (layout)
 004ac870	AI2rNeutral_ChangeBehavior	AI2	low	the character's Neutral by id (C+0x100c), its ranges copied (name made up)
 004ac950	AI2rNeutral_CheckTrigger	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004acbc0	AI2iNeutral_CheckEnemies	AI2	med	name from the Intel Mac build (neighbours:1.00)
@@ -1244,6 +1251,7 @@
 004d7bb0	ONrCharacter_UseNewWeapon	ON	med	name from the Intel Mac build (re/mac-matches.tsv)
 004d7bf0	ONrCharacter_UseWeapon_NameAmmo	ON	med	name from the Intel Mac build (neighbours:1.00)
 004d7c30	ONrCharacter_SetCharacterClass	ON	med	name from the Intel Mac build (strings:4)
+004d7f90	ONrCharacter_FirstAnimation	ON	low	the active record's first animation: an AI's move from its stub, else standing (name made up)
 004d87b0	ONrCharacter_LevelBegin	ON	med	name from the Intel Mac build (strings:1)
 004d8950	ONrCharacter_LevelEnd	ON	med	name from the Intel Mac build (neighbours:1.00)
 004d89b0	ONrGameState_InstallConsoleVariables	ON	med	name from the Intel Mac build (neighbours:1.00)
@@ -1258,10 +1266,12 @@
 004da450	iSetAnyCharacterHealth	-	med	name from the Intel Mac build (strings:5)
 004daa10	ONrCharacter_FindFloorWithRay	ON	med	name from the Intel Mac build (neighbours:1.00)
 004dac50	ONrGameState_NewCharacter	ON	med	name from the Intel Mac build (strings:3)
+004db830	ONrGameState_NewActiveCharacter	ON	med	name from the Intel Mac build (caller); a character's active record made
 004dc100	ONrCharacter_GetRadius	ON	low	3 for an AI's character, 4 for the player's (port name)
 004dc160	ONiCharacter_BuildSphereTree	ON	low	the root, 4 leaves and 2 middle spheres from the feet (or the body's bottom) to the top
 004dc2b0	ONrCharacter_EnablePhysics	ON	med	the active character's physics context and callback table 0x5ec918
 004dc480	ONrGameState_DeleteCharacter	ON	med	name from the Intel Mac build (neighbours:1.00)
+004dc580	ONrGameState_DeleteActiveCharacter	ON	med	name from the Intel Mac build (caller); the record's particles, sound, physics gone
 004dc7e0	ONiCharacter_BeginJump	ON	low	keeps the velocity estimate at A+0x104, A+0xf4 = 1, A+0x110 = 1
 004dc810	ONrCharacter_InAir	ON	med	Mac match (callee)
 004dccf0	ONrGameState_UpdateCharacters	ON	med	name from the Intel Mac build (neighbours:1.00)
@@ -1313,6 +1323,7 @@
 004ea950	AttemptSpecificThrow	-	med	name from the Intel Mac build (strings:1)
 004eaa10	AttemptThrow	-	med	name from the Intel Mac build (neighbours:0.80)
 004eafc0	ONrCharacter_GetVelocityEstimate	ON	med	Mac match (caller): the mean root motion of up to four frames
+004eb0b0	ONrCharacter_EnterFightMode	ON	low	made active, the fight variant 0x200 and its timer (name made up)
 004eb1a0	ONrCharacter_UpdateAnimationForVarient	ON	med	name from the Intel Mac build (neighbours:1.00)
 004eb220	ONrCharacter_SetHitPoints	ON	med	read: C+0x38 set, 0 kills, a dead character revived; the Mac build's name
 004eb340	ONrCharacter_SetAnimation_External	ON	med	what chr_animate calls (from state, tram, interpolation); the Mac match of 0x4e41e0 by callee looks wrong
@@ -1358,7 +1369,10 @@
 004f0370	ONrStringToAnimType	ON	med	Mac name; sorts the type table at 0x54d7c0 once, searches it without case
 004f0450	ONrAnimState_FromString	ON	low	an animation state by its name in the table at 0x54df10 (name made up)
 004f0e80	ONrCharacter_PlayAnimationImpact	ON	med	name from the Intel Mac build (strings:1)
+004f10f0	ONrCharacter_MakeActive	ON	low	an inactive character given its active record (name made up)
+004f1120	ONrCharacter_MakeInactive	ON	med	name from the Intel Mac build (neighbours:0.67)
 004f1180	ONrGetActiveCharacter	ON	med	Mac match (neighbours:0.65)
+004f11b0	ONrForceActiveCharacter	ON	med	name from the Intel Mac build (callee); made active, or C+0x1640 cleared; the record returned
 004f14c0	ONrCharacter_ForceStand	ON	med	name from the Intel Mac build (strings:1)
 004f15d0	ONrActiveCharacter_IsPlayingThisAnimationName	ON	med	name from the Intel Mac build (neighbours:1.00)
 004f2070	ONrGameState_DeferScript	ON	med	read: queues a script with the character's name and a cause ("defer script") (name made up)
@@ -1556,6 +1570,7 @@
 0050df80	PHiCheckForBlockages	PH	med	name from the Intel Mac build (strings:2)
 0050e7c0	PHiAddBlockage	PH	med	name from the Intel Mac build (strings:1)
 0050e9a0	PHrProjectOntoConnection	PH	high	read: a point moved to where the line from a near point crosses the link, in its margins, out of its blockages (Mac name)
+0050ed50	PHrGetConnectionHeight	PH	med	name from the Intel Mac build (layout); the link's bottom edge's height
 0050ed90	PHrNotifyDoorStateChange	PH	med	name from the Intel Mac build (neighbours:1.00)
 0050edb0	PHrPathDistance	PH	med	name from the Intel Mac build (neighbours:0.80)
 0050ee80	ONrPersistance_Initialize	ON	med	name from the Intel Mac build (neighbours:1.00)

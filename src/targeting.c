@@ -14,12 +14,7 @@ static float len3(const float v[3]) { return sqrtf(v[0] * v[0] + v[1] * v[1] + v
 
 /* A character's place for the aim: its pelvis (ONrCharacter_GetPelvisPosition, the feet and the
    class's pelvis height). */
-static void pelvis(const Character *c, float out[3])
-{
-    out[0] = c->pos[0];
-    out[1] = c->pos[1] + c->pelvis_height;
-    out[2] = c->pos[2];
-}
+static void pelvis(const Character *c, float out[3]) { chr_pelvis_position(c, out); }
 
 /* The callback +4, the aiming speed (none for some owners). */
 static void aiming_speed(AiTargeting *t, float speed)

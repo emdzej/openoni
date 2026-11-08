@@ -679,8 +679,9 @@ static bool cmd_lock_keys(SlThread *t, int c, const SlValue *v, SlValue *r, void
 }
 
 /* cutscene_sync on|off|mark (0x4bcbc0): the cutscene's sync (G+0x48) on or off; mark (G+0x44, the
-   sync's mark) is with the sync's port. Not ported: the sync itself (the frames held back to keep the
-   cutscene on the clock's time, G+0x50), which a headless run doesn't need. */
+   frames behind, cleared) has none to clear. The sync itself (iComputeDeltaTicks 0x4fafb0: at most 6 ticks a frame, the
+   rest carried in G+0x44 while the sync is on, dropped past 300 behind) has nothing to carry here: the
+   machine's sixtieths are gasm's frame clock (virtual, one a frame), so a frame is always one tick. */
 static bool cmd_cutscene_sync(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;

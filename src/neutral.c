@@ -202,13 +202,7 @@ static float dist2(const float a[3], const float b[3])
     return x * x + y * y + z * z;
 }
 
-/* ONrCharacter_GetPelvisPosition 0x4e34f0 (the port's: the location raised by the pelvis height). */
-static void pelvis(const Character *c, float p[3])
-{
-    p[0] = c->pos[0];
-    p[1] = c->pos[1] + c->pelvis_height;
-    p[2] = c->pos[2];
-}
+static void pelvis(const Character *c, float p[3]) { chr_pelvis_position(c, p); }   /* 0x4e34f0 */
 
 /* 0x4e33a0: the way the character faces, its run's turn taken off. */
 static float heading(const Character *c)
@@ -390,6 +384,7 @@ static void enter_state(Chr *c)
 {
     ai_exit_state(&c->ai);
     c->ai.state = AI_STATE_NEUTRAL;
+    ai_entered_state(&c->ai);
     memset(&c->ai.talk, 0, sizeof c->ai.talk);
     neutral_enter(c);
 }

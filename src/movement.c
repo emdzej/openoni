@@ -1,6 +1,8 @@
 /* The AI's movement layer: see movement.h. */
 #include "movement.h"
 #include "ai.h"
+#include "akev.h"
+#include "akev_collide.h"
 #include "chars.h"
 #include "chr_anim.h"
 #include "door.h"
@@ -8,7 +10,9 @@
 #include "graph.h"
 #include "localpath.h"
 #include "obstacle.h"
+#include "particle.h"
 #include "physics.h"
+#include "trac.h"
 #include "weapon.h"
 
 #include <math.h>
@@ -28,6 +32,8 @@ static float wrap_pi(float a) { return a < -PI ? a + TWO_PI : a > PI ? a - TWO_P
 static float angle_of(float x, float z) { return wrap_2pi(atan2f(x, z)); }
 
 static AiState *ai_of(Chr *ch) { return &ch->ai; }
+/* the character whose AI it is */
+static const Character *chr_of(const AiState *a) { return &((const Chr *)((const char *)a - offsetof(Chr, ai)))->c; }
 
 static float oncc_float(const Character *c, unsigned off)
 {
@@ -236,6 +242,10 @@ static bool path_end(const AiState *a, float *radius)
 /* 0x4a9580 (0x4a84f0): the local path and the state's stops cleared. */
 static void clear_local(AiState *a)
 {
+    if (chr_of(a)->inactive) {
+        a->stub.on = false;     /* 0x4ac1f0 */
+        return;
+    }
     MoveState *m = &a->move;
     m->room = m->prev_room = -1;
     a->local_n = a->local_k = 0;
@@ -258,6 +268,14 @@ static void clear_collisions(MoveState *m)
    then done once within 5 degrees of it (0x52af50). */
 static bool arrived_turned(AiState *a, const Character *c)
 {
+    if (c->inactive) {
+        /* 0x4ac490: the facing asked for is taken (facing mode 3), and it counts as turned */
+        if (a->path_type == 1 && a->goal_facing) {
+            a->face_at = a->goal_angle;
+            a->facing_mode = 3;
+        }
+        return true;
+    }
     MoveState *m = &a->move;
     if (!m->arrived_seen) {
         m->arrived_seen = true;
@@ -321,8 +339,28 @@ static void ghost_waypoint(const AiState *a, const float near[3], int seg, float
    link before (PHrWaypointFromGunk, near the character), to the crossing of the link out
    (ghost_waypoint) or the destination, through the room's grid. The next waypoint is the second, the
    first being the start's cell. False with no path (its stops cleared). */
+static void stub_setup(AiState *a);
 static bool make_local(AiState *a, const Character *c, const void *env, int seg)
 {
+    if (c->inactive) {
+        /* 0x4ac590: the stub's line, from the location (its height the link's, past the first room,
+           0x50ed50) to the link out's crossing (ghost_waypoint) or, in the last room, the goal */
+        a->local_seg = seg;
+        if (!a->path_made) {        /* no rooms' path (C+0x114c 0) */
+            a->stub.on = false;
+            return true;
+        }
+        chr_location(c, a->stub.from);
+        if (seg != 0 && seg <= a->path_n) a->stub.from[1] = graph_link_height(a->path[seg - 1]);
+        if (seg >= a->path_n) memcpy(a->stub.to, a->goal, sizeof a->stub.to);
+        else {
+            float near[3];
+            chr_location(c, near);
+            ghost_waypoint(a, near, seg, a->stub.to);
+        }
+        stub_setup(a);
+        return true;
+    }
     MoveState *m = &a->move;
     if (!a->local) a->local = malloc(sizeof(LocalPoint) * LOCAL_PATH_MAX);
     a->local_seg = seg;
@@ -342,6 +380,7 @@ static bool make_local(AiState *a, const Character *c, const void *env, int seg)
         ghost_waypoint(a, near, seg, end);
         room = graph_link(a->path[seg])->from;
     }
+    memcpy(a->local_end, end, sizeof a->local_end);
     if (room < 0) return false;
     if (room != m->room) m->prev_room = m->room, m->room = room;
     /* +0x1148: the room the link out goes to is a stair one */
@@ -449,6 +488,7 @@ static bool in_room(int room, const float p[3])
    repath. */
 static bool check_failure(AiState *a, const Character *c, const void *env)
 {
+    if (c->inactive) return false;  /* 0x4bece0 */
     const MoveState *m = &a->move;
     if (m->stuck) {
         repath(a, c, env);
@@ -491,6 +531,7 @@ static float point_radius(const AiState *a, int k, bool *last)
    clears the stops); true once the last is passed. */
 static bool next_point(AiState *a, const Character *c)
 {
+    if (c->inactive) return a->arrived || !a->stub.on;     /* 0x4ac200: its line done */
     MoveState *m = &a->move;
     if (a->arrived || a->local_n == 0) {
         a->local_n = a->local_k = 0;
@@ -1032,7 +1073,98 @@ static void look(Chr *ch, float facing, float *face, bool *glancing, bool *full_
     }
 }
 
-float movement_direction(const Chr *ch) { return ch->ai.move.dir; }
+float movement_direction(const Chr *ch)
+{
+    if (ch->c.inactive) return ch->ai.stub.on ? ch->ai.stub.facing : NONE;    /* 0x4ac1d0 */
+    return ch->ai.move.dir;
+}
+
+/* ---- the movement stub ---- */
+
+/* AI2iMovementStub_SetupPath 0x4ac4d0: the line's facing, length, and its start */
+static void stub_setup(AiState *a)
+{
+    float f = atan2f(a->stub.to[0] - a->stub.from[0], a->stub.to[2] - a->stub.from[2]);
+    a->stub.facing = f < 0.0f ? f + TWO_PI : f;
+    float d[3] = { a->stub.from[0] - a->stub.to[0], a->stub.from[1] - a->stub.to[1], a->stub.from[2] - a->stub.to[2] };
+    memcpy(a->stub.pos, a->stub.from, sizeof a->stub.pos);
+    a->stub.done = 0.0f;
+    a->stub.on = true;
+    a->stub.length = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+}
+
+void movement_stub_init(Chr *ch, bool from_local)
+{
+    AiState *a = ai_of(ch);
+    Character *c = &ch->c;
+    a->stub.facing = c->facing;
+    memcpy(a->stub.pos, c->pos, sizeof a->stub.pos);
+    if (from_local && a->local_n) {
+        chr_location(c, a->stub.from);
+        memcpy(a->stub.to, a->local_end, sizeof a->stub.to);
+        stub_setup(a);
+    } else
+        a->stub.on = false;
+    a->stub.floor_quad = -1;
+    a->stub.floor_wait = a->stub.on ? (uint32_t)((trac_random() * 30) >> 16) + 1 : 0;
+}
+
+/* ONrCharacter_FindFloorWithRay 0x4daa10: the floor under p, a ray down steps times the class's first
+   gravity (ONCC+0x00), and 12; the hit to out, its quad returned (-1 none) */
+static int32_t floor_ray(const Character *c, uint32_t steps, const float p[3], float out[3])
+{
+    const void *env = p3_environment();
+    if (!env) return -1;
+    if (!steps) steps = 1;
+    float g;
+    memcpy(&g, c->oncc, 4);
+    const float v[3] = { 0.0f, (float)steps * -g - 12.0f, 0.0f };
+    static AkevHit hit[AKEV_HITS_MAX];
+    if (!akev_collide_point(env, p, v, 0x148800, 1, hit)) return -1;
+    memcpy(out, hit[0].point, 12);
+    return (int32_t)hit[0].quad;
+}
+
+void movement_stub_update(Chr *ch)
+{
+    AiState *a = ai_of(ch);
+    Character *c = &ch->c;
+    if (!a->stub.on) return;
+    /* AI2rMovementStub_Update 0x4ac220: forward at the mode's speed (aiming with a weapon in the hand,
+       a rifle's) */
+    bool armed = c->weapon != NULL, rifle = armed && (weapon_options(c->weapon) & ONWC_RIFLE);
+    a->stub.done += movement_speed(AI_MOVE_FORWARD, movement_mode(ch), armed, rifle);
+    if (a->stub.done > a->stub.length) {
+        /* the end: there, on the floor under it */
+        a->stub.done = a->stub.length;
+        a->stub.pos[0] = a->stub.to[0];
+        a->stub.pos[2] = a->stub.to[2];
+        a->stub.floor_quad = floor_ray(c, 0, a->stub.pos, a->stub.pos);
+        a->stub.on = false;
+        return;
+    }
+    float t = a->stub.done / a->stub.length;
+    a->stub.pos[0] = t * (a->stub.to[0] - a->stub.from[0]) + a->stub.from[0];
+    a->stub.pos[2] = t * (a->stub.to[2] - a->stub.from[2]) + a->stub.from[2];
+    if (a->stub.floor_wait) a->stub.floor_wait--;
+    if (a->stub.floor_wait == 0) {
+        a->stub.floor_quad = floor_ray(c, 30, a->stub.pos, a->stub.pos);
+        a->stub.floor_wait = 30;
+        return;
+    }
+    /* between the rays, the height on the floor's plane (not below the room's bottom, 2 up), within 8 */
+    float pl[4];
+    const void *env = p3_environment();
+    if (a->stub.floor_quad == -1 || !env || !akev_quad_plane(env, (uint32_t)a->stub.floor_quad, pl)) return;
+    if (!(fabsf(pl[1]) > 0.001f)) return;   /* 0x529dfc */
+    float y = -((pl[0] * a->stub.pos[0] + pl[2] * a->stub.pos[2] + pl[3]) / pl[1]);
+    if (c->room >= 0) {
+        float box[6];
+        graph_room_box(c->room, box);
+        if (y <= box[1] + 2.0f) y = box[1] + 2.0f;
+    }
+    if (a->stub.pos[1] < y + 8.0f && y - 8.0f < a->stub.pos[1]) a->stub.pos[1] = y;  /* 0x52a740 */
+}
 
 void movement_update(Chr *ch)
 {
@@ -1070,6 +1202,23 @@ bool movement_find_clear_point(const Character *c, float p[3])
     if (!local_find_nearby_point(c, p, 15.0f, 5.0f, c->facing, 0.52359879f, 6, 8, 5, out)) return false;
     p[0] = out[0], p[2] = out[2];
     return true;
+}
+
+void movement_activated(Chr *ch, bool on_line)
+{
+    AiState *a = ai_of(ch);
+    Character *c = &ch->c;
+    MoveState *m = &a->move;
+    if (on_line) {
+        /* AI2rMovementState_Initialize 0x4a8d60 from the stub: its facing, the local path of the room
+           it goes through (AI2iMovementState_SetupPath 0x4a9d70) */
+        m->dir = m->last_dir = a->stub.facing;
+        if (!make_local(a, c, p3_environment(), a->path_k)) a->local_n = a->local_k = 0;
+        return;
+    }
+    /* without: off any obstacle (AI2iMovementState_FindClearPoint, 0x4e9210), no local path */
+    movement_place_clear(ch);
+    a->local_n = a->local_k = 0;
 }
 
 void movement_place_clear(Chr *ch)

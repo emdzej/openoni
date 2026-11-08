@@ -2,6 +2,7 @@
    the training room's floor hears gunfire from Konoko 60 behind it: the alert goes high, it pursues,
    hurrying to the sound's place (the pursuit's go-to mode), then looks around there; as the contact
    fades it gives up and goes back to its job. */
+#include "activity.h"
 #include "akev.h"
 #include "chars.h"
 #include "exe.h"
@@ -60,6 +61,7 @@ int main(void)
         if (in->tmpl->tag == AKEV_TAG && in->data) env = in->data;
     }
     int failed = 0;
+    chr_all_active = true;      /* the characters as if in view: their active records kept (chr_all_active) */
     chars_load();
     for (int i = 0; i < chars_slots(); i++) {
         Chr *c = chars_get(i);
