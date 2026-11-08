@@ -1416,6 +1416,18 @@ static bool inflict_damage(Character *c, const float at[3], float reach, const f
             knockback *= r;
         }
     }
+    /* the boss's shield (C+0x04 0x40000000, chr_boss_shield): the damage, the stun and the knockback cut by
+       the class's share (ONCC+0xc7c); the damage's and the stun's fractions each kept as a point with
+       their chance (UUrRandom 0x426e10 against 65535 times the fraction) */
+    if (c->flags & 0x40000000u) {
+        float k = 1.0f - rdf((const uint8_t *)c->oncc + 0xc7c);
+        knockback *= k;
+        float fd = (float)dmg * k, fs = (float)st * k;
+        uint32_t d = (uint32_t)(int32_t)fd, s = (uint32_t)(int32_t)fs;     /* 0x4264e0: toward zero */
+        if ((double)(fd - (float)d) * 65535.0 > (double)trac_random()) d++;
+        if ((double)(fs - (float)s) * 65535.0 > (double)trac_random()) s++;
+        dmg = d, st = s;
+    }
     chr_enter_fight_mode(c);    /* 0x4eb0b0: a hit character goes to fight mode */
     /* type 6's damage is held for its hold, none taken */
     chr_take_damage(c, type == 6 ? 0 : dmg, knockback, dir, 0, owner_character(owner), owner & 0xff000000u);

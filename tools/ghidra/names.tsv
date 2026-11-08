@@ -174,6 +174,7 @@
 004263e0	UUrMachineTime_Sixtieths	UU	med	name from the Intel Mac build (neighbours:1.00)
 00426460	UUrAtExit_Register	UU	med	name from the Intel Mac build (neighbours:1.00)
 00426480	UUrMachineTime_High	UU	med	name from the Intel Mac build (neighbours:1.00)
+004264e0	UUrFloat_ToInt_Chop	UU	low	the x87's FISTP (64 bits) with the rounding set to chop, the low half
 00426550	UUrString_Capitalize	UU	med	name from the Intel Mac build (neighbours:1.00)
 004265d0	UUrString_HasPrefix	UU	med	name from the Intel Mac build (neighbours:1.00)
 004265f0	UUrString_Copy	UU	med	name from the Intel Mac build (neighbours:0.77)
@@ -534,9 +535,14 @@
 0046b920	WMrCheckBox_GetCheck	WM	low	0x2d
 0046c5b0	WMiEditField_HandleSetMaxChars	WM	med	name from the Intel Mac build (neighbours:1.00)
 0046c720	WMiListBox_Create	WM	med	name from the Intel Mac build (strings:1)
+0046ce30	WMiListBox_Layout	WM	low	the lines shown, the height made to hold them, the scroll bar placed
+0046cfd0	WMiListBox_UpdateScrollbar	WM	low	the scroll bar's range (the count), page (the lines shown), position
+0046d2c0	WMiListBox_HandleScroll	WM	low	0x58 from the scroll bar: a line, a page or to the position
+0046d3c0	WMiListBox_Paint	WM	low	the lines shown from the top, the selected hilite, the text
 0046d940	WMiListBox_GetText	WM	med	name from the Intel Mac build (neighbours:0.75)
 0046db60	WMiListBox_InsertString	WM	med	name from the Intel Mac build (neighbours:0.75)
 0046dcc0	WMiListBox_ReplaceString	WM	med	name from the Intel Mac build (neighbours:0.80)
+0046e5f0	WMrListBox_SetSelection	WM	low	the line selected and scrolled into view, the parent told if asked
 0046e810	WMrMenu_GetWidth	WM	med	name from the Intel Mac build (neighbours:1.00)
 0046e830	WMrMenu_Locate	WM	med	name from the Intel Mac build (neighbours:1.00)
 0046ea40	WMrMenu_Create	WM	med	name from the Intel Mac build (neighbours:1.00)
@@ -560,7 +566,15 @@
 00470c70	WMrPopupMenu_Reset	WM	low	the menu's items removed
 00470d00	WMrPopupMenu_SetSelection	WM	low	the item selected and the parent told (0x19)
 00470e10	WMiProgressBar_Paint	WM	med	name from the Intel Mac build (neighbours:0.83)
+00471400	WMrScrollbar_SetPosition	WM	low	held to the range, the thumb placed
+00471440	WMiScrollbar_PlaceThumb	WM	low	the free track by the position over the range
+00471530	WMiScrollbar_GetPartRect	WM	low	the track (1), before and after the thumb (2, 3), the arrows (4, 5), the thumb (6)
+00471950	WMrScrollbar_SetRange	WM	low	min, max, the page; the position the min
+00471990	WMiScrollbar_SizeThumb	WM	low	the track by the page over the range, held to the least and the track
+00471a80	WMiScrollbar_Register	WM	low	class 16's procedure 0x471b10 registered
 00471b10	WMiScrollbar_Create	WM	med	name from the Intel Mac build (neighbours:1.00)
+00471de0	WMiScrollbar_HandleMouse	WM	low	the part under the mouse; the parent told 0x57/0x58 with a code and the position
+00472110	WMiScrollbar_Paint	WM	low	the track before and after the thumb, the arrows idle or pressed, the thumb
 004723a0	WMrSlider_GetPosition	WM	low	the long's +8
 004723b0	WMrSlider_SetPosition	WM	low	clamped to the range, the thumb placed
 004724c0	WMiSlider_GetPartRect	WM	low	the slider's track (1), sides (2, 3) and thumb (4); the Mac build's neighbour name was off
@@ -589,6 +603,7 @@
 00475630	WMrWindow_SetFont	WM	low	the window's font info (16 bytes at +0x148), then 0x35
 004756d0	WMrWindow_SetLocation	WM	med	name from the Intel Mac build (neighbours:0.75)
 00475720	WMrWindow_SetLong	WM	med	name from the Intel Mac build (neighbours:1.00)
+00475770	WMiWindow_SetLocationAndSize	WM	low	0x32 before, the client rect (0x11), 0x33 after
 00475940	WMrWindow_SetSize	WM	med	name from the Intel Mac build (neighbours:1.00)
 00475990	WMrWindow_SetTitle	WM	med	name from the Intel Mac build (neighbours:1.00)
 00475a10	WMrWindow_SetVisible	WM	low	flags bit 1, then 0x2f

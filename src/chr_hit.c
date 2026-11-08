@@ -300,11 +300,12 @@ void chr_take_damage(Character *c, uint32_t damage, float knockback, const float
         float ang = from ? wrap_2pi(wrap_2pi(atan2f(from->pos[0] - c->pos[0], from->pos[2] - c->pos[2])) -
                                     wrap_2pi(c->desired_facing - c->facing_offset)) : 0.0f;
         if (ang >= PI) ang -= TWO_PI;
-        snprintf(b, sizeof b, "OpenOni: hit %u: %u of %u hp, kind %x, from %s, in %s type %u from %u, at %.0f deg, block %d%d%d pause %u weapon %d",
+        const TmInstance *fw = from && from->weapon ? tm_handle_instance(tm_handle_of(from->weapon->cls)) : NULL;
+        snprintf(b, sizeof b, "OpenOni: hit %u: %u of %u hp, kind %x, from %s, in %s type %u from %u, at %.0f deg, block %d%d%d pause %u weapon %d hypos %u (%s)",
                  (unsigned)game_time(), (unsigned)damage, (unsigned)c->hit_points, (unsigned)kind,
                  fa && fa->name ? fa->name : "-", ca && ca->name ? ca->name : "-", (unsigned)c->type,
                  (unsigned)(c->anim ? tr_from(c->anim) : 0), ang / 0.017453292f, could, hi, lo, (unsigned)c->block_pause,
-                 c->weapon != NULL);
+                 c->weapon != NULL, (unsigned)c->hypos, fw && fw->name ? fw->name : "-");
         chr_hit_debug_log(b);
     }
     if (!(chr_cheat_invincible && !c->ai) && !(c->flags & 0x2000000)) {      /* not invincible */

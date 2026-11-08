@@ -722,7 +722,12 @@ takes the whole hit: it loses the damage, or all of itself when the damage is mo
 damage is lost (confirmed: no remainder reaches the hit points); the HUD's arc for the direction
 (0x4e6530); no stun, knockback or reaction. The blows don't meet the force shield: the particle damage is
 the only damage that reads C+0x1b8 (the hit material, 0x4e6200, makes a shielded character's impact
-"Shield"). Ported in `weapon.c`.
+"Shield"). Then the class's resistance to the damage's type (ONCC+0xc60, 7 floats; above 0) cuts the
+stun (rounded, 0x4340a0) and the knockback by 1 less it, not the damage. With the boss's shield (C+0x04
+0x40000000, `chr_boss_shield`) the damage, the stun and the knockback are cut by 1 less ONCC+0xc7c; the
+damage and the stun truncated (0x4264e0), each fraction kept as a point when 65535 (0x5294f8) times it is
+above a `UUrRandom` (0x426e10), the damage's drawn first (confirmed, 0x517b68..0x517c45). Ported in
+`weapon.c`.
 
 The glow: 0x4ef8e0 takes the parts whose bounding spheres (the class's lowest body, ONCC+0xc34's first,
 PNTA +0x24 under A+0x2278) are within the reach of the hit point past their radius (4 for a particle's

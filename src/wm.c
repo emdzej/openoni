@@ -258,9 +258,21 @@ void wm_check_radio(WmWindow *dialog, uint16_t first, uint16_t last, uint16_t ch
 /* 0x46b530: a button held down with the mouse on it. */
 bool wm_button_pressed(const WmWindow *w) { return wm_window_valid(w) && (w->data & 0x10000); }
 
+/* 0x475770, for WMrWindow_SetLocation and _SetSize: the class told before (0x32) and after (0x33), the
+   client rect asked again between. */
+static void place(WmWindow *w, int16_t x, int16_t y, int16_t width, int16_t height)
+{
+    w->cls->proc(w, WM_SIZING, 0, 0);
+    w->x = x, w->y = y, w->w = width, w->h = height;
+    int16_t r[4] = { 0, 0, width, height };
+    w->cls->proc(w, WM_CLIENTRECT, (uintptr_t)r, 0);
+    memcpy(w->client, r, sizeof r);
+    w->cls->proc(w, WM_SIZED, 0, 0);
+}
+
 void wm_set_location(WmWindow *w, int16_t x, int16_t y)     /* WMrWindow_SetLocation 0x4756d0 */
 {
-    if (wm_window_valid(w)) w->x = x, w->y = y;
+    if (wm_window_valid(w)) place(w, x, y, w->w, w->h);
 }
 
 void wm_set_font(WmWindow *w, const WmFont *f)      /* WMrWindow_SetFont 0x475630 */
@@ -399,6 +411,26 @@ WmDc *wm_dc_begin(WmWindow *w)
 }
 
 void wm_dc_end(WmDc *dc) { if (dc) dc->used = false; }     /* 0x469650 */
+
+/* 0x469720: the whole window's DC (its frame's, 0x469890 its end), clipped by the parents' clients. */
+static WmDc *dc_begin_window(WmWindow *w)
+{
+    WmDc *dc = wm_dc_begin(w);
+    if (!dc) return NULL;
+    int16_t r[4];
+    screen_rect(w, r);
+    dc->ox = r[0], dc->oy = r[1];
+    for (const WmWindow *p = w; (p->flags & WM_STYLE_CHILD) && p->parent; p = p->parent) {
+        int16_t pr[4];
+        screen_rect(p->parent, pr);
+        int16_t pc[4] = { (int16_t)(pr[0] + p->parent->client[0]), (int16_t)(pr[1] + p->parent->client[1]),
+                          (int16_t)(pr[0] + p->parent->client[0] + p->parent->client[2]),
+                          (int16_t)(pr[1] + p->parent->client[1] + p->parent->client[3]) };
+        clip_intersect(r, pc);
+    }
+    memcpy(dc->clip, r, sizeof r);
+    return dc;
+}
 
 /* The text context's font (TSrContext_SetFontFamily 0x42ece0, _SetFontStyle 0x42ed50, _SetFontSize
    0x42edc0): the family's font of the size and style, else its nearest (0x42ebd0). */
@@ -1046,15 +1078,45 @@ static uintptr_t button_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t 
     return default_proc(w, msg, p1, p2);
 }
 
+/* 0x4264e0: the x87's conversion with the rounding set to chop (toward zero), into 64 bits, the low
+   half returned: the integer indefinite of a NaN or an infinity (an empty range's 0 / 0) is
+   0x8000000000000000, whose low half is 0. */
+static int32_t chop_x87(double v)
+{
+    if (!(v > -9.2233720368547758e18 && v < 9.2233720368547758e18)) return 0;
+    return (int32_t)(uint32_t)(uint64_t)(int64_t)trunc(v);
+}
+
 /* The list box (class 8, 0x46c720): lines of text, each with a long of data (0x45 adds one, sorted with
    style 0x20000; 0x51 sets its data; 0x53 selects one, -1 none; 0x47 the data of a line, -1 the
-   selected one; 0x48 the count). A click selects the line under it and tells the parent (command, notice
-   1), a double click notice 2. Its frame is the PSUI's edit field (+0x44), a selected line the list
-   hilite (+0x4c) while it has the focus, else the background (+0x00). Not ported: the scroll bar (class
-   10, style 0x10000) and the owner-drawn lines (style 0x100000): the lines scroll to keep the selected
-   one in view. */
+   selected one; 0x48 the count). Its client is inside the PSUI's edit field (+0x44, its frame: the top
+   left part's size and the bottom right's), as many whole lines tall as fit (the window's height made so
+   at its creation, 0x46ce30). A click selects the line under it and tells the parent (command, notice
+   1), a double click notice 2 after it. A selected line has the list hilite (+0x4c) while the list has
+   the focus, else the background (+0x00). With style 0x10000 a scroll bar (class 16, id 10) is its child
+   along the client's right edge, the lines that much narrower: its range the count of lines, its page
+   the lines shown, its position the lines scrolled by the count over the lines shown (0x46cfd0); its
+   messages (0x58) scroll the list (0x46d2c0). Not ported: the keys (0x46d0c0) and the owner-drawn lines
+   (style 0x100000). */
 typedef struct { char *text; uint32_t data; bool selected; } ListLine;
-typedef struct { ListLine *lines; uint32_t n, cap, top; bool focus, pressed, twice; } ListBox;
+typedef struct {
+    bool pressed, twice, focus;     /* +0x00, +0x02, +0x03 */
+    ListLine *lines;                /* +0x88 */
+    uint32_t n, cap;
+    int32_t visible;                /* +0x8c: the lines the client holds */
+    int16_t line_w, line_h;         /* +0x90, +0x92 */
+    int32_t top;                    /* +0x94: the first line shown */
+    WmWindow *scroll;               /* +0x98 */
+    uint32_t count;                 /* +0x9c: the count the scroll bar was given */
+    int32_t pos;                    /* +0xa0: its position */
+    float frac;                     /* +0xa4: the lines that can be scrolled over the count (at least 0) */
+} ListBox;
+
+static void sb_set_pos(WmWindow *w, int32_t pos);
+static void sb_set_range(WmWindow *w, int32_t min, int32_t max, int32_t page);
+static void part_size(const void *pspc, unsigned which, int16_t *w, int16_t *h);
+static void set_size(WmWindow *w, int16_t width, int16_t height);
+static void local_point(const WmWindow *w, uintptr_t p, int16_t *x, int16_t *y);
 
 static int16_t list_line_h(const WmWindow *w)
 {
@@ -1063,16 +1125,91 @@ static int16_t list_line_h(const WmWindow *w)
     return th > 0 ? th : 12;
 }
 
-static void list_show(WmWindow *w, ListBox *b, uint32_t i)
+/* 0x46cfd0: the scroll bar after the lines changed: the last lines kept filling the list, the range 0 to
+   the count with a page of the lines shown, the position the top by the count over those (truncated). */
+static void list_scroll_update(ListBox *b)
 {
-    int16_t lh = list_line_h(w);
-    uint32_t rows = (uint32_t)((w->h - 16) / lh);
-    if (!rows) rows = 1;
-    if (i < b->top) b->top = i;
-    else if (i >= b->top + rows) b->top = i - rows + 1;
+    uint32_t n = b->n;
+    if ((uint32_t)b->visible < n && n < (uint32_t)(b->top + b->visible)) b->top = (int32_t)(n - (uint32_t)b->visible);
+    b->count = n;
+    float fn = (float)n;
+    b->pos = chop_x87((double)fn / (double)b->visible * (double)b->top);
+    sb_set_range(b->scroll, 0, (int32_t)n, b->visible);
+    sb_set_pos(b->scroll, b->pos);
+    b->frac = (float)(((double)fn - (double)b->visible) / (double)fn);
+    if (!(b->frac >= 0.0f)) b->frac = 0.0f;     /* (0x529514) */
 }
 
-static void local_point(const WmWindow *w, uintptr_t p, int16_t *x, int16_t *y);
+/* 0x46ce30: the lines the client holds, the window's height made to hold just them, the scroll bar along
+   the client's right edge (1 over it, and 1 over the top and the bottom). */
+static void list_layout(WmWindow *w, ListBox *b)
+{
+    int16_t cw = w->client[2], ch = w->client[3];
+    wm_dc_set_font(&w->font);
+    b->line_w = cw;
+    b->line_h = list_line_h(w);
+    b->top = 0;
+    b->twice = false;
+    b->pos = 0;
+    b->visible = ch / b->line_h;
+    set_size(w, w->w, (int16_t)(b->visible * b->line_h + w->h - ch));
+    ch = w->client[3];
+    if ((w->style & 0x10000) && b->scroll) {
+        wm_set_location(b->scroll, (int16_t)(cw - b->scroll->w + 1), -1);
+        set_size(b->scroll, b->scroll->w, (int16_t)(ch + 2));
+        list_scroll_update(b);
+        b->line_w = (int16_t)(b->line_w + 1 - b->scroll->w);
+    }
+}
+
+/* 0x46e5f0: the line selected (-1 none), scrolled into view; the parent told (notice 1) if asked. */
+static uintptr_t list_select(WmWindow *w, ListBox *b, uint32_t i, bool tell)
+{
+    if (!b || (w->style & 0x40000)) return (uintptr_t)-1;
+    for (uint32_t k = 0; k < b->n; k++) b->lines[k].selected = false;
+    if (i != 0xffffffffu) {
+        if (i >= b->n) return (uintptr_t)-1;
+        b->lines[i].selected = true;
+        int32_t d = b->top - (int32_t)i;
+        bool moved = false;
+        if (d > 0) {
+            b->top = (int32_t)i;
+            moved = true;
+        } else if (d < 0 && (uint32_t)(uint16_t)-d >= (uint32_t)b->visible) {
+            b->top = (int32_t)i - b->visible + 1;
+            moved = true;
+        }
+        if (moved) {
+            if (b->frac != 0.0f) b->pos = chop_x87((double)b->top / (double)b->frac);
+            sb_set_pos(b->scroll, b->pos);
+        }
+    }
+    if (tell) wm_send(w->parent, WM_COMMAND, (uintptr_t)w->id | 0x10000u, (uintptr_t)w);
+    return 0;
+}
+
+/* 0x46d2c0: the scroll bar's message: a line, a page (the client's lines, at least 1) or to the
+   position, held to the count; the top the position by the fraction, rounded. */
+static void list_scroll(WmWindow *w, ListBox *b, uintptr_t code, uintptr_t value)
+{
+    if (!b) return;
+    int32_t ch = w->client[3], d;
+    switch (code >> 16) {
+    case 0: d = -1; break;
+    case 1: d = 1; break;
+    case 2: d = -(ch / b->line_h); if (d >= -1) d = -1; break;
+    case 3: d = ch / b->line_h; if (d < 1) d = 1; break;
+    case 4: d = (int32_t)value - b->pos; break;
+    default: d = 0; break;
+    }
+    int32_t hi = (int32_t)b->count - b->pos, lo = -b->pos;
+    if (lo > (d < hi ? d : hi)) d = lo;
+    else if (d > hi) d = hi;
+    if (!d) return;
+    b->pos += d;
+    b->top = chop_x87((double)b->pos * (double)b->frac + 0.5);
+    sb_set_pos(b->scroll, b->pos);
+}
 
 static uintptr_t list_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
 {
@@ -1081,6 +1218,17 @@ static uintptr_t list_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2
     case WM_PRECREATE:
         w->data = (uintptr_t)calloc(1, sizeof(ListBox));
         return w->data ? 0 : 1;
+    case WM_CREATE:
+        if (!b) return 1;
+        if (w->style & 0x10000) {
+            b->scroll = window_new(16, exe_str(0x53c6fc), WM_STYLE_CHILD | WM_STYLE_VISIBLE, 0x10000, 10, 0, -1, -1, 16, w, 0);
+            if (!b->scroll) return 1;
+        }
+        list_layout(w, b);
+        return 0;
+    case WM_FONTCHANGED:
+        if (b) list_layout(w, b);
+        break;
     case WM_DESTROY:
         if (b) {
             for (uint32_t i = 0; i < b->n; i++) free(b->lines[i].text);
@@ -1089,38 +1237,51 @@ static uintptr_t list_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2
             w->data = 0;
         }
         return 0;
+    case WM_CLIENTRECT: {
+        /* inside the edit field's frame */
+        const uint8_t *ui = wm_psui_active();
+        if (!ui) return 0;
+        int16_t *r = (int16_t *)p1, lw, th, rw, bh;
+        part_size(tm_link(ui + 0x44), 1, &lw, &th);
+        part_size(tm_link(ui + 0x44), 0x100, &rw, &bh);
+        r[0] = lw, r[1] = th, r[2] = (int16_t)(w->w - rw - lw), r[3] = (int16_t)(w->h - bh - th);
+        return 0;
+    }
     case WM_HITTEST: {
-        /* 0x46c793: the client (0x474cb0, moved to its own origin) holds the point (in the window's
-           pixels, 0x475060; edges in) */
+        /* 0x46c793: the client holds the point (edges in) */
         int16_t x, y;
         local_point(w, p1, &x, &y);
-        return x >= 0 && y >= 0 && x <= w->client[2] - w->client[0] && y <= w->client[3] - w->client[1] ? WM_HIT_CLIENT : 0;
+        return x >= 0 && y >= 0 && x <= w->client[2] && y <= w->client[3] ? WM_HIT_CLIENT : 0;
     }
     case WM_SETFOCUS: if (b) b->focus = true; return 0;
     case WM_KILLFOCUS: if (b) b->focus = false; return 0;
     case WM_WANTKEYS: return 0x33;
-    case WM_PAINT: {
-        if (!b) return 0;
-        /* (the frame is the original's non-client part, 0x11 and 4: here drawn first, the lines inside its
-           corners) */
+    case WM_NCPAINT: {
+        /* the frame: the edit field over the window */
+        const uint8_t *ui = wm_psui_active();
+        WmDc *dc = ui ? dc_begin_window(w) : NULL;
+        if (!dc) return 0;
+        wm_dc_part(dc, tm_link(ui + 0x44), 0xffff, 0, 0, w->w, w->h, 0xff);
+        wm_dc_end(dc);
+        return 0;
+    }
+    case WM_PAINT: {    /* 0x46d3c0 */
+        const uint8_t *ui = wm_psui_active();
+        if (!b || !ui) return 0;
         WmDc *dc = wm_dc_begin(w);
-        const void *frame = wm_psui_part(0x44);
-        int16_t in[2] = { 0, 0 };
-        if (frame) {
-            wm_dc_part(dc, frame, 0xffff, 0, 0, w->w, w->h, 0xff);
-            wm_part_size(frame, &in[0], &in[1]);
-        }
         wm_dc_set_font(&w->font);
-        int16_t lh = list_line_h(w), y = in[1], cw = (int16_t)(w->w - in[0]), ch = (int16_t)(w->h - in[1]);
-        for (uint32_t i = b->top; i < b->n && y < ch; i++, y = (int16_t)(y + lh)) {
-            if (b->lines[i].selected) {
-                const void *part = wm_psui_part(b->focus ? 0x4c : 0x00);
-                if (part) wm_dc_part(dc, part, 0xffff, in[0], y, (int16_t)(cw - in[0]), lh, 0xff);
-            }
+        bool on = enabled(w);
+        uint32_t last = (uint32_t)(b->top + b->visible);
+        if (b->n <= last) last = b->n;
+        int16_t y = 0;
+        for (uint32_t i = b->top < 0 ? 0 : (uint32_t)b->top; i < last; i++, y = (int16_t)(y + b->line_h)) {
+            if (on && b->lines[i].selected)
+                wm_dc_part(dc, tm_link(ui + (b->focus ? 0x4c : 0x00)), 0xffff, 0, y, b->line_w, b->line_h, 0xff);
+            if ((w->style & 0x100000) || !(w->style & 0x80000)) continue;
             wm_dc_set_colour(w->font.colour);
             wm_dc_set_format(0);
-            int16_t pen[2] = { (int16_t)(in[0] + 3), (int16_t)(y + wm_dc_ascending()) }, r[4] = { in[0], y, cw, (int16_t)(y + lh) };
-            wm_dc_text(dc, r, pen, b->lines[i].text, NULL);
+            int16_t pen[2] = { 3, (int16_t)(y + wm_dc_ascending()) };
+            wm_dc_text(dc, NULL, pen, b->lines[i].text, NULL);
         }
         wm_dc_end(dc);
         return 0;
@@ -1132,25 +1293,26 @@ static uintptr_t list_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2
         b->twice = false;
         return 0;
     case 0x21:      /* a double click */
-        if (b) b->twice = true;
+        if (b && enabled(w)) b->twice = true;
         return 0;
     case WM_LBUTTONUP: {
-        if (!b || !b->pressed) return 0;
+        if (!b || !enabled(w) || !b->pressed) return 0;
         b->pressed = false;
-        int16_t r[4];
-        screen_rect(w, r);
-        const void *frame = wm_psui_part(0x44);
-        int16_t in[2] = { 0, 0 };
-        if (frame) wm_part_size(frame, &in[0], &in[1]);
-        int16_t y = (int16_t)((int16_t)p1 - r[1] - in[1]);
-        if (y < 0) return 0;
-        uint32_t i = b->top + (uint32_t)(y / list_line_h(w));
-        if (i >= b->n) return 0;
-        for (uint32_t k = 0; k < b->n; k++) b->lines[k].selected = k == i;
-        wm_send(w->parent, WM_COMMAND, (uintptr_t)w->id | (b->twice ? 0x20000u : 0x10000u), (uintptr_t)w);
+        int16_t x, y;
+        local_point(w, p1, &x, &y);
+        uint32_t last = (uint32_t)(b->top + b->visible), i = (uint32_t)b->top;
+        if (b->n <= last) last = b->n;
+        for (int16_t ly = 0; (int32_t)i < (int32_t)last; i++, ly = (int16_t)(ly + b->line_h)) {
+            const int16_t r[4] = { 0, ly, b->line_w, (int16_t)(ly + b->line_h) };
+            if (in_rect(r, x, y)) {
+                list_select(w, b, i, true);
+                break;
+            }
+        }
+        if (i != last && b->twice) wm_send(w->parent, WM_COMMAND, (uintptr_t)w->id | 0x20000u, (uintptr_t)w);
         return 0;
     }
-    case 0x45: {    /* add a string */
+    case 0x45: {    /* add a string (0x46d6a0, through the insert 0x46db60) */
         if (!b || !p2) return (uintptr_t)-1;
         if (b->n == b->cap) {
             uint32_t cap = b->cap ? b->cap * 2 : 16;
@@ -1169,6 +1331,7 @@ static uintptr_t list_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2
         b->lines[at].data = 0;
         b->lines[at].selected = false;
         b->n++;
+        list_scroll_update(b);
         return at;
     }
     case 0x47: {    /* a line's data, -1 the selected one */
@@ -1183,15 +1346,12 @@ static uintptr_t list_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2
         if (!b || (uint32_t)p1 >= b->n) return (uintptr_t)-1;
         b->lines[p1].data = (uint32_t)p2;
         return 0;
-    case 0x53: {
-        if (!b) return (uintptr_t)-1;
-        for (uint32_t k = 0; k < b->n; k++) b->lines[k].selected = false;
-        if ((uint32_t)p1 == 0xffffffffu) return 0;
-        if ((uint32_t)p1 >= b->n) return (uintptr_t)-1;
-        b->lines[p1].selected = true;
-        list_show(w, b, (uint32_t)p1);
+    case 0x53:
+        return list_select(w, b, (uint32_t)p1, false);
+    case 0x58:      /* the scroll bar's */
+        list_scroll(w, b, p1, p2);
+        set_focus(w);
         return 0;
-    }
     }
     return default_proc(w, msg, p1, p2);
 }
@@ -1214,12 +1374,325 @@ static void part_size(const void *pspc, unsigned which, int16_t *w, int16_t *h)
     if (h) *h = rh;
 }
 
-/* 0x475060: a desktop point (x in the high word) in the window's own pixels. */
+/* 0x475060: a desktop point (x in the high word) in the window's client's pixels. */
 static void local_point(const WmWindow *w, uintptr_t p, int16_t *x, int16_t *y)
 {
     int16_t r[4];
     screen_rect(w, r);
-    *x = (int16_t)((int16_t)(p >> 16) - r[0]), *y = (int16_t)((int16_t)p - r[1]);
+    *x = (int16_t)((int16_t)(p >> 16) - r[0] - w->client[0]), *y = (int16_t)((int16_t)p - r[1] - w->client[1]);
+}
+
+/* ---- the scroll bar (class 16, 0x471b10) ----
+
+   A range (min to max) and its position, with the page the parent shows of it. Its parts: the track (1)
+   between the arrows, the track before the thumb (2) and after it (3), the arrows (4 up or left, 5 down
+   or right) and the thumb (6). A press on a part tells the parent at once and again each 10 ticks while
+   held (its timer 1); the thumb dragged tells it the position the mouse makes. The parent gets 0x58
+   (vertical) or 0x57 (horizontal): the id with a code in the high word (0 a line back, 1 a line on, 2 a
+   page back, 3 a page on, 4 the position in the second parameter), and the position. Painted with the
+   PSUI's arrows (+0x6c..+0x78 up and down, +0x80..+0x8c left and right, idle or pressed), its track
+   (+0x7c vertical, +0x90 horizontal) and its thumb (+0x94). */
+typedef struct {
+    uint16_t flags;                 /* +0x00: 1 the button held */
+    bool vertical;                  /* +0x02: taller than wide */
+    uint8_t part;                   /* +0x03: the part pressed, 0 none */
+    int32_t min, max, pos;          /* +0x04, +0x08, +0x0c */
+    float page;                     /* +0x10 */
+    int16_t tx, ty, tw, th;         /* +0x14..+0x1a: the thumb's place and size */
+    int16_t grab[2];                /* +0x1c: the thumb's place less the mouse's when it was taken */
+} Scrollbar;
+
+static int16_t sb_thumb_least_w, sb_thumb_least_h;    /* 0x5e9760 the left arrow's height, 0x5e9762 the up's width */
+
+static void set_size(WmWindow *w, int16_t width, int16_t height);
+
+/* 0x471530: a part's rectangle (in the window's pixels). */
+static void sb_rect(const WmWindow *w, const Scrollbar *s, int part, int16_t r[4])
+{
+    r[0] = r[1] = r[2] = r[3] = 0;
+    const uint8_t *ui = wm_psui_active();
+    if (!ui) return;
+    int16_t W = w->w, H = w->h, pw, ph, a[4], b[4];
+    if (s->vertical) {
+        const void *up = tm_link(ui + 0x6c), *down = tm_link(ui + 0x74);
+        switch (part) {
+        case 1:
+            part_size(up, 1, &pw, &ph);
+            r[1] = (int16_t)(ph - 1), r[2] = pw;
+            part_size(down, 1, NULL, &ph);
+            r[3] = (int16_t)(H - ph + 1);
+            break;
+        case 2:
+            sb_rect(w, s, 1, a), sb_rect(w, s, 6, b);
+            r[0] = a[0], r[1] = a[1], r[2] = a[2], r[3] = (int16_t)(b[1] + 1);
+            break;
+        case 3:
+            sb_rect(w, s, 1, a), sb_rect(w, s, 6, b);
+            r[0] = a[0], r[1] = (int16_t)(b[3] - 1), r[2] = a[2], r[3] = a[3];
+            break;
+        case 4:
+            part_size(up, 1, NULL, &ph);
+            r[2] = W, r[3] = ph;
+            break;
+        case 5:
+            part_size(down, 1, NULL, &ph);
+            r[1] = (int16_t)(H - ph), r[2] = W, r[3] = H;
+            break;
+        case 6:
+            part_size(up, 1, &pw, NULL);
+            r[0] = s->tx, r[1] = s->ty, r[2] = (int16_t)(s->tx + pw), r[3] = (int16_t)(s->ty + s->th);
+            break;
+        }
+    } else {
+        const void *left = tm_link(ui + 0x80), *right = tm_link(ui + 0x88);
+        switch (part) {
+        case 1:
+            part_size(left, 1, &pw, &ph);
+            r[0] = (int16_t)(pw - 1), r[3] = ph;
+            part_size(right, 1, &pw, NULL);
+            r[2] = (int16_t)(W - pw + 1);
+            break;
+        case 2:
+            sb_rect(w, s, 1, a), sb_rect(w, s, 6, b);
+            r[0] = a[0], r[1] = a[1], r[2] = (int16_t)(b[0] + 1), r[3] = a[3];
+            break;
+        case 3:
+            sb_rect(w, s, 1, a), sb_rect(w, s, 6, b);
+            r[0] = (int16_t)(b[2] - 1), r[1] = a[1], r[2] = a[2], r[3] = a[3];
+            break;
+        case 4:
+            part_size(left, 1, &pw, NULL);
+            r[2] = pw, r[3] = H;
+            break;
+        case 5:
+            part_size(right, 1, &pw, NULL);
+            r[0] = (int16_t)(W - pw), r[2] = W, r[3] = H;
+            break;
+        case 6:
+            part_size(left, 1, NULL, &ph);
+            r[0] = s->tx, r[1] = s->ty, r[2] = (int16_t)(s->tx + s->tw), r[3] = (int16_t)(s->ty + ph);
+            break;
+        }
+    }
+}
+
+/* 0x471990: the thumb's length, the track's by the page over the range (truncated), at least the arrow's
+   size and at most the track; the whole track for a range under 1/1024 (0x529cc8). */
+static void sb_thumb_size(const WmWindow *w, Scrollbar *s)
+{
+    int16_t t[4];
+    sb_rect(w, s, 1, t);
+    int16_t len_h = (int16_t)(t[3] - t[1]), len_w = (int16_t)(t[2] - t[0]);
+    float range = (float)(s->max - s->min);
+    if (fabsf(range) < 0.0009765625f) {
+        s->th = len_h, s->tw = len_w;
+        return;
+    }
+    if (s->vertical) {
+        s->th = (int16_t)chop_x87((double)len_h * (double)s->page / (double)range);
+        if (s->th < sb_thumb_least_h) s->th = sb_thumb_least_h;
+        else if (s->th > len_h) s->th = len_h;
+    } else {
+        s->tw = (int16_t)chop_x87((double)len_w * (double)s->page / (double)range);
+        if (s->tw < sb_thumb_least_w) s->tw = sb_thumb_least_w;
+        else if (s->tw > len_w) s->tw = len_w;
+    }
+}
+
+/* 0x471440: the thumb's place along the track, the free length by the position in the range (truncated);
+   at the track's start for a range under 1/1024. */
+static void sb_thumb_place(const WmWindow *w, Scrollbar *s)
+{
+    int16_t t[4];
+    sb_rect(w, s, 1, t);
+    float free_w = (float)(t[2] - s->tw - t[0]), free_h = (float)(t[3] - s->th - t[1]);
+    float range = (float)(s->max - s->min), at = (float)(s->pos - s->min);
+    if (fabsf(range) < 0.0009765625f) {
+        s->tx = t[0], s->ty = t[1];
+    } else if (s->vertical) {
+        s->tx = t[0];
+        s->ty = (int16_t)(chop_x87((double)free_h / (double)range * (double)at) + t[1]);
+    } else {
+        s->ty = t[1];
+        s->tx = (int16_t)(chop_x87((double)free_w / (double)range * (double)at) + t[0]);
+    }
+}
+
+/* 0x471400: the position, held to the range. */
+static void sb_set_pos(WmWindow *w, int32_t pos)
+{
+    Scrollbar *s = wm_window_valid(w) ? (Scrollbar *)w->data : NULL;
+    if (!s) return;
+    s->pos = pos;
+    if (pos < s->min || pos > s->max) s->pos = s->min <= pos ? s->max : s->min;
+    sb_thumb_place(w, s);
+}
+
+/* 0x471950: the range and the page, the position at the least. */
+static void sb_set_range(WmWindow *w, int32_t min, int32_t max, int32_t page)
+{
+    Scrollbar *s = wm_window_valid(w) ? (Scrollbar *)w->data : NULL;
+    if (!s) return;
+    s->min = min, s->max = max, s->pos = min;
+    s->page = (float)page;
+    sb_thumb_size(w, s);
+    sb_thumb_place(w, s);
+}
+
+/* 0x471de0: the mouse. */
+static void sb_mouse(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
+{
+    Scrollbar *s = (Scrollbar *)w->data;
+    if (!s) return;
+    int16_t x, y, r[4];
+    local_point(w, p1, &x, &y);
+    uint32_t tell = s->vertical ? 0x58u : 0x57u, id = w->id;
+    uint8_t part = 0;
+    for (int k = 0; k < 5 && !part; k++) {
+        static const uint8_t order[5] = { 6, 2, 3, 4, 5 };
+        sb_rect(w, s, order[k], r);
+        if (in_rect(r, x, y)) part = order[k];
+    }
+    uintptr_t a, b;
+    if (msg == WM_MOUSEMOVE) {
+        if (!(p2 & 1) || s->part != 6) return;
+        int16_t t[4];
+        sb_rect(w, s, 1, t);
+        float range = (float)(s->max - s->min);
+        int32_t v = s->vertical
+            ? chop_x87((double)range / (double)(t[3] - s->th - t[1]) * (double)(s->grab[1] - t[1] + y))
+            : chop_x87((double)range / (double)(t[2] - s->tw - t[0]) * (double)(s->grab[0] - t[0] + x));
+        v += s->min;
+        if (v < s->min) v = s->min;
+        if (v > s->max) v = s->max;
+        a = id | 0x40000u, b = (uintptr_t)v;
+    } else if (msg == WM_LBUTTONUP) {
+        s->flags &= (uint16_t)~1u;
+        s->part = 0;
+        set_capture(NULL);
+        return;
+    } else if (msg == WM_LBUTTONDOWN) {
+        s->flags |= 1;
+        set_focus(w);
+        set_capture(w);
+        /* held on another part than the one pressed: nothing; off them all, only the thumb's drag goes on */
+        if (s->part && s->part != part) return;
+        if (!part) {
+            if (s->part != 6) return;
+            part = 6;
+        }
+        switch (part) {
+        case 2: a = id | 0x20000u; break;
+        case 3: a = id | 0x30000u; break;
+        case 4: a = id; break;
+        case 5: a = id | 0x10000u; break;
+        default:
+            /* the thumb taken: its offset from the mouse. What the parent gets is the press's own point
+               with its low byte the part (6), twice: a code it has no case for. */
+            if (s->part != 6) {
+                s->grab[0] = (int16_t)(s->tx - x), s->grab[1] = (int16_t)(s->ty - y);
+            }
+            s->part = 6;
+            a = b = (p1 & ~(uintptr_t)0xff) | 6;
+            wm_send(w->parent, tell, a, b);
+            return;
+        }
+        s->part = part;
+        b = (uintptr_t)s->pos;
+    } else {
+        return;
+    }
+    wm_send(w->parent, tell, a, b);
+}
+
+/* 0x472110: the arrows (idle, or pressed while held), the track before and after the thumb, the thumb;
+   faded (0x7f) when disabled. */
+static void sb_paint(WmWindow *w)
+{
+    Scrollbar *s = (Scrollbar *)w->data;
+    const uint8_t *ui = wm_psui_active();
+    if (!s || !ui) return;
+    uint8_t alpha = enabled(w) ? 0xff : 0x7f;
+    const void *track, *back, *on;
+    if (s->vertical) {
+        track = tm_link(ui + 0x7c);
+        back = tm_link(ui + (s->part == 4 ? 0x70 : 0x6c));
+        on = tm_link(ui + (s->part == 5 ? 0x78 : 0x74));
+    } else {
+        track = tm_link(ui + 0x90);
+        back = tm_link(ui + (s->part == 4 ? 0x84 : 0x80));
+        on = tm_link(ui + (s->part == 5 ? 0x8c : 0x88));
+    }
+    WmDc *dc = wm_dc_begin(w);
+    int16_t r[4];
+    for (int part = 2; part <= 3; part++) {
+        sb_rect(w, s, part, r);
+        if (r[1] != r[3] && r[0] != r[2])
+            wm_dc_part(dc, track, 0xffff, r[0], r[1], (int16_t)(r[2] - r[0]), (int16_t)(r[3] - r[1]), alpha);
+    }
+    sb_rect(w, s, 4, r);
+    wm_dc_part(dc, back, 1, r[0], r[1], (int16_t)(r[2] - r[0]), (int16_t)(r[3] - r[1]), alpha);
+    sb_rect(w, s, 5, r);
+    wm_dc_part(dc, on, 1, r[0], r[1], (int16_t)(r[2] - r[0]), (int16_t)(r[3] - r[1]), alpha);
+    sb_rect(w, s, 6, r);
+    wm_dc_part(dc, tm_link(ui + 0x94), 0xffff, r[0], r[1], s->tw, s->th, alpha);
+    wm_dc_end(dc);
+}
+
+static uintptr_t scrollbar_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
+{
+    Scrollbar *s = (Scrollbar *)w->data;
+    switch (msg) {
+    case WM_HITTEST:
+        return WM_HIT_CLIENT;
+    case WM_CREATE: {
+        const uint8_t *ui = wm_psui_active();
+        s = calloc(1, sizeof *s);
+        if (!s) return 1;
+        w->data = (uintptr_t)s;
+        if (!ui) {
+            free(s);
+            w->data = 0;
+            return 1;
+        }
+        int16_t up_w, left_h;
+        part_size(tm_link(ui + 0x6c), 1, &up_w, NULL);
+        part_size(tm_link(ui + 0x80), 1, NULL, &left_h);
+        sb_thumb_least_h = up_w, sb_thumb_least_w = left_h;
+        /* a side given as -1: the arrow's */
+        if (w->w == -1) {
+            if (w->h != -1) set_size(w, up_w, w->h);
+        } else if (w->h == -1) {
+            set_size(w, w->w, left_h);
+        }
+        s->vertical = w->h > w->w;
+        sb_thumb_size(w, s);
+        sb_thumb_place(w, s);
+        timer_start(w, 1, 10);
+        return 0;
+    }
+    case WM_DESTROY:
+        free(s);
+        w->data = 0;
+        timer_stop(w, 1);
+        return 0;
+    case WM_TIMER:      /* held: pressed again where the mouse is */
+        if (p1 == 1 && s && (s->flags & 1))
+            sb_mouse(w, WM_LBUTTONDOWN, (uintptr_t)((uint32_t)(uint16_t)mouse_x << 16 | (uint16_t)mouse_y), 1);
+        return 0;
+    case WM_MOUSEMOVE:
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP:
+        sb_mouse(w, msg, p1, p2);
+        return 0;
+    case WM_PAINT:
+        sb_paint(w);
+        return 0;
+    case WM_SIZED:      /* 0x33: resized, its orientation again */
+        if (s) s->vertical = w->h > w->w;
+        return 0;
+    }
+    return default_proc(w, msg, p1, p2);
 }
 
 static void set_title(WmWindow *w, const char *s)      /* WMrWindow_SetTitle 0x475990 */
@@ -1230,10 +1703,7 @@ static void set_title(WmWindow *w, const char *s)      /* WMrWindow_SetTitle 0x4
 
 static void set_size(WmWindow *w, int16_t width, int16_t height)    /* WMrWindow_SetSize 0x475940 */
 {
-    w->w = width, w->h = height;
-    int16_t r[4] = { 0, 0, width, height };
-    w->cls->proc(w, WM_CLIENTRECT, (uintptr_t)r, 0);
-    memcpy(w->client, r, sizeof r);
+    if (wm_window_valid(w)) place(w, w->x, w->y, width, height);
 }
 
 static uint32_t parent_notice(const WmWindow *w, uint16_t notice) { return (uint32_t)w->id | (uint32_t)notice << 16; }
@@ -1764,16 +2234,13 @@ static void slider_inner(const WmWindow *w, const Slider *s, int16_t r[4])
     r[0] = (int16_t)(r[0] + L), r[2] = (int16_t)(r[2] - R);
 }
 
-/* (0x4264e0: the x87's rounding; an empty range's 0 / 0 is its integer indefinite, 0x80000000, whose
-   low half is 0) */
-static int32_t round_x87(double v) { return v != v ? INT32_MIN : (int32_t)nearbyint(v); }
 
 static void slider_place(WmWindow *w, Slider *s)    /* 0x472cc0 */
 {
     int16_t r[4];
     slider_inner(w, s, r);
     double span = (double)(r[2] - s->tw - r[0]), range = (double)(s->max - s->min);
-    s->tx = (int16_t)(round_x87(span / range * (double)(s->value - s->min)) + r[0]);
+    s->tx = (int16_t)(chop_x87(span / range * (double)(s->value - s->min)) + r[0]);
     s->ty = (int16_t)(r[1] + ((int16_t)(r[3] - r[1]) >> 1));
 }
 
@@ -1829,7 +2296,7 @@ static void slider_mouse(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2) 
         int16_t r[4];
         slider_inner(w, s, r);
         float range = (float)(s->max - s->min);
-        int32_t v = round_x87((double)range / (double)(r[2] - s->tw - r[0]) * (double)(s->drag - r[0] + x)) + s->min;
+        int32_t v = chop_x87((double)range / (double)(r[2] - s->tw - r[0]) * (double)(s->drag - r[0] + x)) + s->min;
         if (v < s->min) v = s->min;
         if (v > s->max) v = s->max;
         d = v - s->value;
@@ -2009,6 +2476,7 @@ void wm_initialize(int w, int h)    /* WMrInitialize 0x475ad0 */
     class_register(11, picture_proc);
     class_register(12, popup_proc);
     class_register(13, progress_proc);
+    class_register(16, scrollbar_proc);
     class_register(17, slider_proc);
     class_register(20, text_proc);
     desktop = wm_window_new(1, WM_STYLE_VISIBLE, 0, 0, 0, 0, (int16_t)w, (int16_t)h, NULL, 0);

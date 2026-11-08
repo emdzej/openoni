@@ -661,6 +661,8 @@ typedef struct {
 } Route;
 static Route route;
 
+static bool route_defending(void);
+
 static void route_next(void)
 {
     char *s = route.step;
@@ -669,6 +671,22 @@ static void route_next(void)
     route.step = e ? e + 1 : NULL;
     route.phase = 0;
     route.until = 0;
+    /* with defend, a fight ("F", "X", "A") ended under 70 hit points out of 100: the nearest hypo on her
+       floor within 60 picked up first ("Lhypo") */
+    const Chr *p = chars_player();
+    if (!route_defending() || (*s != 'F' && *s != 'X' && *s != 'A') || !p || p->c.hit_points * 10 >= p->c.max_hit_points * 7)
+        return;
+    for (int i = 0; i < powerup_count(); i++) {
+        const Powerup *pu = powerup_get(i);
+        const char *tn = powerup_type_name(pu->type);
+        float dx = pu->pos[0] - p->c.pos[0], dy = pu->pos[1] - p->c.pos[1], dz = pu->pos[2] - p->c.pos[2];
+        if (!tn || strcmp(tn, "hypo") || fabsf(dy) > 20.0f || dx * dx + dz * dz > 3600.0f) continue;
+        static char buf[sizeof route.buf];
+        snprintf(buf, sizeof buf, "Lhypo%s%s", route.step ? ";" : "", route.step ? route.step : "");
+        memcpy(route.buf, buf, sizeof route.buf);
+        route.step = route.buf;
+        return;
+    }
 }
 
 static float wrap_pi(float a)
@@ -918,6 +936,19 @@ static bool route_hold_block(const Character *c, CharacterInput *in)
     return true;
 }
 
+/* With defend, a strike at t on the tick k: within 9, every other one a throw tried (forward with the
+   punch), else the punches and every fourth a kick. False without defend (the route's own beat). */
+static bool route_strike(const Character *c, const Character *t, CharacterInput *in, uint32_t k)
+{
+    if (!route_defending()) return false;
+    if (k % 8) return true;
+    float dx = t->pos[0] - c->pos[0], dz = t->pos[2] - c->pos[2];
+    if (dx * dx + dz * dz < 81.0f && (k / 8) % 2 == 0) in->forward = in->punch = true;
+    else if ((k / 8) % 4 == 3) in->kick = true;
+    else in->punch = true;
+    return true;
+}
+
 static void route_defend(const Character *c, CharacterInput *in, uint32_t now)
 {
     if (!route_defending()) return;
@@ -935,10 +966,7 @@ static void route_defend(const Character *c, CharacterInput *in, uint32_t now)
     if (!best || route_hold_block(c, in)) return;
     float err = wrap_pi(atan2f(best->c.pos[0] - c->pos[0], best->c.pos[2] - c->pos[2]) - c->desired_facing);
     in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
-    if (fabsf(err) < 0.3f && now % 8 == 0) {
-        if ((now / 8) % 4 == 3) in->kick = true;
-        else in->punch = true;
-    }
+    if (fabsf(err) < 0.3f) route_strike(c, &best->c, in, now);
 }
 
 static void route_input(const Character *c, CharacterInput *in)
@@ -981,7 +1009,10 @@ static void route_input(const Character *c, CharacterInput *in)
         if (*s == 'S') {
             /* "S<N>": waits (up to N frames) until the player stands */
             if (!route.phase) route.until = now + (uint32_t)atoi(s + 1), route.phase = 1;
-            if (c->state != CHR_STATE_STANDING && now < route.until) return;
+            if (c->state != CHR_STATE_STANDING && now < route.until) {
+                route_defend(c, in, now);
+                return;
+            }
             route_next();
             continue;
         }
@@ -1074,6 +1105,7 @@ static void route_input(const Character *c, CharacterInput *in)
                 if (fabsf(oy) < 20.0f && d2 < best) best = d2, t = o;
             }
             if (!t || now >= route.until) { route_next(); continue; }
+            if (route_hold_block(c, in)) return;
             float dx = t->c.pos[0] - c->pos[0], dz = t->c.pos[2] - c->pos[2];
             float err = wrap_pi(atan2f(dx, dz) - c->desired_facing);
             in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
@@ -1083,6 +1115,7 @@ static void route_input(const Character *c, CharacterInput *in)
                 in->forward = fabsf(wrap_pi(atan2f(dx, dz) - c->facing)) < 1.3f;
                 return;
             }
+            if (route_strike(c, &t->c, in, route.until - now)) return;
             if ((route.until - now) % 8 == 0) {
                 if ((route.until - now) / 8 % 4 == 3) in->kick = true;
                 else in->punch = true;
@@ -1340,6 +1373,7 @@ static void route_input(const Character *c, CharacterInput *in)
                 if (stood > 60) in->forward = true;
                 return;
             }
+            if (route_strike(c, &t->c, in, route.until - now)) return;
             uint32_t k = (route.until - now) / 8;
             if ((route.until - now) % 8 == 0) {
                 if (k % 4 == 3) in->kick = true;
@@ -2279,6 +2313,10 @@ int app_main(void)
     }
     plat_log("OpenOni: Oni.exe v1.0 found");
     persist_initialize(plat_load_user_file, plat_save_user_file);
+    {   /* --param difficulty=0|1|2: Easy, Normal or Hard, as the Options dialog sets it (for unattended runs) */
+        char d[8];
+        if (plat_param("difficulty", d, sizeof d)) persist_set_difficulty(atoi(d));
+    }
     li_config_load(plat_load_user_file, plat_save_user_file, vfs_read_all);   /* key_config.txt (0x4d4a50, from ONiMain 0x4d34a5) */
     if (!im_initialize(err, sizeof err) || !tm_initialize(err, sizeof err) || !tm_level_load(0, err, sizeof err)) {
         snprintf(m, sizeof m, "OpenOni: %s", err);

@@ -288,6 +288,51 @@ formatting, with the context's font:
   value's hundredths (truncated) of the window's width plus 2 less its left and right columns (1 and
   0x100), no narrower than those two columns.
 
+- The list box (8, 0x46c720; 0xa8 bytes: +0 pressed, +2 a double click, +3 the focus, +0x88 the lines, 16
+  bytes each: the text, the data, the width and height, +0xc selected; +0x8c the lines shown, +0x90 and
+  +0x92 a line's width and height, +0x94 the top line, +0x98 the scroll bar, +0x9c the count it was
+  given, +0xa0 its position, +0xa4 the fraction). Its client is inside the `PSUI` edit field (+0x44,
+  painted over the window as its frame): the top left part's size (`0x46a980` 1) in from the left and
+  the top, the bottom right's (0x100) from the right and the bottom. With style 0x10000 its create (0x12)
+  makes a scroll bar (class 16, id 10, flags 0x2001, at 0, -1, -1 wide and 16 tall). The layout
+  (0x46ce30, at the create and when the font changes): the line height the font's, the lines shown the
+  client's height over it (truncated), the window's height made to hold just those, then the scroll bar
+  at the client's width less its own plus 1 and at -1, the client's height plus 2 tall, and the lines
+  narrower by its width less 1. Each insert (0x46db60) sets the scroll bar (0x46cfd0): the top made to
+  keep the list full when lines are fewer than shown below it; the range 0 to the count, the page the
+  lines shown, the position the top by the count over the lines shown (truncated, `0x4264e0`); the
+  fraction (count - shown) / count, at least 0. Its message (0x58) moves the position by a line (codes 0
+  and 1), a page (2 and 3: the client's lines, at least 1) or to the position given (4), held to 0 and
+  the count; the top is then the position by the fraction, plus a half, truncated; the list takes the
+  focus. Selecting a line (0x53, 0x46e5f0) scrolls it into view: above the top it becomes the top, more
+  than the lines shown below it the top is it less those plus 1; the position the top over the fraction
+  (unless 0). A click's release selects the line under it among those shown and tells the parent (notice
+  1), a double click notice 2 after that. Painted (0x46d3c0) in the client from y 0: the lines from the
+  top, as many as shown; a selected one, enabled, has the list hilite (+0x4c) with the focus, else the
+  background (+0x00); its text (style 0x80000) at x 3 on the ascent. The scroll units are the count's,
+  not lines: a step of the arrows moves the top by the fraction, rounded (on the Load Game list, with 40
+  lines and 19 shown, two steps a line).
+- The scroll bar (16, 0x471b10; 0x20 bytes: +0 the button held, +2 vertical, +3 the part pressed, +4 min, +8
+  max, +0xc the position, +0x10 the page as a float, +0x14 the thumb's place and size, +0x1c the thumb's
+  place less the mouse's when taken). Its create: a side given as -1 the arrow's (the up arrow's width,
+  the left's height), vertical when taller than wide (again at each 0x33), the least thumb the up
+  arrow's width and the left's height (0x5e9762, 0x5e9760), its timer (1, 10 ticks). Its parts
+  (0x471530; vertical, with the up and down arrows' top left part sizes): the track (1) from the up
+  arrow's height less 1 to the height less the down's plus 1, as wide as the up arrow; before the thumb
+  (2) to its top plus 1, after it (3) from its bottom less 1; the arrows (4, 5) the window's width; the
+  thumb (6) as wide as the up arrow. Horizontal alike with the left and right arrows. The thumb's length
+  (0x471990) the track's by the page over the range (truncated), at least the least and at most the
+  track; the whole track for a range under 1/1024 (0x529cc8). Its place (0x471440) the free length by
+  the position over the range. The mouse (0x471de0): the part under it (thumb, before, after, the
+  arrows); a press takes the focus and the mouse and tells the parent 0x58 (0x57 horizontal) with the id
+  and a code (the arrows 0 and 1, the track 2 and 3) and the position, again each tick of the timer while
+  held, not when it is over another part than the one pressed; the thumb taken keeps its offset, and
+  what the parent gets for it is the press's point with its low byte 6, twice (no case of the list's);
+  dragged, the position the mouse makes along the track (code 4), held to the range. Painted
+  (0x472110): the track (`PSUI` +0x7c, +0x90 horizontal) before and after the thumb, the arrows idle or
+  pressed (+0x6c/+0x70 up, +0x74/+0x78 down, +0x80/+0x84 left, +0x88/+0x8c right; their top left part),
+  the thumb (+0x94), all at 0x7f when disabled.
+
 The hit test: the classes that take it themselves (the button, check box, menu, popup, slider: the
 client) and the list box (0x46c793: the client when the point, in the window's pixels, is in its client
 rectangle moved to its origin, 0x474cb0, edges in; else 0). The others (the desktop, the dialog, the box,
@@ -579,7 +624,7 @@ console), `src/outgame.c` (the main menu), `src/li.c` (the keys as the LI's code
 desktop is as tall as 480, scaled to the display (as the HUD). Unattended runs tap keys into the dialogs
 with `--param keys=27,32,...`, or click with `@x:y` in the desktop's pixels (one every 30 frames of a
 dialog). Not ported: the frames' parts (sizing edges, title bars, their boxes and dragging: only the
-developers' dialogs have them), the caret, and the edit field, the menu bar, the radio button and the
-scroll bar (none in the game's dialogs). The options: the port has one screen mode,
+developers' dialogs have them), the caret, and the edit field, the menu bar and the radio button (none
+in the game's dialogs), the list box's keys (0x46d0c0) and owner-drawn lines. The options: the port has one screen mode,
 the persisted one, so the resolution's popup lists that alone; the quality and the gamma are persisted
 but not applied (the draw engine's quality and the display's gamma are not ported).
