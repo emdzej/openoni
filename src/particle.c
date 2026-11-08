@@ -16,6 +16,7 @@
 #include "chars.h"
 #include "chr_hit.h"
 #include "decal.h"
+#include "env.h"
 #include "impact.h"
 #include "knowledge.h"
 #include "sound.h"
@@ -95,7 +96,12 @@ enum {
     A_ROTATE_Y = 34, A_ROTATE_Z = 35, A_FIND_ATTRACTOR = 37, A_ATTRACT_GRAVITY = 38, A_ATTRACT_HOMING = 39,
     A_ATTRACT_SPRING = 40, A_VELOCITY = 47, A_GRAVITY = 48, A_SPIRAL = 49, A_AIR = 50, A_DRIFT = 51,
     A_SET_SPEED = 52, A_SPIRAL_TANGENT = 53, A_KILL_BEYOND = 54, A_CREATE_EFFECT = 55, A_STICK = 56,
-    A_BOUNCE = 57, A_CHOP = 59, A_IMPACT = 60, A_UNHIDE = 62, A_HIDE = 63, A_TYPES = 64,
+    A_BOUNCE = 57, A_CHOP = 59, A_IMPACT = 60, A_UNHIDE = 62, A_HIDE = 63, A_SET_TEX_TICK = 64,
+    A_RANDOM_TEX_FRAME = 65, A_SET_VARIABLE = 70, A_RECALCULATE_ALL = 71, A_ENABLE_ABOVE = 72,
+    A_ENABLE_BELOW = 73, A_ENABLE_NOW = 74, A_DISABLE_NOW = 75, A_SUPERBALL_TRIGGER = 77,
+    A_BREAKABLE_STOP = 78, A_AVOID_WALLS = 79, A_RANDOM_SWIRL = 80, A_FOLLOW_PLAYER = 81,
+    A_STOP_BELOW_SPEED = 82, A_SUPER_PARTICLE = 83, A_STOP_OUR_LINK = 84, A_CHECK_LINK = 85,
+    A_BREAK_LINKS_TO = 86, A_TYPES = 90,
 };
 /* An action type's kind (+0x04): the update skips the kinds a particle's state rules out
    (0x45b170: a stuck particle 2, a chopped one 4, a collision this step 1). */
@@ -119,7 +125,8 @@ static uint32_t action_kind(uint32_t t)
 static void action_counts(uint32_t t, unsigned *nv, unsigned *np)
 {
     static const uint8_t V[A_TYPES] = { [A_LINEAR] = 1, [A_ACCEL] = 2, [A_RANDOM] = 1, [A_PINGPONG] = 2,
-        [A_LOOPING] = 1, [A_TO_VALUE] = 1, [A_COLOR_BLEND] = 1, [A_SPIRAL] = 1 };
+        [A_LOOPING] = 1, [A_TO_VALUE] = 1, [A_COLOR_BLEND] = 1, [A_SPIRAL] = 1, [A_SET_VARIABLE] = 1,
+        [A_AVOID_WALLS] = 5, [A_RANDOM_SWIRL] = 1, [A_SUPER_PARTICLE] = 1 };
     static const uint8_t P[A_TYPES] = { [A_LINEAR] = 1, [A_ACCEL] = 1, [A_RANDOM] = 3, [A_PINGPONG] = 3,
         [A_LOOPING] = 3, [A_TO_VALUE] = 2, [A_COLOR_BLEND] = 3, [A_FADE_OUT] = 1, [A_ENABLE_ACTION] = 2,
         [A_DISABLE_ACTION] = 2, [A_SET_LIFETIME] = 1, [A_ENABLE_EMITTER] = 1, [A_DISABLE_EMITTER] = 1,
@@ -128,7 +135,10 @@ static void action_counts(uint32_t t, unsigned *nv, unsigned *np)
         [A_ROTATE_X] = 3, [A_ROTATE_Y] = 3, [A_ROTATE_Z] = 3, [A_FIND_ATTRACTOR] = 1, [A_ATTRACT_GRAVITY] = 3,
         [A_ATTRACT_HOMING] = 3, [A_ATTRACT_SPRING] = 3, [A_GRAVITY] = 1, [A_SPIRAL] = 2, [A_AIR] = 2,
         [A_DRIFT] = 7, [A_SET_SPEED] = 3, [A_SPIRAL_TANGENT] = 3, [A_KILL_BEYOND] = 2, [A_CREATE_EFFECT] = 4,
-        [A_BOUNCE] = 2, [A_IMPACT] = 2 };
+        [A_BOUNCE] = 2, [A_IMPACT] = 2, [A_SET_TEX_TICK] = 1, [A_SET_VARIABLE] = 1, [A_ENABLE_ABOVE] = 3,
+        [A_ENABLE_BELOW] = 3, [A_ENABLE_NOW] = 1, [A_DISABLE_NOW] = 1, [A_SUPERBALL_TRIGGER] = 2,
+        [A_AVOID_WALLS] = 3, [A_RANDOM_SWIRL] = 3, [A_FOLLOW_PLAYER] = 1, [A_STOP_BELOW_SPEED] = 1,
+        [A_SUPER_PARTICLE] = 4 };
     *nv = t < A_TYPES ? V[t] : 0;
     *np = t < A_TYPES ? P[t] : 0;
 }
@@ -142,7 +152,7 @@ static bool action_known(uint32_t t)
 {
     switch (t) {
     case 7: case 19: case 22: case 24: case 25: case 32: case 36: case 41: case 42: case 43: case 44: case 45:
-    case 46: case 58: case 61:
+    case 46: case 58: case 61: case 66: case 67: case 68: case 69: case 76: case 87: case 88: case 89:
         return false;
     default:
         return t < A_TYPES;
@@ -659,7 +669,7 @@ static void setup_classes(void)
                 }
                 if (bad) default_param(2, v);
             }
-            if (!action_known(t)) wr32(a + A_TYPE, A_LINEAR);   /* never on the CD */
+            if (!action_known(t)) wr32(a + A_TYPE, A_LINEAR);   /* the table's empty slots (none on the CD) */
         }
     }
     /* the sort (0x51e8b1, qsort with 0x457a70): the port's is stable */
@@ -913,6 +923,8 @@ static void created(P3Class *c, P3Particle *p)
     if (slot >= 0) p->flyby_slot = (uint8_t)slot;
 }
 
+static void init_vars(P3Class *c, P3Particle *p);
+
 /* P3rCreateParticle 0x455e40: the header, the lifetime drawn, the emitters (on if the flag says so,
    never emitted), the variables' first values. */
 P3Particle *p3_create(P3Class *c, uint32_t tick)
@@ -953,6 +965,16 @@ P3Particle *p3_create(P3Class *c, uint32_t tick)
         memcpy(s + ES_TIME, &never, 4);
         wr32(s + ES_LAST, 0);
     }
+    init_vars(c, p);
+    /* the creation's tint (0x659ce6, 0x6a8660: P3rSetGlobalTint 0x456f90) into a class's tint
+       variable that has one (flags2 bit 0) and no other tint value */
+    if (global_tint_on) tint_variable(c, p, global_tint);
+    return p;
+}
+
+/* The variables' first values (each one's value, +0x18, a draw for the ranges). */
+static void init_vars(P3Class *c, P3Particle *p)
+{
     const uint8_t *v = vars_of(c);
     for (uint16_t k = 0; k < rd16(c->def + D_VARS); k++, v += VAR) {
         Val x = { .u = 0 };
@@ -965,10 +987,6 @@ P3Particle *p3_create(P3Class *c, uint32_t tick)
         }
         if (value(c, p, v + 0x18, &x)) wr32(p->v + off, x.u);
     }
-    /* the creation's tint (0x659ce6, 0x6a8660: P3rSetGlobalTint 0x456f90) into a class's tint
-       variable that has one (flags2 bit 0) and no other tint value */
-    if (global_tint_on) tint_variable(c, p, global_tint);
-    return p;
 }
 
 /* 0x456ce0's list work: out of the class's and the bucket's lists, the class out of the active list with
@@ -1037,6 +1055,7 @@ typedef struct {
     float move[3];              /* +0x1c: the step's move, cut at the hit */
     uint32_t quad;              /* +0x28 */
     Character *chr;             /* +0x2c: the context hit, a character's (NULL for another context's) */
+    int part;                   /* +0x30: the character's part hit */
     bool on_ctx;                /* another context hit (an object, a door's panel, a weapon, a powerup) */
     PhysCtx ctx;                /* its view */
     float t;                    /* +0x34: when */
@@ -1088,11 +1107,13 @@ static bool run_event(P3Class *c, P3Particle *p, int event, const uint8_t *list,
     return false;
 }
 
-/* P3rSendEvent 0x45b2c0 (the create event finds the attractor first, 0x463430: not ported here, and
-   calls the creation callback after, when the particle lives). */
+/* P3rSendEvent 0x45b2c0: the create event finds the attractor first (P3rFindAttractor 0x463430, delay
+   0) and calls the creation callback after, when the particle lives. */
+static void attractor_search(P3Class *c, P3Particle *p, uint32_t delay);
 bool p3_send_event(P3Class *c, P3Particle *p, int event, float time)
 {
     if (!c || !p || event < 0 || event > 15) return false;
+    if (event == P3_EV_CREATE) attractor_search(c, p, 0);
     bool died = run_event(c, p, event, c->def + D_EVENTS + 4 * event, time, 0.0f, false);
     if (event == P3_EV_CREATE && !died) created(c, p);
     return died;
@@ -1613,11 +1634,215 @@ static void quat_from_axis(const float axis[3], float angle, float q[4])
     q[0] = axis[0] * s, q[1] = axis[1] * s, q[2] = axis[2] * s, q[3] = cosf(h);
 }
 
+/* ---- the bodies' surfaces and bones (the emitters' positions 6 and 7) ---- */
+
+/* ONrCharacterClass_MakeBodySurfaceCache 0x4f2550 (ONCC+0xc30): for the class's lowest body
+   (ONCC+0xc34's first) each part's box (its points' bounds) with its volume, its faces' areas (the
+   x faces', y's, z's), the area of the faces the part shows (0x52b248: bits 0..5 the -x, +x, -y, +y,
+   -z, +z faces) and its length along the axis bits 6..7 pick (x, y, z, none); the sums over the parts.
+   Made once a class. */
+typedef struct {
+    float len, area, volume, face[3], box[6];
+} BodyPart;
+typedef struct {
+    const void *oncc;
+    float len, area, volume;
+    BodyPart part[CHR_BONES];
+} BodySurface;
+static BodySurface surfaces[64];
+static unsigned nsurfaces;
+static uint32_t daodan_disabled;        /* 0x5ed324: the parts p3_daodan_disable takes out */
+
+static uint32_t part_faces(unsigned k) { return exe_u32(0x52b248 + 4 * k); }
+
+static const BodySurface *body_surface(const void *oncc)
+{
+    for (unsigned i = 0; i < nsurfaces; i++)
+        if (surfaces[i].oncc == oncc) return &surfaces[i];
+    const void *body = body_of_class(oncc, 0);
+    if (!body || body_bones(body) < CHR_BONES || nsurfaces == sizeof surfaces / sizeof *surfaces) return NULL;
+    BodySurface *t = &surfaces[nsurfaces++];
+    memset(t, 0, sizeof *t);
+    t->oncc = oncc;
+    for (unsigned k = 0; k < CHR_BONES; k++) {
+        BodyPart *b = &t->part[k];
+        float sph[4];
+        m3gm_bounds(body_geometry(body, k), b->box, sph);
+        uint32_t m = part_faces(k);
+        float dx = b->box[3] - b->box[0], dy = b->box[4] - b->box[1], dz = b->box[5] - b->box[2];
+        b->volume = dz * dy * dx;
+        t->volume += b->volume;
+        switch (m & 0xc0) {
+        case 0x00: b->len = dx; break;
+        case 0x40: b->len = dy; break;
+        case 0x80: b->len = dz; break;
+        default: b->len = 0.0f; break;
+        }
+        t->len += b->len;
+        b->face[0] = dz * dy, b->face[1] = dz * dx, b->face[2] = dy * dx;
+        for (int f = 0; f < 6; f++)
+            if (m & (1u << f)) b->area += b->face[f / 2];
+        t->area += b->area;
+    }
+    return t;
+}
+
+/* The share of the whole a draw picks, kept under it by 0.01 (0x5295bc). */
+static float pick(float whole)
+{
+    float r = (float)trac_local_random() * 1.5259022e-05f * whole;     /* 0x52b7b8 */
+    if (r < 0.0f) return 0.0f;
+    return r > whole - 0.01f ? whole - 0.01f : r;
+}
+
+/* ONrParticle3_FindBodySurfacePosition 0x5097f0: a point on the character's body, the parts by their
+   shown area and the point on a shown face of the part's box (in the part's space, its matrix the
+   part's, A+0x2278), pushed out by the distance along the normal there: the box's own across the part's
+   axis (x), rounded at an end it shows (the half of its thinner side), the orientation about it (x the
+   normal's cross, y the normal). False on a part p3_daodan_disable took out. */
+static bool body_surface_position(const Chr *ch, float dist, float pos[3], const float **m, float o[9])
+{
+    const BodySurface *t = body_surface(ch->c.oncc);
+    if (!t) return false;
+    static const float ID[9] = { 1, 0, 0, 0, 1, 0, 0, 0, 1 };
+    float r = pick(t->area);
+    float fy = (float)trac_local_random() * 1.5259022e-05f, fz = (float)trac_local_random() * 1.5259022e-05f;
+    for (unsigned k = 0; k < CHR_BONES; k++) {
+        const BodyPart *b = &t->part[k];
+        if (!(r < b->area)) { r -= b->area; continue; }
+        if (daodan_disabled & (1u << k)) return false;
+        *m = ch->c.bone_world[k];
+        uint32_t f = part_faces(k);
+        const float *x = b->box;    /* min x y z, max x y z */
+        bool face = false;
+        if ((f & 1) && r < b->face[0]) face = true, pos[0] = x[0];
+        else {
+            if (f & 1) r -= b->face[0];
+            if ((f & 2) && r < b->face[0]) face = true, pos[0] = x[3];
+            else if (f & 2) r -= b->face[0];
+        }
+        if (face) {
+            pos[1] = fy * x[4] + (1.0f - fy) * x[1];
+            pos[2] = fz * x[5] + (1.0f - fz) * x[2];
+        } else if ((f & 4) && r < b->face[1]) {
+            pos[1] = x[1];
+            pos[2] = fy * x[5] + (1.0f - fy) * x[2];
+            pos[0] = fz * x[3] + (1.0f - fz) * x[0];
+        } else {
+            if (f & 4) r -= b->face[1];
+            if ((f & 8) && r < b->face[1]) {
+                pos[1] = x[4];
+                pos[2] = fy * x[5] + (1.0f - fy) * x[2];
+                pos[0] = fz * x[3] + (1.0f - fz) * x[0];
+            } else {
+                if (f & 8) r -= b->face[1];
+                float z;
+                if ((f & 0x10) && r < b->face[2]) z = x[2];
+                else {
+                    if (f & 0x10) r -= b->face[2];
+                    if (!(f & 0x20) || !(r < b->face[2])) {
+                        pos[0] = pos[1] = pos[2] = 0.0f;
+                        memcpy(o, ID, sizeof ID);   /* 0x434c60 */
+                        return true;
+                    }
+                    z = x[5];
+                }
+                pos[2] = z;
+                pos[0] = fy * x[3] + (1.0f - fy) * x[0];
+                pos[1] = fz * x[4] + (1.0f - fz) * x[1];
+            }
+        }
+        float ym = (x[4] + x[1]) * 0.5f, zm = (x[5] + x[2]) * 0.5f;
+        if (f & 3) {    /* the rounded ends */
+            float rad = (x[4] - x[1]) * 0.5f, rz = (x[5] - x[2]) * 0.5f;
+            if (rad > rz) rad = rz;
+            float mid = (x[3] + x[0]) * 0.5f, hi = x[3] - rad, lo = rad + x[0], edge = 0.0f;
+            if (hi <= mid) hi = mid;
+            if (lo > mid) lo = mid;
+            bool end = false;
+            if ((f & 1) && pos[0] < lo) end = true, edge = lo;
+            else if ((f & 2) && pos[0] > hi) end = true, edge = hi;
+            if (end) {
+                float n[3] = { pos[0] - edge, pos[1] - ym, pos[2] - zm };
+                float l = 1.0f / sqrtf(dot3(n, n));
+                n[0] *= l, n[1] *= l, n[2] *= l;
+                float sg = edge > mid ? 1.0f : -1.0f;
+                float tz[3] = { 0.0f, -(sg * n[2]), sg * n[1] }, tx[3];
+                if (normalize_zero(tz)) tz[0] = 0.0f, tz[1] = 0.0f, tz[2] = sg;
+                cross3(n, tz, tx);
+                if (normalize_zero(tx)) tx[0] = 0.0f, tx[1] = 1.0f, tx[2] = 0.0f;
+                memcpy(o, tx, 12);
+                memcpy(o + 3, n, 12);
+                memcpy(o + 6, tz, 12);
+                pos[0] += n[0] * dist, pos[1] += n[1] * dist, pos[2] += n[2] * dist;
+                return true;
+            }
+        }
+        float ny = pos[1] - ym, nz = pos[2] - zm, l = 1.0f / sqrtf(ny * ny + nz * nz);
+        ny *= l, nz *= l;
+        const float r9[9] = { 1, 0, 0, 0, ny, nz, 0, -nz, ny };
+        memcpy(o, r9, sizeof r9);
+        pos[1] += ny * dist, pos[2] += nz * dist;
+        return true;
+    }
+    pos[0] = pos[1] = pos[2] = 0.0f;
+    memcpy(o, ID, sizeof ID);
+    *m = ch->c.bone_world[0];
+    return true;
+}
+
+/* ONrParticle3_FindBodyBonePosition 0x509dc0: a point along a bone, the parts by their length: along the
+   part's x between its box's ends (pulled in by the half of its thinner side less the radius), with a
+   radius around it at a random angle. */
+static bool body_bone_position(const Chr *ch, float radius, float pos[3], const float **m)
+{
+    const BodySurface *t = body_surface(ch->c.oncc);
+    if (!t) return false;
+    float r = pick(t->len);
+    for (unsigned k = 0; k < CHR_BONES; k++) {
+        const BodyPart *b = &t->part[k];
+        if (!(r < b->len)) { r -= b->len; continue; }
+        *m = ch->c.bone_world[k];
+        const float *x = b->box;
+        float a, e;
+        if (radius <= 0.0f) a = x[0], e = x[3];
+        else {
+            float rad = (x[4] - x[1]) * 0.5f, rz = (x[5] - x[2]) * 0.5f;
+            if (rad > rz) rad = rz;
+            a = (x[3] - rad) + radius;
+            e = (rad + x[0]) - radius;
+        }
+        float f = (float)trac_local_random() * 1.5259022e-05f;
+        pos[1] = pos[2] = 0.0f;
+        pos[0] = f * e + (1.0f - f) * a;
+        if (radius > 0.0f) {
+            float ang = (float)(trac_local_random() & 0xffff) * 1.5259022e-05f * 6.2831855f;
+            pos[1] = cosf(ang) * radius;
+            pos[2] = sinf(ang) * radius;
+        }
+        return true;
+    }
+    pos[0] = pos[1] = pos[2] = 0.0f;
+    *m = ch->c.bone_world[0];
+    return true;
+}
+
+/* p3_daodan_disable part ... (ONiParticle3_DaodanShieldDisable 0x50ac00, a debugging command): the
+   integers below 19 are the parts the body's surface leaves out; none given, none left out. */
+static bool cmd_daodan_disable(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    daodan_disabled = 0;
+    for (int i = 0; i < c; i++)
+        if (v[i].type == SL_INT && v[i].i >= 0 && v[i].i < 19) daodan_disabled |= 1u << v[i].i;
+    return true;
+}
+
 /* P3iEmitParticle 0x45d610: the emitter's burst at the time: its count (the fraction a chance of one
    more), each particle placed (position kind), aimed (direction kind) at its speed, linked, owned,
    oriented, then its create event. The emitter's state keeps the last one. True if the emitting
-   particle died (following its link). Not ported: the bodies' surfaces and bones (positions 6 and 7: the
-   parent's place). */
+   particle died (following its link). The bodies' positions (6 the surface, 7 the bones of the owner)
+   put it on the part, hanging from it when it can, turned by the surface's own orientation (6). */
 static bool emit(P3Class *c, P3Particle *p, unsigned k, float time)
 {
     uint8_t *e = emitters_of(c) + (size_t)k * EMITTER;
@@ -1650,8 +1875,9 @@ static bool emit(P3Class *c, P3Particle *p, unsigned k, float time)
     uint32_t tick = round_small(time * 60.0f);
     for (int32_t i = 0; i < (count & 0xffff); i++) {
         float off[3] = { 0, 0, 0 }, dir[3] = { 0, 1, 0 }, speed = 0.0f, r = 0.0f, a, b;
-        float f0 = 0, f1 = 0, f2 = 0;
-        bool world = false;
+        float f0 = 0, f1 = 0, f2 = 0, body_o[9];
+        bool world = false, absolute = false, body_orient = false;
+        const float *body_m = NULL;     /* the body's part the position is on */
         if (att_listed && att_count && use_attr) {
             uint32_t ix = (per & 0xffff) && (ef & 0x100) ? (uint32_t)(i & 0xffff) / (per & 0xffff)
                         : ((uint32_t)(i & 0xffff) + ((ef & 0x400) ? rd16(st + ES_COUNT) : 0u)) % att_count;
@@ -1701,7 +1927,19 @@ static bool emit(P3Class *c, P3Particle *p, unsigned k, float time)
                 off[2] = sinf(a) * b;
             }
             break;
-        default:    /* point; the bodies' (6, 7): not ported */
+        case 6: case 7: {   /* on the owner's body: its surface, its bones (the part's matrix) */
+            const uint8_t *ob = block(c, p, P3_X_OWNER);
+            Chr *ch;
+            float d;
+            if (ob && (rd32(ob) & 0x3000000u) && fvalue(c, p, eparam(e, 2), &d) && (ch = owner_character(rd32(ob)))) {
+                if (rd32(e + E_POSITION) == 6) {
+                    if (body_surface_position(ch, d, off, &body_m, body_o)) absolute = body_orient = true;
+                } else if (body_bone_position(ch, d, off, &body_m)) absolute = true;
+                if (!absolute) body_m = NULL;
+            }
+            break;
+        }
+        default:    /* point */
             break;
         }
         switch (rd32(e + E_DIRECTION)) {
@@ -1800,28 +2038,40 @@ static bool emit(P3Class *c, P3Particle *p, unsigned k, float time)
         }
         uint8_t *pat = block(c, p, P3_X_ATTACH), *qat = block(ec, q, P3_X_ATTACH);
         const float *matrix = NULL;
-        if (pat) {
+        if (body_m) {   /* the new one hangs from the body's part, or is put in the world through it */
+            if (qat) wr32(qat, p3_attach_id(body_m));
+            else matrix = body_m;
+        } else if (pat && !absolute) {
             if (qat) {
                 wr32(qat, rd32(pat));
                 if (p->flags & P_ATTACHED) q->flags |= P_ATTACHED;
             } else matrix = attach_matrix(rd32(pat));
         } else if (qat) wr32(qat, 0);
-        float at[3] = { ppos[0], ppos[1], ppos[2] };
-        const float *poff = fblock(c, p, P3_X_OFFSET);
-        if (poff) at[0] += poff[0], at[1] += poff[1], at[2] += poff[2];
-        if (porient) m3_apply(porient, off, off);
-        if (matrix) {
-            m4_apply(matrix, at, at);
-            m3_apply(matrix, off, off);
-        }
-        float *qpos = position(ec, q, &died);
-        if (died) continue;
-        float *qoff = fblock(ec, q, P3_X_OFFSET);
-        if (qoff) {
-            memcpy(qpos, at, 12);
-            memcpy(qoff, off, 12);
+        float *qpos, *qoff;
+        if (absolute) {     /* the body's point itself, in its part's space */
+            qpos = position(ec, q, &died);
+            if (died) continue;
+            if (matrix) m4_apply(matrix, off, qpos);
+            else memcpy(qpos, off, 12);
+            if ((qoff = fblock(ec, q, P3_X_OFFSET))) qoff[0] = qoff[1] = qoff[2] = 0.0f;
         } else {
-            qpos[0] = at[0] + off[0], qpos[1] = at[1] + off[1], qpos[2] = at[2] + off[2];
+            float at[3] = { ppos[0], ppos[1], ppos[2] };
+            const float *poff = fblock(c, p, P3_X_OFFSET);
+            if (poff) at[0] += poff[0], at[1] += poff[1], at[2] += poff[2];
+            if (porient) m3_apply(porient, off, off);
+            if (matrix) {
+                m4_apply(matrix, at, at);
+                m3_apply(matrix, off, off);
+            }
+            qpos = position(ec, q, &died);
+            if (died) continue;
+            qoff = fblock(ec, q, P3_X_OFFSET);
+            if (qoff) {
+                memcpy(qpos, at, 12);
+                memcpy(qoff, off, 12);
+            } else {
+                qpos[0] = at[0] + off[0], qpos[1] = at[1] + off[1], qpos[2] = at[2] + off[2];
+            }
         }
         float *qvel = fblock(ec, q, P3_X_VELOCITY);
         if (qvel) {
@@ -1834,13 +2084,18 @@ static bool emit(P3Class *c, P3Particle *p, unsigned k, float time)
         }
         float *qorient = fblock(ec, q, P3_X_ORIENTATION);
         if (qorient) {
-            const float *parent = porient;
-            float pm[9];
-            if (porient && matrix) {
-                m3_mul(matrix, porient, pm);
-                parent = pm;
+            if (body_orient) {      /* the surface's own, through the part when not hanging from it */
+                if (matrix) m3_mul(matrix, body_o, qorient);
+                else memcpy(qorient, body_o, 36);
+            } else {
+                const float *parent = porient;
+                float pm[9];
+                if (porient && matrix) {
+                    m3_mul(matrix, porient, pm);
+                    parent = pm;
+                }
+                construct_orientation((int)rd32(e + E_ORIENT_DIR), (int)rd32(e + E_ORIENT_UP), parent, off, dir, qorient);
             }
-            construct_orientation((int)rd32(e + E_ORIENT_DIR), (int)rd32(e + E_ORIENT_UP), parent, off, dir, qorient);
         }
         uint8_t *qa = block(ec, q, P3_X_ATTRACTOR);
         uint32_t qk = rd32(ec->def + D_ATTRACTOR);
@@ -1937,7 +2192,8 @@ float p3_body_radius(const Character *c)
    own sphere's centre taken from the part's place unturned (the original subtracts the part's place from
    s and tests the sphere's local centre), its radius by the character's scale. The nearest: its fraction,
    the point, the normal (the ray's: from the turned centre; the point's: the centre's). */
-static bool char_ray(const Parts *x, const float *s, const float *d, float radius, float *t_out, float point[3], float normal[3])
+static bool char_ray(const Parts *x, const float *s, const float *d, float radius, float *t_out, float point[3], float normal[3],
+                     int *part)
 {
     if (!x->ok) return false;
     float sph[4] = { x->body[0], x->body[1], x->body[2], x->body[3] + radius }, t;
@@ -1957,6 +2213,7 @@ static bool char_ray(const Parts *x, const float *s, const float *d, float radiu
     }
     if (best < 0) return false;
     *t_out = bt;
+    if (part) *part = best;
     float p[3] = { s[0] + d[0] * bt, s[1] + d[1] * bt, s[2] + d[2] * bt }, cen[3];
     if (radius == 0.0f) {
         float sc = x->c->scale;
@@ -1988,7 +2245,7 @@ bool p3_character_ray(const Character *c, const float s[3], const float d[3], fl
     Parts x;
     make_parts(&x, c);
     float t, n[3];
-    return char_ray(&x, s, d, 0.0f, &t, point, n);
+    return char_ray(&x, s, d, 0.0f, &t, point, n, NULL);
 }
 
 bool p3_character_sphere_ray(const Character *c, const float s[3], const float d[3], float radius)
@@ -1996,7 +2253,7 @@ bool p3_character_sphere_ray(const Character *c, const float s[3], const float d
     Parts x;
     make_parts(&x, c);
     float t, point[3], n[3];
-    return char_ray(&x, s, d, radius, &t, point, n);
+    return char_ray(&x, s, d, radius, &t, point, n, NULL);
 }
 
 /* WPrParticleBelongsToSelf 0x51ce20: the owner is the character itself. */
@@ -2051,7 +2308,8 @@ static bool check_collisions(P3Class *c, P3Particle *p, float t0, float *t1, flo
         const uint8_t *owner = block(c, p, P3_X_OWNER);
         for (int i = 0; dt > 1e-6f && i < chr_count; i++) {
             float t, pt[3], nm[3];
-            if (!char_ray(&parts[i], pos, hit.move, point ? 0.0f : radius, &t, pt, nm)) continue;
+            int part;
+            if (!char_ray(&parts[i], pos, hit.move, point ? 0.0f : radius, &t, pt, nm, &part)) continue;
             t = t * dt + t0;
             if (t < t0) t = t0;
             else if (t > *t1) t = *t1;
@@ -2064,6 +2322,7 @@ static bool check_collisions(P3Class *c, P3Particle *p, float t0, float *t1, flo
             hit.hit = true;
             hit.wall = hit.other = false;
             hit.chr = chr_list[i];
+            hit.part = part;
             hit.on_ctx = false;
             float f = hit.t - t0;
             if (f < 0.001f) break;
@@ -2232,7 +2491,7 @@ static void process_class(P3Class *c, uint32_t tick)
                     }
                     break;
                 }
-                default:    /* the attractors' (4): not ported */
+                default:    /* the attractors' (4): not ported (no class on the CD has it) */
                     break;
                 }
                 if (first) instant = true;
@@ -2405,6 +2664,7 @@ void p3_set_environment(const void *e)
 {
     env = e;
     decal_set_environment(e);       /* P3rDecal_LevelBegin */
+    daodan_disabled = 0;            /* 0x508dd0 at the level's start */
 }
 
 /* The level's end (0x4581d0 and 0x455b20) and P3rInitialize 0x455a50. */
@@ -2414,6 +2674,7 @@ void p3_reset(void)
     for (uint16_t i = 0; i < nclasses; i++) free(classes[i].def);
     memset(classes, 0, sizeof classes);
     nclasses = nsorted = nfailed = 0;
+    nsurfaces = 0;      /* the classes' body caches go with their level */
     active_head = active_tail = pending = 0xffff;
     for (uint32_t k = 0; k < CHUNKS; k++) free(chunks[k]), chunks[k] = NULL;
     nslots = 0;
@@ -3164,6 +3425,174 @@ static bool do_action(Act *x)
     }
     case A_UNHIDE: p->flags &= ~(uint32_t)P_HIDDEN; return false;
     case A_HIDE: p->flags |= P_HIDDEN; return false;
+    case A_SET_TEX_TICK: {      /* 0x466450: the texture's start the tick less now */
+        uint8_t *b;
+        if (pf(x, 0, &f0) && (b = block(c, p, P3_X_TEX_TIME))) wr32(b, round_small(x->time * 60.0f) - round_small(f0));
+        return false;
+    }
+    case A_RANDOM_TEX_FRAME: {  /* 0x4664c0: a new random texture index (two draws) */
+        uint8_t *b = block(c, p, P3_X_TEX_INDEX);
+        if (b) {
+            uint32_t hi = trac_local_random() & 0xffff;
+            wr32(b, hi << 16 | (trac_local_random() & 0xffff));
+        }
+        return false;
+    }
+    case A_SET_VARIABLE: {      /* 0x466530: the variable to the value */
+        Val k;
+        if (x->var[0] && value(c, p, param(a, 0), &k)) wr32(x->var[0], k.u);
+        return false;
+    }
+    case A_RECALCULATE_ALL:     /* 0x466550: every variable drawn again */
+        init_vars(c, p);
+        return false;
+    case A_ENABLE_ABOVE: case A_ENABLE_BELOW: {     /* 0x4666b0, 0x466750: the action on while the
+                                                       value is above (below) the threshold */
+        Val k;
+        if (!value(c, p, param(a, 0), &k) || !pf(x, 1, &f1) || !pf(x, 2, &f2)) return false;
+        bool on = rd32(a + A_TYPE) == A_ENABLE_ABOVE ? f1 > f2 : f1 < f2;
+        if (on) p->mask &= ~(1u << (k.u & 31));
+        else p->mask |= 1u << (k.u & 31);
+        return false;
+    }
+    case A_ENABLE_NOW: case A_DISABLE_NOW: {        /* 0x4667f0, 0x466830 */
+        Val k;
+        if (!value(c, p, param(a, 0), &k)) return false;
+        if (rd32(a + A_TYPE) == A_ENABLE_NOW) p->mask &= ~(1u << (k.u & 31));
+        else p->mask |= 1u << (k.u & 31);
+        return false;
+    }
+    case A_SUPERBALL_TRIGGER: { /* 0x467490: the emitter's last particle explodes once the fuse from the
+                                   emitter's time is spent, and until then explodes when it hits */
+        uint32_t k = penum(a, 0);
+        if (!pf(x, 1, &f1) || k >= nemitters(c)) return false;
+        const uint8_t *st = p->v + k * EMITTER_STATE;
+        P3Particle *l = from_handle(rd32(st + ES_LAST));
+        if (!l) return false;
+        if (f1 + rdf(st + ES_TIME) <= x->time) {
+            P3Class *lc = &classes[l->cls];
+            return run_event(lc, l, P3_EV_EXPLODE, lc->def + D_EVENTS + 4 * P3_EV_EXPLODE, x->time, 0.0f, false);
+        }
+        l->flags |= P_EXPLODE;
+        return false;
+    }
+    case A_BREAKABLE_STOP: {    /* 0x467550: the step stops on a breakable quad (any, with
+                                   p3_everything_breakable) */
+        AkevQuad q;
+        if (hit.hit && hit.wall && env &&
+            (env_everything_breakable() || (akev_quad(env, hit.quad, &q) && (q.flags & 0x200000))))
+            *x->stop = true;
+        return false;
+    }
+    case A_AVOID_WALLS: {       /* 0x468030: every 0.2 s a look the sense distance ahead along the
+                                   velocity; a wall there sets the turn's axis (the wall's normal across
+                                   the look, or the look turned flat) at the turning speed, else the turn
+                                   decays; then the velocity and orientation turn by it */
+        float *ax = fvar(x, 0), *ay = fvar(x, 1), *az = fvar(x, 2), *cur = fvar(x, 3), *wait = fvar(x, 4);
+        if (!ax || !ay || !az || !cur || !wait) return false;
+        if (*wait > x->dt) { *wait -= x->dt; return false; }
+        *wait = 0.2f;
+        float here[3], sense, speed, decay;
+        if (!p3_real_position(c, p, here)) return true;
+        if (!(v = fblock(c, p, P3_X_VELOCITY))) return false;
+        if (!pf(x, 0, &sense) || !pf(x, 1, &speed)) return false;
+        speed *= 0.017453292f;
+        if (!pf(x, 2, &decay)) return false;
+        decay *= 0.017453292f;
+        float look[3] = { v[0], v[1], v[2] }, l = sqrtf(dot3(look, look));
+        if (l < 0.001f) return false;   /* 0x529dfc */
+        l = sense / l;
+        look[0] *= l, look[1] *= l, look[2] *= l;
+        static AkevHit h[AKEV_HITS_MAX];
+        if (env && akev_collide_point(env, here, look, 0x44800, 1, h)) {
+            float axis[3];
+            cross3(h[0].plane, look, axis);
+            if (normalize_zero(axis)) *ax = look[2] / sense, *ay = 0.0f, *az = -(look[0] / sense);
+            else *ax = axis[0], *ay = axis[1], *az = axis[2];
+            *cur = speed;
+        } else {
+            *cur -= decay * x->dt;
+            if (*cur < 0.001f) { *cur = 0.0f; return false; }
+        }
+        float q[4], m[9], axis[3] = { *ax, *ay, *az };
+        quat_from_axis(axis, x->dt * *cur, q);
+        body_quat_to_matrix(q, m);
+        m3_apply(m, v, v);
+        float *o = fblock(c, p, P3_X_ORIENTATION);
+        if (o) m3_mul(m, o, o);
+        p->flags |= P_DIRTY;
+        return false;
+    }
+    case A_RANDOM_SWIRL: {      /* 0x4683d0: the swirl's angle moves on by both rates; the velocity and
+                                   orientation turn at the swirl's speed about the axis at that angle
+                                   between the orientation's x and z */
+        float *o = fblock(c, p, P3_X_ORIENTATION), *ang = fvar(x, 0);
+        v = fblock(c, p, P3_X_VELOCITY);
+        if (!o || !pf(x, 0, &f0)) return false;
+        f0 = f0 * x->dt * 0.017453292f;
+        if (!pf(x, 1, &f1)) return false;
+        f1 = f1 * x->dt * 0.017453292f;
+        if (!pf(x, 2, &f2)) return false;
+        f2 = f2 * x->dt * 0.017453292f;
+        if (!ang) return false;
+        float t = f1 + f0 + *ang;
+        *ang = t;
+        if (t < 0.0f) *ang = t + 6.2831855f;
+        else if (t >= 6.2831855f) *ang = t - 6.2831855f;
+        float co = cosf(*ang), si = sinf(*ang);
+        float axis[3] = { si * o[6] + co * o[0], si * o[7] + co * o[1], si * o[8] + co * o[2] }, q[4], m[9];
+        quat_from_axis(axis, f2, q);
+        body_quat_to_matrix(q, m);
+        if (v) m3_apply(m, v, v);
+        m3_mul(m, o, o);
+        p->flags |= P_DIRTY;
+        return false;
+    }
+    case A_FOLLOW_PLAYER: {     /* 0x468570: at the player's location (C+0x160), raised by the offset */
+        Chr *pl = chars_player();
+        if (!pf(x, 0, &f0) || !pl) return false;
+        chr_location(&pl->c, p->pos);
+        p->pos[1] += f0;
+        return false;
+    }
+    case A_STOP_BELOW_SPEED: {  /* 0x4685d0: slower than the speed (none without a velocity), the step stops */
+        if (!pf(x, 0, &f0)) return false;
+        const float *w = fblock(c, p, P3_X_VELOCITY);
+        float s2 = w ? dot3(w, w) : 0.0f;
+        if (s2 < f0 * f0) *x->stop = true;
+        return false;
+    }
+    case A_SUPER_PARTICLE: {    /* P3iAction_SuperParticle 0x468650: the variable from the owner's shown
+                                   super value (C+0x1668, 0 for none), base + delta x it, within the bounds */
+        float base, delta, lo, hi;
+        if (!pf(x, 0, &base) || !pf(x, 1, &delta) || !pf(x, 2, &lo) || !pf(x, 3, &hi) || !(v = fvar(x, 0))) return false;
+        float sup = 0.0f;
+        const uint8_t *ob = block(c, p, P3_X_OWNER);
+        Chr *by = ob ? owner_character(rd32(ob)) : NULL;
+        if (by) sup = by->c.super_level;
+        base = sup * delta + base;
+        if (base < lo) *v = lo;
+        else *v = base > hi ? hi : base;
+        return false;
+    }
+    case A_CHECK_LINK: {        /* 0x467f60: a link to a live particle that hasn't broken its links stays */
+        P3Particle *l = p->link ? from_handle(p->link) : NULL;
+        if (!p->link || (l && !(l->flags & P_GONE))) return false;
+    }
+        /* fall through */
+    case A_STOP_OUR_LINK: {     /* 0x467ee0: the link broken (the particle kept where its link had it when
+                                   locked to it), the brokenlink event */
+        if (!p->link) return false;
+        if (flags2(c) & F2_LOCK_TO_LINK) {
+            bool died;
+            float *at = position(c, p, &died);
+            if (died) return true;
+            memmove(p->pos, at, 12);
+        }
+        p->link = 0;
+        return run_event(c, p, P3_EV_BROKEN_LINK, c->def + D_EVENTS + 4 * P3_EV_BROKEN_LINK, x->time, 0.0f, false);
+    }
+    case A_BREAK_LINKS_TO: p->flags |= P_GONE; return false;    /* 0x468020: the particles linked to it let go */
     default:
         return false;
     }
@@ -3239,18 +3668,27 @@ static bool is_flare(const P3Class *c)
     return (flags2(c) & F2_LENSFLARE) && !contrail;
 }
 
+/* 0x6a8b40: on at the start (P3rInitialize), then each frame (ONiGameState_Display_Reflectable 0x4fb7e9)
+   whether the sky was seen and no cutscene's skip is at its state 3 (none starts in v1.0) */
+static bool sky_seen = true;
+
+void p3_set_sky_seen(bool seen) { sky_seen = seen; }
+
 void p3_each_drawn(P3DrawFn fn, void *user)
 {
     for (uint16_t i = active_head; i != 0xffff; i = classes[i].next) {
         P3Class *c = &classes[i];
-        /* P3iDisplayParticleClass 0x460520: not the decals nor the invisible (flags2 0x2800000); those of
-           0x100000 only with a debug switch (0x6a8b40, off); the lens flares later (p3_each_flare) */
-        if (flags2(c) & (F2_INVISIBLE | F2_DECAL | 0x100000)) continue;
+        /* P3iDisplayParticleClass 0x460520: not the decals nor the invisible (flags2 0x2800000); the sky's
+           (0x100000: the clouds) only when the sky is seen, without the fog; the lens flares later
+           (p3_each_flare) */
+        if (flags2(c) & (F2_INVISIBLE | F2_DECAL)) continue;
+        bool sky = (flags2(c) & 0x100000) != 0;
+        if (sky && !sky_seen) continue;
         if (is_flare(c)) continue;
         for (P3Particle *p = c->head; p; p = p->next) {
             if (p->flags & (P_HIDDEN | P_DEAD)) continue;
             P3Draw d;
-            if (drawn(c, p, &d)) fn(&d, user);
+            if (drawn(c, p, &d)) d.sky = sky, fn(&d, user);
         }
     }
 }
@@ -3304,14 +3742,14 @@ static uint32_t flare_shown;     /* 0x659ce0: the tick of the last display with 
    kept out) from the eye moved ahead by the near plane (at least 5) to the particle drawn back toward
    the camera by the class's flare distance (+0x1e0). With a lens-flare block (flags1 0x400000) it fades
    in and out by flare_fade over the ticks since the last display with flares; without, it is drawn only
-   when seen. Not ported: the random alpha of particle flag 2. */
+   when seen. */
 void p3_each_flare(const float eye[3], const float fwd[3], float near, uint32_t now, P3DrawFn fn, void *user)
 {
     int n = 0;
     uint32_t elapsed = now - flare_shown;
     for (uint16_t i = active_head; i != 0xffff; i = classes[i].next) {
         P3Class *c = &classes[i];
-        if ((flags2(c) & (F2_INVISIBLE | F2_DECAL | 0x100000)) || !is_flare(c)) continue;
+        if ((flags2(c) & (F2_INVISIBLE | F2_DECAL)) || ((flags2(c) & 0x100000) && !sky_seen) || !is_flare(c)) continue;
         if (n++ >= 32) continue;
         float dist = 0.0f;
         if (c->head) fvalue(c, c->head, c->def + D_FLARE_DIST, &dist);
@@ -3353,8 +3791,9 @@ void p3_each_flare(const float eye[3], const float fwd[3], float near, uint32_t 
    emitter's first value (1 without) since its last emission. A segment is skipped when longer than the
    class's most (+0x1c4), faded by the edge fade (flags2 bit 26, by how square the segment is to the
    view: under the min nothing, to the max the alpha scaled). The far end of a trail (a particle
-   following none) takes the width of the one after it. Not ported: the visibility test of flags2 bit 30
-   (0x440dc0, 0x41a900, the lens-flare frame of +0x70), the random alpha of particle flag 2. */
+   following none) takes the width of the one after it. A contrail with the lens flares' flags2 bit 30
+   would take their visibility test (0x440dc0, 0x41a900) and the lens-flare frame of +0x70: no class on
+   the CD is both (of the 122 lens flares and 92 contrails), so it is left out. */
 static void contrail_class(uint16_t i, bool emitters, const float eye[3], uint32_t now, P3ContrailFn fn,
                            void *user)
 {
@@ -3394,7 +3833,9 @@ static void contrail_class(uint16_t i, bool emitters, const float eye[3], uint32
         Val t = { .u = 0xffffffffu };
         value(c, p, c->def + D_TINT, &t);
         wr32(cb + 24, t.u);
-        cb[28] = (uint8_t)a8, cb[29] = 0;
+        /* a fading particle's (flag 2): life * 255 / fade, rounded */
+        if ((p->flags & P_FADING) && p->fade > 0.0f) a8 = (int)lrintf(p->life * 255.0f / p->fade);
+        cb[28] = (uint8_t)a8, cb[29] = (uint8_t)(a8 >> 8);
         P3Particle *q;
         uint8_t *qb;
         float va = 0.0f;
@@ -3463,14 +3904,16 @@ static void contrail_class(uint16_t i, bool emitters, const float eye[3], uint32
 
 /* P3iDisplayParticleClass 0x460520's choice: the contrail classes, then the contrail emitters among
    them (0x460660, at most 16). The decals, invisible and hidden classes (flags2 0x2800000) are never
-   drawn; 0x100000 only in its own pass (not ported); the lens flares (0x40000000) are put off. */
+   drawn; the sky's (0x100000) only when it is seen (the CD has no contrail nor flare of the sky's, so
+   their fog isn't switched off as p3_each_drawn's are); the lens flares (0x40000000) are put off. */
 void p3_each_contrail(const float eye[3], uint32_t now, P3ContrailFn fn, void *user)
 {
     for (int pass = 0; pass < 2; pass++) {
         int n = 0;
         for (uint16_t i = active_head; i != 0xffff; i = classes[i].next) {
             const P3Class *c = &classes[i];
-            if (flags2(c) & (F2_INVISIBLE | F2_DECAL | 0x100000 | F2_LENSFLARE | F2_VECTOR)) continue;
+            if (flags2(c) & (F2_INVISIBLE | F2_DECAL | F2_LENSFLARE | F2_VECTOR)) continue;
+            if ((flags2(c) & 0x100000) && !sky_seen) continue;
             int mode = (int)(flags1(c) >> 5 & 7);
             if ((flags1(c) & F1_GEOMETRY) || (mode != 5 && mode != 6)) continue;
             bool emitter = (flags2(c) & F2_CONTRAIL_EMITTER) != 0;
@@ -3529,6 +3972,7 @@ void p3_register_commands(void)
     sl_register("particle_temp_start", cmd_temp_start, NULL);
     sl_register("particle_temp_stop", cmd_temp_stop, NULL);
     sl_register("particle_temp_kill", cmd_temp_kill, NULL);
+    sl_register("p3_daodan_disable", cmd_daodan_disable, NULL);
 }
 
 /* P3rCreateEffect 0x456030, its common part: a particle of the class at pos, moving at vel, turned by
@@ -3569,7 +4013,7 @@ P3Particle *p3_effect_owned(P3Class *c, const float pos[3], const float vel[3], 
    effect, kind 4, or a parent that is P_EXPIRING marks it P_EXPIRING; then a class that goes with the
    cutscenes, flags2 0x18, makes none; a temporary parent's makes a temporary). Where: the location's
    place (P3_LOC_OFFSET: moved along its normal by the offset; 2 and 3: left alone; P3_LOC_ATTACHED: on
-   the character hit, not ported: the place only). Turned (with an orientation block): P3_ORIENT_PARENT
+   the character hit, attached to the part hit, its place in the part's space). Turned (with an orientation block): P3_ORIENT_PARENT
    the parent's matrix, or along its direction, or none; P3_ORIENT_REVERSE the same, the matrix's y and
    z and the direction turned back; P3_ORIENT_REFLECT the direction reflected off the hit's normal (the
    parent's matrix its up); P3_ORIENT_NORMAL along the normal; the last two only for a hit (kinds 1, 2),
@@ -3594,9 +4038,20 @@ P3Particle *p3_create_effect(const P3EffectSpec *spec, const P3EffectLoc *loc)
     float *pos = position(c, q, &died);
     if (died) return NULL;
     const float *attach_m = loc->attach;
+    bool relative = false;
     switch (spec->location) {
-    case 0: case 4: case 5:     /* 5: attached to the character's part hit (0x6a856c's, 0x4f13e0), not ported */
+    case 0: case 4:
         memcpy(pos, loc->pos, 12);
+        break;
+    case 5:
+        /* on a character hit while the step's collision (0x6a8540) holds a context's: the context's
+           matrix (+0xa4), a character's the part hit (0x4f13e0, A+0x2278). The port's other contexts
+           (hit.chr NULL) keep the location's matrix: their views have no matrix of their own. */
+        memcpy(pos, loc->pos, 12);
+        if (loc->kind == P3_HIT_CHARACTER && hit.hit && !hit.wall && hit.chr) {
+            relative = true;
+            attach_m = hit.chr->bone_world[hit.part];
+        }
         break;
     case 1:
         for (int k = 0; k < 3; k++) pos[k] = loc->pos[k] + spec->offset * loc->normal[k];
@@ -3642,7 +4097,13 @@ P3Particle *p3_create_effect(const P3EffectSpec *spec, const P3EffectLoc *loc)
     uint8_t *b;
     if ((v = fblock(c, q, P3_X_VELOCITY))) memcpy(v, loc->vel, 12);
     if ((v = fblock(c, q, P3_X_OFFSET))) v[0] = v[1] = v[2] = 0.0f;
-    if ((b = block(c, q, P3_X_ATTACH))) wr32(b, attach_m ? p3_attach_id(attach_m) : 0);
+    if ((b = block(c, q, P3_X_ATTACH))) {
+        wr32(b, attach_m ? p3_attach_id(attach_m) : 0);
+        if (relative && attach_m) {     /* the position in the matrix's space (0x433a90: by its transpose) */
+            float r[3] = { pos[0] - attach_m[9], pos[1] - attach_m[10], pos[2] - attach_m[11] };
+            for (int k = 0; k < 3; k++) pos[k] = r[0] * attach_m[3 * k] + r[1] * attach_m[3 * k + 1] + r[2] * attach_m[3 * k + 2];
+        }
+    }
     if ((b = block(c, q, P3_X_OWNER))) wr32(b, loc->owner);
     if ((b = block(c, q, P3_X_TEX_INDEX))) wr32(b, trac_local_random());    /* 0x426e30 */
     if ((b = block(c, q, P3_X_TEX_TIME))) wr32(b, loc->tick);

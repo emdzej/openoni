@@ -2,6 +2,7 @@
 #include "envparticle.h"
 
 #include "akev_collide.h"
+#include "exe.h"
 #include "objc.h"
 #include "particle.h"
 #include "sl.h"
@@ -10,6 +11,8 @@
 #include "ui.h"
 
 #include <math.h>
+#include <stdbool.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,12 +26,21 @@ enum { EPF_TAGGED = 1, EPF_NOT_INITIAL = 2, EPF_LISTED = 4, EPF_RUNNING = 8 };
 typedef struct {
     const uint8_t *rec;
     uint16_t flags;         /* +0xa8 */
+    uint16_t owner_kind;    /* +0xaa: 1 an object's */
+    const float *matrix;    /* +0xb0: the owner's matrix the particle hangs from (the level's: none) */
     P3Class *cls;           /* +0xb4 */
     uint32_t handle;        /* +0xb8 and +0xbc: the particle while its handle is the same */
+    bool head;              /* the first of its tag's chain (0x6a8b60's buckets hold it) */
 } EnvParticle;
 
 static EnvParticle *eps;
-static int neps;
+static int neps, capeps;
+/* The objects' lists (an OBOA element's ENVP, +0x08): the original's records are the instance's own,
+   its tags rewritten in place; the port's a copy of the instance, made once a level, and their places
+   in eps. */
+typedef struct { const uint8_t *src; uint8_t *recs; int first, n; } OwnedList;
+static OwnedList *owned;
+static int nowned;
 /* The records of the level's particle objects (OBJC "Particle": D+0x2c), made from their data. */
 static uint8_t *obj_recs;
 /* The tags (0x6a8b60's buckets): for each record, the next of the same tag in the order the original's
@@ -107,7 +119,11 @@ static void start(EnvParticle *e, uint32_t time)
     if ((v = p3_block(e->cls, p, P3_X_ORIENTATION))) for (int i = 0; i < 9; i++) v[i] = rdf(e->rec + EP_MATRIX + 4 * i);
     if ((v = p3_block(e->cls, p, P3_X_VELOCITY))) v[0] = v[1] = v[2] = 0.0f;
     if ((v = p3_block(e->cls, p, P3_X_OFFSET))) v[0] = v[1] = v[2] = 0.0f;
-    if ((b = p3_block(e->cls, p, P3_X_ATTACH))) memset(b, 0, 4);   /* the level's: no owner (+0xb0) */
+    if ((b = p3_block(e->cls, p, P3_X_ATTACH))) {
+        uint32_t id = e->matrix ? p3_attach_id(e->matrix) : 0;    /* the level's: none (+0xb0) */
+        memcpy(b, &id, 4);
+        if (e->owner_kind == 1) p3_set_flags(p, p3_flags(p) | 0x2000);    /* an object's: attached */
+    }
     if ((b = p3_block(e->cls, p, P3_X_OWNER))) memset(b, 0, 4);
     if ((b = p3_block(e->cls, p, P3_X_TEX_INDEX))) { uint32_t r = trac_local_random(); memcpy(b, &r, 4); }
     if ((b = p3_block(e->cls, p, P3_X_TEX_TIME))) memcpy(b, &time, 4);
@@ -122,10 +138,13 @@ void envparticle_reset(void)
     free(eps);
     free(tag_next);
     free(obj_recs);
+    for (int i = 0; i < nowned; i++) free(owned[i].recs);
+    free(owned);
     eps = NULL;
     tag_next = NULL;
     obj_recs = NULL;
-    neps = 0;
+    owned = NULL;
+    neps = capeps = nowned = 0;
 }
 
 static const uint8_t *level_envp(void)
@@ -139,6 +158,34 @@ static const uint8_t *level_envp(void)
 }
 
 static int first_of_tag(const char *tag);
+
+/* A record into its tag's chain (0x454f90): a new one goes second, after the first of the tag. */
+static void link_tag(int i)
+{
+    EnvParticle *e = &eps[i];
+    tag_next[i] = -1;
+    if (!tag_of(e)[0]) return;
+    int f = first_of_tag(tag_of(e));
+    if (f >= 0) tag_next[i] = tag_next[f], tag_next[f] = i;
+    else e->head = true;
+    e->flags |= EPF_TAGGED;
+}
+
+/* ... and out of it (0x454820): the next of the chain the first when it was. */
+static void unlink_tag(int i)
+{
+    EnvParticle *e = &eps[i];
+    int f = first_of_tag(tag_of(e));
+    if (f == i) {
+        if (tag_next[i] >= 0) eps[tag_next[i]].head = true;
+    } else {
+        for (int k = f; k >= 0; k = tag_next[k])
+            if (tag_next[k] == i) { tag_next[k] = tag_next[i]; break; }
+    }
+    e->head = false;
+    tag_next[i] = -1;
+    e->flags &= (uint16_t)~EPF_TAGGED;
+}
 
 /* The particle object's data (OBJC version 39, OBJiParticle_Read 0x4c87e0 from version 0x20): the class
    (64 bytes), the tag (48, +0x40), the flags (u16 +0x70, only 2 kept), the decal's size (+0x72, +0x76). */
@@ -206,17 +253,13 @@ void envparticle_load(void)
     eps = calloc((size_t)n, sizeof *eps);
     tag_next = malloc(sizeof *tag_next * (size_t)n);
     if (!eps || !tag_next) { envparticle_reset(); return; }
+    capeps = n;
     for (int i = 0; i < n; i++) {
         EnvParticle *e = &eps[neps];
         e->rec = i < nenvp ? a + 0x18 + (size_t)EP_SIZE * (size_t)i : obj_recs + (size_t)EP_SIZE * (size_t)(i - nenvp);
         e->flags = (uint16_t)(rd16(e->rec + EP_FLAGS) | EPF_LISTED);
         tag_next[neps] = -1;
-        if (tag_of(e)[0]) {
-            /* a new one goes second in its tag's chain (0x454f90) */
-            int f = first_of_tag(tag_of(e));
-            if (f >= 0) { tag_next[neps] = tag_next[f]; tag_next[f] = neps; }
-            e->flags |= EPF_TAGGED;
-        }
+        link_tag(neps);
         neps++;
         /* the level has begun (0x5e95f5, set by 0x455500 before): made now */
         char name[65];
@@ -230,8 +273,97 @@ void envparticle_load(void)
 static int first_of_tag(const char *tag)
 {
     for (int i = 0; i < neps; i++)
-        if ((eps[i].flags & EPF_TAGGED) && !strcmp(tag_of(&eps[i]), tag)) return i;
+        if ((eps[i].flags & EPF_TAGGED) && eps[i].head && !strcmp(tag_of(&eps[i]), tag)) return i;
     return -1;
+}
+
+static bool has_prefix(const char *s, const char *prefix)     /* 0x4265d0 */
+{
+    while (*prefix)
+        if (*s++ != *prefix++) return false;
+    return true;
+}
+
+static OwnedList *owned_list(const uint8_t *a)
+{
+    for (int i = 0; i < nowned; i++)
+        if (owned[i].src == a) return &owned[i];
+    int n = rd16(a + 0x16);
+    if (n <= 0) return NULL;
+    OwnedList *o = realloc(owned, sizeof *o * (size_t)(nowned + 1));
+    if (!o) return NULL;
+    owned = o;
+    if (neps + n > capeps) {
+        int cap = neps + n + 16;
+        EnvParticle *ne = realloc(eps, sizeof *ne * (size_t)cap);
+        if (ne) eps = ne;
+        int *nt = ne ? realloc(tag_next, sizeof *nt * (size_t)cap) : NULL;
+        if (nt) tag_next = nt;
+        if (!ne || !nt) return NULL;
+        capeps = cap;
+    }
+    o = &owned[nowned];
+    o->recs = malloc((size_t)EP_SIZE * (size_t)n);
+    if (!o->recs) return NULL;
+    memcpy(o->recs, a + 0x18, (size_t)EP_SIZE * (size_t)n);
+    o->src = a, o->first = neps, o->n = n;
+    for (int k = 0; k < n; k++) {
+        EnvParticle *e = &eps[neps];
+        memset(e, 0, sizeof *e);
+        e->rec = o->recs + (size_t)EP_SIZE * (size_t)k;
+        e->flags = rd16(e->rec + EP_FLAGS) & (uint16_t)~(EPF_TAGGED | EPF_LISTED | EPF_RUNNING);
+        tag_next[neps++] = -1;
+    }
+    nowned++;
+    return o;
+}
+
+/* EPrArray_New 0x454f90 for an object's list (OBrSetParticles 0x438d90): each record given its owner
+   and matrix, its tag led by the prefix ("%s_%s", 0x535fbc, unless it already starts with it, cut to 48),
+   listed, chained by its tag, and (the level begun) its particle made as the level's are. */
+void envparticle_owned_start(const void *envp, const float *matrix, const char *prefix, uint32_t time)
+{
+    OwnedList *o = envp ? owned_list(envp) : NULL;
+    if (!o) return;
+    for (int k = 0; k < o->n; k++) {
+        int i = o->first + k;
+        EnvParticle *e = &eps[i];
+        e->owner_kind = 1;
+        e->matrix = matrix;
+        char *tag = (char *)o->recs + (size_t)EP_SIZE * (size_t)k + EP_TAG;
+        if (prefix && prefix[0] && !has_prefix(tag, prefix)) {
+            char t[256];
+            snprintf(t, sizeof t, exe_str(0x535fbc), prefix, tag);
+            memcpy(tag, t, 48);
+            tag[47] = 0;
+        }
+        e->flags |= EPF_LISTED;
+        if (!(e->flags & EPF_TAGGED)) link_tag(i);
+        e->flags &= (uint16_t)~EPF_RUNNING;
+        stop(e);
+        char name[65];
+        memcpy(name, e->rec + EP_CLASS, 64);
+        name[64] = 0;
+        e->cls = p3_class(name);
+        if (!(e->flags & EPF_NOT_INITIAL) && e->cls) start(e, time);
+    }
+}
+
+/* EPrArray_Delete 0x4552d0: an object's list off: each listed record's particle killed, out of its tag's
+   chain, no longer listed. Not ported: the particles' tag references let go (0x462d70; no class links
+   by tag). */
+void envparticle_owned_stop(const void *envp)
+{
+    for (int l = 0; l < nowned; l++) {
+        if (owned[l].src != envp) continue;
+        for (int k = 0; k < owned[l].n; k++) {
+            EnvParticle *e = &eps[owned[l].first + k];
+            if (!(e->flags & EPF_LISTED)) continue;
+            stop(e);
+            if (e->flags & EPF_TAGGED) unlink_tag(owned[l].first + k);
+            e->flags &= (uint16_t)~EPF_LISTED;
+        }
+    }
 }
 
 /* The command's callback (0x50a9c0) on one particle. */

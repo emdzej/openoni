@@ -244,7 +244,12 @@ static void draw_objects(void)
         uint32_t shade;
         bool shaded = object_shade(i, &shade);
         if (shaded) geom_set_shade(shade);
-        for (uint32_t k = 0; k < object_geometry_count(i); k++) geom_draw(object_geometry(i, k), m, NULL);
+        /* the camera's jello (OBiDraw: the geometry state 5, the alpha, 0x1f; the mark cleared) */
+        bool jello = object_jello_take(i);
+        for (uint32_t k = 0; k < object_geometry_count(i); k++) {
+            if (jello) geom_draw_alpha(object_geometry(i, k), m, NULL, 0x1f);
+            else geom_draw(object_geometry(i, k), m, NULL);
+        }
         if (shaded) geom_default_lighting();
     }
     /* the consoles' screens (0x4c0c80) */
@@ -734,6 +739,19 @@ static bool route_plan(const Character *c, const float b[3], char *out, size_t s
     if (rb < 0) rb = graph_room_at(b);
     static int path[GRAPH_PATH_MAX];
     int n = ra < 0 || rb < 0 ? 0 : graph_find_path(ra, a, rb, b, true, path);
+    /* no way from under her (none there, or a lower room her feet stand over: on a ledge's edge, their
+       square reaching 1.5 out): from the room of the ledge next to her, its floor at her feet */
+    if (n == 0 && rb >= 0) {
+        static const float off[8][2] = { { 3, 0 }, { -3, 0 }, { 0, 3 }, { 0, -3 }, { 3, 3 }, { -3, 3 }, { 3, -3 }, { -3, -3 } };
+        for (int k = 0; k < 8 && n == 0; k++) {
+            float q[3] = { a[0] + off[k][0], a[1], a[2] + off[k][1] }, rbox[6];
+            int r = graph_room_at(q);
+            if (r < 0 || r == ra) continue;
+            graph_room_box(r, rbox);
+            if (rbox[1] < a[1] - 10.0f) continue;
+            if ((n = graph_find_path(r, q, rb, b, true, path)) > 0) ra = r, memcpy(a, q, sizeof a);
+        }
+    }
     /* none for a character: then through the links the graph itself marks blocked too (a stair's foot
        the body can still take), the locked doors' still kept out */
     if (n == 0 && ra >= 0 && rb >= 0) {
@@ -1177,6 +1195,16 @@ static void route_input(const Character *c, CharacterInput *in)
                 far = akev_segment_hits(route_env, from, v, 0x42080);
             }
             if (far) {
+                /* planned again from where the last plan left her (its way ends short of the target, as
+                   under a walkway): once its N frames are over, given up */
+                static float planned_at[3];
+                float mx = c->pos[0] - planned_at[0], my = c->pos[1] - planned_at[1], mz = c->pos[2] - planned_at[2];
+                if (now >= hunt_until && mx * mx + my * my + mz * mz < 25.0f) {
+                    hunted = NULL;
+                    route_next();
+                    continue;
+                }
+                memcpy(planned_at, c->pos, sizeof planned_at);
                 static char steps[16384];
                 if (!route_plan(c, t->c.pos, steps, sizeof steps)) {
                     if (now < hunt_until) return;
@@ -1318,7 +1346,13 @@ static void route_input(const Character *c, CharacterInput *in)
            70 degrees (HandleStandingTurn), and turns as it goes; so does a sprint in fight mode */
         float off = fabsf(wrap_pi(atan2f(dx, dz) - c->facing));
         bool loose = mode == 'R' || mode == 'P' || (mode == 's' && (c->varient & 0x200));
-        if (off > (loose ? 1.3f : 0.6f)) return;
+        /* standing within 70 degrees of the desired facing the body doesn't turn (HandleStandingTurn): its
+           facing still for 30 frames, she sets off as it is (moving, it turns) */
+        static const char *still_step;
+        static float still_facing;
+        static int still;
+        if (still_step != s || fabsf(c->facing - still_facing) > 0.001f) still_step = s, still_facing = c->facing, still = 0;
+        if (off > (loose ? 1.3f : 0.6f) && ++still < 30) return;
         if (mode == 's' && route.phase < 3) {
             /* the double tap: down, up, down (within 15 ticks), then held */
             in->forward = route.phase != 1;
@@ -1685,7 +1719,13 @@ static void game_display(void)
             for (int k = 0; k < 3; k++) vc.corners[4 * p + c][k] = eye[k] + fwd[k] * d + up[k] * sy + right[k] * sx;
         }
     }
-    if (vis_update(&vc)) sky_draw(eye, right, up);
+    bool sky = vis_update(&vc);
+    p3_set_sky_seen(sky);       /* 0x460510 */
+    if (sky) {
+        gl_dev_fog_enable(false);   /* the draw state 0xf off (0x4fb69f) */
+        sky_draw(eye, right, up);
+        gl_dev_fog_enable(true);
+    }
     env_draw_visible();
     draw_objects();
     char_shadows_clear();
@@ -1765,24 +1805,97 @@ static bool pause_key(void)
 
 static void restored(void) { igui_notify_restore(ui_time()); }
 
+/* ONrLevel_Load 0x5059d0's progress (its second argument: 1 from both its callers): the dialog 155
+   ("dialog_Progress", the procedure 0x5068e0) made in the game's look (the PSUI "psui_oniUI", 0x54c898;
+   the one before set again once the dialog is gone) and drawn over a blank frame; at each step of the
+   load its bar (the item 100) is set (0x2e) and a frame drawn (0x41ab00, WMrDisplay, 0x41ad00). The
+   steps are the original's percentages, each where the port has done the parts the original has done
+   by then (the port's load is in its own order). */
+static void blank_display(void);
+static WmWindow *load_dialog;   /* 0x5ed2f4 */
+static const void *load_psui;   /* 0x5ed2f0 */
+
+/* 0x5068e0: the dialog's init (0) and 0x2e (the percentage) passed to its bar. */
+static bool load_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
+{
+    (void)p2;
+    if (msg != WM_INITDIALOG && msg != 0x2e) return false;
+    WmWindow *bar = wm_item(w, 100);
+    if (bar) wm_send(bar, 0x2e, msg == 0x2e ? p1 : 0, 0);
+    return true;
+}
+
+static void load_frame(void)
+{
+    if (plat_frame_shown()) {
+        blank_display();
+        wm_display();
+    }
+    plat_wait_frame();
+}
+
+static void load_step(uint32_t percent)
+{
+    if (!load_dialog) return;
+    wm_send(load_dialog, 0x2e, percent, 0);
+    load_frame();
+}
+
+static void load_begin(void)
+{
+    if (!load_dialog) {
+        load_psui = wm_psui_active();
+        const void *ui = wm_psui_get(exe_str(0x54c898));
+        if (ui) wm_psui_set_active(ui);
+        load_dialog = wm_dialog_new(155, load_proc, 0);
+        load_frame();
+    }
+    load_step(10);
+}
+
+static void load_end(void)
+{
+    load_step(100);
+    if (load_dialog) {
+        wm_window_delete(load_dialog);      /* 0x474950 */
+        load_dialog = NULL;
+        wm_psui_set_active(load_psui);
+    }
+}
+
 static int play(int level, int *next)
 {
     *next = 0;
     char err[256], m[300], at_dummy[8];
+    if (!gl_dev_init()) {
+        plat_log("OpenOni: no display");
+        return 1;
+    }
+    {
+        int w, h;
+        plat_display_size(&w, &h);
+        wm_initialize(h ? w * 480 / h : 640, 480);
+    }
+    load_begin();
     trac_set_level((uint16_t)level);
     if (!tm_level_load(level, err, sizeof err)) {
         snprintf(m, sizeof m, "OpenOni: level %d: %s", level, err);
         plat_log(m);
         return 1;
     }
+    load_step(20);
     prepare_collections(tm_file_at(tm_file_slots() - 1));
+    load_step(24);
     sound_level_load(level);
+    load_step(25);
     const void *env = level_environment(level);
-    if (!env || !gl_dev_init() || !env_draw_load(env)) {
+    if (!env || !env_draw_load(env)) {
         plat_log("OpenOni: the level's environment doesn't load");
         return 1;
     }
+    load_step(28);
     chars_load();
+    load_step(30);
     if (plat_param("ailog", at_dummy, sizeof at_dummy)) combat_log = plat_log;
     if (plat_param("physlog", at_dummy, sizeof at_dummy)) physics_debug_log = plat_log;
     Chr *player = chars_player();
@@ -1801,22 +1914,28 @@ static int play(int level, int *next)
     object_load();
     door_load((void *)env);
     obstacle_invalidate();      /* the characters' layers again, with the objects and doors */
+    load_step(35);
     material_level_load();                  /* ONrTextureMaterials_LevelLoad */
     material_mark_breakable((void *)env);   /* AKrLevel_Begin: the glass */
     p3_load();      /* the PAR3 classes of the loaded files (the binary data's loader), set up at the start */
     p3_set_environment(env);
     impact_effects_level_begin();   /* its particle classes and impulses, the level's */
     envparticle_load();     /* ONrLevel_Load: the level's environment particles, after the particle system starts */
+    load_step(40);
     weapons_reset();
     powerups_reset();
     weapons_level_begin();      /* 0x51b0f0: the level's Weapon and PowerUp objects */
     powerups_level_begin();
+    load_step(50);
     chars_arm();
+    load_step(55);
     console_load();
     laser_set_environment(env);
     laser_load();
     turret_load();      /* the mechanics: the Turret objects (OBJrTurret_Initialize 0x4cdf70's type) */
+    load_step(62);
     action_install();
+    load_step(65);
     env_set((void *)env);
     route_env = env;
     /* the camera behind the player (CArInitialize's state, reset to follow) */
@@ -1831,22 +1950,22 @@ static int play(int level, int *next)
        the level's ONLV +0x54) after the camera's reset */
     vis_level_begin(env);
     sky_level_begin(level_link(0x54), far_clip);
+    load_step(70);
     uint32_t ticks = 0;     /* the game time (ONrGameState's +0x144), ticks since the level began */
     ui_reset();
+    load_step(75);
+    load_step(85);
+    load_step(87);
     igui_level_load(level);     /* ONiInGameUI_LevelLoad 0x503eb0 */
+    load_step(90);
     save_level_begin(level);
     weapon_new_hook = igui_new_weapon;
     powerup_new_hook = igui_new_item;
     save_restore_hook = restored;
     cinematic_reset();
-    {
-        int w, h, dw, dh;
-        plat_display_size(&w, &h);
-        dw = h ? w * 480 / h : 640, dh = 480;
-        wm_initialize(dw, dh);
-        wm_set_draw_callback(game_display);     /* ONrGameState_LevelBegin 0x4f5350 */
-        wm_set_frame_hook(modal_frame);
-    }
+    load_end();
+    wm_set_draw_callback(game_display);     /* ONrGameState_LevelBegin 0x4f5350 */
+    wm_set_frame_hook(modal_frame);
     display.ct = &ct, display.player = player, display.ticks = 0;
     /* the end of ONrLevel_Load 0x5059d0: the level's intro screen, no music */
     splash_screen(exe_str(0x555f28), NULL, false);

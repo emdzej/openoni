@@ -100,9 +100,9 @@ static void do_event(Weapon *w, int event, unsigned k)
     }
     float *vel = p3_block(pc, p, P3_X_VELOCITY);
     if (vel) {
-        /* C+0x1c4, the weapon part's move this tick: the port's stand-in is the character's */
+        /* C+0x1c4, the weapon's move this tick */
         Character *c = w->owner;
-        for (int i = 0; i < 3; i++) vel[i] = c ? (c->pos[i] - c->prev_pos[i]) * 60.0f : 0.0f;
+        for (int i = 0; i < 3; i++) vel[i] = c ? c->weapon_move[i] * 60.0f : 0.0f;
     }
     uint8_t *own = p3_block(pc, p, P3_X_OWNER);
     if (own) {

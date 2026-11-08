@@ -317,8 +317,16 @@ static uintptr_t default_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t
 {
     (void)p2;
     switch (msg) {
-    case WM_HITTEST:
-        return WM_HIT_CLIENT;   /* 0x473a50: the frames' parts not ported: all client */
+    case WM_HITTEST: {
+        /* 0x473a50: none (0) off the window (0x474e60, edges in: 0x447ff0); on it, with the style's 1 the
+           client, else none. The frames' parts (the sizing edges of style 2, the title bar's close, zoom and
+           grow boxes) are not ported: only the developers' dialogs have those styles */
+        int16_t r[4];
+        screen_rect(w, r);
+        int16_t x = (int16_t)(p1 >> 16), y = (int16_t)p1;
+        if (x < r[0] || x > r[2] || y < r[1] || y > r[3]) return 0;
+        return (w->style & 1) ? WM_HIT_CLIENT : 0;
+    }
     case WM_NCLBUTTONDOWN:
         set_capture(w);
         return 0;
@@ -841,17 +849,24 @@ static const uint8_t *find_dialog(uint16_t id)
     return NULL;
 }
 
-uint32_t wm_dialog_modal(uint16_t id, WmDialogProc proc, uintptr_t param)
+WmWindow *wm_dialog_new(uint16_t id, WmDialogProc proc, uintptr_t param)
 {
     const uint8_t *dd = find_dialog(id);
-    if (!dd || !desktop) return 0;
+    if (!dd || !desktop) return NULL;
     DialogData init = { proc, false, 0, 0, dd, param };
     WmWindow *w = wm_window_new(6, rd32(dd + 0x104), rd32(dd + 0x108), id, (int16_t)rd16(dd + 0x10c),
                                 (int16_t)rd16(dd + 0x10e), (int16_t)rd16(dd + 0x110), (int16_t)rd16(dd + 0x112),
                                 NULL, (uintptr_t)&init);
-    if (!w) return 0;
+    if (!w) return NULL;
     snprintf(w->title, sizeof w->title, "%s", (const char *)dd);
     if (proc) proc(w, WM_INITDIALOG, param, 0);
+    return w;
+}
+
+uint32_t wm_dialog_modal(uint16_t id, WmDialogProc proc, uintptr_t param)
+{
+    WmWindow *w = wm_dialog_new(id, proc, param);
+    if (!w) return 0;
     DialogData *d = (DialogData *)w->data;
     while (d && !d->done) {
         if (draw_callback) draw_callback();     /* the game behind: its display runs, drawn or not */
@@ -1057,6 +1072,8 @@ static void list_show(WmWindow *w, ListBox *b, uint32_t i)
     else if (i >= b->top + rows) b->top = i - rows + 1;
 }
 
+static void local_point(const WmWindow *w, uintptr_t p, int16_t *x, int16_t *y);
+
 static uintptr_t list_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
 {
     ListBox *b = (ListBox *)w->data;
@@ -1072,6 +1089,13 @@ static uintptr_t list_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2
             w->data = 0;
         }
         return 0;
+    case WM_HITTEST: {
+        /* 0x46c793: the client (0x474cb0, moved to its own origin) holds the point (in the window's
+           pixels, 0x475060; edges in) */
+        int16_t x, y;
+        local_point(w, p1, &x, &y);
+        return x >= 0 && y >= 0 && x <= w->client[2] - w->client[0] && y <= w->client[3] - w->client[1] ? WM_HIT_CLIENT : 0;
+    }
     case WM_SETFOCUS: if (b) b->focus = true; return 0;
     case WM_KILLFOCUS: if (b) b->focus = false; return 0;
     case WM_WANTKEYS: return 0x33;
@@ -1900,6 +1924,45 @@ bool wm_check_get(WmWindow *w) { return wm_window_valid(w) && wm_send(w, 0x2d, 0
 
 /* The text (class 20, 0x4731f0): drawn by its dialog (style 0x800000: WM_DRAWITEM to the parent), else its
    title in its font. */
+/* The progress bar (class 13, 0x470e10): its value (the window's long 0) 0 at the create, set (at most 100)
+   by 0x2e, read by 0x2d. Painted: the PSUI's track (+0x5c) over the window (alpha 0x7f disabled), then
+   enabled with a value, the fill (+0x60) inside the track's corners (1, 0x100: from a pixel in on each
+   side), the value's hundredths of the inside's width, no narrower than the two corners. */
+static uintptr_t progress_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
+{
+    switch (msg) {
+    case WM_CREATE:
+        w->data = 0;
+        return 0;
+    case WM_PAINT: {
+        const uint8_t *ui = wm_psui_active();
+        if (!ui) return 0;
+        WmDc *dc = wm_dc_begin(w);
+        bool on = enabled(w);
+        const void *track = tm_link(ui + 0x5c);
+        wm_dc_part(dc, track, 0xffff, 0, 0, w->w, w->h, on ? 0xff : 0x7f);
+        uint32_t value = (uint32_t)w->data;
+        if (on && value) {
+            int16_t l, t, r, b;
+            part_size(track, 1, &l, &t);
+            part_size(track, 0x100, &r, &b);
+            int16_t iw = (int16_t)(w->w + 2 - r - l), ih = (int16_t)(w->h + 2 - b - t);
+            int16_t fill = (int16_t)(iw * (int32_t)value / 100);
+            if (fill < r + l) fill = (int16_t)(r + l);
+            wm_dc_part(dc, tm_link(ui + 0x60), 0xffff, (int16_t)(l - 1), (int16_t)(t - 1), fill, ih, 0xff);
+        }
+        wm_dc_end(dc);
+        return 0;
+    }
+    case 0x2d:
+        return w->data;
+    case 0x2e:
+        w->data = p1 < 100 ? p1 : 100;
+        return 0;
+    }
+    return default_proc(w, msg, p1, p2);
+}
+
 static uintptr_t text_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
 {
     if (msg != WM_PAINT) return default_proc(w, msg, p1, p2);
@@ -1945,6 +2008,7 @@ void wm_initialize(int w, int h)    /* WMrInitialize 0x475ad0 */
     class_register(10, menu_proc);
     class_register(11, picture_proc);
     class_register(12, popup_proc);
+    class_register(13, progress_proc);
     class_register(17, slider_proc);
     class_register(20, text_proc);
     desktop = wm_window_new(1, WM_STYLE_VISIBLE, 0, 0, 0, 0, (int16_t)w, (int16_t)h, NULL, 0);

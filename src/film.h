@@ -19,5 +19,9 @@ bool film_playing(const Character *c);
 /* DoFilmUpdate 0x4ed420's playback: the tick's input replaced by the film's (call with the input built
    for the tick, before the character takes it). */
 void film_update(Character *c, ChrInput *in);
+/* HandleHeartbeatInput 0x4f6ad0, playing a film (0x4e4100: A+0x21f4 bit 1): the film's special animation
+   (one of its two TRAM links, the keys of the developers' recording, 8 and 0x10, down), played in place
+   of the input's handlers; NULL for none. */
+const void *film_special_animation(const Character *c, const ChrInput *in);
 /* DoCharacterFrame 0x4ddba0, before step 12: a tick of the move to the film's start. */
 void film_interp_step(Character *c);

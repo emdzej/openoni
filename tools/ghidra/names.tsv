@@ -317,6 +317,7 @@
 00438a30	OBrDoor_Array_LevelBegin	OB	med	name from the Intel Mac build (strings:1)
 00438b90	OBrAnim_SetRange	OB	med	read: the object plays an animation from a frame to a stop frame (name made up)
 00438d20	OBrShow	OB	med	name from the Intel Mac build (neighbours:1.00)
+00438d90	OBrSetParticles	OB	med	Mac name: the object's ENVP list (OBOA +0x08) made at its context's matrix, or let go
 00438fb0	OBiDraw	OB	med	name from the Intel Mac build (neighbours:0.86)
 00439160	OBiIsVisible	OB	med	name from the Intel Mac build (neighbours:1.00)
 00439580	OBrAnim_Start	OB	med	name from the Intel Mac build (neighbours:1.00)
@@ -411,13 +412,15 @@
 00450c30	P3iDecal_BarycentricShadeInterpolate	P3	med	name from the Intel Mac build (neighbours:1.00)
 00450f50	P3iDecal_ProcessAdjacency	P3	med	name from the Intel Mac build (strings:1)
 00453760	P3iDisplayDecals	P3	med	name from the Intel Mac build (neighbours:1.00)
+00453820	EPrNotifyMatrixChange	EP	med	Mac name: the record's particle put back at its place and blocks (with the initial ones)
 00453d50	EPiParticle_Create	EP	low	an environment particle made at its matrix, its create event
 00453fe0	EPiParticle_Kill	EP	low	not running; the live particle killed
 00454040	EPiParticle_Reset	EP	low	killed, then made again unless not initially created
 004543b0	EPrPrintTags	EP	med	name from the Intel Mac build (strings:2)
 00454420	EPrEnumerateTag	EP	low	the callback on every environment particle of a tag
 00454a60	EPrNew	EP	med	lists an environment particle record (the ENVP's and the Particle objects'); the Mac build's name
-00454f90	EPrLoadParticles	EP	low	an ENVP array listed and, once the level has begun, made
+00454f90	EPrArray_New	EP	med	Mac name: an ENVP list given its owner and matrix, listed, its tags (prefixed) chained and, once the level has begun, made
+004552d0	EPrArray_Delete	EP	med	Mac name: an ENVP list's particles killed, out of the tags and the list
 00455500	EPrLevelBegin	EP	low	every listed environment particle made; the level begun
 004558a0	EPiDrawPositionMarker	EP	med	name from the Intel Mac build (neighbours:0.80)
 00455a50	P3rInitialize	P3	med	name from the Intel Mac build (neighbours:1.00)
@@ -445,6 +448,7 @@
 0045e990	P3mSignedRandom	-	med	name from the Intel Mac build (neighbours:1.00)
 0045eaa0	P3iCheckCollisions	P3	med	name from the Intel Mac build (strings:1)
 00460010	P3rTraverseVarRef	P3	med	name from the Intel Mac build (strings:5)
+00460510	P3rSetSkyVisible	P3	low	sets 0x6a8b40: the sky's classes (flags2 0x100000) drawn this frame
 00460520	P3iDisplayParticleClass	P3	med	name from the Intel Mac build (strings:2)
 00460660	P3rDisplay	P3	med	name from the Intel Mac build (neighbours:0.75)
 00460800	P3rDisplayClass_Geometry	P3	med	name from the Intel Mac build (strings:2)
@@ -463,6 +467,16 @@
 00463ab0	P3iAttractorSelector_Distance	P3	med	name from the Intel Mac build (neighbours:0.75)
 00463be0	P3iAttractorSelector_Conical	P3	med	name from the Intel Mac build (neighbours:0.75)
 00465f30	P3iAction_DamageBlast	P3	high	read: the particle action Blast Damage: the glass in the radius, then WPrBlast (not a function in the listing)
+00466450	P3iAction_SetTextureTick	P3	med	Mac name (the table order): the texture time block to now less the value
+004664c0	P3iAction_RandomTextureFrame	P3	med	Mac name (the table order): a random texture index
+00466530	P3iAction_SetVariable	P3	med	Mac name (the table order)
+00466550	P3iAction_RecalculateAll	P3	med	Mac name (the table order): every variable from its first value
+004666b0	P3iAction_EnableAbove	P3	med	Mac name (the table order)
+00466750	P3iAction_EnableBelow	P3	med	Mac name (the table order)
+004667f0	P3iAction_EnableNow	P3	med	Mac name (the table order)
+00466830	P3iAction_DisableNow	P3	med	Mac name (the table order)
+00467490	P3iAction_SuperballTrigger	P3	med	Mac name (the table order): the last emitted explodes after the fuse
+00467550	P3iAction_StopIfBreakable	P3	med	Mac name (the table order)
 004675a0	P3iAction_AmbientSound	P3	high	Mac name: the one playing stopped, the payload's ambient started at the real place (OSrAmbient_Start, with the orientation's direction and the velocity); P_SOUND
 00467660	P3iAction_EndAmbientSound	P3	high	Mac name: OSrAmbient_Stop of the particle's, P_SOUND cleared
 00467690	P3iAction_ImpulseSound	P3	high	Mac name: the payload's impulse at the real place (OSrImpulse_Play); true if the particle died
@@ -470,6 +484,13 @@
 004677a0	P3iAction_AttractGravity	P3	high	read: velocity += offset * min(100 g / d^2, max) (y left out with p2)
 00467920	P3iAction_AttractHoming	P3	high	read: the velocity turned towards the attractor (led by its velocity, at most 1 s) by up to p0 degrees a second
 00467c50	P3iAction_AttractSpring	P3	high	read: velocity += dir * min((d - rest) k dt, max); a random direction when on it
+00467ee0	P3iAction_StopLink	P3	med	Mac name (the table order)
+00467f60	P3iAction_CheckLink	P3	med	Mac name (the table order)
+00468020	P3iAction_BreakLink	P3	med	Mac name (the table order)
+00468030	P3iAction_AvoidWalls	P3	med	Mac name (the table order)
+004683d0	P3iAction_RandomSwirl	P3	med	Mac name (the table order)
+00468570	P3iAction_FloatAbovePlayer	P3	med	Mac name (the table order): at the player location raised
+004685d0	P3iAction_StopIfSlow	P3	med	Mac name (the table order)
 00468650	P3iAction_SuperParticle	P3	med	name from the Intel Mac build (neighbours:1.00)
 00468770	WMiCursor_Draw	WM	low	the cursor's part spec, 32 by 32 over the mouse, while the WM takes input
 004687d0	WMrCursor_Get	WM	med	name from the Intel Mac build (strings:1)
@@ -551,6 +572,7 @@
 004731f0	WMiText_Callback	WM	low	class 20: owner drawn (0x36 to the parent) or its title
 00473350	WMrWindow_DefaultCallback	WM	low	the messages a class leaves: hit test, frame paint, frame mouse, client rect
 004738e0	WMiSlider_GetTrackBounds	WM	med	name from the Intel Mac build (neighbours:1.00)
+00473a50	WMiWindow_HitTest	WM	low	the default hit test: none off the window, the frame's parts by the style, the client with style 1
 004746d0	WMrWindow_Activate	WM	low	the top-level window over it made active (0x28, 0xf)
 00474830	WMiWindow_BringToFront	WM	low	the window in front of its siblings, after the ones kept in front
 00474900	WMrWindow_SetCapture	WM	low	the mouse's window (0x30 to the old); the Mac build's neighbour name WMrMessage_Send was off
@@ -1264,6 +1286,7 @@
 004e3f30	ONrCharacter_IsPickingUp	ON	med	name from the Intel Mac build (neighbours:1.00)
 004e3ff0	ONrCharacter_InSpecialAnimation	ON	low	an animation of the types 0xc0..0xc3 (now or queued)
 004e4070	ONrCharacter_IsFallen	ON	low	the active record's state 0x12 or 0x32 (name made up)
+004e4100	ONiCharacter_FilmPlaying	ON	low	the active character's film playing (A+0x21f4 bit 1)
 004e4140	ONrCharacter_AnimIsMoving	ON	low	the animation's to-state is a run, walk or their start (port name)
 004e4400	ONrCharacter_DoAnimation	ON	med	name from the Intel Mac build (neighbours:0.80)
 004e4ab0	ONrCharacter_LetGoWeapon	ON	low	the hand's weapon dropped (ONrCharacter_DropWeapon) and the varient made again (name made up)
@@ -1466,6 +1489,7 @@
 005054d0	ONrLevel_Unload	ON	med	name from the Intel Mac build (neighbours:1.00)
 00505690	ONrLevel_LoadZero	ON	med	name from the Intel Mac build (strings:2)
 005059d0	ONrLevel_Load	ON	med	name from the Intel Mac build (neighbours:0.75)
+005068e0	ONiLevel_ProgressCallback	ON	low	the load's progress dialog (155): its init and 0x2e passed to the bar (item 100)
 00506930	ONiFlagArray_TemplateHandler	ON	med	name from the Intel Mac build (neighbours:1.00)
 00506a60	ONrLevel_Flag_ID_To_Location	ON	med	name from the Intel Mac build (neighbours:1.00)
 00506c00	ONrLevel_Neutral_ID_To_Neutral	ON	med	name from the Intel Mac build (neighbours:1.00)
@@ -1510,6 +1534,7 @@
 0050a5e0	ONiParticle3_Debug_Count	ON	med	name from the Intel Mac build (strings:1)
 0050a640	ONiParticle3_Debug_CallEvent	ON	med	name from the Intel Mac build (strings:1)
 0050a6f0	ONiParticle3_Command	ON	med	name from the Intel Mac build (strings:4)
+0050ac00	ONiParticle3_DaodanShieldDisable	ON	med	Mac name: p3_daodan_disable, the parts the body surface leaves out (0x5ed324)
 0050ac40	ONiParticle3_WriteUsedParticles	ON	med	name from the Intel Mac build (strings:1)
 0050adf0	ONiParticle3_WriteUsedParticles_EnumCallback	ON	med	name from the Intel Mac build (strings:5)
 0050af70	PHrBuildGraph	PH	med	name from the Intel Mac build (strings:2)

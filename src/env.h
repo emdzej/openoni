@@ -12,6 +12,8 @@ void env_set(void *akev);
 void env_register_commands(void);
 /* The glass broken since env_set (for the traces and tests). */
 int env_glass_broken(void);
+/* p3_everything_breakable (0x5e96b1): every quad breaks. */
+bool env_everything_breakable(void);
 /* The glass furniture cheat ("glassworld"): p3_furniture_breakable switched; whether it is now on. */
 bool env_toggle_furniture_glass(void);
 /* The opaque shade of a script's three channels (r, g, b: 0..1, clamped), as env_shade and obj_shade make

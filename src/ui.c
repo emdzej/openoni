@@ -603,7 +603,8 @@ static bool cmd_fill_element(SlThread *t, int c, const SlValue *v, SlValue *r, v
 
 /* target_set flag radius (ONiInGameUI_TargetSet 0x503d80): the compass toward the flag; a radius of 0
    turns it off. A flag within 10 of the one already set changes nothing; else the distance squared to
-   the player now is kept (the arc narrows as the player gets nearer). Not ported: its event sound. */
+   the player now is kept (the arc narrows as the player gets nearer). Then (a flag missing too) the
+   game's event sound 11, outside a cutscene (G+0x3c) once the game is 30 ticks in (G+0x144). */
 static bool cmd_target_set(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;
@@ -615,6 +616,7 @@ static bool cmd_target_set(SlThread *t, int c, const SlValue *v, SlValue *r, voi
     ObjcObject flag;
     if (c < 1 || !objc_flag_find((uint16_t)num(&v[0]), &flag)) {
         target.on = false;      /* "No Flag %d exists" */
+        if (!cutscene && now >= 30) sound_event_play(11);
         return true;
     }
     if (target.on) {
@@ -629,6 +631,7 @@ static bool cmd_target_set(SlThread *t, int c, const SlValue *v, SlValue *r, voi
     }
     target.r2 = radius * radius;
     target.on = true;
+    if (!cutscene && now >= 30) sound_event_play(11);
     return true;
 }
 

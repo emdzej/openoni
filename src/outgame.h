@@ -3,8 +3,8 @@
    New Game (its dialog 154, Start), Load Game (151), Options (152), Resume (in a level, in Options'
    place), Quit (153, yes or no). docs/re/wm.md.
 
-   Load Game lists the levels reached and their continues (persist.dat). Not ported yet: Options (its
-   sliders, popup menus and check boxes), the menu's music. */
+   Load Game lists the levels reached and their continues (persist.dat); Options sets the persisted
+   options (its sliders, popup menus and check boxes); the menu plays its music. */
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>

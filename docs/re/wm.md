@@ -109,7 +109,7 @@ window, message, p1, p2; read by 0x476010, dispatched by 0x475ca0). The numbers,
 | Message | What |
 |---|---|
 | 1 | before the create (the class's answer 1 refuses the window) |
-| 3 | hit test (p1 the point; 0x8000: the client area; else the part of the frame) |
+| 3 | hit test (p1 the point; 0x8000: the client area; else the part of the frame, 0 none) |
 | 4 | paint the frame (the default: the active `PSUI`'s window parts by the flags) |
 | 5 to 0xe | the mouse on the frame: move, left down, up, double, middle down, up, double, right down, up, double (p2 the part) |
 | 0xf | activate, p1 1 or 0 (the frame) |
@@ -281,6 +281,39 @@ formatting, with the context's font:
   line height plus its top and bottom rows. `WMrPopupMenu_Reset` 0x470c70 removes the items,
   `WMrPopupMenu_AppendItem` 0x4704d0 adds an enabled one of an id, `WMrPopupMenu_SetSelection` 0x470d00
   selects one and tells the parent (0x19, the item's flags high).
+- The progress bar (13, 0x470e10): its value the window's long 0, 0 at the create (0x12), set by 0x2e
+  (at most 100, unsigned), told by 0x2d. Painted: the `PSUI`'s progress track (+0x5c) over the window,
+  alpha 0x7f when disabled; then, enabled and above 0, the fill (+0x60) from a pixel short of the track's
+  top left part (`0x46a980` 1) as tall as the window plus 2 less its top and bottom rows, as wide as the
+  value's hundredths (truncated) of the window's width plus 2 less its left and right columns (1 and
+  0x100), no narrower than those two columns.
+
+The hit test: the classes that take it themselves (the button, check box, menu, popup, slider: the
+client) and the list box (0x46c793: the client when the point, in the window's pixels, is in its client
+rectangle moved to its origin, 0x474cb0, edges in; else 0). The others (the desktop, the dialog, the box,
+the text, the picture) leave it to the default procedure (0x473a50): 0 off the window (0x474e60, edges
+in, 0x447ff0); the frame's parts with the styles 2 (the sizing edges: 2, 4, 8, 0x10) and 8 (the title
+bar's boxes: 0x80, 0x100, 0x200, the title 0x20); else 0x8000 with the style's 1, 0. No dialog the game
+opens has a style with those bits (only the developers' and the network's: the message box, the text
+prompt, the masks, the string list, the player's setup), so a click on a dialog, a box, a text or a
+picture is a frame's message of part 0: the default procedure takes the mouse on the press (0x474900,
++0x15c the part | 0x80000000) and lets it go on the release; a move with no part held (+0x15c's low
+half) drags nothing.
+
+## The level's load
+
+`ONrLevel_Load` 0x5059d0 (the level, a flag: 1 from both callers, `ONiRunGame` 0x4d4640 and 0x4beb40)
+shows its progress with the flag: unless one is open (0x5ed2f4), it keeps the active `PSUI` (0x5ed2f0),
+sets "psui_oniUI" (0x54c898), makes the dialog 155 ("dialog_Progress", 350 by 150, centred: the text
+"Loading...", the progress bar 100 at 30, 65, 290 by 15, the outline box) left open (0x468830, its
+procedure 0x5068e0: its init sets the bar to 0, 0x2e passes the percentage to it) and draws a frame
+(0x41ab00, `WMrDisplay` 0x476140, 0x41ad00). Then at each step it sends the dialog 0x2e with the
+percentage and draws a frame: 10, then the instance files (20), 0x4d10c0 (24), the binary data
+(0x4d24e0, 25), 0x41c200 (28), the game state (0x4f5350, 30), the environment (0x43ffe0, 35), the sound
+and particles (40), the weapons (0x51b0f0, 50), 0x4fc970 (55), 0x454f90 (62), 0x438a30 (65), the
+objects, AI and sky (70), 75, 85, 0x5077c0 (87), the in-game UI (0x503eb0, 90), the textures' preload,
+and 100; the dialog is then deleted and the `PSUI` kept set again. The port takes the same percentages
+where it has done the parts the original has (its load is in its own order), over a blank frame.
 
 ## The console's text areas
 
@@ -545,8 +578,8 @@ Not the WM's, but drawn with it on the in-game UI's screen (`ONrInGameUI_Display
 console), `src/outgame.c` (the main menu), `src/li.c` (the keys as the LI's codes), `src/render/ui_draw.c` (the sprites and glyphs). The
 desktop is as tall as 480, scaled to the display (as the HUD). Unattended runs tap keys into the dialogs
 with `--param keys=27,32,...`, or click with `@x:y` in the desktop's pixels (one every 30 frames of a
-dialog). Not ported yet: the frames (title bars,
-their boxes and dragging), the caret, the click's sound, the menu's music, and the edit field, the menu
-bar, the progress bar, the radio button and the scroll bar. The options: the port has one screen mode,
+dialog). Not ported: the frames' parts (sizing edges, title bars, their boxes and dragging: only the
+developers' dialogs have them), the caret, and the edit field, the menu bar, the radio button and the
+scroll bar (none in the game's dialogs). The options: the port has one screen mode,
 the persisted one, so the resolution's popup lists that alone; the quality and the gamma are persisted
 but not applied (the draw engine's quality and the display's gamma are not ported).

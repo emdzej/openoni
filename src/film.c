@@ -5,6 +5,7 @@
 
 #include "chr_anim.h"
 #include "physics.h"
+#include "tm.h"
 
 static uint32_t rd32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
 static float rdf(const uint8_t *p) { uint32_t u = rd32(p); float f; memcpy(&f, &u, 4); return f; }
@@ -100,6 +101,17 @@ void film_update(Character *c, ChrInput *in)
     } else
         film_stop(c);
     /* a debug switch (0x5ecba4) replays a film that ended: never set */
+}
+
+const void *film_special_animation(const Character *c, const ChrInput *in)
+{
+    if (!(c->film_flags & 1)) return NULL;
+    /* the bit 8 down: the +0x20 link, else 0x10: the +0x24; a missing one only logged ("film playback
+       failed to find animation") */
+    const uint8_t *f = c->film;
+    if (in->down & 8) return tm_link(f + 0x20);
+    if (in->down & 0x10) return tm_link(f + 0x24);
+    return NULL;
 }
 
 void film_interp_step(Character *c)

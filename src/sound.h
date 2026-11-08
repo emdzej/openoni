@@ -109,8 +109,9 @@ bool sound_ambient_move(uint32_t id, const float pos[3]);
 void sound_ambient_stop(uint32_t id);
 /* ONrGameState_EventSound_Play 0x4fdac0: the game's event sound of that index (the impulse named in
    the game settings, ONGS+0x7d0, 32 bytes each, 18 of them; SSrImpulse_UpdateGroupPointers 0x4f49b0),
-   not placed. */
+   not placed; or at a place. */
 void sound_event_play(int index);
+void sound_event_play_at(int index, const float pos[3]);
 float sound_volume(void);       /* SS2rVolume_Get 0x483df0: the overall volume's target */
 
 /* What the databases hold, for tests; and the level's sound objects (spheres, volumes, those whose

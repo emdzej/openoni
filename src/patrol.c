@@ -449,14 +449,19 @@ void patrol_update(AiState *a, const Character *c, const void *env, const char *
         a->point_started = a->point_scan_set = false;
         if (a->point == first) {
             /* "patrol %s is looping endlessly" */
-            if (a->point >= pa->n) a->point = 0;
-            if (a->state == a->job) {
-                ai_exit_state(a);
-                a->state = AI_STATE_IDLE;
-            } else {
-                ai_return_to_job(a);
-            }
+            patrol_finish(a);
             return;
         }
+    }
+}
+
+void patrol_finish(AiState *a)
+{
+    if (a->patrol >= 0 && a->point >= paths[a->patrol].n) a->point = 0;
+    if (a->state == a->job) {
+        ai_exit_state(a);
+        a->state = AI_STATE_IDLE;
+    } else {
+        ai_return_to_job(a);
     }
 }

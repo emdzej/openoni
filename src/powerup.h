@@ -2,7 +2,8 @@
    LSI lying in the level, 64 at most (0x74 bytes each at 0x620460); picked up with the pickup key into
    the character's inventory (C+0x1a2..0x1ba). Their geometry and glow come from the game settings
    (ONGS). A dropped one falls through its physics context (src/physobj.c) until it rests; the
-   player's pickups play the event sounds (7 to 10). Not ported yet: the HUD's pickup display. */
+   player's pickups play the event sounds (7 to 10) and a type new to the player is the pause screen's
+   new item. */
 #pragma once
 #include "character.h"
 #include "physobj.h"

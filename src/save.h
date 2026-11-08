@@ -4,9 +4,7 @@
    continue's: save_game sets it, a won level clears it (0x4fda80), a lost one is loaded again with it, and
    the level's main script picks the part to start from by it and calls restore_game.
 
-   Each one is kept in persist.dat for the menu's Load Game (ONrPersist_SetContinue). Not ported yet:
-   the autosave's sound (0x63117c), and the two holstered weapon slots (C+0x198, +0x19c) the port has no
-   place for. */
+   Each one is kept in persist.dat for the menu's Load Game (ONrPersist_SetContinue). */
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>

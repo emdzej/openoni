@@ -150,9 +150,10 @@ static const void *attempt_throw(Character *c, uint16_t front, uint16_t behind)
 
 bool (*throw_ai_hook)(const Character *c, const void **anim, const void **victim, Character **target);
 
+/* AI2iMelee_Throw_Update 0x4a7b40's test (the unthrowable cheat, 0x5ece90, is only the player's throws'). */
 bool throw_target_ok(const Character *t)
 {
-    if (!can_be_thrown(t) || (!t->ai && chr_cheat_unthrowable) || (t->flags & 0x100)) return false;
+    if (!can_be_thrown(t) || chr_is_unstoppable(t)) return false;
     return t->anim && !tr_test_flag(t->anim, 1) && !invulnerable_frame(t->anim, t->frame);
 }
 

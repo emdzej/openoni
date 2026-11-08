@@ -1,6 +1,8 @@
 /* The level's objects: see object.h. */
 #include "object.h"
+
 #include "env.h"
+#include "envparticle.h"
 
 #include "body.h"
 #include "oban.h"
@@ -26,7 +28,11 @@ typedef struct {
     float pos[3], rot[4], scale, place[12];
     ObanPlayer anim;
     bool shown;
-    uint16_t flags;             /* +0x12: 0x8 always drawn (obj_force_draw), 0x8000 its own shade */
+    uint16_t flags;             /* +0x12: 0x8 always drawn (obj_force_draw), 0x200 a physics context,
+                                   0x2000 its particles made, 0x4000 the camera's jello, 0x8000 its own
+                                   shade */
+    float *matrix;              /* its context's matrix (+0xa4), where its particles hang (kept apart:
+                                   the objects move in their array) */
     uint32_t shade;             /* +0x20: the shade OBiDraw lights it with */
     /* its physics context (+0x18): the flags (+0x128), the sphere (centre the position) and the box */
     uint32_t ctx_flags;
@@ -41,7 +47,9 @@ static uint32_t n_elements;
 static Object *objs;
 static int nobjs, capobjs;
 static uint32_t now_ticks;
+static float (*matrices)[12];       /* the contexts' matrices, one an element */
 enum { OBOA_CREATABLE = 0x200 };    /* the element flag obj_create wants */
+enum { OBJ_PARTICLES = 0x2000 };
 
 static const uint8_t *level_oboa(void)
 {
@@ -60,21 +68,42 @@ int object_load(void)
     object_unload();
     oboa = level_oboa();
     n_elements = oboa ? (uint32_t)(oboa[OBOA_COUNT] | oboa[OBOA_COUNT + 1] << 8) : 0;
+    matrices = n_elements ? calloc(n_elements, sizeof *matrices) : NULL;
+    if (!matrices) n_elements = 0;
     return (int)n_elements;
 }
 
 void object_unload(void)
 {
     free(objs);
+    free(matrices);
     objs = NULL;
+    matrices = NULL;
     nobjs = capobjs = 0;
     oboa = NULL;
     n_elements = 0;
 }
 
+/* OBrSetParticles 0x438d90: the element's particles (+0x08) made, hanging from the context's matrix, the
+   tags led by its name; or let go (EPrArray_Delete 0x4552d0). */
+static void particles(Object *o, bool on)
+{
+    const void *envp = tm_link(o->setup + OBOA_PARTICLES);
+    if (!envp) return;
+    if (!on) {
+        if (o->flags & OBJ_PARTICLES) {
+            envparticle_owned_stop(envp);
+            o->flags &= (uint16_t)~OBJ_PARTICLES;
+        }
+    } else if (!(o->flags & OBJ_PARTICLES)) {
+        envparticle_owned_start(envp, o->matrix, (const char *)o->setup + OBOA_NAME, now_ticks);
+        o->flags |= OBJ_PARTICLES;     /* (set whether or not they were made) */
+    }
+}
+
 /* The object setup 0x439910: the geometry, the placement, the animation at its first frame (or a random
-   one, flag 0x04), not playing until a script or the autostart flag starts it. */
-static bool create(const uint8_t *e)
+   one, flag 0x04), not playing until a script or the autostart flag starts it; its particles. */
+static bool create(const uint8_t *e, uint32_t index)
 {
     if (nobjs == capobjs) {
         int cap = capobjs ? 2 * capobjs : 64;
@@ -85,6 +114,7 @@ static bool create(const uint8_t *e)
     Object *o = &objs[nobjs++];
     memset(o, 0, sizeof *o);
     o->setup = e;
+    o->matrix = matrices[index];
     o->shown = true;
     o->geometry = tm_link(e + OBOA_GEOMETRY);
     for (int k = 0; k < 3; k++) o->pos[k] = rdf(e + OBOA_POSITION + 4 * k);
@@ -111,9 +141,9 @@ static bool create(const uint8_t *e)
     if (o->flags & OBOA_FLAG_BOX_PLANES) o->ctx_flags |= PHYS_VOLUME;
     else if (o->flags & OBOA_FLAG_PHYS_4) o->ctx_flags |= 4u;
     if (o->flags & OBOA_FLAG_PHYS_40) o->ctx_flags |= 0x40u;
-    float m[12];
-    object_matrix(nobjs - 1, m);
-    physctx_box_place(&o->box, m);
+    object_matrix(nobjs - 1, o->matrix);
+    physctx_box_place(&o->box, o->matrix);
+    particles(o, true);
     return true;
 }
 
@@ -124,7 +154,7 @@ int object_create(uint32_t from, uint32_t to)
     for (uint32_t i = 0; i < n_elements; i++) {
         const uint8_t *e = oboa + OBOA_ELEMENTS + (size_t)OBOA_SIZE * i;
         uint32_t id = rd32(e + OBOA_ID);
-        if (id >= from && id <= to && (rd32(e + OBOA_FLAGS) & OBOA_CREATABLE) && create(e)) made++;
+        if (id >= from && id <= to && (rd32(e + OBOA_FLAGS) & OBOA_CREATABLE) && create(e, i)) made++;
     }
     return made;
 }
@@ -238,6 +268,25 @@ bool object_line_blocked(const float a[3], const float b[3])
     return false;
 }
 
+void object_jello_line(const float p[3], const float v[3])
+{
+    const float b[3] = { p[0] + v[0], p[1] + v[1], p[2] + v[2] };
+    for (int i = 0; i < nobjs; i++) {
+        Object *o = &objs[i];
+        if (!(o->flags & 0x200)) continue;
+        float h[3];
+        bool met = (o->ctx_flags & 0x200) ? physctx_box_ray(&o->box, p, v, h) : sphere_line(o->sphere, p, b);
+        if (met) o->flags |= 0x4000;
+    }
+}
+
+bool object_jello_take(int i)
+{
+    if (i < 0 || i >= nobjs || !(objs[i].flags & 0x4000)) return false;
+    objs[i].flags &= (uint16_t)~0x4000;
+    return true;
+}
+
 bool object_ray(const float p[3], const float dir[3], float hit[3])
 {
     float best = 3.4028235e+38f;
@@ -266,9 +315,8 @@ void object_update(uint32_t now)
     for (int i = 0; i < nobjs; i++)
         if (objs[i].physics == PHYSICS_ANIMATED) {
             oban_update(&objs[i].anim, now);
-            float m[12];
-            object_matrix(i, m);    /* PHrPhysics_MaintainMatrix 0x43b410's box */
-            physctx_box_place(&objs[i].box, m);
+            object_matrix(i, objs[i].matrix);   /* PHrPhysics_MaintainMatrix 0x43b410's box */
+            physctx_box_place(&objs[i].box, objs[i].matrix);
         }
 }
 
@@ -368,7 +416,10 @@ static bool cmd_kill(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;
     int ids[128], n = objects_of(c, v, ids, 128);
-    for (int k = n - 1; k >= 0; k--) objs[ids[k]] = objs[--nobjs];
+    for (int k = n - 1; k >= 0; k--) {
+        particles(&objs[ids[k]], false);
+        objs[ids[k]] = objs[--nobjs];
+    }
     return true;
 }
 
@@ -382,6 +433,7 @@ static bool show(int c, const SlValue *v, bool on)
         /* OBrShow 0x438d20: hidden, no collisions (4); shown, back unless the setup's 0x400 */
         if (!on) o->ctx_flags |= 4u;
         else if (!(o->flags & OBOA_FLAG_PHYS_4)) o->ctx_flags &= ~4u;
+        particles(o, on);
     }
     return true;
 }

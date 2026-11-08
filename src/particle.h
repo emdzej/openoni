@@ -154,10 +154,14 @@ typedef struct {
     float edge_min, edge_max;
     bool edge_fade, one_sided;
     bool flare;                 /* a lens flare (p3_each_flare): drawn through walls */
+    bool sky;                   /* a class of the sky's (flags2 0x100000): drawn without the fog */
     float end[3];               /* a vector's: the line from pos to it */
 } P3Draw;
 typedef void (*P3DrawFn)(const P3Draw *d, void *user);
 void p3_each_drawn(P3DrawFn fn, void *user);
+/* Whether this frame's visibility rays reached the sky (AKrEnvironment_StartFrame 0x4430f0's out, the
+   switch at 0x6a8b40 set by 0x460510): the sky's classes (flags2 0x100000) are drawn only then. */
+void p3_set_sky_seen(bool seen);
 /* The lens flares (flags2 bit 30), drawn after the rest: those the camera at eye, looking along fwd
    (a unit vector) with its near plane, sees, faded in and out. */
 void p3_each_flare(const float eye[3], const float fwd[3], float near, uint32_t now, P3DrawFn fn, void *user);

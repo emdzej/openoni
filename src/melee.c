@@ -1255,8 +1255,8 @@ static bool throw_abort(MeleeState *m)
 }
 
 /* AI2iMelee_Throw_Update 0x4a7b40: once pressed, the override taken, the next move. Else within 45
-   degrees of the facing and the throw's reach, a target that can be thrown now (not unthrowable, the
-   cheat's or flag 0x100, no throw flag on its animation, not invulnerable), in the variant the throw
+   degrees of the facing and the throw's reach, a target that can be thrown now (its class throwable, not
+   unstoppable, the cheat's player or flag 0x100, no throw flag on its animation, not invulnerable), in the variant the throw
    asks: the class's throw for the two states (AI2iMelee_FindThrow); in the window, from the front
    facing each other (beyond 135 degrees, 0x52adec) or from behind facing the same way (within 45),
    the way clear of dangers, the throw override. Anything else gives the technique up. */

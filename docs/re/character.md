@@ -678,7 +678,12 @@ animation a character is about to play.
 - **Which moves**: for a character the AI doesn't drive (C+0x04 flag 0x400000 clear, or the active
   record's +0x21f4 bit 1), Punch_Forward (0x1f), Kick_Forward (0x1a), Run_Punch (0x43) and Run_Kick
   (0x42) try the throws (0x6a, 0x6c), (0x6b, 0x6d), (0x6e, 0x6f) and (0x70, 0x71), the front throw then
-  the behind one. The AI's throws are its executor's (`AI2rExecutor_TryingToThrow` 0x498d50).
+  the behind one. The AI's throws are its executor's (`AI2rExecutor_TryingToThrow` 0x498d50); its melee's throw
+  (`AI2iMelee_Throw_Update` 0x4a7b40) takes a target whose class is throwable (ONCC+0xc8f 0), that isn't
+  unstoppable (0x4e6500: the cheat byte 0x5ece91 for the player, C+0x1e8 0, or C+0x04 flag 0x100),
+  whose animation lacks TRAM flag 1 and isn't in its invulnerable frames. The unthrowable cheat
+  (0x5ece90) is tested only in `AttemptThrow` 0x4eaa10 (the throws of the characters the AI doesn't
+  drive).
 - **The target** (`ONiCharacter_FindNearestOpponent` 0x4ea2b0, from `AttemptThrow` 0x4eaa10 with 24
   units and pi/4): living characters but the thrower, not friends (`AI2rTeam_FriendOrFoe` 0x48b2c0 not 0),
   not unstoppable (flag 0x100) nor 0x40000, whose class allows it (ONCC +0xc8f is 0), and whose animation

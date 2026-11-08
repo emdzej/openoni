@@ -1,5 +1,6 @@
 /* AKEV environment: see akev.h. */
 #include "akev.h"
+#include "akev_collide.h"
 
 #include "tm.h"
 
@@ -118,47 +119,10 @@ bool akev_floor(const void *env, float x, float y, float z, float up, float down
     return found;
 }
 
-/* Whether p, on the quad's plane (normal n), is inside its corners, grown by margin. */
-static bool inside(const uint8_t *pts, const AkevQuad *q, const float n[3], const float p[3], float margin)
-{
-    for (uint32_t e = 0; e < q->corners; e++) {
-        const uint8_t *a = pts + 12 * q->point[e], *b = pts + 12 * q->point[(e + 1) % q->corners];
-        float ax = rdf(a), ay = rdf(a + 4), az = rdf(a + 8);
-        float ex = rdf(b) - ax, ey = rdf(b + 4) - ay, ez = rdf(b + 8) - az;
-        /* the edge's inward normal: n x edge (the quads wind counter-clockwise about their normal) */
-        float ix = n[1] * ez - n[2] * ey, iy = n[2] * ex - n[0] * ez, iz = n[0] * ey - n[1] * ex;
-        float len = sqrtf(ix * ix + iy * iy + iz * iz);
-        if (len <= 0) continue;
-        if (((p[0] - ax) * ix + (p[1] - ay) * iy + (p[2] - az) * iz) / len < -margin) return false;
-    }
-    return true;
-}
-
 bool akev_segment_hits(const void *env, const float p[3], const float v[3], uint32_t skip)
 {
-    uint32_t nc, npl, np, nq = akev_quad_count(env);
-    const uint8_t *col = array(env, AKEV_QUAD_COLLISION, ARRAY_COUNT, &nc);
-    const uint8_t *pl = akev_planes(env, &npl), *pts = akev_points(env, &np);
-    float lo[3], hi[3];
-    for (int k = 0; k < 3; k++) lo[k] = fminf(p[k], p[k] + v[k]), hi[k] = fmaxf(p[k], p[k] + v[k]);
-    for (uint32_t i = 0; i < nq && i < nc; i++) {
-        const uint8_t *c = col + 28u * i;
-        if (hi[0] < rdf(c + 4) || lo[0] > rdf(c + 16) || hi[1] < rdf(c + 8) || lo[1] > rdf(c + 20) ||
-            hi[2] < rdf(c + 12) || lo[2] > rdf(c + 24)) continue;
-        uint32_t pi = rd32(c), k = pi & 0x7fffffffu;
-        if (k >= npl) continue;
-        float sgn = pi & 0x80000000u ? -1.0f : 1.0f;
-        float n[3] = { sgn * rdf(pl + 16 * k), sgn * rdf(pl + 16 * k + 4), sgn * rdf(pl + 16 * k + 8) };
-        float d = sgn * rdf(pl + 16 * k + 12);
-        float d0 = n[0] * p[0] + n[1] * p[1] + n[2] * p[2] + d, dv = n[0] * v[0] + n[1] * v[1] + n[2] * v[2];
-        float d1 = d0 + dv;
-        if ((d0 > 0.0f && d1 > 0.0f) || (d0 < 0.0f && d1 < 0.0f) || dv == 0.0f) continue;
-        AkevQuad q;
-        if (!akev_quad(env, i, &q) || (q.flags & AKEV_QUAD_GHOST) || (q.flags & skip)) continue;
-        float t = -d0 / dv, at[3] = { p[0] + v[0] * t, p[1] + v[1] * t, p[2] + v[2] * t };
-        if (inside(pts, &q, n, at, 0.0f)) return true;
-    }
-    return false;
+    static AkevHit hit[AKEV_HITS_MAX];
+    return akev_collide_point(env, p, v, skip, 0, hit) != 0;
 }
 
 static uint32_t flags_serial;

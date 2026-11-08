@@ -156,5 +156,7 @@ void chr_anim_particles_stop(Character *c);
 /* HandleAttackMask 0x4e84f6: a landed blow pulses (event 1) the attacker's live animation particles in
    their frames on its attacking parts (a bone mask). */
 void chr_anim_particles_pulse(Character *c, uint32_t parts);
+/* Step 14's end (DoCharacterFrame 0x4df937..0x4dfafa): the super particles by the shown super value. */
+void chr_super_particles(Character *c);
 /* 0x4ef450: the colour of the character's health. */
 uint32_t chr_health_tint(const Character *c);

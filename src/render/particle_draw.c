@@ -215,9 +215,11 @@ static void vector(const P3Draw *d)
 static void each(const P3Draw *d, void *user)
 {
     const View *v = user;
+    if (d->sky) gl_dev_fog_enable(false);
     if (d->geometry) geometry(d);
     else if (d->vector) vector(d);
     else sprite(v, d);
+    if (d->sky) gl_dev_fog_enable(true);
 }
 
 static void view_of(View *v, const float view[16], uint32_t now)

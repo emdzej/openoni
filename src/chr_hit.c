@@ -506,7 +506,7 @@ static void attack_lands(Character *x, Character *d, const uint8_t *e, uint32_t 
        AI2rBlockFunction; none for the player) has the last word. */
     bool blocked = false;
     /* a class with the super shield (ONCC+0xc8e) shielded (C+0x1668 above 0.5) takes it as blocked and
-       unstoppable (its material the shield's, not ported) */
+       unstoppable (the impact on the shield's material, impact_melee) */
     if (((const uint8_t *)d->oncc)[0xc8e] && d->super_level > 0.5f) {
         blocked = true;
         unstoppable = true;

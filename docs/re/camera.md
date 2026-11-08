@@ -188,8 +188,12 @@ When the jello is on (0x54d64c):
    - Otherwise: `AKrCollision_Point` 0x441c80.
 
    The hits are the 0x48-byte records at 0x6a90a8 (count 0x6a906c); their first field is the quad.
-3. **Objects.** Each physics context with flag 2 at +0x17 is tested with `PHrCollision_Point` 0x4d5280.
-   Those hit get 0x40 at +0x17. Not ported.
+3. **Objects.** Each object of the level's array (GS+0x167708, 0xc0 bytes each, after a 4-byte head)
+   with a physics context (its flags +0x16, bit 0x200) is tested against the same line with
+   `PHrCollision_Point` 0x4d5280: with the context's flag 0x200 (+0x128) its box's ray
+   (`PHrCollision_Volume_Ray` 0x43f750), else its sphere (`CLrSphere_Line` 0x43c7a0). Those hit get 0x4000
+   in the flags. `OBiDraw` 0x438fb0 then draws a marked object with the geometry state 5 (the alpha) at
+   0x1f instead of 0xff, and clears the mark. Port: `object_jello_line`, `object_jello_take`.
 4. **Per quad.** Each quad whose highest corner reaches C+0x190 + 1.5 is marked with flag 0x20, and
    `cm_jello_amt` goes into its AGQR entry +2. It is left alone when `cm_plane_test` is on and
    `(feet && cam) == (head || feet || cam)`, where each side is plane·point + d > 0 for:

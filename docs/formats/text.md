@@ -120,10 +120,22 @@ objectives and the text consoles' pages are `IGPA`s.
 | 0x34 | The count of labels (u32) |
 | 0x38 | The labels, 0x44 bytes each: the text (64 bytes), then x and y (s16) |
 
-Each texture is centred on its point. Without a link, the draw centres by the size of a texture the HUD
-holds (at 0x5ed020 and 0x5ecf98); without that either, it offsets by 64 pixels. A label is laid out with `TSrContext_FormatString` 0x42e210 and drawn twice
-(`TSrContext_DrawFormattedText` 0x42d9e0). Its position is 3 pixels in from its side's point plus its
-own.
+The overlay is on while the pause screen's help page is up (0x501990, button 0x69) or after
+`ui_show_help 1` (`ONrInGameUI_EnableHelpDisplay` 0x504cf0); the flag is 0x5ed099. Each side's point is
+its HUD element's centre (`ONrInGameUI_SetArcPoints` 0x504270: 10 in from the side plus half the
+element's picture, half its height up from the bottom), rounded, plus the IGHH's offset, less half the
+IGHH's texture (or, without a link, the HUD's own picture, at 0x5ed020 and 0x5ecf98; without that
+either, less 64). Each texture is drawn there at its size when its element is shown (0x5ed0dc left,
+0x5ed0a0 right). Confirmed by the draw.
+
+The labels go in Tahoma 7, plain, with format 1 and the shade 0xff00ff00, the display's rectangle as the
+layout's. The left side's (the first 0x2c of them, while the left element is shown) take their pen at
+the label's offset plus the left point plus 3, and are moved so that their first run starts at the pen;
+the others, at the right point less 3, so that their first run ends there. Vertically each is moved so
+that the middle of its runs' box (the first's top, its baseline less the ascending height, to the last's
+bottom, a line height lower; the sum halved in integers) is at the pen's height. Each is laid out with
+`TSrContext_FormatString` 0x42e210 and drawn twice with `TSrContext_DrawFormattedText` 0x42d9e0: first
+offset by (1, 1) in 0xff3f3f3f, then in its own colours. Port: `draw_help` in `src/render/ui_draw.c`.
 
 ## String arrays (StNA) and strings (TStr)
 

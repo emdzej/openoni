@@ -2011,15 +2011,26 @@ void sound_set_listener(const float pos[3], const float dir[3])
 void sound_set_volume(float v) { if (enabled) master_target = v < 0.0f ? 0.0f : v > 1.0f ? 1.0f : v; }
 float sound_volume(void) { return master_target; }
 
-void sound_event_play(int index)
+static bool event_name(int index, char name[33])
 {
-    if (index < 0 || index >= 18) return;
+    if (index < 0 || index >= 18) return false;
     const uint8_t *gs = tm_instance_get(TM_TAG("ONGS"), "game_settings");
-    if (!gs) return;
-    char name[33];
+    if (!gs) return false;
     memcpy(name, gs + 0x7d0 + 32 * index, 32);
     name[32] = 0;
-    if (name[0]) sound_impulse_play(name, 1.0f);
+    return name[0] != 0;
+}
+
+void sound_event_play(int index)
+{
+    char name[33];
+    if (event_name(index, name)) sound_impulse_play(name, 1.0f);
+}
+
+void sound_event_play_at(int index, const float pos[3])
+{
+    char name[33];
+    if (event_name(index, name)) sound_impulse_play_at(sound_impulse_find(name), pos, NULL);
 }
 
 /* The frame update (0x483bd0): the overall volume slides by up to 0.05 towards its target, then every

@@ -794,12 +794,14 @@ static void jam(uint16_t id, bool on)
 static bool cmd_jam(SlThread *t, int c, const SlValue *v, SlValue *r, void *u) { (void)t, (void)r, (void)u; jam(arg_id(c, v), true); return true; }
 static bool cmd_unjam(SlThread *t, int c, const SlValue *v, SlValue *r, void *u) { (void)t, (void)r, (void)u; jam(arg_id(c, v), false); return true; }
 
-/* OBJrDoor_Lock_ID 0x4c1d80 and OBJrDoor_Unlock_ID 0x4c1e30 (each also tells 0x4fdac0 at the door's
-   place, not ported) */
+/* OBJrDoor_Lock_ID 0x4c1d80 and OBJrDoor_Unlock_ID 0x4c1e30: each door of the id (0xffff all) that
+   changes plays the game's event sound at its place (0x4fdac0: 2 locked, 3 unlocked). */
 void door_lock_id(uint16_t id, bool on)
 {
     for (int i = 0; i < ndoors; i++) {
         if (doors[i].id != id && id != 0xffff) continue;
+        if (on == !!(doors[i].flags & DOOR_LOCKED)) continue;
+        sound_event_play_at(on ? 2 : 3, doors[i].pos);
         if (on) doors[i].flags |= DOOR_LOCKED;
         else doors[i].flags &= (uint16_t)~DOOR_LOCKED;
     }

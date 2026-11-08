@@ -52,5 +52,5 @@ void igui_notify_restore(uint32_t time);
 /* ONrPauseScreen_Display 0x5018c0: the pause screen, until closed (Close, or the pause key again a
    second after it opened). pause_key: whether the pause key went down this frame. */
 void igui_pause_screen(bool (*pause_key)(void));
-/* 0x5ed099: the pause screen's help page up (the HUD's help overlays: not ported yet). */
+/* 0x5ed099: the HUD's help overlays shown (the pause screen's help page up, or ui_show_help). */
 bool igui_help_shown(void);

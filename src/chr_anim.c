@@ -2,6 +2,7 @@
 #include "chr_anim.h"
 
 #include "body.h"
+#include "exe.h"
 #include "graph.h"
 #include "impact.h"
 #include "m3gm.h"
@@ -289,6 +290,8 @@ void chr_bone_matrices(Character *c)
     BodyMatrix m[BODY_MAX_BONES];
     if (!chr_pose_matrices(c, m)) return;
     for (int b = 0; b < CHR_BONES; b++) memcpy(c->bone_world[b], m[b], sizeof c->bone_world[b]);
+    /* the weapon's matrix (the one past the bones: the fist's, the right's or with ONCC+0xc8c the left's) */
+    memcpy(c->weapon_at, m[((const uint8_t *)c->oncc)[0xc8c] ? 14 : 18] + 9, sizeof c->weapon_at);
     c->placed = false;
 }
 
@@ -352,6 +355,57 @@ static void anim_particles_start(Character *c)
         }
     }
     p3_global_tint(false, 0);
+}
+
+/* Step 14's end: above 0, the super entries of the class's list (the name's first 5 letters "super",
+   0x550da0, a class there and a bone of the 19) made once on their bones (those that make a particle,
+   16 at most), then their start event (2) once; at 0, once made and started, their stop event (3). The
+   particles stay. */
+void chr_super_particles(Character *c)
+{
+    float t = (float)ui_time() * (1.0f / 60.0f);
+    if (c->super_level > 0.0f) {
+        if (!c->super_made) {
+            const uint8_t *oncp = tm_link((const uint8_t *)c->oncc + ONCC_PARTICLES);
+            c->super_count = 0;
+            uint32_t n = oncp ? rd32(oncp + 0x14) : 0;
+            for (uint32_t k = 0; k < n && c->super_count < 16; k++) {
+                const uint8_t *e = oncp + 0x18 + (size_t)k * ONCP_ENTRY;
+                if (strncmp((const char *)e, exe_str(0x550da0), 5)) continue;
+                char name[65];
+                memcpy(name, e + 0x10, 64);
+                name[64] = 0;
+                P3Class *pc = p3_class(name);      /* the entry's class (+0x54) */
+                if (!pc) continue;
+                uint16_t bone = rd16(e + 0x50);
+                if (bone >= CHR_BONES) continue;
+                P3Particle *p = bone_particle(c, pc, bone);
+                if (!p) continue;
+                c->super_particle[c->super_count].entry = e;
+                c->super_particle[c->super_count].cls = pc;
+                c->super_particle[c->super_count].bone = bone;
+                c->super_particle[c->super_count].handle = p3_handle(p);
+                c->super_count++;
+            }
+            c->super_made = true;
+            c->super_started = false;
+        }
+        if (!c->super_started) {
+            for (unsigned i = 0; i < c->super_count; i++) {
+                P3Class *pc;
+                P3Particle *p = p3_from_handle(c->super_particle[i].handle, &pc);
+                if (p) p3_send_event(c->super_particle[i].cls, p, P3_EV_START, t);
+            }
+            c->super_started = true;
+        }
+    } else if (c->super_made && c->super_started) {
+        for (unsigned i = 0; i < c->super_count; i++) {
+            P3Class *pc;
+            P3Particle *p = p3_from_handle(c->super_particle[i].handle, &pc);
+            if (p) p3_send_event(c->super_particle[i].cls, p, P3_EV_STOP, t);
+        }
+        c->super_started = false;
+    }
 }
 
 static P3Particle *anim_particle_live(Character *c, unsigned i)
@@ -456,8 +510,10 @@ static void old_animation_hook(Character *c, const void *next)
    position), facing as given; an AI's path is made anew (chars.c). The sound serial (C+0x1dc)
    counts up; the animation's cry (TRAM+0x4e, 0x428970: below 10) is vocalized (chr_vocalize_hook). An
    animation of flag 5 throws the hand's weapon (chr_drop_hook). An attack turns the player to its
-   target (chr_attack_turn_hook). Not ported: dying. The animation's
-   particles are made last. A throw (TRAM flag 15) starts its target's part through chr_throw_hook
+   target (chr_attack_turn_hook). The dead whose new animation isn't a reaction lie as they are (flag 2;
+   the original's 0x4eb550 there can't run: it needs the flag it is under clear); the drift they keep
+   (A+0x2824) comes with the physics, and the physics context's pending motion isn't kept (0x4ed080). The
+   animation's particles are made last. A throw (TRAM flag 15) starts its target's part through chr_throw_hook
    (throw.c); any other animation forgets the target. */
 void (*chr_animation_hook)(Character *c);
 void (*chr_drop_hook)(Character *c);

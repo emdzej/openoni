@@ -4,8 +4,8 @@
    docs/re/physics.md.
 
    chars_update runs every character's physics after all the frames and contacts, as the original
-   (chr_physics_later). Its context meets the others' (physctx.h). Stand-in until its port: the AI's
-   wall notice. */
+   (chr_physics_later). Its context meets the others' (physctx.h); the AI notices the walls and objects
+   it meets (movement.c). */
 #pragma once
 #include "character.h"
 #include "physctx.h"

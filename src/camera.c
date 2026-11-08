@@ -4,6 +4,7 @@
 #include "akev.h"
 #include "akev_collide.h"
 #include "oban.h"
+#include "object.h"
 #include "sl.h"
 #include "tm.h"
 
@@ -199,9 +200,8 @@ static void track_jello(void)
             /* AKrCollision_Point 0x441c80 */
             n = take_hits(hits, akev_collide_point(env, cam.cur.location, d, AKEV_QUAD_NO_DRAW, JELLO_MAX - n, hits), found, n);
         }
-        /* Here the original also tests the level's objects (GS+0x167708, 0xc0 bytes each) with flag 2
-           (+0x17) against the same line (PHrCollision_Point 0x4d5280, their physics contexts) and marks
-           those hit with 0x40 (+0x17), the objects' jello: not ported, the objects' draw has no jello. */
+        /* the level's objects with a physics context the same line meets: marked for their draw's jello */
+        object_jello_line(cam.cur.location, d);
     }
     uint32_t nr, nq, npl, np;
     uint8_t *render = env_array(env, AKEV_QUAD_RENDER, &nr);

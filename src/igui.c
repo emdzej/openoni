@@ -634,9 +634,18 @@ static bool cmd_text_console(SlThread *t, int c, const SlValue *v, SlValue *r, v
     return true;
 }
 
+/* ui_show_help on (ONrInGameUI_EnableHelpDisplay 0x504cf0): the HUD help overlays */
+static bool cmd_show_help(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    help_on = c > 0 && (v[0].type == SL_FLOAT ? v[0].f : (float)v[0].i) > 0;
+    return true;
+}
+
 void igui_register_commands(void)
 {
     sl_register("text_console", cmd_text_console, NULL);
+    sl_register("ui_show_help", cmd_show_help, NULL);
     sl_register("objective_set", cmd_objective_set, NULL);
     sl_register("diary_page_unlock", cmd_diary_page_unlock, NULL);
     sl_register("objective_complete", cmd_objective_complete, NULL);

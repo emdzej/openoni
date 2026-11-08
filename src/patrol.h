@@ -35,4 +35,7 @@ void patrol_nearest(AiState *a);
    scan keeps its looks off the walls); who: its name, for the waypoints' scripts. */
 /* AI2rPatrol_Exit 0x4afba0's part: a shooting under way stopped. */
 void patrol_exit(AiState *a);
+/* AI2rPatrol_Finish 0x4b0420: the point past the path's end back to 0, and the patrol left: the job's
+   for idle (AI2rExitState, state 1, AI2rEnterState), another back to the job (0x48af80). */
+void patrol_finish(AiState *a);
 void patrol_update(AiState *a, const Character *c, const void *env, const char *who);

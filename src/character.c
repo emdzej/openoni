@@ -674,7 +674,7 @@ static void clear_input(ChrInput *in)
 
 /* ONrCharacter_HandleHeartbeatInput 0x4f6ad0 for the player: the weapon's input (reload, holster, fire:
    0x4e8f80..0x4e9020) and the pickup's (0x4eda40) through character_weapon_input_hook (weapon.c), the
-   jump's rise while held. Not ported: its film checks (0x4e4100: A+0x21f4, A+0x2214). */
+   jump's rise while held; playing a film, the film's special animation in place of the handlers. */
 static void heartbeat_input(Character *c, ChrInput *in)
 {
     if ((c->flags & 1) && chr_is_victim_type(c->type)) return;
@@ -693,7 +693,10 @@ static void heartbeat_input(Character *c, ChrInput *in)
     uint16_t queued = c->queued;
     /* the weapon's keys (reload, fire: C+0x08, A+0x21df..0x21e4), then HandlePickupInput 0x4eda40 */
     if (character_weapon_input_hook) character_weapon_input_hook(c, in);
-    handlers(c, in, !(c->flags & 0x8000000));
+    /* playing a film (0x4e4100), its special animation (0x4f720c: from the state, interpolated over 6) */
+    const void *special = film_special_animation(c, in);
+    if (special) chr_set_animation_external(c, c->state, special, 6);
+    else handlers(c, in, !(c->flags & 0x8000000));
     /* Input queued long before the end is forgotten: the queue goes back to what it was. */
     uint32_t w = queue_window();
     if (w && c->anim == start && (int)(c->frame + 1 + w) < (int)tr_duration(c->anim)) c->queued = queued;
@@ -821,7 +824,7 @@ static void jump_and_fall(Character *c, const void *env, uint64_t held, float v[
 
 /* Step 14's part: the shown super value (C+0x1668) moved toward the super value (C+0x1664), or for a
    class with ONCC+0xc8d its health over the maximum (as a part of the maximum) if more; down by 0.06 a
-   tick (0x52b2d8), up by 0.03 (0x52b2f0). */
+   tick (0x52b2d8), up by 0.03 (0x52b2f0); then the super particles by it. */
 static void super_level_step(Character *c)
 {
     float want = c->super;
@@ -838,6 +841,7 @@ static void super_level_step(Character *c)
         if (u <= want) want = u;
     }
     c->super_level = want;
+    chr_super_particles(c);
 }
 
 /* ONrGameState_DoCharacterFrame 0x4ddba0 (docs/re/character.md, its steps): the countdowns, the
@@ -860,6 +864,13 @@ static void sprint(Character *c, const ChrInput *in)
 
 bool chr_physics_later;
 
+/* 0x4e0785: C+0x1c4, the weapon's move over the tick (its matrix's place now less before), 0 without a
+   weapon in hand at the tick's start (the shooters' particles take it, WPiDoEvent) */
+static void weapon_move(Character *c, bool had, const float was[3])
+{
+    for (int k = 0; k < 3; k++) c->weapon_move[k] = had ? c->weapon_at[k] - was[k] : 0.0f;
+}
+
 static void do_frame(Character *c, const void *env, const ChrInput *in)
 {
     uint64_t held = in->held;
@@ -875,6 +886,10 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
         inventory_invis_update(c);  /* (ONrGameState_UpdateCharacters' for the dying) */
         return;
     }
+    /* 0x4de3f5: with a weapon in hand (C+0x194) its place before the tick, for its move (0x4e0785) */
+    float weapon_was[3];
+    bool had_weapon = c->weapon != NULL;
+    memcpy(weapon_was, c->weapon_at, sizeof weapon_was);
     float v[3], before[3] = { c->pos[0], c->pos[1], c->pos[2] };
     jump_and_fall(c, env, held, v);
     /* 0x433010: the motion in the character's space (+z forward, +x left) turned by the facing */
@@ -900,6 +915,7 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
         if (character_frame_hook) character_frame_hook(c, CHR_FRAME_FIRE);
         chr_build_quaternions(c);
         chr_bone_matrices(c);
+        weapon_move(c, had_weapon, weapon_was);
         inventory_shield_update(c);
         inventory_invis_update(c);
         chr_pain_frame(c);
@@ -918,6 +934,7 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
     physics_body(c);                                    /* step 19 */
     c->wall_hits = c->obj_hits = c->pushes = 0;         /* (0x4e06cb: A+0xb0..0xb6 cleared) */
     c->blocked_by_char = false;
+    weapon_move(c, had_weapon, weapon_was);
     chr_pain_frame(c);                                  /* 0x4e07ef: the pain's cries */
     /* OBiPhysics_Update runs after all the characters' frames and contacts (chr_physics_later) */
     if (chr_physics_later) c->phys_pending = true;

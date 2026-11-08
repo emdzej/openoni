@@ -4,8 +4,9 @@
    specs (PSpc, PSUI) to the renderer's operations (WmDrawOps), so the core has no renderer.
    docs/re/wm.md has the layouts and messages.
 
-   Not ported yet: the frames' title bars, close, zoom and grow boxes and their dragging (0x474180), the
-   timers' users, and the classes other than the dialog, box, button and text. */
+   Not ported: the frames' sizing edges, title bars, close, zoom and grow boxes and their dragging
+   (0x474180): their styles are only on the developers' dialogs (message box, get text, the masks, the
+   string list, the network's), none of those the game opens (150 to 156, 70 and 71). */
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>
@@ -114,6 +115,8 @@ void wm_take_input(bool on);
    (the port's sound and unattended keys). */
 typedef bool (*WmDialogProc)(WmWindow *dialog, uint32_t msg, uintptr_t p1, uintptr_t p2);
 uint32_t wm_dialog_modal(uint16_t id, WmDialogProc proc, uintptr_t param);
+/* 0x468830: the dialog of that id made and left open (the level's load's progress); NULL if none. */
+WmWindow *wm_dialog_new(uint16_t id, WmDialogProc proc, uintptr_t param);
 void wm_dialog_end(WmWindow *dialog, uint32_t result);
 uintptr_t wm_dialog_param(WmWindow *dialog);
 void wm_set_draw_callback(void (*draw)(void));

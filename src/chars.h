@@ -56,7 +56,7 @@ void chars_delete(Chr *c);
 TriggerActor *chars_trigger_actors(void);
 
 /* One tick of every character (the loop of ONrGameState_UpdateCharacters 0x4dccf0 after the volumes):
-   the player with in, the others through the AI. env: the AKEV for the floor stand-in. */
+   the player with in, the others through the AI. env: the level's AKEV. */
 void chars_update(const CharacterInput *player_in, const void *env);
 
 /* ai2_spawn, ai2_movetoflag, chr_delete, chr_teleport, chr_animate, chr_animate_block,

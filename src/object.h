@@ -15,7 +15,7 @@ enum {
     OBOA_SIZE = 0xf0,
     OBOA_GEOMETRY = 0x00,       /* M3GA */
     OBOA_ANIMATION = 0x04,      /* OBAN, or 0 */
-    OBOA_PARTICLES = 0x08,      /* link (inferred: what 0x438d90 sets up) */
+    OBOA_PARTICLES = 0x08,      /* ENVP: the object's particles (OBrSetParticles 0x438d90) */
     OBOA_FLAGS = 0x0c,          /* OBOA_* below */
     OBOA_DOOR = 0x14,           /* u32: the door's id (OSD +0) for a door's panel; its second panel id | 0x1000 */
     OBOA_PHYSICS = 0x18,        /* u32: the physics type without an animation */
@@ -63,6 +63,13 @@ void object_update(uint32_t now);
    unit vector): its context's sphere (0x4d5430), or with the context's flag 0x200 its box
    (PHrCollision_Volume_Ray, the ray 1000 long, 0x52a87c). hit: where (from inside a sphere, p). */
 bool object_ray(const float p[3], const float dir[3], float hit[3]);
+/* The camera's jello (CAiTrackJello 0x4d6b10): each object with a physics context (+0x12 0x200) the
+   segment from p along v meets (PHrCollision_Point 0x4d5280: its box's ray with the context's flag 0x200,
+   else its sphere, CLrSphere_Line) is marked (+0x12 0x4000). */
+void object_jello_line(const float p[3], const float v[3]);
+/* OBiDraw 0x438fb0: whether the object is marked, the mark cleared: then drawn at the alpha 0x1f (the
+   geometry state 5), else 0xff. */
+bool object_jello_take(int i);
 /* AKrLineOfSight 0x4410a0's objects: the segment a..b meets the sphere of an object with flag 0x200
    whose context lacks flag 1 (CLrSphere_Line 0x43c7a0). */
 bool object_line_blocked(const float a[3], const float b[3]);

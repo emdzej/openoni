@@ -1310,16 +1310,17 @@ static bool cmd_weapon_immune(SlThread *t, int c, const SlValue *v, SlValue *r, 
 static bool cmd_all_passive(SlThread *t, int c, const SlValue *v, SlValue *r, void *u);
 
 /* ai2_setmovementmode char mode (AI2iScript_Debug_SetMovementMode 0x4b52b0): the movement's mode
-   (AI2rMovement_ChangeMovementMode 0x4a8200, +0x14a4) by its name (0x52adf8, 16 bytes each). The
-   executor takes it where the alert level's default would be (the movement state's port: a stand-in). */
+   (AI2rMovement_ChangeMovementMode 0x4a8200, +0x14a4) by its name (the exe's 8 names at 0x52adf8, 16
+   bytes each: by alert level, stop, crouch, creep, walk without aiming, walk, run without aiming, run). */
 static bool cmd_set_movement_mode(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;
-    static const char *const names[] = { "by_alert_level", "stop", "crouch", "creep", "walk_noaim", "walk", "run_noaim", "run" };
     Chr *ch = c >= 2 ? arg_char(&v[0]) : NULL;
     if (!ch || ch->player || v[1].type != SL_STRING) return true;
-    for (int k = 0; k < 8; k++)
-        if (!strcmp(v[1].s, names[k])) ai_set_movement_mode(&ch->ai, k);   /* else "unknown movement mode" */
+    for (int k = 0; k < 8; k++) {
+        const char *name = exe_str(0x52adf8 + 16u * (uint32_t)k);
+        if (name && !strcmp(v[1].s, name)) ai_set_movement_mode(&ch->ai, k);   /* else "unknown movement mode" */
+    }
     return true;
 }
 
@@ -1333,23 +1334,31 @@ static bool cmd_delete(SlThread *t, int c, const SlValue *v, SlValue *r, void *u
 
 /* playback char film [fromhere | interp [ticks]] (AI2iScript_Playback_Internal 0x4b6b50): the film
    (film.h) played on the character, from the film's start, from where the character is, or moved to the
-   start over ticks (30). Not ported: the physics context's pending motion cleared first (+0x130..0x13c,
-   0x4ed080), and an AI that was running a path, stopped if the film fails (0x4b0420). */
+   start over ticks (30). The character's environment animation (the physics context's +0x130..0x13c)
+   stops first; an AI patrolling (C+0x1e8 2, C+0x1f8 3) finishes its patrol (AI2rPatrol_Finish 0x4b0420)
+   when there is no such film or it doesn't start. */
 static bool cmd_playback(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;
     if (c < 2) return true;
     Chr *ch = arg_char(&v[0]);
     if (!ch || v[1].type != SL_STRING) return true;     /* "character %s cannot be made active" */
+    if (chr_envanim_playing(&ch->c)) chr_envanim_start(&ch->c, NULL, false);
     const void *film = tm_instance_get(TM_TAG("FILM"), v[1].s);
-    if (!film) return true;                             /* "can not find any film named %s" */
+    if (!film) {                                        /* "can not find any film named %s" */
+        if (!ch->player && ch->ai.state == AI_STATE_PATROL) patrol_finish(&ch->ai);
+        return true;
+    }
     int mode = FILM_START_HERE_PLACED;
     uint32_t ticks = 0;
     if (c > 2 && v[2].type == SL_STRING) {
         if (!strcmp(v[2].s, "fromhere")) mode = FILM_START_FROM_HERE;
         else if (!strcmp(v[2].s, "interp")) mode = FILM_START_INTERP, ticks = c > 3 ? (uint32_t)num(&v[3]) : 30;
     }
-    film_start(&ch->c, film, mode, ticks);
+    if (!film_start(&ch->c, film, mode, ticks)) {
+        if (!ch->player && ch->ai.state == AI_STATE_PATROL) patrol_finish(&ch->ai);
+        return true;
+    }
     /* playback_block (0x4b6d80): the script sleeps the film's length (FILM +0x1c) */
     if (u) sl_thread_sleep(t, (uint32_t)(((const uint8_t *)film)[0x1c] | ((const uint8_t *)film)[0x1d] << 8 |
                                          ((const uint8_t *)film)[0x1e] << 16 | (uint32_t)((const uint8_t *)film)[0x1f] << 24));

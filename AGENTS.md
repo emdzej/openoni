@@ -94,7 +94,8 @@ near them, and the `door_*` commands ([docs/re/door.md](docs/re/door.md)). `src/
   trees, the ONIE table, ONrImpactEffect) the particles' impact action plays ([docs/re/impact.md](docs/re/impact.md)).
 - Aiming (the aiming screens in `src/chr_anim.c`, the recoil in `src/character.c`), reloading
   (`src/weapon.c`) and powerups (`src/powerup.c`): level 1's training plays through to its end.
-- `src/wm.c`: the window manager (windows, messages, the WMDD dialogs, the DC, part specs and text),
+- `src/wm.c`: the window manager (windows, messages, the WMDD dialogs, the DC, part specs and text; the
+  level's load shows its progress in one, `load_begin` in `src/app.c`),
   `src/igui.c` the in-game UI's pages and the text consoles (`text_console`), `src/outgame.c` the main
   menu (the start without `--param play`, and Escape in a level), `src/li.c` the keys as the input
   layer's codes ([docs/re/wm.md](docs/re/wm.md)) and the bindings from `key_config.txt`, the actions
@@ -115,9 +116,8 @@ near them, and the `door_*` commands ([docs/re/door.md](docs/re/door.md)). `src/
   main menu and the outro when level 19 is won (`movie_play`, `movie_play_in_game`; `--param
   movie=outro.bik` plays one through the latter first).
 
-The few stand-ins left (a weapon's velocity taken from its holder's, a module's own clock for the game
-time, the scripts' movement mode) and what isn't ported yet are marked in the code ("stand-in", "Not
-ported"). They go as their originals are ported.
+The few stand-ins left (a module's own clock for the game time) and what isn't ported yet are marked in
+the code ("stand-in", "Not ported"). They go as their originals are ported.
 
 ## Hard rules
 

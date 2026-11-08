@@ -8,9 +8,9 @@
    animation step of ONrGameState_DoCharacterFrame 0x4ddba0, and the movement and attack handlers of
    ONrCharacter_HandleHeartbeatInput 0x4f6ad0 that depend only on the animation state and the input.
    Jumping and falling are ported (HandleStartJumping 0x4fa2f0, the landing and the fall of
-   HandleHeartbeatInput, step 9 of DoCharacterFrame); the ground they meet is a stand-in.
-   Stand-ins: the floor and walls (akev.h) instead of the physics, and the game time (a tick count per
-   character). Not yet: AI, weapons, throws, damage, particles and sounds. */
+   HandleHeartbeatInput, step 9 of DoCharacterFrame); the floor and walls are the physics' (physics.h).
+   The AI, weapons, throws, damage, particles and sounds have their own modules. Stand-in: the game
+   time (a tick count per character). */
 #pragma once
 #include "oban.h"
 
@@ -203,7 +203,20 @@ typedef struct Character {
         void *cls;
         uint16_t bone;
     } anim_particle[16];            /* A+0x1ca8, 0x10 each */
+    /* the super particles (A+0x1dac..0x1eb0): the class's ONCP entries named super*, made on their
+       bones the first time the shown super value (C+0x1668) is above 0, started while it is, stopped
+       when it is 0 again */
+    bool super_made, super_started; /* A+0x1dac, 0x1dad */
+    uint16_t super_count;           /* A+0x1dae */
+    struct {
+        const uint8_t *entry;
+        uint32_t handle;
+        void *cls;
+        uint16_t bone;
+    } super_particle[16];           /* A+0x1db0, 0x10 each */
     float bone_world[19][12];       /* A+0x2278 (0x30 each): the bones' matrices the particles hang from */
+    float weapon_at[3];             /* A+0x2278 + 19 * 0x30, +0x24: the weapon's matrix's place (the hand's) */
+    float weapon_move[3];           /* C+0x1c4: its move this tick with a weapon in hand, else 0 */
     bool placed;                    /* put somewhere (0x4e9210) since the bones' last matrices: the location
                                        (C+0x160) is the position, y + 0.5 */
     int room;                       /* C+0x188: its graph room (PHrNodeFromBNV 0x50c9c0 of C+0x184,
@@ -296,7 +309,7 @@ extern bool (*character_pickup_hook)(Character *c, const ChrInput *in);
 extern void (*character_weapon_input_hook)(Character *c, const ChrInput *in);
 extern void (*character_frame_hook)(Character *c, int step);
 /* One tick (1/60 s): the input (HandleHeartbeatInput), then the frame (DoCharacterFrame: the motion, the
-   floor, the animation step, the pose). env: the AKEV for the floor stand-in, or NULL. */
+   floor, the animation step, the pose). env: the level's AKEV (its physics), or NULL. */
 void character_update(Character *c, const CharacterInput *in, const void *env);
 /* Set while chars_update runs the frames: the characters' physics then waits for the contacts (the
    original runs every context after all the characters' frames and their pushes, 0x4e8c50); the frames

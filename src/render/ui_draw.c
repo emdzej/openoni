@@ -8,6 +8,7 @@
 #include "font.h"
 #include "gl_dev.h"
 #include "igui.h"
+#include "text.h"
 #include "tm.h"
 #include "txmp.h"
 #include "ui.h"
@@ -412,15 +413,98 @@ static void draw_inventory(const Character *c, const IguiHud *hud, float cx, flo
     }
 }
 
+static void draw_right(int w, int h, const Character *c, const void *right, const void *ring, uint32_t time, float scale);
+static void draw_help(int w, float scale);
+
 void ui_draw_hud(int w, int h, const Character *c, uint32_t time)
 {
     const void *right = tm_instance_get(TM_TAG("TXMP"), "right"), *ring = tm_instance_get(TM_TAG("TXMP"), "rightRing");
-    uint32_t hp = c->hit_points, max = c->max_hit_points;
+    uint32_t max = c->max_hit_points;
     gl_dev_screen(w, h);
     /* the original draws at the display's pixels; the port as at 640x480, scaled */
     float scale = (float)h / 480.0f;
     if (ui_element_shown(0)) draw_left(w, h, c, scale);
-    if (!right || !max || !ui_element_shown(1)) return;
+    if (right && max && ui_element_shown(1)) draw_right(w, h, c, right, ring, time, scale);
+    draw_help(w, scale);
+}
+
+/* The help overlays (ONiInGameUI_DisplayHelp 0x501440), while the pause screen's help page is up
+   (0x5ed099, or ui_show_help): the IGHH "hud_help_info"'s two pictures, each where its element is shown,
+   at its element's centre (rounded, 0x4340a0) plus the IGHH's offset, less half the picture's size (the
+   HUD's own picture's if the IGHH has none, else 64); then its labels in Tahoma 7 (format 1), green
+   (0xff00ff00), the left element's first ones left-aligned 3 right of the left picture's corner, the
+   others right-aligned 3 left of the right's, each centred on its point's height, under a shadow 1 right
+   and down in 0xff3f3f3f. */
+static void draw_help(int w, float scale)
+{
+    const void *ighh = igui_help_shown() ? tm_instance_get(TM_TAG("IGHH"), exe_str(0x555c08)) : NULL;
+    if (!ighh) return;
+    TextIghh hh;
+    text_ighh(ighh, &hh);
+    float dw = (float)w / scale;
+    const void *own[2] = { tm_instance_get(TM_TAG("TXMP"), "left"), tm_instance_get(TM_TAG("TXMP"), "right") };
+    int16_t pt[2][2];
+    for (int k = 0; k < 2; k++) {
+        /* the elements' centres (ONrInGameUI_SetArcPoints 0x504270) */
+        float half_w = own[k] ? (float)(tx16(own[k], TXMP_WIDTH) >> 1) : 0.0f;
+        float half_h = own[k] ? (float)(tx16(own[k], TXMP_HEIGHT) >> 1) : 0.0f;
+        float cx = k ? dw - (10.0f + half_w) : 10.0f + half_w, cy = 480.0f - half_h;
+        pt[k][0] = (int16_t)((int16_t)lrintf(cx) + hh.x[k]);
+        pt[k][1] = (int16_t)((int16_t)lrintf(cy) + hh.y[k]);
+        const void *t = hh.texture[k] ? hh.texture[k] : own[k];
+        if (t) {
+            pt[k][0] = (int16_t)(pt[k][0] - (tx16(t, TXMP_WIDTH) >> 1));
+            pt[k][1] = (int16_t)(pt[k][1] - (tx16(t, TXMP_HEIGHT) >> 1));
+        } else pt[k][0] = (int16_t)(pt[k][0] - 64), pt[k][1] = (int16_t)(pt[k][1] - 64);
+        if (hh.texture[k] && ui_element_shown(k)) {
+            float x0 = pt[k][0] * scale, y0 = pt[k][1] * scale;
+            /* under the HUD's draw states, its pictures' (drawn added, as the elements': inferred), the
+               constant colour white (state 7, -1) */
+            sprite(x0, y0, x0 + tx16(hh.texture[k], TXMP_WIDTH) * scale, y0 + tx16(hh.texture[k], TXMP_HEIGHT) * scale,
+                   false, hh.texture[k], 255, GL_DEV_SCREEN_ADD);
+        }
+    }
+    const void *family = font_family_get(exe_str(0x534354));
+    uint16_t size = 7;
+    uint32_t style = FONT_STYLE_PLAIN;
+    const void *font = family ? font_family_best_font(family, &size, &style) : NULL;
+    if (!font) return;
+    wm_scale = scale;
+    const int16_t rect[4] = { 0, 0, (int16_t)dw, 480 };
+    static const int16_t all[4] = { -32768, -32768, 32767, 32767 };
+    FontInfo fi;
+    font_info(font, &fi);
+    for (uint32_t i = 0; i < hh.count; i++) {
+        bool is_right = i >= hh.left_count;
+        if (!ui_element_shown(is_right)) continue;
+        const char *text;
+        size_t len;
+        int16_t lx, ly;
+        if (!text_ighh_label(ighh, i, &text, &len, &lx, &ly)) continue;
+        char buf[65];
+        if (len > 64) len = 64;
+        memcpy(buf, text, len), buf[len] = 0;
+        int16_t pen[2] = { (int16_t)(lx + pt[is_right][0] + (is_right ? -3 : 3)), (int16_t)(ly + pt[is_right][1]) };
+        FontRun runs[FONT_RUNS];
+        int16_t lh;
+        int n = font_format_text(family, font, 0xff00ff00u, 1, buf, rect, pen, runs, &lh);
+        if (!n) continue;
+        /* the text's box: from the first run's top (its baseline less the ascending height) to the
+           last's bottom (a line height lower) */
+        int top = pen[1] - fi.ascending, bottom = pen[1] + runs[n - 1].line * lh - fi.ascending + lh;
+        int dx = pen[0] - (is_right ? runs[0].x + runs[0].w : runs[0].x);
+        int dy = pen[1] - (top + bottom) / 2;
+        for (int pass = 0; pass < 2; pass++)
+            for (int r = 0; r < n; r++)
+                wm_glyphs(font, (float)(runs[r].x + dx + !pass), (float)(pen[1] + runs[r].line * lh + dy + !pass),
+                          runs[r].s, runs[r].n, pass ? runs[r].colour : 0xff3f3f3fu, all);
+    }
+}
+
+/* The right element (0x4fff50 on): its picture, the health and the inventory. */
+static void draw_right(int w, int h, const Character *c, const void *right, const void *ring, uint32_t time, float scale)
+{
+    uint32_t hp = c->hit_points, max = c->max_hit_points;
     float rw = (float)tx16(right, TXMP_WIDTH), rh = (float)tx16(right, TXMP_HEIGHT);
     /* the right element's centre (ONrInGameUI_SetArcPoints 0x504270): 10 from the right edge, on the
        bottom */

@@ -75,8 +75,8 @@ void *akev_texture(const void *env, uint32_t i);
 bool akev_floor(const void *env, float x, float y, float z, float up, float down, float *floor_y);
 
 /* Whether the segment from p along v (p + v its end) meets a quad, of those without any of the skip
-   flags (and not ghosts): AKrCollision_Point 0x4412d0 asked for the first hit only (0x441c80). A
-   stand-in for its walk of the octree: every quad's box, then its plane and corners. */
+   flags (the ghosts are in no leaf): AKrCollision_Point 0x4412d0 asked for the first hit only (0x441c80),
+   through the octree (akev_collide_point). */
 bool akev_segment_hits(const void *env, const float p[3], const float v[3], uint32_t skip);
 
 /* The script ids (IDXA pairs at AKEV_SCRIPT_QUADS / AKEV_SCRIPT_IDS: entry i gives quad i's id). */

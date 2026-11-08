@@ -33,6 +33,9 @@ void gl_dev_matrices(const float proj[16], const float view[16]);
    w, -1 at the near plane, 1 at the far), off if end <= start. The 3D modes but the additive and the sky
    take it. */
 void gl_dev_fog(float start, float end, float r, float g, float b);
+/* The draw state 0xf (the fog) for the draws that follow: off for the sky's pass (ONiGameState_Display_Reflectable
+   0x4fb69f) and the particle classes drawn with it (P3iDisplayParticleClass 0x46059d). */
+void gl_dev_fog_enable(bool on);
 /* gl_calculate_fog_factor 0x40dcf0: a point's factor for the particles' alpha (gl_dev.c). */
 float gl_dev_fog_factor(const float p[3]);
 /* The GL texture of a TXMP (all its mip levels), uploaded on first use; 0 if it doesn't decode. */

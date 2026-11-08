@@ -21,10 +21,12 @@ void persist_initialize(uint8_t *(*load)(const char *name, size_t *size), bool (
 int persist_difficulty(void);
 void persist_set_difficulty(int d);
 
-/* The options. ONrPersist_GetQuality 0x50f0d0, 0x50f0e0 (the draw engine's quality then set, 0x508ef0:
-   not ported); 0x50f120, 0x50f130 the overall volume (SS2rVolume_Set then); 0x50f190, 0x50f1f0 the
+/* The options. ONrPersist_GetQuality 0x50f0d0, 0x50f0e0 (the particles' detail then set from it,
+   0x508ef0: p3_set_detail_from_quality); 0x50f120, 0x50f130 the overall volume (SS2rVolume_Set then); 0x50f190, 0x50f1f0 the
    subtitles (flags bit 0); 0x50f180, 0x50f1a0 the mouse inverted (bit 1); 0x50f450, 0x50f3e0 the gamma,
-   0..1 (others refused; the display's gamma then set, 0x407a60: not ported); +0x4c, +0x50 the screen's
+   0..1 (others refused; the options dialog then sets the display's gamma ramp, 0x407a60: each entry of
+   the ramp the display had at the start raised to (1 - gamma) * 1.2 + 0.4, the identity at 0.5. Not
+   ported: gasm has no gamma ramp, and the frames would need a pass of their own); +0x4c, +0x50 the screen's
    size and depth. */
 int persist_quality(void);
 void persist_set_quality(int q);

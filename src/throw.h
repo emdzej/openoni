@@ -14,7 +14,7 @@
    victim's, the target), false if none. Set by chars.c. */
 extern bool (*throw_ai_hook)(const Character *c, const void **anim, const void **victim, Character **target);
 /* Whether the target can be thrown now (the AI's melee): its class not unthrowable (+0xc8f), not the
-   unthrowable cheat's player nor flag 0x100 (0x4e6500), its animation without the throw-proof flag 1
+   unstoppable (0x4e6500: the unstoppable cheat's player, 0x5ece91, or flag 0x100), its animation without the throw-proof flag 1
    and not in its invulnerable frames (TRrAnimation_IsInvulnerable 0x42c2f0). */
 bool throw_target_ok(const Character *t);
 /* Installs the hooks in chr_anim (chr_remap_hook, chr_throw_hook). */

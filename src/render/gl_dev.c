@@ -226,6 +226,10 @@ void gl_dev_matrices(const float proj[16], const float view[16])
     glUniformMatrix4fv(u.view, 1, GL_FALSE, view);
 }
 
+static bool fog_disabled;
+
+void gl_dev_fog_enable(bool on) { fog_disabled = !on; }
+
 void gl_dev_fog(float start, float end, float r, float g, float b)
 {
     fog_start = start;
@@ -456,7 +460,7 @@ static void state(unsigned tex, int mode)
     glDepthFunc(GL_LEQUAL);
     /* the fog (the draw state 0xf, on by default): not on the 2D path, nor the sky (ONiGameState_Display_Reflectable
        0x4fb69f), nor additive textures (0x40d640 turns GL_FOG off with flag 0x400's blend) */
-    glUniform1f(u.fog_on, mode == GL_DEV_SCREEN || mode == GL_DEV_SCREEN_ADD || mode == GL_DEV_SKY || mode == GL_DEV_ADD ? 0.0f : 1.0f);
+    glUniform1f(u.fog_on, fog_disabled || mode == GL_DEV_SCREEN || mode == GL_DEV_SCREEN_ADD || mode == GL_DEV_SKY || mode == GL_DEV_ADD ? 0.0f : 1.0f);
     switch (mode) {
     case GL_DEV_SCREEN:
     case GL_DEV_SCREEN_ADD:

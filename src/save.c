@@ -6,6 +6,7 @@
 #include "persist.h"
 #include "physics.h"
 #include "sl.h"
+#include "sound.h"
 #include "tm.h"
 #include "ui.h"
 #include "weapon.h"
@@ -124,7 +125,7 @@ static bool class_name(const void *cls, char out[64])
 }
 
 /* save_game n [autosave] (AIiScript_SaveGame 0x4bd2e0, "%s game %d"): the continue at save point n;
-   an autosave shows the "autosave" message for 120 ticks. Level 1's first point is "Syndicate
+   an autosave plays its sound and shows the "autosave" message for 120 ticks. Level 1's first point is "Syndicate
    Warehouse", its others one less (the training isn't one). */
 static bool cmd_save(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
@@ -132,6 +133,7 @@ static bool cmd_save(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
     int32_t n = c >= 1 ? (v[0].type == SL_FLOAT ? (int32_t)v[0].f : v[0].i) : 0;
     bool autosave = c >= 2 && v[1].type == SL_STRING && v[1].s && !strcmp(v[1].s, "autosave");
     if (autosave) {
+        sound_event_play(15);   /* 0x63117c: the game settings' event sound 15 (0x512480, not placed) */
         const char *s = text_message("autosave");
         if (s) ui_print(UI_AREA_MESSAGE, 2, s, "autosave", 120);
     }
