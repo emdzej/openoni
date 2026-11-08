@@ -9,6 +9,7 @@
 #include "tm.h"
 #include "vfs.h"
 #include "wm.h"
+#include "ftol.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -88,7 +89,7 @@ static void options_show(WmWindow *d)
 {
     wm_slider_set_value(wm_item(d, 100), persist_quality());
     wm_slider_set_value(wm_item(d, 110), (int32_t)lrintf(persist_gamma() * 100.0f));   /* 0x434030 */
-    wm_slider_set_value(wm_item(d, 102), (int32_t)nearbyint((double)persist_volume() * 100.0));
+    wm_slider_set_value(wm_item(d, 102), ftol((double)persist_volume() * 100.0));            /* 0x4264e0 */
     wm_check_set(wm_item(d, 107), persist_subtitles());
     wm_check_set(wm_item(d, 109), persist_invert_mouse());
     wm_popup_select(wm_item(d, 108), (uint16_t)persist_difficulty());

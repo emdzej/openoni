@@ -144,7 +144,7 @@ the next step 12.
 5. A floor at or above the feet: the ground height and the quad noted, the physics raised to it, the
    contact (A+0xe4) set. From the air: while jumping, the air time ends; else the landing (A+0x21dd),
    the air velocity and time cleared, and the damage of the fall from A+0xf0: none below ONCC+0x18,
-   all the hit points beyond ONCC+0x1c, between them the share of the most hit points (C+0x3c),
+   beyond ONCC+0x1c the hit points but at least 1000 (0x52a87c; 0x4ec90a), between them the share of the most hit points (C+0x3c),
    rounded. With damage the landing is the hard one (A+0x21de).
 
 ## Environment animations (chr_envanim)

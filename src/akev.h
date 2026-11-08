@@ -70,8 +70,8 @@ uint32_t akev_texture_count(const void *env);
 void *akev_texture(const void *env, uint32_t i);
 /* The highest floor under (x, z) between y + up and y - down: of the quads facing up (collision plane
    normal y > 0.5) that aren't ghosts, whose corners enclose the point seen from above. False if none.
-   A stand-in for ONrCharacter_FindFloorWithRay 0x4daa10 (which casts through the octree) until the
-   physics port. */
+   Not the game's (ONrCharacter_FindFloorWithRay 0x4daa10, src/movement.c, casts through the octree):
+   the tests place things with it. */
 bool akev_floor(const void *env, float x, float y, float z, float up, float down, float *floor_y);
 
 /* Whether the segment from p along v (p + v its end) meets a quad, of those without any of the skip

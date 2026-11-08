@@ -133,13 +133,13 @@ kind. Its volume is the product of four parts: the ambient's or the impulse's, t
 permutation's random one, and the overall volume. That product is times the group's volume. It goes to
 the buffer (0x485480) in hundredths of a decibel:
 
-- Above 0.05: round(3333 × v) − 3333, so 1 is full volume and 0.5 is −16.7 dB.
+- Above 0.05: trunc(3333 × v) − 3333 (`__ftol` 0x4264e0, toward zero, as every conversion here), so 1 is full volume and 0.5 is −16.7 dB.
 - At 0.05 or less: −10,000, silence.
 - Above 1 the value is out of DirectSound's range (inferred: the call fails and the volume stays).
 
 The pitch becomes the buffer's frequency, 22,050 × pitch Hz (0x485460). So a 44.1 kHz sound plays at
 half speed: the ACM's PCM keeps the source rate and the buffer doesn't (inferred from the code, not
-heard on Windows). The pan (0x4853b0) is ±(3333 − round(3333 × v)) with v from 0.5 (to the side) to 1
+heard on Windows). The pan (0x4853b0) is ±(3333 − trunc(3333 × v)) with v from 0.5 (to the side) to 1
 (ahead or behind). Only channels that may pan get it, and only for sounds more than 7 units away.
 
 A channel's flags (byte 0x1b): playing, looping, locked (held by an ambient), updating (its sound just

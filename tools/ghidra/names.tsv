@@ -392,6 +392,7 @@
 00447860	IMrImage_NumPixels	IM	med	read: pixel count with the mip chain (Mac name by role)
 004478d0	IMrImage_ComputeSize	IM	med	name from the Intel Mac build (neighbours:1.00)
 00447a30	IMrPixel_FromShade	IM	med	name from the Intel Mac build (neighbours:0.80)
+00447c10	IMrShade_Interpolate	IM	med	Mac match (callee); two shades blended by t in 256ths
 00447f20	IMrInitialize	IM	med	name from the Intel Mac build (strings:1)
 00449650	IMiConvert_DXT1_to_NByte	IM	high	read: DXT1 to 16-bit or byte types, block by block
 004499d0	DecodeDXT1Block_To_RGB565	IM	med	by its place in 0x449650

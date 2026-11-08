@@ -18,6 +18,7 @@
 #include "sndd.h"
 #include "tm.h"
 #include "trac.h"
+#include "ftol.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -31,8 +32,6 @@ static float rdf(const uint8_t *p) { uint32_t u = rd32(p); float f; memcpy(&f, &
 /* The two-argument clamps the original inlines everywhere: volumes to 0..2 (channels), 0..1 (scripts). */
 static float clamp02(float v) { return v >= 0.0f ? (v > 2.0f ? 2.0f : v) : 0.0f; }
 static float clamp01(float v) { return v >= 0.0f ? (v > 1.0f ? 1.0f : v) : 0.0f; }
-/* The x87 conversions (0x4264e0 rounds to nearest, ties to even). */
-static int32_t fround(double v) { return (int32_t)nearbyint(v); }
 
 static SoundLogFn log_fn;
 void sound_set_log(SoundLogFn fn) { log_fn = fn; }
@@ -416,7 +415,7 @@ static uint32_t now;            /* the sixtieths clock (UUrMachineTime_Sixtieths
 static void ds_volume(Chan *c, float v)     /* SS2rPlatform_SoundChannel_SetVolume 0x485480 */
 {
     if (v > 0.05f) {
-        int32_t att = fround(fabs((double)v * -3333.0)) - 3333;
+        int32_t att = ftol(fabs((double)v * -3333.0)) - 3333;
         if (att <= 0) c->ds_volume = att;   /* above 1 the value is out of DirectSound's range: the call fails */
     } else
         c->ds_volume = -10000;
@@ -424,14 +423,14 @@ static void ds_volume(Chan *c, float v)     /* SS2rPlatform_SoundChannel_SetVolu
 
 static void ds_pitch(Chan *c, float p)      /* 0x485460 */
 {
-    int32_t f = fround((double)p * 22050.0);
+    int32_t f = ftol((double)p * 22050.0);
     if (f >= 100 && f <= 100000) c->ds_freq = (uint32_t)f;     /* SetFrequency refuses the rest */
 }
 
 static void ds_pan(Chan *c, int side, float v)  /* 0x4853b0: side 1 left, 2 right, else the centre */
 {
-    if (side == 1) c->ds_pan = v > 0.05f ? -3333 - fround((double)v * -3333.0) : -10000;
-    else if (side == 2) c->ds_pan = v > 0.05f ? 3333 - fround((double)v * 3333.0) : 10000;
+    if (side == 1) c->ds_pan = v > 0.05f ? -3333 - ftol((double)v * -3333.0) : -10000;
+    else if (side == 2) c->ds_pan = v > 0.05f ? 3333 - ftol((double)v * 3333.0) : 10000;
     else c->ds_pan = 0;
 }
 
@@ -750,7 +749,7 @@ static void detail_schedule(Playing *pa)
     if (!pa->amb->detail) return;
     uint16_t r = trac_random();
     float t = (float)((double)r * (double)(1.0f / 65535.0f) * (pa->amb->detail_max - pa->amb->detail_min) + pa->amb->detail_min);
-    pa->detail_time = now - (uint32_t)fround((double)t * -60.0);
+    pa->detail_time = now - (uint32_t)ftol((double)t * -60.0);
 }
 
 /* A detail (0x481140, and in 0x4812a0): somewhere within detail_range of the ambient (or the listener) in x
@@ -1567,7 +1566,7 @@ static void sobj_volume(SoundObj *e)
             e->state = 2;
             e->id = o->id;
             e->volume = o->volume;
-            e->time = (uint32_t)fround(sqrt((double)(1.0f - o->volume)) * 120.0 - 120.0) + t0;   /* 0x4264e0 */
+            e->time = (uint32_t)ftol(sqrt((double)(1.0f - o->volume)) * 120.0 - 120.0) + t0;   /* 0x4264e0 */
             o->id = UINT32_MAX, o->state = 0, o->volume = 0.0f;
             return;
         }

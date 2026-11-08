@@ -5,6 +5,7 @@
 #include "sl.h"
 #include "tm.h"
 #include "txmp.h"
+#include "ftol.h"
 
 #include <math.h>
 #include <string.h>
@@ -54,7 +55,7 @@ static void slot_place(uint8_t slot, int16_t w, int16_t h, float *px, float *py)
 }
 
 /* The move from where it is to the slot: the step is the direction at the velocity, for (distance /
-   velocity) ticks (0x4264e0 rounds). */
+   velocity) ticks (truncated, 0x4264e0). */
 static void move_to(Insert *e, uint8_t slot, float velocity)
 {
     float tx, ty;
@@ -67,7 +68,7 @@ static void move_to(Insert *e, uint8_t slot, float velocity)
         return;
     }
     e->step[0] = dx / len * velocity, e->step[1] = dy / len * velocity, e->step[2] = 0;
-    e->ticks = (int32_t)lrintf(len / velocity);
+    e->ticks = ftol(len / velocity);
 }
 
 /* OCrCinematic_Start 0x4f2be0 */

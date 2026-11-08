@@ -21,3 +21,6 @@ uint32_t im_image_size(int type, bool mipmaps, unsigned w, unsigned h);
 bool im_mip_next(unsigned *w, unsigned *h);
 /* One level to RGBA bytes (w * h * 4 at dst). False for a type the CD doesn't use. */
 bool im_to_rgba(int type, unsigned w, unsigned h, const uint8_t *src, uint8_t *dst);
+/* IMrShade_Interpolate 0x447c10: the blend of two ARGB shades by t (0 a, 1 b), in 256ths of t rounded
+   (0x4340c0), each channel's sum shifted down. */
+uint32_t im_shade_interpolate(uint32_t a, uint32_t b, float t);

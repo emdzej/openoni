@@ -25,6 +25,7 @@
 #include "tm.h"
 #include "turret.h"
 #include "trac.h"
+#include "ftol.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -950,7 +951,7 @@ uint8_t weapon_world_matrix(const Weapon *w, float out[12])
     float a = (float)w->fade * 0.0016666667f;   /* 0x52b8d8 */
     if (a < 0.0f) a = 0.0f;
     if (a > 1.0f) a = 1.0f;
-    return (uint8_t)lrintf(a * 255.0f);        /* 0x4264e0 */
+    return (uint8_t)ftol(a * 255.0f);          /* 0x4264e0 */
 }
 
 bool weapon_glow(const Weapon *w, const float m[12], uint8_t alpha, const void *tex[2], float pos[3], float size[2],
@@ -1423,7 +1424,7 @@ static bool inflict_damage(Character *c, const float at[3], float reach, const f
         float k = 1.0f - rdf((const uint8_t *)c->oncc + 0xc7c);
         knockback *= k;
         float fd = (float)dmg * k, fs = (float)st * k;
-        uint32_t d = (uint32_t)(int32_t)fd, s = (uint32_t)(int32_t)fs;     /* 0x4264e0: toward zero */
+        uint32_t d = (uint32_t)ftol(fd), s = (uint32_t)ftol(fs);     /* 0x4264e0 */
         if ((double)(fd - (float)d) * 65535.0 > (double)trac_random()) d++;
         if ((double)(fs - (float)s) * 65535.0 > (double)trac_random()) s++;
         dmg = d, st = s;

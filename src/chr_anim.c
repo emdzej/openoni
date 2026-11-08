@@ -12,6 +12,7 @@
 #include "tm.h"
 #include "trac.h"
 #include "tram.h"
+#include "im.h"
 
 #include <math.h>
 #include <string.h>
@@ -260,6 +261,7 @@ static const void *remap_hook(Character *c, const void *next)
 
 static float rdf32(const uint8_t *p) { uint32_t v = rd32(p); float f; memcpy(&f, &v, 4); return f; }
 
+/* ONrGameSettings_HealthColour 0x4ef450 */
 uint32_t chr_health_colour(float f)
 {
     const uint8_t *gs = tm_instance_get(TM_TAG("ONGS"), "game_settings");
@@ -273,12 +275,7 @@ uint32_t chr_health_colour(float f)
     float lo = rdf32(gs + 0x14 + i * 4), hi = rdf32(gs + 0x18 + i * 4);
     float t = (f - lo) / (hi - lo);
     t = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
-    uint32_t a = rd32(gs + 0x54 + i * 4), b = rd32(gs + 0x58 + i * 4), c = 0;
-    for (int k = 0; k < 32; k += 8) {
-        float x = (float)(a >> k & 0xff), y = (float)(b >> k & 0xff);
-        c |= (uint32_t)lrintf(x + (y - x) * t) << k;
-    }
-    return c;
+    return im_shade_interpolate(rd32(gs + 0x54 + i * 4), rd32(gs + 0x58 + i * 4), t);
 }
 
 static uint32_t health_colour_of(const Character *c)

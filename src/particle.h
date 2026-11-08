@@ -144,7 +144,12 @@ typedef struct {
     float pos[3];               /* the real position */
     const float *orient;        /* 3x3 by columns, NULL none */
     const float *velocity;      /* NULL none */
-    float scale, yscale, alpha, rotation, x_offset, x_shorten;
+    float scale, yscale, rotation, x_offset, x_shorten;
+    /* The alpha in 255ths as the original's draws keep it: the class's times 255, truncated (0x4264e0);
+       a lens flare's (fogged) after its fade in and out, then faded by the fog; a fading particle's
+       (P_FADING) then replaced by life x 255 / fade, truncated (fade_alpha). */
+    int32_t alpha, fade_alpha;
+    bool fading, fogged;
     float chop;                 /* P_CHOPPED: what of the far end the life has cut (1 - life / fade) */
     uint32_t tint;
     const void *texture;        /* the TXMP or M3GM instance (+0x118), NULL none */

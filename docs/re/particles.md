@@ -202,7 +202,22 @@ same state. On the CD the sky's classes are five clouds: `env_cloud01_p01`, `_p0
 `env_cloud02_p01`, `_p02`. Confirmed by the code; that 0xf is the fog is inferred from the OpenGL
 draw's use of it.
 
-A contrail's alpha (its block's u16 at +0x1c) is the class's alpha value times 255, rounded, or for a
-fading particle (flag 0x02) its life times 255 over its fade, rounded (0x4623e6). A sprite's is the
-class's, or life / fade when fading; the alpha fog factor (`gl_calculate_fog_factor` 0x40dcf0) applies
-to the sky's classes as well.
+The draws keep the alpha in 255ths, every conversion `__ftol` (0x4264e0, toward zero) but the edge
+fade's: the class's alpha value times 255; a lens flare with a fade block (flags1 0x400000) faded in and
+out (0x4628e0) and then, when the point's fog factor (`gl_calculate_fog_factor` 0x40dcf0) is above 0,
+times it (at most 255; none left draws nothing); a fading particle's (flag 0x02) then replaced by its
+life times 255 over its fade (no check of the fade: 0 gives the indefinite's 0); a sprite's edge fade
+then the alpha times (c - min) / (max - min), rounded (0x4340a0). So only those flares are faded by the
+fog (sprite 0x4617cc, vector 0x461056, contrail 0x462316, geometry 0x460b21), the sky's classes among
+them; the rest have the draw engine's fog. A contrail's alpha is in its block's u16 at +0x1c (0x461ee7,
+the fade 0x4623f8). Confirmed by the code.
+
+Truncated as well: an emitter's burst count (`P3iEmitParticle` 0x45d610: the fraction left is the
+chance of one more) and the emit action's (0x464eed), and the bell curve's table index (0x45ae92).
+
+Breaking glass (`P3iDamageQuad` 0x462bf0, then 0x508f10) lays a grid over the quad: cells of the detail's
+size (0x52b7c0: 22, 20 or 15 units), the sides over it truncated plus 1, at most 50 each way; each cell
+gets the detail's shards (0x52b7cc: 2.5, 3.5 or 5) on the first row, scaled to the far edge's length on
+the last, rounded (0x4340a0) with the fraction a chance of one more. The detail is the graphics
+quality at the level's start, at most 2 (0x508dd0 into 0x5564b0); the default quality, 2, takes the
+last of each.

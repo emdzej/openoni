@@ -72,8 +72,8 @@ the retarget timer, +0x15c the active ticks, +0x160 the ticks unseen, +0x168 the
   firing flag with `OR 0xfffb`, which sets every other flag bit instead (*confirmed*, kept).
 - **The tick** (*OBJiTurretCombat_Update* 0x4cf140):
   1. While active and within its active time:
-     - Every 15 ticks it takes the nearest character of a target team (0x4cf7e0, by the rounded squared
-       distance, over the active list) and its line of sight (*OBJrTurret_PerformLOS* 0x4cf6b0).
+     - Every 15 ticks it takes the nearest character of a target team (0x4cf7e0, by the squared distance
+       truncated, over the active list) and its line of sight (*OBJrTurret_PerformLOS* 0x4cf6b0).
      - With a target, it runs the targeting, as the AI's does: update (has a target, aim, fire on the
        line of sight), then the fire decision (aim, wanted, the line of sight).
   2. Past its time, it goes off once back at rest.

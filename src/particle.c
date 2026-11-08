@@ -28,6 +28,8 @@
 #include "sl.h"
 #include "tm.h"
 #include "trac.h"
+#include "ftol.h"
+#include "im.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -323,8 +325,6 @@ static uint32_t round_small(float x)
     memcpy(&b, &t, 4);
     return b & 0x7fffff;
 }
-/* 0x4264e0: the x87's rounding, to the nearest (ties to even). */
-static int32_t fround(float x) { return (int32_t)lrintf(x); }
 static float urand(void) { return (float)trac_local_random() * (1.0f / 65535.0f); }    /* x 0x52a04c */
 static float srand1(void) { return (float)trac_local_random() * (1.0f / 32767.5f) - 1.0f; }   /* x 0x52a050, - 1 */
 static float wrap_2pi(float a)
@@ -368,30 +368,18 @@ static const float *bell_table(void)        /* 0x52a05c: the normal distribution
 }
 
 /* The bell curve's draw (0x45ae92): a uniform value in (-0.999, 0.999), its quantile through the table
-   (x10, rounded to the nearest and interpolated with the next), signed. */
+   (x10, truncated and interpolated with the next), signed. */
 static float bell(void)
 {
     const float *t = bell_table();
     float x = srand1() * 0.999f;        /* 0x52a194 */
     float s = fabsf(x) * 10.0f;         /* 0x52a190 */
-    int32_t k = fround(s) & 0xffff;
+    int32_t k = ftol(s) & 0xffff;
     if (k > 9) k = 9;
     float f = s - (float)k;
     float r = (1.0f - f) * t[k] + f * t[k + 1];
     return x < 0.0f ? -r : r;
 }
-/* 0x447c10: the blend of two shades by t (in 256ths, 0x4340c0). */
-static uint32_t shade_blend(uint32_t a, uint32_t b, float t)
-{
-    float tt = t * 256.0f + 8388608.0f;
-    uint32_t bits;
-    memcpy(&bits, &tt, 4);
-    uint32_t i = bits & 0x7fffff, j = 0x100 - i;
-    uint32_t ah = a >> 8, bh = b >> 8;
-    return (((a & 0xff) * j + (b & 0xff) * i) >> 8 & 0xff) | (((bh & 0xff0000) * i + (ah & 0xff0000) * j) & 0xff000000) |
-           (((bh & 0xff) * i + (ah & 0xff) * j) & 0xff00) | (((bh & 0xff00) * i + (ah & 0xff00) * j) & 0xff0000);
-}
-
 /* P3iCalculateValue 0x45ad80: a value for the particle (its variables, a draw for the ranges and
    curves). False for a variable missing or outside the particle. The integer types leave out as it is
    (the original returns true and writes nothing). */
@@ -413,7 +401,7 @@ static bool value(const P3Class *c, P3Particle *p, const uint8_t *v, Val *out)
     case 5: { float r = bell(); out->f = r * rdf(u + 4) + rdf(u); return true; }
     case 6: out->s = (const char *)u; return true;
     case 7: case 10: out->u = rd32(u); return true;
-    case 8: out->u = shade_blend(rd32(u), rd32(u + 4), urand()); return true;
+    case 8: out->u = im_shade_interpolate(rd32(u), rd32(u + 4), urand()); return true;
     case 9: {
         float r = bell();
         uint32_t m = rd32(u), d = rd32(u + 4);
@@ -1855,7 +1843,7 @@ static bool emit(P3Class *c, P3Particle *p, unsigned k, float time)
     float *ppos = position(c, p, &died);
     if (died) return true;
     float n = rdf(e + E_COUNT);
-    int32_t count = fround(n) & 0xffff;
+    int32_t count = ftol(n) & 0xffff;
     float frac = n - (float)count;
     if (frac > 0.001f && urand() < frac) count++;
     /* the attractors: aimed at (direction 6) or handed on (the new class's "emitted towards", 6), the
@@ -2896,7 +2884,7 @@ static bool do_action(Act *x)
     case A_COLOR_BLEND: {
         Val c0, c1;
         if (x->var[0] && value(c, p, param(a, 0), &c0) && value(c, p, param(a, 1), &c1) && pf(x, 2, &f2))
-            wr32(x->var[0], shade_blend(c0.u, c1.u, f2));
+            wr32(x->var[0], im_shade_interpolate(c0.u, c1.u, f2));
         return false;
     }
     case A_FADE_OUT:
@@ -2945,7 +2933,7 @@ static bool do_action(Act *x)
         /* the count is the parameter's float as stored (not a value); the fraction is taken from the
            emitter's number read as a float, the original's slip: it never adds one */
         float n = rdf(param(a, 1) + 4), en = rdf(param(a, 0) + 4);
-        int32_t cnt = fround(n);
+        int32_t cnt = ftol(n);
         float frac = en - (float)cnt;
         if (frac > 0.999f) cnt++;
         else if (frac > 0.001f && urand() < frac) cnt++;
@@ -3612,15 +3600,18 @@ static bool drawn(P3Class *c, P3Particle *p, P3Draw *d)
     if (!p3_real_position(c, p, d->pos)) return false;
     d->orient = fblock(c, p, P3_X_ORIENTATION);
     d->velocity = fblock(c, p, P3_X_VELOCITY);
-    d->scale = 1, d->yscale = 1, d->alpha = 1;
+    d->scale = 1, d->yscale = 1;
     fvalue(c, p, c->def + D_SCALE, &d->scale);
     /* the scale grows with the speed (flags1 0x800: |v| + 1 times) */
     if ((flags1(c) & F1_SCALE_VELOCITY) && d->velocity)
         d->scale *= sqrtf(dot3(d->velocity, d->velocity)) + 1.0f;
     d->yscale = d->scale;
     if (flags1(c) & F1_YSCALE) fvalue(c, p, c->def + D_YSCALE, &d->yscale);
-    fvalue(c, p, c->def + D_ALPHA, &d->alpha);
-    if ((p->flags & P_FADING) && p->fade > 0.0f) d->alpha = p->life / p->fade;
+    float alpha = 1.0f;
+    fvalue(c, p, c->def + D_ALPHA, &alpha);
+    d->alpha = ftol((double)alpha * 255.0);                 /* x 0x5295c4 */
+    d->fading = (p->flags & P_FADING) != 0;
+    if (d->fading) d->fade_alpha = ftol((double)p->life * 255.0 / (double)p->fade);
     if ((p->flags & P_CHOPPED) && p->fade > 0.0f) d->chop = 1.0f - p->life / p->fade;
     fvalue(c, p, c->def + D_ROTATION, &d->rotation);
     fvalue(c, p, c->def + D_XOFFSET, &d->x_offset);
@@ -3769,11 +3760,11 @@ void p3_each_flare(const float eye[3], const float fwd[3], float near, uint32_t 
             bool seen = vis_point(d.pos) && (!env || !akev_collide_point(env, from, v, 0x420a0, 0, hit));
             uint32_t *st = (flags1(c) & 0x400000) ? (uint32_t *)block(c, p, P3_X_LENSFLARE) : NULL;
             if (st) {
-                int a8 = (int)lrintf(d.alpha * 255.0f);
-                a8 = a8 < 0 ? 0 : a8 > 255 ? 255 : a8;
+                int a8 = d.alpha < 0 ? 0 : d.alpha > 255 ? 255 : d.alpha;
                 unsigned a = flare_fade(c, seen, elapsed, (unsigned)a8, st);
                 if (!a) continue;
-                d.alpha = (float)a / 255.0f;
+                d.alpha = (int32_t)a;
+                d.fogged = true;
             } else if (!seen) continue;
             d.flare = true;
             fn(&d, user);
@@ -3831,13 +3822,13 @@ static void contrail_class(uint16_t i, bool emitters, const float eye[3], uint32
         float width = 1.0f, alpha = 1.0f;
         fvalue(c, p, c->def + D_SCALE, &width);
         fvalue(c, p, c->def + D_ALPHA, &alpha);
-        int a8 = (int)lrintf(alpha * 255.0f);
+        int a8 = ftol((double)alpha * 255.0);                   /* 0x461ee7 */
         a8 = a8 < 0 ? 0 : a8 > 255 ? 255 : a8;
         Val t = { .u = 0xffffffffu };
         value(c, p, c->def + D_TINT, &t);
         wr32(cb + 24, t.u);
-        /* a fading particle's (flag 2): life * 255 / fade, rounded */
-        if ((p->flags & P_FADING) && p->fade > 0.0f) a8 = (int)lrintf(p->life * 255.0f / p->fade);
+        /* a fading particle's (flag 2): life * 255 / fade, truncated (0x4623f8) */
+        if (p->flags & P_FADING) a8 = ftol((double)p->life * 255.0 / (double)p->fade);
         cb[28] = (uint8_t)a8, cb[29] = (uint8_t)(a8 >> 8);
         P3Particle *q;
         uint8_t *qb;
@@ -3890,7 +3881,7 @@ static void contrail_class(uint16_t i, bool emitters, const float eye[3], uint32
             float ls = sqrtf(dot3(seg, seg)), lv = sqrtf(dot3(view, view));
             float f = ls > 0.0f && lv > 0.0f ? 1.0f - fabsf(dot3(seg, view) / (ls * lv)) : 1.0f;
             if (f < lo) continue;
-            if (f < hi) alpha_a = (int)lrintf((f - lo) * (float)alpha_a / (hi - lo));
+            if (f < hi) alpha_a = (int)lrintf((f - lo) * (float)alpha_a / (hi - lo));     /* 0x4340a0 */
         }
         P3Contrail s;
         memcpy(s.a, at, 12), memcpy(s.wa, w, 12), memcpy(s.b, to, 12), memcpy(s.wb, to + 3, 12);

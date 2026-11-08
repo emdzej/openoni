@@ -5,6 +5,7 @@
 #include "gl_dev.h"
 #include "particle.h"
 #include "txmp.h"
+#include "ftol.h"
 
 #include <math.h>
 #include <string.h>
@@ -30,14 +31,25 @@ static bool unit(float *v)
 }
 static const float *col(const float *m, int k) { return m + 3 * k; }
 
-/* The fog's fade (P3rDisplayClass_Sprite 0x4617cc, _Vector 0x461056, _Contrail 0x462316; _Geometry
-   0x460b21, whose alpha the port's geometry doesn't take): an alpha times the point's fog factor
-   (gl_dev_fog_factor) when that is above 0, at most 1. */
-static float fogged(float alpha, const float p[3])
+/* The alpha a draw takes (P3rDisplayClass_Sprite 0x4617cc, _Vector 0x461056, _Contrail 0x462316;
+   _Geometry 0x460b21, whose alpha the port's geometry doesn't take), false when nothing is drawn: a
+   lens flare faded in and out is then faded by the fog (the point's factor, gl_dev_fog_factor, when
+   above 0: times it, truncated, at most 255; none left draws nothing); a fading particle's then takes
+   its place. Only those flares: the fog of the rest is the draw engine's. */
+static bool draw_alpha(const P3Draw *d, int32_t *alpha)
 {
-    float f = gl_dev_fog_factor(p);
-    if (f > 0.0f) alpha *= f;
-    return alpha > 1.0f ? 1.0f : alpha;
+    int32_t a = d->alpha;
+    if (d->fogged) {
+        float f = gl_dev_fog_factor(d->pos);
+        if (f > 0.0f) {
+            a = ftol((double)(a & 0xffff) * (double)f);
+            if ((uint16_t)a > 0xff) a = 0xff;
+        }
+        if (!(a & 0xffff)) return false;
+    }
+    if (d->fading) a = d->fade_alpha;
+    *alpha = a;
+    return true;
 }
 
 /* The sprite's two axes for its mode (MSrGeomContext_Method_Sprite_Draw's switch): 0 the camera's;
@@ -88,7 +100,8 @@ static void sprite(const View *v, const P3Draw *d)
     if (!tex) return;
     float u[3], w[3];
     if (!axes(v, d, u, w)) return;
-    float alpha = fogged(d->alpha, d->pos);
+    int32_t alpha;
+    if (!draw_alpha(d, &alpha)) return;
     /* the edge fade (flags2 0x4000000): by the angle to the eye, against the axis of the mode */
     if (d->edge_fade && d->mode != 5 && d->mode != 6) {
         float to[3] = { v->eye[0] - d->pos[0], v->eye[1] - d->pos[1], v->eye[2] - d->pos[2] }, ax[3];
@@ -102,14 +115,15 @@ static void sprite(const View *v, const P3Draw *d)
         if (!d->one_sided) c = fabsf(c);
         if (d->mode == 2) c = 1.0f - c;
         if (c < d->edge_min) return;
-        if (c < d->edge_max) alpha *= (c - d->edge_min) / (d->edge_max - d->edge_min);
+        if (c < d->edge_max)    /* rounded (0x4340a0) */
+            alpha = (int32_t)lrintf((c - d->edge_min) * (float)(alpha & 0xffff) / (d->edge_max - d->edge_min));
     }
 no_fade:
     if (d->rotation != 0.0f) {
         /* by the rotation (degrees) about the sprite's normal, wrapped as the original wraps it: the
            sine from the cosine, negative past a half turn */
         float r = d->rotation * 0.017453292f;
-        int32_t n = (int32_t)lrintf(r * 0.15915494f);
+        int32_t n = (int16_t)ftol(r * 0.15915494f);     /* 0x52954c, 0x411fba: 16 bits */
         r = r < 0.0f ? r + (float)(1 - n) * 6.2831855f : r - (float)n * 6.2831855f;
         float cs = cosf(r), sn = sqrtf(1.0f - cs * cs);
         if (r > 3.1415927f) sn = -sn;
@@ -129,8 +143,7 @@ no_fade:
     }
     GlVertex q[4];
     const float fs[4] = { f1, f2, f1, f2 }, ws[4] = { -1, -1, 1, 1 }, us[4] = { u0, u1, u0, u1 }, vs[4] = { 0, 0, 1, 1 };
-    int a8 = (int)lrintf(alpha * 255.0f);
-    a8 = a8 < 0 ? 0 : a8 > 255 ? 255 : a8;
+    int a8 = alpha < 0 ? 0 : alpha > 255 ? 255 : alpha;
     for (int i = 0; i < 4; i++) {
         q[i].x = d->pos[0] + fs[i] * u[0] + ws[i] * w[0];
         q[i].y = d->pos[1] + fs[i] * u[1] + ws[i] * w[1];
@@ -158,7 +171,7 @@ void sprite_draw_flat(const void *txmp, const float pos[3], const float m[12], f
     memcpy(d.pos, pos, sizeof d.pos);
     d.orient = m;
     d.scale = sx, d.yscale = sy;
-    d.alpha = (float)alpha * (1.0f / 255.0f);
+    d.alpha = alpha;
     d.tint = 0xffffff;
     d.texture = txmp;
     d.mode = 4;
@@ -184,8 +197,6 @@ static void contrail(const P3Contrail *s, void *user)
     const float sg[4] = { 1, -1, 1, -1 }, us[4] = { 0, 1, 0, 1 }, vs[4] = { s->va, s->va, s->vb, s->vb };
     for (int i = 0; i < 4; i++) {
         uint32_t c = i < 2 ? s->argb_a : s->argb_b;
-        /* inferred: each end faded at its own point */
-        c = (c & 0xffffffu) | (uint32_t)lrintf(fogged((float)(c >> 24) * (1.0f / 255.0f), i < 2 ? s->a : s->b) * 255.0f) << 24;
         q[i].x = pos[i][0] + sg[i] * w[i][0];
         q[i].y = pos[i][1] + sg[i] * w[i][1];
         q[i].z = pos[i][2] + sg[i] * w[i][2];
@@ -202,8 +213,9 @@ static void contrail(const P3Contrail *s, void *user)
 /* P3rDisplayClass_Vector 0x460cf0: a line in the tint, at the alpha (the draw context's, 0x41e720). */
 static void vector(const P3Draw *d)
 {
-    int a8 = (int)lrintf(fogged(d->alpha, d->pos) * 255.0f);
-    a8 = a8 < 0 ? 0 : a8 > 255 ? 255 : a8;
+    int32_t alpha;
+    if (!draw_alpha(d, &alpha)) return;
+    int a8 = alpha < 0 ? 0 : alpha > 255 ? 255 : alpha;
     uint8_t r = (uint8_t)(d->tint >> 16), g = (uint8_t)(d->tint >> 8), b = (uint8_t)d->tint;
     GlVertex q[2] = {
         { d->pos[0], d->pos[1], d->pos[2], 0, 0, r, g, b, (uint8_t)a8 },

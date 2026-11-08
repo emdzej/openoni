@@ -444,11 +444,12 @@ static bool find_ground(Character *c, const void *env)
         if (c->air_ticks) c->air_ticks = 0;     /* "was landing, hit ground" */
         return true;
     }
-    /* the landing; its damage by the fall's height between ONCC +0x18 and +0x1c, all of it beyond */
+    /* the landing; its damage by the fall's height between ONCC +0x18 and +0x1c (rounded, 0x4340a0),
+       beyond it the hit points, at least 1000 (0x52a87c) */
     float fall = c->fall_height - best, lo = oncc_float(c, 0x18), hi = oncc_float(c, 0x1c);
     uint32_t dmg = 0;
     if (fall > hi) {
-        float x = (float)c->hit_points;
+        float x = (double)c->hit_points >= 1000.0 ? (float)c->hit_points : 1000.0f;
         if (x > 0.0f) dmg = (uint32_t)lrintf(x);
     } else if (fall >= lo) {
         float x = (fall - lo) / (hi - lo) * (float)c->max_hit_points;

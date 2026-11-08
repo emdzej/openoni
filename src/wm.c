@@ -7,6 +7,7 @@
 #include "li.h"
 #include "platform.h"
 #include "tm.h"
+#include "ftol.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -1078,15 +1079,6 @@ static uintptr_t button_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t 
     return default_proc(w, msg, p1, p2);
 }
 
-/* 0x4264e0: the x87's conversion with the rounding set to chop (toward zero), into 64 bits, the low
-   half returned: the integer indefinite of a NaN or an infinity (an empty range's 0 / 0) is
-   0x8000000000000000, whose low half is 0. */
-static int32_t chop_x87(double v)
-{
-    if (!(v > -9.2233720368547758e18 && v < 9.2233720368547758e18)) return 0;
-    return (int32_t)(uint32_t)(uint64_t)(int64_t)trunc(v);
-}
-
 /* The list box (class 8, 0x46c720): lines of text, each with a long of data (0x45 adds one, sorted with
    style 0x20000; 0x51 sets its data; 0x53 selects one, -1 none; 0x47 the data of a line, -1 the
    selected one; 0x48 the count). Its client is inside the PSUI's edit field (+0x44, its frame: the top
@@ -1136,7 +1128,7 @@ static void list_scroll_update(ListBox *b)
     if ((uint32_t)b->visible < n && n < (uint32_t)(b->top + b->visible)) b->top = (int32_t)(n - (uint32_t)b->visible);
     b->count = n;
     float fn = (float)n;
-    b->pos = chop_x87((double)fn / (double)b->visible * (double)b->top);
+    b->pos = ftol((double)fn / (double)b->visible * (double)b->top);
     sb_set_range(b->scroll, 0, (int32_t)n, b->visible);
     sb_set_pos(b->scroll, b->pos);
     b->frac = (float)(((double)fn - (double)b->visible) / (double)fn);
@@ -1183,7 +1175,7 @@ static uintptr_t list_select(WmWindow *w, ListBox *b, uint32_t i, bool tell)
             moved = true;
         }
         if (moved) {
-            if (b->frac != 0.0f) b->pos = chop_x87((double)b->top / (double)b->frac);
+            if (b->frac != 0.0f) b->pos = ftol((double)b->top / (double)b->frac);
             sb_set_pos(b->scroll, b->pos);
         }
     }
@@ -1210,7 +1202,7 @@ static void list_scroll(WmWindow *w, ListBox *b, uintptr_t code, uintptr_t value
     else if (d > hi) d = hi;
     if (!d) return;
     b->pos += d;
-    b->top = chop_x87((double)b->pos * (double)b->frac + 0.5);
+    b->top = ftol((double)b->pos * (double)b->frac + 0.5);
     sb_set_pos(b->scroll, b->pos);
 }
 
@@ -1545,11 +1537,11 @@ static void sb_thumb_size(const WmWindow *w, Scrollbar *s)
         return;
     }
     if (s->vertical) {
-        s->th = (int16_t)chop_x87((double)len_h * (double)s->page / (double)range);
+        s->th = (int16_t)ftol((double)len_h * (double)s->page / (double)range);
         if (s->th < sb_thumb_least_h) s->th = sb_thumb_least_h;
         else if (s->th > len_h) s->th = len_h;
     } else {
-        s->tw = (int16_t)chop_x87((double)len_w * (double)s->page / (double)range);
+        s->tw = (int16_t)ftol((double)len_w * (double)s->page / (double)range);
         if (s->tw < sb_thumb_least_w) s->tw = sb_thumb_least_w;
         else if (s->tw > len_w) s->tw = len_w;
     }
@@ -1567,10 +1559,10 @@ static void sb_thumb_place(const WmWindow *w, Scrollbar *s)
         s->tx = t[0], s->ty = t[1];
     } else if (s->vertical) {
         s->tx = t[0];
-        s->ty = (int16_t)(chop_x87((double)free_h / (double)range * (double)at) + t[1]);
+        s->ty = (int16_t)(ftol((double)free_h / (double)range * (double)at) + t[1]);
     } else {
         s->ty = t[1];
-        s->tx = (int16_t)(chop_x87((double)free_w / (double)range * (double)at) + t[0]);
+        s->tx = (int16_t)(ftol((double)free_w / (double)range * (double)at) + t[0]);
     }
 }
 
@@ -1616,8 +1608,8 @@ static void sb_mouse(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
         sb_rect(w, s, 1, t);
         float range = (float)(s->max - s->min);
         int32_t v = s->vertical
-            ? chop_x87((double)range / (double)(t[3] - s->th - t[1]) * (double)(s->grab[1] - t[1] + y))
-            : chop_x87((double)range / (double)(t[2] - s->tw - t[0]) * (double)(s->grab[0] - t[0] + x));
+            ? ftol((double)range / (double)(t[3] - s->th - t[1]) * (double)(s->grab[1] - t[1] + y))
+            : ftol((double)range / (double)(t[2] - s->tw - t[0]) * (double)(s->grab[0] - t[0] + x));
         v += s->min;
         if (v < s->min) v = s->min;
         if (v > s->max) v = s->max;
@@ -2296,7 +2288,7 @@ static void slider_place(WmWindow *w, Slider *s)    /* 0x472cc0 */
     int16_t r[4];
     slider_inner(w, s, r);
     double span = (double)(r[2] - s->tw - r[0]), range = (double)(s->max - s->min);
-    s->tx = (int16_t)(chop_x87(span / range * (double)(s->value - s->min)) + r[0]);
+    s->tx = (int16_t)(ftol(span / range * (double)(s->value - s->min)) + r[0]);
     s->ty = (int16_t)(r[1] + ((int16_t)(r[3] - r[1]) >> 1));
 }
 
@@ -2352,7 +2344,7 @@ static void slider_mouse(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2) 
         int16_t r[4];
         slider_inner(w, s, r);
         float range = (float)(s->max - s->min);
-        int32_t v = chop_x87((double)range / (double)(r[2] - s->tw - r[0]) * (double)(s->drag - r[0] + x)) + s->min;
+        int32_t v = ftol((double)range / (double)(r[2] - s->tw - r[0]) * (double)(s->drag - r[0] + x)) + s->min;
         if (v < s->min) v = s->min;
         if (v > s->max) v = s->max;
         d = v - s->value;

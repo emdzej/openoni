@@ -154,3 +154,15 @@ bool im_to_rgba(int type, unsigned w, unsigned h, const uint8_t *src, uint8_t *d
         return false;
     }
 }
+
+/* IMrShade_Interpolate 0x447c10 */
+uint32_t im_shade_interpolate(uint32_t a, uint32_t b, float t)
+{
+    float tt = t * 256.0f + 8388608.0f;
+    uint32_t bits;
+    memcpy(&bits, &tt, 4);
+    uint32_t i = bits & 0x7fffff, j = 0x100 - i;
+    uint32_t ah = a >> 8, bh = b >> 8;
+    return (((a & 0xff) * j + (b & 0xff) * i) >> 8 & 0xff) | (((bh & 0xff0000) * i + (ah & 0xff0000) * j) & 0xff000000) |
+           (((bh & 0xff) * i + (ah & 0xff) * j) & 0xff00) | (((bh & 0xff00) * i + (ah & 0xff00) * j) & 0xff0000);
+}

@@ -10,6 +10,7 @@
 #include "tm.h"
 #include "trac.h"
 #include "ui.h"
+#include "ftol.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -340,7 +341,7 @@ void turret_deactivate(uint16_t id)
         if (turrets[i].id == id) deactivate(&turrets[i]);     /* 0x4cdab0: by the id only */
 }
 
-/* 0x4cf7e0: the nearest character (by the rounded squared distance) of a target team. */
+/* 0x4cf7e0: the nearest character (by the squared distance, truncated) of a target team. */
 static const Chr *nearest_target(const Turret *t)
 {
     const Chr *best = NULL;
@@ -349,7 +350,7 @@ static const Chr *nearest_target(const Turret *t)
         const Chr *c = chars_get(i);
         if (!c || c->team >= 32 || !(t->teams & (1u << c->team))) continue;
         float dx = t->pos[0] - c->c.pos[0], dy = t->pos[1] - c->c.pos[1], dz = t->pos[2] - c->c.pos[2];
-        uint32_t d = (uint32_t)lrintf(dx * dx + dy * dy + dz * dz);     /* 0x4264e0 */
+        uint32_t d = (uint32_t)ftol(dx * dx + dy * dy + dz * dz);       /* 0x4264e0 */
         if (d < bd) bd = d, best = c;
     }
     return best;

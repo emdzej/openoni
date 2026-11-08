@@ -2,7 +2,10 @@
 #include "env.h"
 
 #include "akev.h"
+#include "exe.h"
+#include "ftol.h"
 #include "particle.h"
+#include "persist.h"
 #include "sl.h"
 #include "trac.h"
 
@@ -14,7 +17,17 @@
 static void *level_env;
 static int nbroken;   /* the glass broken since env_set */
 
-void env_set(void *akev) { level_env = akev; nbroken = 0; }
+static int glass_detail;    /* 0x5564b0: the graphics quality at the level's start, at most 2 (0x508dd0) */
+
+void env_set(void *akev)
+{
+    level_env = akev;
+    nbroken = 0;
+    int q = persist_quality();
+    glass_detail = q < 2 ? q : 2;
+}
+
+static float exe_float(uint32_t va) { uint32_t v = exe_u32(va); float f; memcpy(&f, &v, 4); return f; }
 
 static int32_t num(const SlValue *v) { return v->type == SL_FLOAT ? (int32_t)v->f : v->i; }
 
@@ -97,9 +110,10 @@ bool env_toggle_furniture_glass(void) { return break_marked = !break_marked; }
 
 /* 0x462bf0 then 0x508f10: a particle's damage at the quad: only breakable glass (flag 0x200000), once
    (it is marked broken, 0x40000, which the draw and the collisions leave out); its normal faces the side
-   hit. Then the shards (glass_shard, "ONrParticle3_LevelZeroLoaded"): a grid of cells of 15 units (the
-   detail's size, 0x52b7c0) over the quad, 5 shards a cell (0x52b7cc) on the first row down to the far
-   edge's share on the last, each at a random place in its cell, moving at random up to 10 and, for a
+   hit. Then the shards (glass_shard, "ONrParticle3_LevelZeroLoaded"): a grid of cells of the detail's size
+   (0x52b7c0: 22, 20 or 15 units by the quality; the sides over it truncated, plus 1, at most 50) over
+   the quad, the detail's shards a cell (0x52b7cc: 2.5, 3.5 or 5) on the first row to the far edge's
+   share of them on the last (rounded, the fraction a chance of one more), each at a random place in its cell, moving at random up to 10 and, for a
    hit at a point, pushed out from it (its force, at least 25, and its radius). */
 static void glass_hit(uint32_t quad, const float point[3], const float dir[3], float force, float radius)
 {
@@ -128,18 +142,19 @@ static void glass_hit(uint32_t quad, const float point[3], const float dir[3], f
     float l32 = sqrtf(e32[0] * e32[0] + e32[1] * e32[1] + e32[2] * e32[2]);
     float l03 = sqrtf(e03[0] * e03[0] + e03[1] * e03[1] + e03[2] * e03[2]);
     if (l01 < 1e-6f) return;
-    uint32_t cols = (uint32_t)lrintf(l01 / 15.0f) + 1, rows = (uint32_t)lrintf(l03 / 15.0f) + 1;
+    float size = exe_float(0x52b7c0 + 4u * (uint32_t)glass_detail), per0 = exe_float(0x52b7cc + 4u * (uint32_t)glass_detail);
+    uint32_t cols = (uint32_t)ftol(l01 / size) + 1, rows = (uint32_t)ftol(l03 / size) + 1;     /* 0x509228 */
     if (cols > 50) cols = 50;
     if (rows > 50) rows = 50;
     uint32_t tick = p3_tick();
     for (uint32_t row = 0; row < rows; row++) {
-        float per = 5.0f;
+        float per = per0;
         if (rows != 1) {
             float s = (float)row / (float)(rows - 1);
-            per = ((1.0f - s) + (l32 / l01) * s) * 5.0f;
+            per = ((1.0f - s) + (l32 / l01) * s) * per0;
         }
         for (uint32_t col = 0; col < cols; col++) {
-            uint32_t m = (uint32_t)lrintf(per);
+            uint32_t m = (uint32_t)lrintf(per);         /* 0x4340a0 */
             if ((float)trac_local_random() * (1.0f / 65535.0f) < per - (float)m) m++;
             for (uint32_t s = 0; s < m; s++) {
                 float uu = (float)trac_local_random() * (1.0f / 65535.0f) + (float)col;
