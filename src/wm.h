@@ -4,9 +4,10 @@
    specs (PSpc, PSUI) to the renderer's operations (WmDrawOps), so the core has no renderer.
    docs/re/wm.md has the layouts and messages.
 
-   Not ported: the frames' sizing edges, title bars, close, zoom and grow boxes and their dragging
-   (0x474180): their styles are only on the developers' dialogs (message box, get text, the masks, the
-   string list, the network's), none of those the game opens (150 to 156, 70 and 71). */
+   The frames (the default procedure, 0x473350): the sizing edges, title bars, close, zoom and grow
+   boxes and their dragging (0x474180); their styles are only on the developers' dialogs (message box,
+   get text, the masks, the string list, the network's), none of those the game opens (150 to 156, 70
+   and 71). */
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>
@@ -50,11 +51,27 @@ struct WmWindow {
     int16_t title_w, title_h;                            /* +0x140 */
     uintptr_t data;                                      /* the class's long (WMrWindow_GetLong) */
     WmFont font;                                         /* +0x148 */
+    WmWindow *focus_saved;                               /* +0x144: the focus while inactive (itself at first) */
+    int16_t zoom_rect[4];                                /* +0x38: the rectangle before a zoom */
+    int16_t nc_x, nc_y;                                  /* +0x158: the last frame point */
+    uint32_t nc_hit;                                     /* +0x15c: the part held (0x80000000 pressed on it, 0x40000000 zoomed) */
 };
 
 /* A dialog's item's paint (WM_DRAWITEM's p2): the DC, the item, its id. */
 typedef struct WmDc WmDc;
 typedef struct { WmDc *dc; WmWindow *item; uint16_t id; } WmDrawItem;
+/* An owner-drawn list box line's paint (style 0x100000, WM_DRAWITEM's p2; 0x46d518): the DC, the list,
+   its id, whether the line is selected, its index, its rectangle in the list's client (x0, y0, x1, y1),
+   its text and its data. */
+typedef struct {
+    WmDc *dc;
+    WmWindow *list;
+    uint16_t id, selected;
+    uint32_t index;
+    int16_t rect[4];
+    const char *text;
+    uint32_t data;
+} WmDrawLine;
 
 /* What the renderer does for the WM: a textured rectangle (u, v over the texture; argb the tint) and a
    run of glyphs at a pen on the baseline, both in the desktop's pixels and clipped to clip (x0, y0, x1,

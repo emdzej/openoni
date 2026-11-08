@@ -311,7 +311,13 @@ formatting, with the context's font:
   top, as many as shown; a selected one, enabled, has the list hilite (+0x4c) with the focus, else the
   background (+0x00); its text (style 0x80000) at x 3 on the ascent. The scroll units are the count's,
   not lines: a step of the arrows moves the top by the fraction, rounded (on the Load Game list, with 40
-  lines and 19 shown, two steps a line). A key down (0x46d0c0; +4 a time, +8 128 characters typed) moves
+  lines and 19 shown, two steps a line). The line's text is in the font's colour, grey (0xff808080) while the list is disabled,
+  in the text format 1. Owner-drawn lines (style 0x100000; 0x46d518) go to the parent as WM_DRAWITEM
+  (0x36) with a record of 0x20 bytes: the DC, the list, its id (u16), selected (u16), the line's index,
+  its rectangle (four s16), its text and its data. With all of 0x2b0000 a box comes before each line's
+  text: the PSUI's +0xa8 part for data 1, +0xac for 2, (line height - 3) square at x 2, y + 1, the
+  text at x 2 + the line height (else 3); for other data the original passes the font's ascent as the
+  part, a slip no game list reaches (the port draws none). No dialog of the game has either style. A key down (0x46d0c0; +4 a time, +8 128 characters typed) moves
   the selection from the selected line (none: -1, unsigned): Home (0xab) to 0, End (0xae) to the last,
   Up (0xb0) and Page Up (0xac, the lines shown) back, to 0 past the start, Down (0xb2) and Page Down
   (0xaf) on, to the last past the end; so with none selected Down selects 0 and Page Down the lines shown
@@ -623,14 +629,48 @@ Not the WM's, but drawn with it on the in-game UI's screen (`ONrInGameUI_Display
 - A new objective not yet read (0x5ed098) runs the flash's clock and flashes the compass, a whole
   circle while no target is set.
 
+## The frames
+
+The default procedure (0x473350) gives a window of the frame styles its frame; only the developers'
+dialogs have them (50, 51, 102, 103, 130, 132, 133: 0x0d to 0x7f), the game's have none (0x10000).
+The styles: 1 the PSUI's background (+0x00) over the window, 2 its sizing frame (+0x04) with sizing
+edges, 4 a title bar (+0x08), 8 the title in it, 0x10 a close box (+0x10, pressed +0x14), 0x20 a grow
+box (+0x18, +0x1c), 0x40 a zoom box (+0x20, +0x24). The frame's sides (0x4738e0) are the corner parts'
+sizes (1 and 0x100) of the sizing frame (style 2), else of the background (1); a box (0x473990) is the
+title's height less 4, square.
+
+- Hit test (0x473a50, the point in the screen rectangle with its edges in, 0x447ff0): with style 2 the
+  edges inside the sides, 2 left, 4 right, 8 top, 0x10 bottom (a corner both); in the title bar (8, the
+  title's height under the top side) the boxes, right to left, each 2 left of the last: close 0x80,
+  zoom 0x100, grow 0x200 (the original places the zoom's and the grow's from the title's left when
+  there is no close box before them), else the bar 0x20; else the client (0x8000) with style 1, none
+  without.
+- Paint (WM_NCPAINT): the background and the sizing frame over the window; the title bar inside the
+  sides as tall as the title, the title at 2 and the ascent, black or grey when disabled (format 1);
+  the boxes from the right, 2 apart and 2 down, pressed while held and under the point.
+- The client rectangle (0x11): from the left and top sides (the top also under the title bar, style
+  4), its width and height the window's less the right and bottom sides only.
+- The mouse on the frame (0x05 to 0x0e): a press holds the part (+0x15c, the high bit while pressed on
+  it) and takes the mouse; a release on the box pressed sends its message (close 0x14, zoom 0x15, grow
+  0x16) and lets go; the point is kept (+0x158). Moving with a part held (0x474180): the title bar
+  moves the window by the move since the last point; a box is pressed while the point is over it; the
+  edges size the window, each side only while the point is on the side it moves toward, never under
+  the smallest frame (its sides, with a title the title's width and height and each box's width plus
+  2), through 0x475770, and it is no longer zoomed.
+- Zoom (0x15, 0x473e10): zoomed (+0x15c 0x40000000), back to the size kept; else the rectangle kept
+  (+0x38) and the window made the smallest frame.
+- Activation (0x28, 0x474100): a top-level window going inactive keeps the focus if it is inside it,
+  else itself (as it is made, 0x47533b); made active, the focus goes back there.
+- The resolution (0x34, 0x474150) goes to the children that aren't child windows; the original's walk
+  doesn't step past a child window and tests it for ever.
+
 ## The port
 
 `src/wm.c` (the core, the DC, part specs, text, the classes), `src/igui.c` (the pages, the text
 console), `src/outgame.c` (the main menu), `src/li.c` (the keys as the LI's codes), `src/render/ui_draw.c` (the sprites and glyphs). The
 desktop is as tall as 480, scaled to the display (as the HUD). Unattended runs tap keys into the dialogs
 with `--param keys=27,32,...`, or click with `@x:y` in the desktop's pixels (one every 30 frames of a
-dialog). Not ported: the frames' parts (sizing edges, title bars, their boxes and dragging: only the
-developers' dialogs have them), the caret, and the edit field, the menu bar and the radio button (none
-in the game's dialogs), the list box's owner-drawn lines. The options: the port has one screen mode,
+dialog). Not ported: the caret, and the edit field, the menu bar and the radio button (none in the
+game's dialogs; the edit field is in the developers' get text, 51). The options: the port has one screen mode,
 the persisted one, so the resolution's popup lists that alone; the quality and the gamma are persisted
 but not applied (the draw engine's quality and the display's gamma are not ported).

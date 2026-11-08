@@ -165,6 +165,7 @@ static WmWindow *window_new(uint16_t cls, const char *title, uint32_t flags, uin
     if (title) snprintf(win->title, sizeof win->title, "%s", title);
     default_font(&win->font);
     text_extent(&win->font, win->title, &win->title_w, &win->title_h);
+    win->focus_saved = win;     /* 0x47533b */
     if (flags & WM_STYLE_CHILD) {
         win->parent = parent;
         for (WmWindow *p = parent; p; p = p->parent)
@@ -326,34 +327,242 @@ static WmWindow *window_at(WmWindow *w, uint32_t want, int16_t x, int16_t y)
 
 /* ---- the default procedure (0x473350) ---- */
 
+static void part_size(const void *pspc, unsigned which, int16_t *w, int16_t *h);
+static WmDc *dc_begin_window(WmWindow *w);
+static void set_size(WmWindow *w, int16_t width, int16_t height);
+static bool enabled(const WmWindow *w);
+
+/* 0x4750d0: whether w is inside within (among its parents; not itself). */
+static bool is_inside(const WmWindow *w, const WmWindow *within)
+{
+    if (!w || !within) return false;
+    for (const WmWindow *p = w->parent; p; p = p->parent)
+        if (p == within) return true;
+    return false;
+}
+
+/* 0x447ff0: the point in the rectangle, its edges in. */
+static bool in_rect_edges(const int16_t r[4], int16_t x, int16_t y) { return x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3]; }
+
+/* 0x4738e0: the frame's sides: the top left part's size and the bottom right's, of the PSUI's sizing
+   frame (+0x04) for style 2, else its background (+0x00) for style 1, else none. (Without a PSUI the
+   original leaves them as they were; here none.) */
+static void frame_sizes(const WmWindow *w, int16_t *l, int16_t *t, int16_t *r, int16_t *b)
+{
+    const uint8_t *ui = wm_psui_active();
+    *l = *t = *r = *b = 0;
+    if (!ui || !(w->style & 3)) return;
+    const void *part = tm_link(ui + ((w->style & 2) ? 4 : 0));
+    part_size(part, 1, l, t);
+    part_size(part, 0x100, r, b);
+}
+
+/* 0x473990: a title bar's box (close 0x10, grow 0x20, zoom 0x40), the title's height less 4 square. */
+static int16_t box_size(const WmWindow *w, uint32_t bit) { return (w->style & bit) ? (int16_t)(w->title_h - 4) : 0; }
+
+/* WMiWindow_HitTest 0x473a50: none off the window (edges in); inside the frame's sides, with style 2
+   the sizing edges (2 left, 4 right, 8 top, 0x10 bottom, combined at the corners); with a title (8)
+   its bar's boxes from the right, each 2 left of the last (close 0x80, zoom 0x100, grow 0x200; the
+   original moves the zoom's and grow's from the title's left when no close box is before them, its
+   slip), else the bar (0x20); else the client with style 1. */
+static uintptr_t frame_hit(const WmWindow *w, uintptr_t p)
+{
+    int16_t x = (int16_t)(p >> 16), y = (int16_t)p, r[4], l, t, rr, b;
+    screen_rect(w, r);
+    if (!in_rect_edges(r, x, y)) return 0;
+    frame_sizes(w, &l, &t, &rr, &b);
+    r[0] = (int16_t)(r[0] + l), r[1] = (int16_t)(r[1] + t), r[2] = (int16_t)(r[2] - rr);
+    int16_t bottom = (int16_t)(r[3] - b);
+    if (w->style & 2) {
+        uintptr_t hit = 0;
+        if (x <= r[0]) hit = 2;
+        if (y <= r[1]) hit |= 8;
+        if (x >= r[2]) hit |= 4;
+        if (y >= bottom) hit |= 0x10;
+        if (hit) return hit;
+    }
+    if (w->style & 8) {
+        r[3] = (int16_t)(r[1] + w->title_h);
+        if (in_rect_edges(r, x, y)) {
+            static const uint32_t bits[3] = { 0x10, 0x40, 0x20 }, hits[3] = { 0x80, 0x100, 0x200 };
+            for (int i = 0; i < 3; i++) {
+                if (!(w->style & bits[i])) continue;
+                int16_t s = box_size(w, bits[i]);
+                r[2] = (int16_t)((i == 0 ? r[2] : r[0]) - 2);
+                r[0] = (int16_t)(r[2] - s);
+                if (in_rect_edges(r, x, y)) return hits[i];
+            }
+            return 0x20;
+        }
+    }
+    return (w->style & 1) ? WM_HIT_CLIENT : 0;
+}
+
+/* 0x473990's sums (0x473e10, 0x474180): the smallest frame: its sides, with a title (8) the title's
+   width and height and each box's width plus 2. */
+static void frame_min(const WmWindow *w, int16_t *mw, int16_t *mh)
+{
+    int16_t l, t, r, b;
+    frame_sizes(w, &l, &t, &r, &b);
+    int16_t x = (int16_t)(l + r), y = (int16_t)(t + b);
+    if (w->style & 8) {
+        x = (int16_t)(x + w->title_w), y = (int16_t)(y + w->title_h);
+        static const uint32_t bits[3] = { 0x10, 0x40, 0x20 };
+        for (int i = 0; i < 3; i++)
+            if (w->style & bits[i]) x = (int16_t)(x + box_size(w, bits[i]) + 2);
+    }
+    *mw = x, *mh = y;
+}
+
+/* The frame's paint (WM_NCPAINT): the PSUI's background (+0x00, style 1) and sizing frame (+0x04, style
+   2) over the window; with a title bar (4) its part (+0x08) inside the sides, as tall as the title, the
+   title (8) in it at 2 and the ascent, black (grey when disabled, format 1), and its boxes from the
+   right 2 apart and 2 down: close (0x10: +0x10, +0x14 pressed), zoom (0x40: +0x20, +0x24), grow (0x20:
+   +0x18, +0x1c). */
+static void frame_paint(WmWindow *w)
+{
+    const uint8_t *ui = wm_psui_active();
+    if (!ui) return;
+    WmDc *dc = dc_begin_window(w);
+    if (!dc) return;
+    bool on = enabled(w);
+    if (w->style & 1) wm_dc_part(dc, tm_link(ui + 0x00), 0xffff, 0, 0, w->w, w->h, 0xff);
+    if (w->style & 2) wm_dc_part(dc, tm_link(ui + 0x04), 0xffff, 0, 0, w->w, w->h, 0xff);
+    if (w->style & 4) {
+        int16_t l, t, r, b;
+        frame_sizes(w, &l, &t, &r, &b);
+        int16_t x = l, y = t, width = (int16_t)(w->w - (l + r)), height = w->title_h;
+        wm_dc_part(dc, tm_link(ui + 0x08), 0xffff, x, y, width, height, 0xff);
+        if (w->style & 8) {
+            int16_t rect[4] = { x, y, (int16_t)(x + width), (int16_t)(y + height) };
+            int16_t pen[2] = { (int16_t)(x + 2), (int16_t)(y + wm_dc_ascending()) };
+            wm_dc_set_colour(on ? 0xff000000u : 0xff808080u);
+            wm_dc_set_format(1);
+            wm_dc_text(dc, rect, pen, w->title, NULL);
+        }
+        x = (int16_t)(x + width), y = (int16_t)(y + 2);
+        static const uint32_t bits[3] = { 0x10, 0x40, 0x20 }, hits[3] = { 0x80, 0x100, 0x200 }, parts[3] = { 0x10, 0x20, 0x18 };
+        for (int i = 0; i < 3; i++) {
+            if (!(w->style & bits[i])) continue;
+            int16_t s = box_size(w, bits[i]);
+            x = (int16_t)(x - 2 - s);
+            bool pressed = (w->nc_hit & 0xffff) == hits[i] && (w->nc_hit & 0x80000000u);
+            wm_dc_part(dc, tm_link(ui + parts[i] + (pressed ? 4 : 0)), 0xffff, x, y, s, s, 0xff);
+        }
+    }
+    wm_dc_end(dc);
+}
+
+/* 0x473e10: the zoom box's: zoomed, back to the size it had; else the rectangle kept and the window
+   made its smallest frame. */
+static void frame_zoom(WmWindow *w)
+{
+    if (w->nc_hit & 0x40000000u) {
+        w->nc_hit &= 0x9fffffffu;
+        set_size(w, (int16_t)(w->zoom_rect[2] - w->zoom_rect[0]), (int16_t)(w->zoom_rect[3] - w->zoom_rect[1]));
+        return;
+    }
+    int16_t mw, mh;
+    frame_min(w, &mw, &mh);
+    screen_rect(w, w->zoom_rect);
+    w->nc_hit = (w->nc_hit & 0xdfffffffu) | 0x40000000u;
+    set_size(w, mw, mh);
+}
+
+/* 0x474180: the mouse moving with a frame part held (WM_MOUSEMOVE while it has the mouse): the title
+   bar moves the window by the move since the last point; a box is pressed while the point is over it;
+   the edges size it, each side only while the point is on the side it moves toward, and only to the
+   smallest frame (0x475770, then not zoomed). */
+static void frame_drag(WmWindow *w, uintptr_t p)
+{
+    int16_t px = (int16_t)(p >> 16), py = (int16_t)p, mw, mh, sr[4];
+    frame_min(w, &mw, &mh);
+    screen_rect(w, sr);
+    int16_t off_x = (int16_t)(px - sr[0]), off_y = (int16_t)(py - sr[1]);
+    int16_t dx = (int16_t)(px - w->nc_x), dy = (int16_t)(py - w->nc_y);
+    int16_t x = w->x, y = w->y, width = w->w, height = w->h;
+    uint32_t hit = w->nc_hit & 0xffff;
+    if (hit == 0x20) {
+        wm_set_location(w, (int16_t)(w->x + dx), (int16_t)(w->y + dy));
+    } else if (hit == 0x80 || hit == 0x100 || hit == 0x200) {
+        if (frame_hit(w, p) == hit) w->nc_hit |= 0x80000000u;
+        else w->nc_hit &= 0x7fffffffu;
+    } else {
+        /* (each side: not when the move is away from the side the point is on) */
+        if ((hit & 2) && !((dx < 0 && off_x > 0) || (dx > 0 && off_x < 0)))
+            width = (int16_t)(w->w - dx), x = (int16_t)(w->x + dx);
+        int16_t ox = (int16_t)(off_x - w->w), oy = (int16_t)(off_y - w->h);
+        if ((hit & 4) && !((dx < 0 && ox > 0) || (dx > 0 && ox < 0))) width = (int16_t)(w->w + dx);
+        if ((hit & 8) && !((dy < 0 && off_y > 0) || (dy > 0 && off_y < 0)))
+            height = (int16_t)(w->h - dy), y = (int16_t)(w->y + dy);
+        if ((hit & 0x10) && !((dy < 0 && oy > 0) || (dy > 0 && oy < 0))) height = (int16_t)(w->h + dy);
+        static const uint8_t sizing[0x1f] = { 1,0,1,0,0,0,1,0,1,0,1,0,0,0,1,0,1,0,1 };   /* 0x4746b0's resizes */
+        if (hit >= 2 && hit - 2 < sizeof sizing && sizing[hit - 2] && width >= mw && height >= mh) {
+            place(w, x, y, width, height);
+            w->nc_hit &= 0x9fffffffu;
+        }
+    }
+    w->nc_x = px, w->nc_y = py;
+}
+
 static uintptr_t default_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
 {
-    (void)p2;
     switch (msg) {
-    case WM_HITTEST: {
-        /* 0x473a50: none (0) off the window (0x474e60, edges in: 0x447ff0); on it, with the style's 1 the
-           client, else none. The frames' parts (the sizing edges of style 2, the title bar's close, zoom and
-           grow boxes) are not ported: only the developers' dialogs have those styles */
-        int16_t r[4];
-        screen_rect(w, r);
-        int16_t x = (int16_t)(p1 >> 16), y = (int16_t)p1;
-        if (x < r[0] || x > r[2] || y < r[1] || y > r[3]) return 0;
-        return (w->style & 1) ? WM_HIT_CLIENT : 0;
-    }
-    case WM_NCLBUTTONDOWN:
-        set_capture(w);
+    case WM_HITTEST:
+        return frame_hit(w, p1);
+    case WM_NCPAINT:
+        frame_paint(w);
         return 0;
-    case WM_NCLBUTTONUP:
-        set_capture(NULL);
+    case 0x05: case 0x06: case 0x07: case 0x08: case 0x09: case 0x0a: case 0x0b: case 0x0c: case 0x0d: case 0x0e:
+        /* the frame's mouse: a press takes the mouse and holds the part; a release on the box pressed
+           sends its message (close 0x14, zoom 0x15, grow 0x16) and lets go; the point kept */
+        if (msg == WM_NCLBUTTONDOWN) {
+            set_capture(w);
+            w->nc_hit = (w->nc_hit & 0xffff0000u) | (uint16_t)p2 | 0x80000000u;
+        } else if (msg == WM_NCLBUTTONUP) {
+            uint32_t held = w->nc_hit & 0xffff;
+            if (held == p2 && (p2 == 0x80 || p2 == 0x100 || p2 == 0x200))
+                wm_send(w, p2 == 0x80 ? WM_CLOSE : p2 == 0x100 ? 0x15 : 0x16, 0, 0);
+            w->nc_hit &= 0x7fff0000u;
+            set_capture(NULL);
+        }
+        w->nc_x = (int16_t)(p1 >> 16), w->nc_y = (int16_t)p1;
         return 0;
     case WM_CLIENTRECT: {
-        /* the frame's parts (title, scroll bars) not ported: the client is the window */
-        int16_t *r = (int16_t *)p1;
-        r[0] = 0, r[1] = 0, r[2] = w->w, r[3] = w->h;
+        /* inside the frame's sides and under the title bar (style 4); its width and height the window's
+           less the right and bottom sides only, as the original has them */
+        int16_t *r = (int16_t *)p1, l, t, rr, b;
+        frame_sizes(w, &l, &t, &rr, &b);
+        r[0] = l, r[1] = t, r[2] = (int16_t)(w->w - rr), r[3] = (int16_t)(w->h - b);
+        if (w->style & 4) r[1] = (int16_t)(r[1] + w->title_h);
         return 0;
     }
     case WM_CLOSE:
         wm_window_delete(w);
+        return 0;
+    case 0x15:
+        frame_zoom(w);
+        return 0;
+    case WM_MOUSEMOVE:
+        if (w->nc_hit & 0xffff) frame_drag(w, p1);
+        return 0;
+    case WM_ACTIVATE:
+        /* 0x474100: a top-level window's focus: given back on its activation; kept when it goes
+           inactive, the focus if inside it, else itself */
+        if (w->flags & WM_STYLE_CHILD) return 0;
+        if (p1 & 0xff) set_focus(w->focus_saved);
+        else w->focus_saved = focus && is_inside(focus, w) ? focus : w;
+        return 0;
+    case WM_CAPTURELOST:
+        w->nc_hit &= 0x7fff0000u;
+        return 0;
+    case WM_RESOLUTION:
+        /* 0x474150: to each child that isn't a child window. The original's walk doesn't step past a
+           child window, testing it again for ever (a resolution change, 0x476b7f to the desktop, with
+           a dialog open would hang there unless its class takes the message); the port has one screen
+           mode and sends it nowhere, and steps past them */
+        for (WmWindow *c = w->child; c; c = c->next)
+            if (!(c->flags & WM_STYLE_CHILD)) wm_send(c, WM_RESOLUTION, p1, 0);
         return 0;
     }
     return 0;
@@ -1089,8 +1298,9 @@ static uintptr_t button_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t 
    along the client's right edge, the lines that much narrower: its range the count of lines, its page
    the lines shown, its position the lines scrolled by the count over the lines shown (0x46cfd0); its
    messages (0x58) scroll the list (0x46d2c0). Its keys (0x46d0c0) move the selection, or with style
-   0x80000 select the first line not before the characters typed. Not ported: the owner-drawn lines
-   (style 0x100000). */
+   0x80000 select the first line not before the characters typed. Owner-drawn lines (style 0x100000)
+   are painted by the parent (WM_DRAWITEM, WmDrawLine); with style 0x2b0000 each line has a box before
+   its text. */
 typedef struct { char *text; uint32_t data; bool selected; } ListLine;
 typedef struct {
     bool pressed, twice, focus;     /* +0x00, +0x02, +0x03 */
@@ -1325,10 +1535,28 @@ static uintptr_t list_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2
         for (uint32_t i = b->top < 0 ? 0 : (uint32_t)b->top; i < last; i++, y = (int16_t)(y + b->line_h)) {
             if (on && b->lines[i].selected)
                 wm_dc_part(dc, tm_link(ui + (b->focus ? 0x4c : 0x00)), 0xffff, 0, y, b->line_w, b->line_h, 0xff);
-            if ((w->style & 0x100000) || !(w->style & 0x80000)) continue;
-            wm_dc_set_colour(w->font.colour);
-            wm_dc_set_format(0);
-            int16_t pen[2] = { 3, (int16_t)(y + wm_dc_ascending()) };
+            if (w->style & 0x100000) {
+                /* owner-drawn: the parent paints it */
+                WmDrawLine it = { dc, w, w->id, b->lines[i].selected, i, { 0, y, b->line_w, (int16_t)(y + b->line_h) },
+                                  b->lines[i].text, b->lines[i].data };
+                wm_send(w->parent, WM_DRAWITEM, w->id, (uintptr_t)&it);
+                continue;
+            }
+            if (!(w->style & 0x80000)) continue;
+            int16_t pen[2] = { 3, y };
+            if ((w->style & 0x2b0000) == 0x2b0000) {
+                /* a box before the text, its part by the line's data (1: +0xa8, 2: +0xac; any other, the
+                   original passes the font's ascent as the part, its slip: none drawn here), the line's
+                   height less 3 square at 2, 1; the text after it */
+                uint32_t d = b->lines[i].data;
+                const void *part = d == 1 ? tm_link(ui + 0xa8) : d == 2 ? tm_link(ui + 0xac) : NULL;
+                int16_t side = (int16_t)(b->line_h - 3);
+                if (part) wm_dc_part(dc, part, 0xffff, 2, (int16_t)(y + 1), side, side, 0xff);
+                pen[0] = (int16_t)(2 + b->line_h);
+            }
+            wm_dc_set_colour(on ? w->font.colour : 0xff808080u);     /* disabled: grey */
+            wm_dc_set_format(1);
+            pen[1] = (int16_t)(y + wm_dc_ascending());
             wm_dc_text(dc, NULL, pen, b->lines[i].text, NULL);
         }
         wm_dc_end(dc);

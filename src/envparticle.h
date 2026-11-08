@@ -6,6 +6,8 @@
    their own lists (an ENVP the OBOA element links, OBrSetParticles 0x438d90): their particles hang from
    the object's matrix, their tags led by the object's name. */
 #pragma once
+#include "particle.h"
+
 #include <stdint.h>
 
 /* The level's start (FUN_00454f90 on ONLV +0x70, after 0x455500): every particle of the list made,
@@ -19,3 +21,10 @@ void envparticle_register_commands(void);
    (EPrArray_Delete 0x4552d0) kills them and takes the list's tags out. */
 void envparticle_owned_start(const void *envp, const float *matrix, const char *prefix, uint32_t time);
 void envparticle_owned_stop(const void *envp);
+
+/* A tag's chain (0x454330 its first record, 0x6a8b60's buckets; each record's next at +0xcc): the
+   first record of the tag, the next after one, -1 at the end; a record's live particle (+0xb4 its
+   class, +0xb8 the particle), NULL none. */
+int envparticle_tag_first(const char *tag);
+int envparticle_tag_next(int i);
+P3Particle *envparticle_tag_particle(int i, P3Class **c);

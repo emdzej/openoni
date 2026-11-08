@@ -17,6 +17,7 @@
 #include "chr_hit.h"
 #include "decal.h"
 #include "env.h"
+#include "envparticle.h"
 #include "impact.h"
 #include "knowledge.h"
 #include "sound.h"
@@ -1318,6 +1319,9 @@ static struct {
     float best;
     uint32_t current;
     float dir[3], angle_min, angle_max, weight, angle_cut;
+    P3Class *target;            /* 0x5e9628: the class walked ("class") */
+    P3Particle *walk;           /* 0x5e95f8: its next particle */
+    int tag_walk;               /* 0x5e9614: the tag's next record ("tag") */
 } as;
 
 /* An iterator: the first call (pos NULL) starts it with the distance; each next gives a candidate (its
@@ -1341,6 +1345,59 @@ static bool iterate_link(P3Class *c, P3Particle *p, float pos[3], float *dist, u
     *id = h;
     *dist = sqrtf(d2);
     return true;
+}
+
+/* "class" (0x4636a0): the particles of the class the attractor's name (+0x22c) names, in the class's
+   list, those whose place is near enough. The original resolves the name to the class (+0x228) when the
+   classes are set (0x457f30, 0x462da7); here at the start. */
+static bool iterate_class(P3Class *c, P3Particle *p, float pos[3], float *dist, uint32_t *id)
+{
+    if (!pos) {
+        as.target = p3_class((const char *)c->def + D_ATTRACT_NAME);
+        if (!as.target) return false;
+        as.walk = as.target->head;
+        if (!p3_real_position(c, p, as.here)) return false;
+        as.max2 = *dist * *dist;
+        return true;
+    }
+    while (as.walk) {
+        P3Particle *q = as.walk;
+        as.walk = q->next;
+        if (!p3_real_position(as.target, q, pos)) continue;
+        float d[3] = { as.here[0] - pos[0], as.here[1] - pos[1], as.here[2] - pos[2] }, d2 = dot3(d, d);
+        if (!(d2 <= as.max2)) continue;
+        *id = q->handle;
+        *dist = sqrtf(d2);
+        return true;
+    }
+    return false;
+}
+
+/* "tag" (0x4637a0): the particles of the environment particles of the tag the attractor's name names
+   (0x454330), along the tag's chain, those near enough. The original's record holds the particle itself
+   (+0xb8) and reads it whatever became of it; the port's holds the handle and skips a dead one. */
+static bool iterate_tag(P3Class *c, P3Particle *p, float pos[3], float *dist, uint32_t *id)
+{
+    if (!pos) {
+        as.tag_walk = envparticle_tag_first((const char *)c->def + D_ATTRACT_NAME);
+        if (as.tag_walk < 0) return false;
+        if (!p3_real_position(c, p, as.here)) return false;
+        as.max2 = *dist * *dist;
+        return true;
+    }
+    while (as.tag_walk >= 0) {
+        int i = as.tag_walk;
+        as.tag_walk = envparticle_tag_next(i);
+        P3Class *qc;
+        P3Particle *q = envparticle_tag_particle(i, &qc);
+        if (!q || !p3_real_position(qc, q, pos)) continue;
+        float d[3] = { as.here[0] - pos[0], as.here[1] - pos[1], as.here[2] - pos[2] }, d2 = dot3(d, d);
+        if (!(d2 <= as.max2)) continue;
+        *id = q->handle;
+        *dist = sqrtf(d2);
+        return true;
+    }
+    return false;
 }
 
 /* "characters", "hostiles" and "all characters" (P3iAttractorIterator_Character 0x4638b0): the living characters near enough; all but
@@ -1449,13 +1506,15 @@ static bool select_angle(P3Class *c, P3Particle *p, const float pos[3], float di
     return false;
 }
 
-/* The iterators by the class's kind (0x53b714): none, link, class and tag (not ported: no class of the
-   game's uses them), characters, hostiles, emitted towards and the parent's attractor (no function), all
+/* The iterators by the class's kind (0x53b714): none, link, class and tag (no class of the game's uses
+   these two), characters, hostiles, emitted towards and the parent's attractor (no function), all
    characters. The selectors (0x53b75c): distance, angle. */
 static AttractIterator attract_iterator(uint32_t kind)
 {
     switch (kind) {
     case 1: return iterate_link;
+    case 2: return iterate_class;
+    case 3: return iterate_tag;
     case 4: case 5: case 8: return iterate_characters;
     default: return NULL;
     }
@@ -2426,6 +2485,7 @@ static void process_class(P3Class *c, uint32_t tick)
             bool emitting = false, collided = false;
             int which = 0;
             free_move = false;
+            att_listed = false;     /* 0x659cdc, each step */
             const uint8_t *e = emitters_of(c);
             for (int k = 0; k < nemitters(c); k++, e += EMITTER) {
                 uint8_t *st = p->v + k * EMITTER_STATE;
@@ -2479,7 +2539,23 @@ static void process_class(P3Class *c, uint32_t tick)
                     }
                     break;
                 }
-                default:    /* the attractors' (4): not ported (no class on the CD has it) */
+                case 4:
+                    /* the attractors': past the delay (param 0) the attractors are listed (P3rIterateAttractors,
+                       param 1 seconds the search's delay, x 60 rounded: 0x52a188, 0x4340a0) and it emits
+                       at once if any were; else not this step (nor as a first time). No class on the CD
+                       has it. */
+                    if (!fvalue(c, p, eparam(e, 0), &f0) || !fvalue(c, p, eparam(e, 1), &f1)) break;
+                    {
+                        float ft = f0 + last;
+                        if (ft < t) ft = t;
+                        if (ft < tn) {
+                            iterate_attractors(c, p, round_small(f1 * 60.0f));
+                            if (!att_listed || !att_count) continue;
+                            instant = true;
+                        }
+                    }
+                    break;
+                default:
                     break;
                 }
                 if (first) instant = true;

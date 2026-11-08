@@ -277,6 +277,14 @@ static int first_of_tag(const char *tag)
     return -1;
 }
 
+int envparticle_tag_first(const char *tag) { return first_of_tag(tag); }
+int envparticle_tag_next(int i) { return i >= 0 && i < neps ? tag_next[i] : -1; }
+P3Particle *envparticle_tag_particle(int i, P3Class **c)
+{
+    if (i < 0 || i >= neps || !eps[i].cls) return NULL;
+    return live(&eps[i], c);
+}
+
 static bool has_prefix(const char *s, const char *prefix)     /* 0x4265d0 */
 {
     while (*prefix)

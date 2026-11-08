@@ -2,7 +2,8 @@
    its list (id 100, style 0x90000) gets a scroll bar (class 16) along its client's right edge and is
    made as tall as its whole lines; filled past them, a selection, the scroll bar's messages and a press
    on its down arrow scroll it (the line under a click on its first row tells which line is on top), and
-   its keys move the selection. */
+   its keys move the selection. The frames: the developers' get mask dialog's parts, a drag by its
+   title bar and a resize by its right edge. */
 #include "exe.h"
 #include "tm.h"
 #include "vfs.h"
@@ -120,6 +121,36 @@ int main(void)
         failed |= 16;
     if (list->client[3] % visible) failed |= 4;  /* whole lines */
     if (bar->h != list->client[3] + 2 || bar->y != -1) failed |= 8;
+    /* the frames, on the developers' get mask dialog (103, style 0x1007f: background, sizing edges, a
+       title bar with its text and the close, grow and zoom boxes): the parts under the points, a drag
+       by the title bar, one by the right edge */
+    WmWindow *g = wm_dialog_new(103, NULL, 0);
+    if (g) {
+        int16_t l = g->client[0], t = (int16_t)(g->client[1] - g->title_h), r = (int16_t)(g->w - g->client[2]);
+        int16_t s = (int16_t)(g->title_h - 4);
+        int16_t x0 = g->x, y0 = g->y, w0 = g->w;
+        uintptr_t at_title = (uintptr_t)((uint32_t)(uint16_t)(x0 + l + 4) << 16 | (uint16_t)(y0 + t + 2));
+        uintptr_t at_close = (uintptr_t)((uint32_t)(uint16_t)(x0 + w0 - r - 2 - s / 2) << 16 | (uint16_t)(y0 + t + 2));
+        uintptr_t at_left = (uintptr_t)((uint32_t)(uint16_t)x0 << 16 | (uint16_t)(y0 + g->h / 2));
+        uintptr_t at_right = (uintptr_t)((uint32_t)(uint16_t)(x0 + w0) << 16 | (uint16_t)(y0 + g->h / 2));
+        uintptr_t h_title = wm_send(g, WM_HITTEST, at_title, 0), h_close = wm_send(g, WM_HITTEST, at_close, 0);
+        uintptr_t h_left = wm_send(g, WM_HITTEST, at_left, 0), h_right = wm_send(g, WM_HITTEST, at_right, 0);
+        /* the title bar dragged 10 right and 5 down */
+        wm_send(g, WM_NCLBUTTONDOWN, at_title, h_title);
+        wm_send(g, WM_MOUSEMOVE, at_title + ((uintptr_t)10 << 16) + 5, h_title);
+        wm_send(g, WM_NCLBUTTONUP, at_title + ((uintptr_t)10 << 16) + 5, h_title);
+        int16_t mx = (int16_t)(g->x - x0), my = (int16_t)(g->y - y0);
+        /* the right edge dragged 20 right: 20 wider */
+        uintptr_t right = (uintptr_t)((uint32_t)(uint16_t)(g->x + g->w) << 16 | (uint16_t)(g->y + g->h / 2));
+        wm_send(g, WM_NCLBUTTONDOWN, right, h_right);
+        wm_send(g, WM_MOUSEMOVE, right + ((uintptr_t)20 << 16), h_right);
+        wm_send(g, WM_NCLBUTTONUP, right + ((uintptr_t)20 << 16), h_right);
+        int16_t grown = (int16_t)(g->w - w0);
+        printf("frame: sides %d %d %d, title %d; parts: title %x, close %x, left %x, right %x; moved %d,%d; grown %d\n",
+               l, t, r, g->title_h, (unsigned)h_title, (unsigned)h_close, (unsigned)h_left, (unsigned)h_right, mx, my, grown);
+        if (h_title != 0x20 || h_close != 0x80 || h_left != 2 || h_right != 4 || mx != 10 || my != 5 || grown != 20)
+            failed |= 32;
+    } else failed |= 32;
     printf("wm_test: %s\n", failed ? "FAILED" : "ok");
     return failed ? 1 : 0;
 }
