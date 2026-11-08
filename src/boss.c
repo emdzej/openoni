@@ -771,7 +771,6 @@ int boss_behaviour(AiState *a, Character *c, int id, int msg, bool *handled, int
     case 12: return muro_melee(a, c, msg, handled, p5, ptr);
     case 13: return muro_thunderbolt(a, c, msg, handled, p5, ptr);
     default:
-        /* Run For Alarm (11): not yet, the default's */
         *handled = false;
         return 0;
     }

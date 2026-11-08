@@ -278,7 +278,7 @@ static int no_gun(AiState *a, int msg, bool *handled)
 static bool needs_gun(const Character *c) { return !c->weapon || weapon_has_empty((Character *)c); }
 
 /* The behaviours (0x52a6c4): 1 Stare 0x490f20, 2 Hold And Fire 0x490f90, 3 Firing Charge 0x4911e0,
-   4 Melee 0x4912d0; the bosses' (5 to 13) in boss.c. */
+   4 Melee 0x4912d0, 11 Run For Alarm 0x491350; the bosses' (5 to 10, 12, 13) in boss.c. */
 static int behaviour(AiState *a, Character *c, int id, int msg, bool *handled, int p5, int p6, const void *ptr)
 {
     CombatState *s = &a->combat;
@@ -322,6 +322,21 @@ static int behaviour(AiState *a, Character *c, int id, int msg, bool *handled, i
         } else if (msg != MSG_ENTER && msg != MSG_EXIT)
             *handled = false;
         return 0;
+    case 11:
+        /* Run For Alarm 0x491350: the alarm first (1.2, the retreat 0.8); once past it (message 14
+           from another maneuver: nothing sends it), as the gun behaviours without one */
+        if (msg == MSG_WEIGHTS) s->weight[COMBAT_MANEUVER_ALARM] = 1.2f;
+        if (s->run_alarm_done && msg != MSG_ENTER && msg != MSG_EXIT && needs_gun(c)) return no_gun(a, msg, handled);
+        switch (msg) {
+        case MSG_ENTER: s->run_alarm_done = false; break;
+        case MSG_WEIGHTS: s->weight[COMBAT_MANEUVER_RETREAT] = 0.8f; break;
+        case MSG_EXIT: break;
+        case MSG_MELEE: s->may_dodge = true; break;
+        case MSG_FLAGS: s->check_env = s->check_friends = s->aim = s->fire = s->targeting = true; break;
+        case MSG_STATE: if (s->maneuver != COMBAT_MANEUVER_ALARM) s->run_alarm_done = true; break;
+        default: *handled = false; break;
+        }
+        return 0;
     default:
         return boss_behaviour(a, c, id, msg, handled, p5, p6, ptr);
     }
@@ -339,7 +354,8 @@ static void start_daze_timer(AiState *a, const Character *c)
     if (hi > lo) a->daze_timer = (uint16_t)(lo + (int)((trac_random() * (uint32_t)(hi - lo)) >> 16));   /* UUrRandom */
 }
 
-/* AI2rBehavior_Default 0x493120 (messages 0, 2 and 3, the vocalizations and the report, aren't kept). */
+/* AI2rBehavior_Default 0x493120 (messages 0 and 2, an error report (0x4936b0), and 3, the debug report's
+   text, "nothing to report", aren't kept). */
 static int behaviour_default(AiState *a, const Character *c, int msg, float *arg, const void *ptr)
 {
     CombatState *s = &a->combat;

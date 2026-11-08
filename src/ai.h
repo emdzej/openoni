@@ -227,6 +227,7 @@ typedef struct {
         BarabbasState barabbas;
         MuroState muro;
         NinjaState ninja;
+        bool run_alarm_done;    /* +0x2c: Run For Alarm's: past its alarm (message 14 off the alarm maneuver) */
     };
     bool targeting;             /* +0x8c */
     AiTargeting t;              /* +0x90 */

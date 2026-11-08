@@ -1669,8 +1669,9 @@ static bool cmd_inv_reset(SlThread *t, int c, const SlValue *v, SlValue *r, void
     (void)t, (void)r, (void)u;
     Chr *ch = c >= 1 ? char_arg(&v[0]) : NULL;
     if (!ch) return true;
-    /* the inventory (C+0x1a2..0x1ba; +0x1ae, the hypo's healing left, isn't kept) */
+    /* the inventory (0x4ba280: C+0x1a2..0x1ba, the hypo's healing left, +0x1ae, too) */
     ch->c.ammo = ch->c.hypos = ch->c.cells = 0;
+    ch->c.hypo_heal = 0;
     ch->c.lsi = false;
     ch->c.shield = ch->c.invisibility = 0;
     if (ch->c.weapon) {

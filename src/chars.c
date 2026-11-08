@@ -463,8 +463,9 @@ static void melee_score(Character *attacker, Character *victim, uint32_t damage)
 
 /* AI2rNotifyKnockdown 0x48b530, for an AI's character knocked down from not lying: the melee cookie given
    back (0x4998a0, in combat), a new daze to come; playing a film on patrol, the film stopped (ONrFilm_Stop
-   0x4f41f0) and, out of its job's state (C+0xf70 not C+0x200: the port's state not its job's, inferred),
-   back to it (or idle under the job's alert); in the alarm state, its knockdown (0x48ea40). */
+   0x4f41f0) and, out of its job's state (the state's data, C+0xf70, not the job's at C+0x200: the
+   port's state not its job), back to it (or idle under the job's alert); in the alarm state, its
+   knockdown (0x48ea40). */
 static void knocked_down(Character *c)
 {
     AiState *a = &((Chr *)c)->ai;

@@ -848,7 +848,9 @@ the feet, toward it at the aiming speed (A+0x1ab4 × 6° a tick, by the weapon's
 states, 0x52a4d8); more than 130° off the facing it aims ahead. `DoCharacterFrame` turns the point into
 the character's aim (A+0x21bc, 0x21c0) for an AI's character not under a film.
 
-Not ported yet: Run For Alarm (behaviour 11, used by no level).
+Run For Alarm (behaviour 11, 0x491350, used by no level): the alarm maneuver at 1.2 and the retreat at
+0.8; message 14 from another maneuver would mark it past the alarm, then it acts as the gun behaviours
+without a gun, but nothing sends message 14.
 
 ## The alarm
 

@@ -239,8 +239,9 @@ void envparticle_load(void)
     envparticle_reset();
     const uint8_t *a = level_envp();
     int nenvp = a ? rd16(a + 0x16) : 0, nobj = 0;
-    /* the level's particle objects too (OBJiParticle_New 0x4c8760 lists each with EPrNew 0x454a60):
-       after the ENVP's (inferred) */
+    /* the level's particle objects too, first: OBJiParticle_New 0x4c8760 lists each (EPrNew 0x454a60
+       appends) as the objects load (OBDrLevel_Load 0x505ba1), and EPrLevelBegin 0x455500 makes them,
+       before ONrLevel_Load lists the ENVP's (EPrArray_New at 0x50610f) */
     objc_each("Particle", count_object, &nobj);
     if (nobj) {
         obj_recs = calloc((size_t)nobj, EP_SIZE);
@@ -256,7 +257,7 @@ void envparticle_load(void)
     capeps = n;
     for (int i = 0; i < n; i++) {
         EnvParticle *e = &eps[neps];
-        e->rec = i < nenvp ? a + 0x18 + (size_t)EP_SIZE * (size_t)i : obj_recs + (size_t)EP_SIZE * (size_t)(i - nenvp);
+        e->rec = i < nobj ? obj_recs + (size_t)EP_SIZE * (size_t)i : a + 0x18 + (size_t)EP_SIZE * (size_t)(i - nobj);
         e->flags = (uint16_t)(rd16(e->rec + EP_FLAGS) | EPF_LISTED);
         tag_next[neps] = -1;
         link_tag(neps);
