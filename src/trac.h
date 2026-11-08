@@ -24,6 +24,9 @@ void trac_set_level(uint16_t level);
 /* UUrRandom 0x426e10. */
 uint16_t trac_random(void);
 void trac_random_seed(uint32_t seed);
+/* The two generators' seeds now, for debug aids that query and must leave the game as it was. */
+uint32_t trac_random_state(void);
+uint32_t trac_local_state(void);
 /* UUrLocalRandom 0x426e30, the second generator (sounds, particles). */
 uint16_t trac_local_random(void);
 /* Its seed (0x5326d8), set: the draw engine reseeds it to pick a random texture frame (M3iResolveTexture). */

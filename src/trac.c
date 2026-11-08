@@ -30,6 +30,8 @@ void trac_random_seed(uint32_t s) { seed = s; }
    the particles. */
 static uint32_t local_seed = 0xfded;
 void trac_local_seed(uint32_t s) { local_seed = s; }
+uint32_t trac_local_state(void) { return local_seed; }
+uint32_t trac_random_state(void) { return seed; }
 uint16_t trac_local_random(void)
 {
     local_seed = local_seed * 0x19660du + 0x3c6ef35fu;

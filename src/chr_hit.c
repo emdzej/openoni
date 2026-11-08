@@ -296,7 +296,11 @@ void chr_take_damage(Character *c, uint32_t damage, float knockback, const float
         char b[200];
         const TmInstance *fa = from && from->anim ? tm_handle_instance(tm_handle_of(from->anim)) : NULL;
         const TmInstance *ca = c->anim ? tm_handle_instance(tm_handle_of(c->anim)) : NULL;
+        /* (the block's lookup draws from the generators, which a debug aid mustn't move) */
+        uint32_t r1 = trac_random_state(), r2 = trac_local_state();
         bool hi = false, lo = false, could = from && chr_could_block(c, from, &hi, &lo);
+        trac_random_seed(r1);
+        trac_local_seed(r2);
         float ang = from ? wrap_2pi(wrap_2pi(atan2f(from->pos[0] - c->pos[0], from->pos[2] - c->pos[2])) -
                                     wrap_2pi(c->desired_facing - c->facing_offset)) : 0.0f;
         if (ang >= PI) ang -= TWO_PI;
