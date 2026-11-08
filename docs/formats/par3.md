@@ -50,7 +50,7 @@ direction and up (+0x64, +0x68) and the parameters (+0x6c, values: the rate's fr
 position's from 2, the direction's from 5, the speed's from 8).
 
 Position kinds: 0 point, 1 line, 2 circle, 3 sphere, 4 offset, 5 cylinder, 6 the owner's body surface,
-7 the owner's bones (see [the run time](../re/particles.md#the-bodies)). Direction kinds: 0 straight
+7 the owner's bones (see the run time: docs/re/particles.md, "The bodies"). Direction kinds: 0 straight
 (up), 1 random, 2 cone, 3 ring, 4 offset, 5 inaccurate (the owner's inaccuracy), 6 towards the
 attractor.
 
