@@ -1,7 +1,8 @@
 /* The window manager's list box and its scroll bar, on the game's Load Game dialog (151, "psui_oniUI"):
    its list (id 100, style 0x90000) gets a scroll bar (class 16) along its client's right edge and is
    made as tall as its whole lines; filled past them, a selection, the scroll bar's messages and a press
-   on its down arrow scroll it (the line under a click on its first row tells which line is on top). */
+   on its down arrow scroll it (the line under a click on its first row tells which line is on top), and
+   its keys move the selection. */
 #include "exe.h"
 #include "tm.h"
 #include "vfs.h"
@@ -88,6 +89,16 @@ int main(void)
     wm_send(bar, WM_LBUTTONDOWN, p, 1);
     wm_send(bar, WM_LBUTTONUP, p, 0);
     uint32_t arrow = top_line(list);
+    /* the keys: the selection moved from line 5, then the lines typed */
+    uint32_t keys[6];
+    const uint32_t codes[6] = { 0xb2, 0xaf, 0xae, 0xb0, 0xac, 0xab };
+    wm_send(list, 0x53, 5, 0);
+    for (int i = 0; i < 6; i++) {
+        wm_send(list, WM_KEYDOWN, codes[i], 0);
+        keys[i] = (uint32_t)wm_send(list, 0x47, 0xffffffffu, 0);
+    }
+    for (const char *t = "LINE 3"; *t; t++) wm_send(list, WM_KEYDOWN, (uint8_t)*t, 0);
+    uint32_t typed = (uint32_t)wm_send(list, 0x47, 0xffffffffu, 0);
     printf("list %dx%d client %d,%d %dx%d; bar at %d,%d %dx%d\n", list->w, list->h, list->client[0], list->client[1],
            list->client[2], list->client[3], bar->x, bar->y, bar->w, bar->h);
     printf("tops: first %u, after selecting the last %u, a line back %u, at 0 %u, the down arrow %u\n",
@@ -102,6 +113,11 @@ int main(void)
     printf("visible %d, position %d: a line back to %d, the arrow to %d\n", visible, pos, back, down);
     if (first != 0 || visible <= 1 || visible >= 40) failed |= 1;
     if ((int)line_back != back || to_start != 0 || (int)arrow != down) failed |= 2;
+    printf("keys: down %u, page down %u, end %u, up %u, page up %u, home %u; typed %u\n", (unsigned)keys[0],
+           (unsigned)keys[1], (unsigned)keys[2], (unsigned)keys[3], (unsigned)keys[4], (unsigned)keys[5], (unsigned)typed);
+    if (keys[0] != 6 || keys[1] != (uint32_t)(6 + visible) || keys[2] != 39 || keys[3] != 38 ||
+        keys[4] != (uint32_t)(38 - visible) || keys[5] != 0 || typed != 3)
+        failed |= 16;
     if (list->client[3] % visible) failed |= 4;  /* whole lines */
     if (bar->h != list->client[3] + 2 || bar->y != -1) failed |= 8;
     printf("wm_test: %s\n", failed ? "FAILED" : "ok");

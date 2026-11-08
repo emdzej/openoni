@@ -1096,11 +1096,14 @@ static int32_t chop_x87(double v)
    the focus, else the background (+0x00). With style 0x10000 a scroll bar (class 16, id 10) is its child
    along the client's right edge, the lines that much narrower: its range the count of lines, its page
    the lines shown, its position the lines scrolled by the count over the lines shown (0x46cfd0); its
-   messages (0x58) scroll the list (0x46d2c0). Not ported: the keys (0x46d0c0) and the owner-drawn lines
+   messages (0x58) scroll the list (0x46d2c0). Its keys (0x46d0c0) move the selection, or with style
+   0x80000 select the first line not before the characters typed. Not ported: the owner-drawn lines
    (style 0x100000). */
 typedef struct { char *text; uint32_t data; bool selected; } ListLine;
 typedef struct {
     bool pressed, twice, focus;     /* +0x00, +0x02, +0x03 */
+    uint32_t typed_until;           /* +0x04: the sixtieth the characters typed are forgotten after */
+    char typed[0x80];               /* +0x08 */
     ListLine *lines;                /* +0x88 */
     uint32_t n, cap;
     int32_t visible;                /* +0x8c: the lines the client holds */
@@ -1211,6 +1214,56 @@ static void list_scroll(WmWindow *w, ListBox *b, uintptr_t code, uintptr_t value
     sb_set_pos(b->scroll, b->pos);
 }
 
+/* UUrString_Compare_NoCase 0x4266d0: a to z folded to upper case, signed chars. */
+static int compare_nocase(const char *a, const char *b)
+{
+    signed char x, y;
+    do {
+        x = (signed char)*a++, y = (signed char)*b++;
+        if (x >= 'a' && x <= 'z') x = (signed char)(x - 0x20);
+        if (y >= 'a' && y <= 'z') y = (signed char)(y - 0x20);
+    } while (x == y && x);
+    return x - y;
+}
+
+/* 0x46d0c0: a key down. Home, End, the arrows and the pages (the lines the client holds) move the
+   selection from the selected line (none: -1, so Up and Page Up go to the first, Down to the first and
+   Page Down to the last line the client holds), held to the lines; any other key is typed (forgotten
+   after 45 sixtieths without one) and, the lines being text, the first line the typed text doesn't
+   sort after (a to z folded) is selected. The parent is told. */
+static void list_key(WmWindow *w, ListBox *b, uint32_t key)
+{
+    uint32_t sel = 0xffffffffu, n = b->n;
+    if (!(w->style & 0x40000))
+        for (uint32_t i = 0; i < n; i++)
+            if (b->lines[i].selected) {
+                sel = i;
+                break;
+            }
+    uint32_t page = (uint32_t)b->visible;
+    switch (key) {
+    case 0xab: list_select(w, b, 0, true); break;                                     /* Home */
+    case 0xac: list_select(w, b, sel - page <= n ? sel - page : 0, true); break;      /* Page Up */
+    case 0xae: list_select(w, b, n - 1, true); break;                                 /* End */
+    case 0xaf: list_select(w, b, sel + page < n ? sel + page : n - 1, true); break;   /* Page Down */
+    case 0xb0: list_select(w, b, sel - 1 <= n ? sel - 1 : 0, true); break;            /* Up */
+    case 0xb2: list_select(w, b, sel + 1 < n ? sel + 1 : n - 1, true); break;         /* Down */
+    default: {
+        if (b->typed_until < ticks()) b->typed[0] = 0;
+        size_t len = strlen(b->typed);
+        if (len < sizeof b->typed - 1) b->typed[len] = (char)key, b->typed[len + 1] = 0;
+        if (!(w->style & 0x80000)) break;
+        for (uint32_t i = 0; i < n; i++)
+            if (compare_nocase(b->lines[i].text, b->typed) >= 0) {
+                list_select(w, b, i, true);
+                break;
+            }
+        break;
+    }
+    }
+    b->typed_until = ticks() + 45;
+}
+
 static uintptr_t list_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2)
 {
     ListBox *b = (ListBox *)w->data;
@@ -1256,6 +1309,9 @@ static uintptr_t list_proc(WmWindow *w, uint32_t msg, uintptr_t p1, uintptr_t p2
     case WM_SETFOCUS: if (b) b->focus = true; return 0;
     case WM_KILLFOCUS: if (b) b->focus = false; return 0;
     case WM_WANTKEYS: return 0x33;
+    case WM_KEYDOWN:
+        if (b) list_key(w, b, (uint32_t)p1);
+        return 0;
     case WM_NCPAINT: {
         /* the frame: the edit field over the window */
         const uint8_t *ui = wm_psui_active();

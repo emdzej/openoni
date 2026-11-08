@@ -311,7 +311,13 @@ formatting, with the context's font:
   top, as many as shown; a selected one, enabled, has the list hilite (+0x4c) with the focus, else the
   background (+0x00); its text (style 0x80000) at x 3 on the ascent. The scroll units are the count's,
   not lines: a step of the arrows moves the top by the fraction, rounded (on the Load Game list, with 40
-  lines and 19 shown, two steps a line).
+  lines and 19 shown, two steps a line). A key down (0x46d0c0; +4 a time, +8 128 characters typed) moves
+  the selection from the selected line (none: -1, unsigned): Home (0xab) to 0, End (0xae) to the last,
+  Up (0xb0) and Page Up (0xac, the lines shown) back, to 0 past the start, Down (0xb2) and Page Down
+  (0xaf) on, to the last past the end; so with none selected Down selects 0 and Page Down the lines shown
+  less 1. Any other key is added to the characters typed, forgotten when more than 45 sixtieths passed
+  since the last key, and with text lines (0x80000) the first line comparing (a to z folded, `0x4266d0`)
+  not below them is selected; the parent is told (notice 1) in each case.
 - The scroll bar (16, 0x471b10; 0x20 bytes: +0 the button held, +2 vertical, +3 the part pressed, +4 min, +8
   max, +0xc the position, +0x10 the page as a float, +0x14 the thumb's place and size, +0x1c the thumb's
   place less the mouse's when taken). Its create: a side given as -1 the arrow's (the up arrow's width,
@@ -625,6 +631,6 @@ desktop is as tall as 480, scaled to the display (as the HUD). Unattended runs t
 with `--param keys=27,32,...`, or click with `@x:y` in the desktop's pixels (one every 30 frames of a
 dialog). Not ported: the frames' parts (sizing edges, title bars, their boxes and dragging: only the
 developers' dialogs have them), the caret, and the edit field, the menu bar and the radio button (none
-in the game's dialogs), the list box's keys (0x46d0c0) and owner-drawn lines. The options: the port has one screen mode,
+in the game's dialogs), the list box's owner-drawn lines. The options: the port has one screen mode,
 the persisted one, so the resolution's popup lists that alone; the quality and the gamma are persisted
 but not applied (the draw engine's quality and the display's gamma are not ported).

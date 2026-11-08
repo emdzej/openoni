@@ -537,6 +537,7 @@
 0046c720	WMiListBox_Create	WM	med	name from the Intel Mac build (strings:1)
 0046ce30	WMiListBox_Layout	WM	low	the lines shown, the height made to hold them, the scroll bar placed
 0046cfd0	WMiListBox_UpdateScrollbar	WM	low	the scroll bar's range (the count), page (the lines shown), position
+0046d0c0	WMiListBox_HandleKeyDown	WM	low	the selection moved by Home, End, the arrows and pages; other keys typed to find a line
 0046d2c0	WMiListBox_HandleScroll	WM	low	0x58 from the scroll bar: a line, a page or to the position
 0046d3c0	WMiListBox_Paint	WM	low	the lines shown from the top, the selected hilite, the text
 0046d940	WMiListBox_GetText	WM	med	name from the Intel Mac build (neighbours:0.75)
