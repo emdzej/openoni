@@ -15,6 +15,14 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include "gametime.h"
+
+/* A game tick: the characters' update, then the game time on (0x4fafb0). */
+static void chars_tick(const CharacterInput *in, const void *env)
+{
+    chars_update(in, env);
+    game_time_advance();
+}
 
 static void prepare(void)
 {
@@ -76,7 +84,7 @@ int main(void)
     }
     /* turned away (facing -z, she is at +z): nothing in two seconds */
     place(p, t, 3.14159265f);
-    for (int k = 0; k < 120; k++) chars_update(&(CharacterInput){ 0 }, env);
+    for (int k = 0; k < 120; k++) chars_tick(&(CharacterInput){ 0 }, env);
     KnowEntry *e = knowledge_find(t, p);
     printf("away: contact %s, alert %d, state %d\n", e ? "yes" : "no", t->ai.alert, t->ai.state);
     if (e || t->ai.state != AI_STATE_IDLE) failed |= 2;
@@ -84,11 +92,11 @@ int main(void)
     place(p, t, 0.0f);
     int seen_at = -1;
     for (int k = 0; k < 120 && seen_at < 0; k++) {
-        chars_update(&(CharacterInput){ 0 }, env);
+        chars_tick(&(CharacterInput){ 0 }, env);
         e = knowledge_find(t, p);
         if (e && e->strength == KNOW_DEFINITE) seen_at = k;
     }
-    for (int k = 0; k < 3; k++) chars_update(&(CharacterInput){ 0 }, env);
+    for (int k = 0; k < 3; k++) chars_tick(&(CharacterInput){ 0 }, env);
     printf("facing: seen after %d ticks, strength %d, type %d, hostility %d, alert %d, state %d, target %s\n", seen_at,
            e ? e->strength : 0, e ? e->type : -1, e ? e->hostility : -1, t->ai.alert, t->ai.state,
            t->ai.target == p ? "konoko" : "other");
@@ -103,7 +111,7 @@ int main(void)
         t->c.facing = t->c.desired_facing = 3.14159265f;
         physics_place(&t->c, (const float[3]){ AT[0], AT[1], AT[2] - 60.0f });
         t->ai.moving = false;
-        chars_update(&(CharacterInput){ 0 }, env);
+        chars_tick(&(CharacterInput){ 0 }, env);
     }
     e = knowledge_find(t, p);
     printf("after 400 ticks away: strength %d (was %d)\n", e ? e->strength : 0, s0);
@@ -116,10 +124,10 @@ int main(void)
     float scale;
     memcpy(&scale, (const uint8_t *)t->c.oncc + 0x428, 4);
     knowledge_sound(KNOW_SOUND_GUNFIRE, p->c.pos, 10.0f, p, NULL);
-    chars_update(&(CharacterInput){ 0 }, env);
+    chars_tick(&(CharacterInput){ 0 }, env);
     KnowEntry *near = knowledge_find(t, p);
     knowledge_sound(KNOW_SOUND_GUNFIRE, p->c.pos, 120.0f, p, NULL);
-    chars_update(&(CharacterInput){ 0 }, env);
+    chars_tick(&(CharacterInput){ 0 }, env);
     e = knowledge_find(t, p);
     printf("hearing %.2f: within 10 %s, within 120 strength %d, type %d\n", scale, near ? "heard" : "unheard",
            e ? e->strength : 0, e ? e->type : -1);

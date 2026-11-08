@@ -13,6 +13,14 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include "gametime.h"
+
+/* A game tick: the characters' update, then the game time on (0x4fafb0). */
+static void chars_tick(const CharacterInput *in, const void *env)
+{
+    chars_update(in, env);
+    game_time_advance();
+}
 
 static void prepare(void)
 {
@@ -54,7 +62,7 @@ int main(void)
     const float at[3] = { -1101.0f, -340.0f, -126.3f };     /* the training room's floor, y = -340 */
     physics_place(&p->c, at);
     p->c.facing = p->c.desired_facing = 0.0f;
-    for (int t = 0; t < 120; t++) chars_update(&(CharacterInput){ 0 }, env);
+    for (int t = 0; t < 120; t++) chars_tick(&(CharacterInput){ 0 }, env);
     printf("standing: (%.2f, %.2f, %.2f) air %u floor quad %d\n", p->c.pos[0], p->c.pos[1], p->c.pos[2],
            (unsigned)p->c.air_ticks, (int)p->c.ground_quad);
     if (fabsf(p->c.pos[1] - at[1]) > 0.1f || p->c.air_ticks) failed |= 1;
@@ -62,7 +70,7 @@ int main(void)
     float z400 = 0.0f;
     unsigned walls = 0;
     for (int t = 0; t < 600; t++) {
-        chars_update(&(CharacterInput){ .forward = 1 }, env);
+        chars_tick(&(CharacterInput){ .forward = 1 }, env);
         walls += p->c.wall_hits;
         if (t == 399) z400 = p->c.pos[2];
     }
@@ -73,7 +81,7 @@ int main(void)
     int landed = -1;
     bool fell = false;
     for (int t = 0; t < 200; t++) {
-        chars_update(&(CharacterInput){ 0 }, env);
+        chars_tick(&(CharacterInput){ 0 }, env);
         if (p->c.air_ticks) fell = true;
         if (fell && !p->c.air_ticks && landed < 0) landed = t;
     }

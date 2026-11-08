@@ -17,6 +17,3 @@ void char_draw_character(const Character *c, int slot);
 void char_draw_corpses(void);
 /* The characters' display 0x4e1540: the characters' shadows taken down before they are drawn again. */
 void char_shadows_clear(void);
-/* The class's first animation of a type in its collection (TRAC, then the collections it falls back
-   to), NULL if none. A stand-in for TRrCollection_Lookup 0x427f00 until the character engine. */
-const void *char_find_animation(const void *oncc, unsigned type);

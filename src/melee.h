@@ -6,8 +6,8 @@
    (AI2rExecutor_AttackOverride 0x498bb0) as a player would. Notes: docs/re/ai.md, "Melee".
 
    Techniques are weighed by AI2iMelee_WeightTechnique 0x4a2580 (the attack's timing and turn
-   predicted with TRrCheckAnimationBounds). Stand-ins until their ports: the positions' update
-   (AI2iMelee_Position_Update 0x4a6040), and the shield charge's wait. */
+   predicted with TRrCheckAnimationBounds); the positions are moved by AI2iMelee_Position_Update
+   0x4a6040, which asks the combat behaviour whether to wait for a shield charge. */
 #pragma once
 #include "ai.h"
 

@@ -2618,8 +2618,11 @@ void p3_update(uint32_t tick, bool gameplay, Character **chars, int nchars)
         after_update();
         remove_dangerous = false;
     }
-    if (!gameplay && tick == last_tick) return;
-    last_tick = tick;
+    /* the frame part's tick only: the gameplay update neither checks nor keeps it (0x45c974) */
+    if (!gameplay) {
+        if (tick == last_tick) return;
+        last_tick = tick;
+    }
     chr_list = chars;
     chr_count = nchars > 64 ? 64 : nchars;
     {

@@ -17,6 +17,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include "gametime.h"
 
 static void prepare(void)
 {
@@ -77,6 +78,7 @@ int main(void)
             turret_update(env);
             Character *pl = &p->c;
             p3_update(ui_time(), true, &pl, 1);
+            game_time_advance();
             if (t->flags & TURRET_FIRING) {
                 firing_ticks++;
                 if (fired < 0) fired = k;

@@ -12,10 +12,12 @@
 
 #include <math.h>
 
+#include "gametime.h"
+
 #include <stdio.h>
 #include <string.h>
 
-static uint32_t now;
+#define now game_time()     /* GS+0x144 */
 static int32_t slowmo;             /* G+0x108: the slow motion timer's ticks */
 
 /* The fade: from and to (a, r, g, b), between two times. */
@@ -131,7 +133,6 @@ void ui_condition_sounds(const struct Character *player, bool follow)
 
 void ui_reset(void)
 {
-    now = 0;
     slowmo = 0;
     cond_on = 0;
     for (int i = 0; i < CONDITIONS; i++) cond_id[i] = UINT32_MAX;     /* ONrGameState_LevelBegin 0x4f54f1 */
@@ -197,7 +198,6 @@ static void line_remove(int a, int i)
 
 void ui_update(void)
 {
-    now++;
     /* COrConsole_Update 0x4306f0's countdown (0x4316d0 for the messages and the subtitles): a line whose
        time is up goes, and the one after it, moved into its place, waits for the next tick */
     if (!areas_hidden)

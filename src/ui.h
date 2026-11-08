@@ -43,8 +43,9 @@ void ui_hide_areas(bool hide);
 bool ui_areas_hidden(void);
 
 void ui_reset(void);
-/* One tick: the game time moves on, the lines' timers count down. */
+/* One tick: the lines' timers count down. */
 void ui_update(void);
+/* The game time (gametime.h). */
 uint32_t ui_time(void);
 
 /* The fade's colour now (r, g, b, a in 0..1); false when there is none. */

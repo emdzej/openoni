@@ -18,6 +18,14 @@
 
 #include <math.h>
 #include <stdio.h>
+#include "gametime.h"
+
+/* A game tick: the characters' update, then the game time on (0x4fafb0). */
+static void chars_tick(const CharacterInput *in, const void *env)
+{
+    chars_update(in, env);
+    game_time_advance();
+}
 
 static void prepare(void)
 {
@@ -35,7 +43,7 @@ static void run(int n, int press_at, uint16_t *seen_type)
     for (int t = 0; t < n; t++) {
         CharacterInput in = { 0 };
         in.action = t == press_at;
-        chars_update(&in, env);
+        chars_tick(&in, env);
         door_update();
         if (seen_type && chars_player()->c.type == 0xc4) *seen_type = 0xc4;
     }

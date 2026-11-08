@@ -13,6 +13,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "gametime.h"
+
+/* A game tick: the characters' update, then the game time on (0x4fafb0). */
+static void chars_tick(const CharacterInput *in, const void *env)
+{
+    chars_update(in, env);
+    game_time_advance();
+}
 
 static void prepare(void)
 {
@@ -70,7 +78,7 @@ int main(void)
     if (t) {
         chr_die(&t->c, NULL);
         for (; ticks < 2000; ticks++) {
-            chars_update(&(CharacterInput){ 0 }, env);
+            chars_tick(&(CharacterInput){ 0 }, env);
             if (getenv("CORPSE_TRACE") && ticks % 50 == 0)
                 printf("  %d: flags %x air %u settled %u dying %u lod %d used %d ct %u inv %d\n", ticks, t->c.flags, t->c.air_ticks,
                        t->c.settled_ticks, t->c.dying_ticks, t->c.lod_shown, chars_in_use(t), t->corpse_time, t->c.invisible_shown);

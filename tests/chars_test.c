@@ -22,6 +22,14 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include "gametime.h"
+
+/* A game tick: the characters' update, then the game time on (0x4fafb0). */
+static void chars_tick(const CharacterInput *in, const void *env)
+{
+    chars_update(in, env);
+    game_time_advance();
+}
 
 static int count(void)
 {
@@ -136,7 +144,7 @@ int main(void)
     /* the hold runs out, the player stands, the wait ends */
     int ticks = 0;
     for (; ticks < 600 && !done; ticks++) {
-        chars_update(&(CharacterInput){ 0 }, NULL);
+        chars_tick(&(CharacterInput){ 0 }, NULL);
         sl_update();
     }
     printf("level1: waited %d ticks for stand: done=%d\n", ticks, done);
@@ -166,8 +174,8 @@ int main(void)
            has been hurt, a last blow from demo3 at 6000 ticks ends it */
         if (d2->c.hit_points < d2_hp) hurt = true;
         if (fight_ticks == 6000 && hurt && !((d2->c.flags | d3->c.flags) & 1)) chr_take_damage(&d2->c, d2->c.hit_points, 0.0f, NULL, 0, &d3->c, CHR_DAMAGE_MELEE);
-        ui_update();    /* the game time: the combat state thinks every fifth tick of it */
-        chars_update(&(CharacterInput){ 0 }, env);
+        ui_update();
+        chars_tick(&(CharacterInput){ 0 }, env);
         sl_update();
         if (d3->ai.state == AI_STATE_COMBAT || d2->ai.state == AI_STATE_COMBAT) fought = 1;
         bool one_dead = (d2->c.flags & 1) || (d3->c.flags & 1);
@@ -187,7 +195,7 @@ int main(void)
     if (d2 && d3) ((d2->c.flags & 1) ? d3 : d2)->c.pos[0] += 1000.0f;
     for (int k = 0, stood = 0; k < 900 && stood < 60; k++) {
         stood = p->c.state == CHR_STATE_STANDING ? stood + 1 : 0;
-        chars_update(&(CharacterInput){ .forward = p->c.state == 0x12 || p->c.state == 0x32 }, NULL);
+        chars_tick(&(CharacterInput){ .forward = p->c.state == 0x12 || p->c.state == 0x32 }, NULL);
         sl_update();
     }
     p->c.facing = p->c.desired_facing;
@@ -208,7 +216,7 @@ int main(void)
         for (int k = 0; k < 300; k++) {
             CharacterInput in = { 0 };
             if (k < 12) in.forward = 1, in.punch = true;
-            chars_update(&in, NULL);
+            chars_tick(&in, NULL);
             sl_update();
             if (p->c.type == 0x6a && p->c.threw == &dum->c) threw = 1;
             if (dum->c.type == 96 && dum->c.thrown_by == &p->c) thrown = 1;
@@ -229,7 +237,7 @@ int main(void)
     for (int k = 0; k < 60 && p->c.weapon; k++) {
         CharacterInput in = { 0 };
         in.fire = k == 30;
-        chars_update(&in, NULL);
+        chars_tick(&in, NULL);
         weapons_update(NULL);
         weapons_physics(NULL);
         Character *pl = &p->c;
@@ -253,7 +261,7 @@ int main(void)
         chr_force_stand(&p->c);     /* from the throws' end state */
         for (int k = 0; k < 30; k++) {
             CharacterInput in = { 0 };
-            chars_update(&in, NULL);
+            chars_tick(&in, NULL);
         }
         powerups_reset();
         powerup_register_commands();
@@ -263,7 +271,7 @@ int main(void)
         for (int k = 0; k < 120; k++) {
             CharacterInput in = { 0 };
             in.swap = k == 0;
-            chars_update(&in, NULL);
+            chars_tick(&in, NULL);
             weapons_update(NULL);
             weapons_physics(NULL);
             sl_update();
@@ -273,7 +281,7 @@ int main(void)
         for (int k = 0; k < 200 && !reloaded; k++) {
             CharacterInput in = { 0 };
             in.reload = k == 0;
-            chars_update(&in, NULL);
+            chars_tick(&in, NULL);
             weapons_update(NULL);
             weapons_physics(NULL);
             sl_update();
@@ -299,7 +307,7 @@ int main(void)
             d0 = sqrtf((fl.pos[0] - p->c.pos[0]) * (fl.pos[0] - p->c.pos[0]) + (fl.pos[2] - p->c.pos[2]) * (fl.pos[2] - p->c.pos[2]));
             for (int k = 0; k < 600; k++) {
                 CharacterInput in = { .forward = -1 };     /* back, held: ignored */
-                chars_update(&in, env);
+                chars_tick(&in, env);
                 sl_update();
             }
             d1 = sqrtf((fl.pos[0] - p->c.pos[0]) * (fl.pos[0] - p->c.pos[0]) + (fl.pos[2] - p->c.pos[2]) * (fl.pos[2] - p->c.pos[2]));

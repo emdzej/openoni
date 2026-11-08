@@ -22,6 +22,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "gametime.h"
+
+/* A game tick: the characters' update, then the game time on (0x4fafb0). */
+static void chars_tick(const CharacterInput *in, const void *env)
+{
+    chars_update(in, env);
+    game_time_advance();
+}
 
 static void prepare(void)
 {
@@ -79,7 +87,7 @@ int main(void)
     for (int k = 0; k < 4000; k++) {
         ui_update();
         knowledge_update(env);
-        chars_update(&(CharacterInput){ 0 }, env);
+        chars_tick(&(CharacterInput){ 0 }, env);
         weapons_update(env);
         weapons_physics(env);
         AiState *a = &b->ai;
@@ -147,7 +155,7 @@ int main(void)
     for (int k = 0; k < 3000 && dropped_at < 0; k++) {
         ui_update();
         knowledge_update(env);
-        chars_update(&(CharacterInput){ 0 }, env);
+        chars_tick(&(CharacterInput){ 0 }, env);
         /* she keeps away (he waits 300 ticks after entering his thunderbolt behaviour before the first) */
         if (k % 30 == 0) {
             /* (250 from where he is now: he advances on her) */
@@ -216,7 +224,7 @@ int main(void)
         float was[3] = { n->c.pos[0], n->c.pos[1], n->c.pos[2] };
         ui_update();
         knowledge_update(env);
-        chars_update(&(CharacterInput){ 0 }, env);
+        chars_tick(&(CharacterInput){ 0 }, env);
         weapons_update(env);
         weapons_physics(env);
         Character *both[2] = { &p->c, &n->c };

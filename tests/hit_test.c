@@ -16,6 +16,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "gametime.h"
+
+/* A game tick: the characters' update, then the game time on (0x4fafb0). */
+static void chars_tick(const CharacterInput *in, const void *env)
+{
+    chars_update(in, env);
+    game_time_advance();
+}
 
 static void prepare(void)
 {
@@ -69,7 +77,7 @@ int main(void)
         CharacterInput in = { 0 };
         in.punch = (t % 40) == 0 && (t / 40) % 2 == 0;
         in.kick = (t % 40) == 0 && (t / 40) % 2 == 1;
-        chars_update(&in, env);
+        chars_tick(&in, env);
         if (d->c.hit_points < last) {
             hits++;
             expect += p->c.type == 0x16 ? 4 : 5;    /* the punch's 4, the kick's 5 */
@@ -88,10 +96,10 @@ int main(void)
     int t = 0;
     for (; t < 120 && !(d->c.flags & 1); t++) {
         CharacterInput in = { .punch = t == 0 };
-        chars_update(&in, env);
+        chars_tick(&in, env);
     }
     for (int k = 0; k < 120; k++) {
-        chars_update(&(CharacterInput){ 0 }, env);
+        chars_tick(&(CharacterInput){ 0 }, env);
         if (getenv("HIT_TRACE") && k % 10 == 0) printf("  after %d: type 0x%02x state 0x%02x frame %u\n", k, d->c.type, d->c.state, (unsigned)d->c.frame);
     }
     printf("dummy: interpolating=%d tick %u/%u queued 0x%02x\n", d->c.interpolating, d->c.interp_tick, d->c.interp_length, d->c.queued);
@@ -110,13 +118,13 @@ int main(void)
         p->c.facing = p->c.desired_facing = round == 0 ? 0.0f : 3.14159265f;
         p->c.hit_points = 100;
         memset(p->c.knockback, 0, sizeof p->c.knockback);
-        for (int k = 0; k < 60; k++) chars_update(&(CharacterInput){ 0 }, env);    /* settle */
+        for (int k = 0; k < 60; k++) chars_tick(&(CharacterInput){ 0 }, env);    /* settle */
         p->player = false, e->player = true;
         e->c.flags &= ~(uint32_t)CHR_FLAG_AI_MOVEMENT;     /* the keys drive it, not its AI */
         bool block_seen = false;
         for (int k = 0; k < 60; k++) {
             CharacterInput in = { .punch = k == 0 };
-            chars_update(&in, env);
+            chars_tick(&in, env);
             if (p->c.type == 0x17) block_seen = true;
         }
         p->player = true, e->player = false;

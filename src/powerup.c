@@ -1,5 +1,6 @@
 /* Powerups: see powerup.h. */
 #include "powerup.h"
+#include "gametime.h"
 #include "chars.h"
 
 #include "exe.h"
@@ -27,7 +28,6 @@ enum {
 
 static Powerup powerups[POWERUPS_MAX];      /* 0x620460 */
 static uint16_t count;                      /* 0x622160 */
-static uint32_t now;                        /* stand-in for the game time (GS+0x144) */
 
 static float rdf(const uint8_t *p) { float f; memcpy(&f, p, 4); return f; }
 
@@ -105,7 +105,7 @@ Powerup *powerup_new(int type, uint16_t amount, const float pos[3], float facing
     p->amount = amount;
     memcpy(p->pos, pos, sizeof p->pos);
     p->facing = facing;
-    p->time = now;
+    p->time = game_time();    /* GS+0x144 */
     if (count < POWERUPS_MAX && p == &powerups[count]) count++;
     return p;
 }

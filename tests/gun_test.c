@@ -18,6 +18,14 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include "gametime.h"
+
+/* A game tick: the characters' update, then the game time on (0x4fafb0). */
+static void chars_tick(const CharacterInput *in, const void *env)
+{
+    chars_update(in, env);
+    game_time_advance();
+}
 
 static void prepare(void)
 {
@@ -79,7 +87,7 @@ int main(void)
     int gun_at = -1, pickup_at = -1, combat_at = -1;
     for (int k = 0; k < 1200 && !t->c.weapon; k++) {
         ui_update();
-        chars_update(&(CharacterInput){ 0 }, env);
+        chars_tick(&(CharacterInput){ 0 }, env);
         weapons_update(env);
         weapons_physics(env);
         if (combat_at < 0 && t->ai.state == AI_STATE_COMBAT) combat_at = k;

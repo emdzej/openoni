@@ -100,6 +100,10 @@ From the pelvis p to the marker m, with the marker's facing f:
 - After the deadline: aborted.
 
 Aborted or done: C+0x1680 = 0, `WPrInventory_Weapon_Purge_Magic`, and for the player GS+0x1679ae = 0.
+A hit ends it the same way: `ONrCharacter_NewAnimationHook` 0x4e97a0 clears it when the new animation's
+type is a hit's (0x17, 0x4c–0x5c, 0x60–0x65, 0x72–0x77, 0x7e–0x84, 0x8d, 0xc6, 0xd4–0xd7). Without it, a
+character knocked down at the marker would stay in the action (its input taken) for good: lying down, it
+can neither stand nor play the console animation, and the deadline is only checked on the walk.
 
 ## The sprint
 

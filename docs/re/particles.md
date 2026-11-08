@@ -19,6 +19,15 @@ oriented along its velocity, 0x40 its matrix dirty, 0x80 explodes on a hit inste
 variables' first values. `P3rSendEvent` 0x45b2c0 runs an event's list: each action not masked off, in
 order, until one kills the particle or stops the step.
 
+`P3rUpdate` 0x45c830 runs twice a frame: in the tick, after the physics, the gameplay classes (from the
+active list's head) at the game time + 1; in the frame part, the decorative ones (from its tail) at the
+game time. Only the frame part's call checks and keeps the tick (0x6a8708): it returns if the tick is the
+one it last ran, so a decorative particle ages once per game tick whatever the frame rate. The gameplay
+call leaves 0x6a8708 alone: after a tick, the frame part is given the value the tick's call was, and
+would be skipped had that call kept it. (The Fade Out action deletes a particle whose alpha is 0 at once, and the deletion's die
+event runs the Fade Out again, without end: level 12's clouds, which fade out on their die event and fade
+in through their update, are only safe because they have been updated.)
+
 ## Actions
 
 The type table at 0x536060 (0xc0 bytes each: the type, its kind, its name, its function, the counts of

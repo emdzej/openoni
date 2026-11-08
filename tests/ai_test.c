@@ -15,6 +15,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "gametime.h"
+
+/* A game tick: the characters' update, then the game time on (0x4fafb0). */
+static void chars_tick(const CharacterInput *in, const void *env)
+{
+    chars_update(in, env);
+    game_time_advance();
+}
 
 static void prepare(void)
 {
@@ -62,10 +70,10 @@ int main(void)
     bool walked = false;
     int ticks = 0;
     for (; ticks < 1200 && t->ai.moving; ticks++) {
-        chars_update(&(CharacterInput){ 0 }, env);
+        chars_tick(&(CharacterInput){ 0 }, env);
         if (t->c.type == CHR_TYPE_WALK) walked = true;
     }
-    for (int k = 0; k < 120; k++) chars_update(&(CharacterInput){ 0 }, env);
+    for (int k = 0; k < 120; k++) chars_tick(&(CharacterInput){ 0 }, env);
     float dx = t->c.pos[0] - goal[0], dz = t->c.pos[2] - goal[2];
     printf("thug: arrived=%d after %d ticks, %.2f from the goal, facing %.2f, walked=%d, type 0x%02x\n", !t->ai.moving, ticks,
            sqrtf(dx * dx + dz * dz), t->c.facing, walked, t->c.type);
@@ -94,7 +102,7 @@ int main(void)
     ai_move_to(&t->ai, far, false, 0.0f);
     int rooms = 0, last = -1;
     for (ticks = 0; ticks < (getenv("AI_DEPTH") ? 30000 : 4000) && t->ai.moving; ticks++) {
-        chars_update(&(CharacterInput){ 0 }, env);
+        chars_tick(&(CharacterInput){ 0 }, env);
         int r = graph_room_at(t->c.pos);
         if (r != last) rooms++, last = r;
         if (getenv("AI_TRACE") && ticks % 100 == 0) {

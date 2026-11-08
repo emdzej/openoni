@@ -13,6 +13,14 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include "gametime.h"
+
+/* A game tick: the characters' update, then the game time on (0x4fafb0). */
+static void chars_tick(const CharacterInput *in, const void *env)
+{
+    chars_update(in, env);
+    game_time_advance();
+}
 
 static void prepare(void)
 {
@@ -76,7 +84,7 @@ int main(void)
     else {
         int reached = 0, last = t->ai.point, first = last;
         for (int tick = 0; tick < 6000 && reached < 3; tick++) {
-            chars_update(&(CharacterInput){ 0 }, env);
+            chars_tick(&(CharacterInput){ 0 }, env);
             if (t->ai.point != last) {
                 ObjcObject flag;
                 const PatrolPoint *done = &w[last];

@@ -1,5 +1,6 @@
 /* The action key's objects: see action.h. */
 #include "action.h"
+#include "gametime.h"
 #include "weapon.h"
 
 #include "chars.h"
@@ -99,7 +100,7 @@ static void console_action(Character *c)
         }
         if (c->state == CHR_STATE_STANDING &&
             (c->type == 6 || c->type == 7 || c->type == 8 || c->type == 0xce || c->type == 0xcf || c->type == 0xd8))
-            c->console_deadline = c->time + CONSOLE_TIME;
+            c->console_deadline = game_time() + CONSOLE_TIME;
     }
     if (using) {
         int last = (int)rd16((const uint8_t *)c->anim + TRAM_FRAMES) - 1;
@@ -125,7 +126,7 @@ static void console_action(Character *c)
         if (!chr_do_animation(c, CHR_ANIM_NOW, t)) chr_do_animation(c, CHR_ANIM_NOW, TYPE_CONSOLE);
         return;
     }
-    if (c->time > c->console_deadline) {
+    if (game_time() > c->console_deadline) {
         finish(c);
         return;
     }

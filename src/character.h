@@ -9,8 +9,7 @@
    ONrCharacter_HandleHeartbeatInput 0x4f6ad0 that depend only on the animation state and the input.
    Jumping and falling are ported (HandleStartJumping 0x4fa2f0, the landing and the fall of
    HandleHeartbeatInput, step 9 of DoCharacterFrame); the floor and walls are the physics' (physics.h).
-   The AI, weapons, throws, damage, particles and sounds have their own modules. Stand-in: the game
-   time (a tick count per character). */
+   The AI, weapons, throws, damage, particles and sounds have their own modules. */
 #pragma once
 #include "oban.h"
 
@@ -179,7 +178,6 @@ typedef struct Character {
     const void *film;               /* A+0x2214, the FILM */
     uint32_t film_interp;           /* A+0x2204: the ticks of the move to the start left */
     float film_delta[3];            /* A+0x2208: that move, a tick's part */
-    uint32_t time;                  /* stand-in for the game time (GS+0x144): ticks of this character */
     /* jumping and falling (DoCharacterFrame's step 9, docs/re/character.md) */
     uint16_t no_ground_ticks;       /* A+0xe0: at 12 a fall starts */
     float fall_height;              /* A+0xf0: where the ground went (for the landing's damage) */

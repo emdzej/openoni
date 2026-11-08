@@ -1,5 +1,6 @@
 /* The AI's knowledge: see knowledge.h. */
 #include "knowledge.h"
+#include "gametime.h"
 #include "panic.h"
 #include "combat.h"
 
@@ -43,9 +44,9 @@ static Pending pending[PENDING_MAX];       /* DAT_0063a2a0, 0x24 bytes each */
 static int npending;                       /* DAT_0063b340 */
 static const void *sound_env;              /* the AKEV knowledge_update was last given */
 
-static uint32_t now;                       /* stand-in for the game time (GS+0x144) */
+#define now game_time()   /* GS+0x144 (ONrGameState_GetGameTime 0x4fc880) */
 
-uint32_t knowledge_now(void) { return now; }
+uint32_t knowledge_now(void) { return game_time(); }
 
 static float wrap_2pi(float a) { return a < 0.0f ? a + TWO_PI : a >= TWO_PI ? a - TWO_PI : a; }
 static float rdf32(const uint8_t *p) { float f; memcpy(&f, p, 4); return f; }
@@ -103,7 +104,6 @@ void knowledge_reset(void)
     entries_used = 0;
     free_list = NULL;
     npending = 0;
-    now = 0;
     memset(projectiles, 0, sizeof projectiles);
     nprojectiles = 0;
     memset(spreads, 0, sizeof spreads);
@@ -913,7 +913,6 @@ void knowledge_update(const void *env)
     sound_env = env;
     for (int i = 0; i < npending; i++) post_now(&pending[i]);
     npending = 0;
-    now++;
     /* the projectiles' alerts (unless everyone is deaf or passive, 0x5ec0c1, 0x5ec0c4); every 5 ticks
        the dangers' places */
     projectile_alerts();

@@ -18,6 +18,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "gametime.h"
+
+/* A game tick: the characters' update, then the game time on (0x4fafb0). */
+static void chars_tick(const CharacterInput *in, const void *env)
+{
+    chars_update(in, env);
+    game_time_advance();
+}
 
 static void prepare(void)
 {
@@ -79,7 +87,7 @@ int main(void)
     for (int k = 0; k < 6000 && back_at < 0; k++) {
         ui_update();
         knowledge_update(env);
-        chars_update(&(CharacterInput){ 0 }, env);
+        chars_tick(&(CharacterInput){ 0 }, env);
         float dx = p->c.pos[0] - t->c.pos[0], dz = p->c.pos[2] - t->c.pos[2], d = sqrtf(dx * dx + dz * dz);
         if (!k) d0 = d;
         if (t->ai.state == AI_STATE_PURSUIT) {

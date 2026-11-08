@@ -17,6 +17,14 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include "gametime.h"
+
+/* A game tick: the characters' update, then the game time on (0x4fafb0). */
+static void chars_tick(const CharacterInput *in, const void *env)
+{
+    chars_update(in, env);
+    game_time_advance();
+}
 
 static void prepare(void)
 {
@@ -43,7 +51,7 @@ static void run(Chr *p, int n, bool forward)
         in.forward = forward;
         sl_update();
         door_physics(++ticks);
-        chars_update(&in, env);
+        chars_tick(&in, env);
         door_update();
     }
     (void)p;

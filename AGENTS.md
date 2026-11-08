@@ -116,8 +116,8 @@ near them, and the `door_*` commands ([docs/re/door.md](docs/re/door.md)). `src/
   main menu and the outro when level 19 is won (`movie_play`, `movie_play_in_game`; `--param
   movie=outro.bik` plays one through the latter first).
 
-The few stand-ins left (a module's own clock for the game time) and what isn't ported yet are marked in
-the code ("stand-in", "Not ported"). They go as their originals are ported.
+The game time is the original's one clock (`src/gametime.c`, GS+0x144). What isn't ported yet is
+marked in the code ("stand-in", "Not ported"); those go as their originals are ported.
 
 ## Hard rules
 

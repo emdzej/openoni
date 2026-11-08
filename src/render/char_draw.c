@@ -23,20 +23,6 @@
 
 static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }
 
-const void *char_find_animation(const void *oncc, unsigned type)
-{
-    const uint8_t *c = tm_link((const uint8_t *)oncc + ONCC_ANIMATIONS);
-    for (int depth = 0; c && depth < 8; depth++) {
-        uint16_t n = rd16(c + 0x16);
-        for (uint16_t i = 0; i < n; i++) {
-            const uint8_t *t = tm_link(c + 0x18 + 12 * i + 8);
-            if (t && rd16(t + TRAM_TYPE) == type && rd16(t + TRAM_VARIENT) == 0) return t;
-        }
-        c = tm_link(c + 0x10);      /* the collection it falls back to */
-    }
-    return NULL;
-}
-
 /* The body under its root, posed (the rest pose without quats). */
 static void draw_root(const void *oncc, const BodyMatrix root, const float *quats)
 {

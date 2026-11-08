@@ -1,5 +1,6 @@
 /* The character's animation engine: see chr_anim.h. */
 #include "chr_anim.h"
+#include "gametime.h"
 
 #include "body.h"
 #include "exe.h"
@@ -489,7 +490,7 @@ static void old_animation_hook(Character *c, const void *next)
     (void)next;
     c->left_type = c->type;
     if ((c->flags & 0x200000) && !c->hold) c->flags &= ~0x200000u;
-    if (c->type == c->combo_type && c->combo_time == 0xffffffffu) c->combo_time = c->time;
+    if (c->type == c->combo_type && c->combo_time == 0xffffffffu) c->combo_time = game_time();
     /* The animation's own turn (TRAM+0x48): the facings take it, and the pose turns back by it at the
        root (the root of the aimed copy at A+0x2020 too, which the port doesn't keep), so the change
        doesn't jump. */
@@ -514,7 +515,8 @@ static void old_animation_hook(Character *c, const void *next)
    the original's 0x4eb550 there can't run: it needs the flag it is under clear); the drift they keep
    (A+0x2824) comes with the physics, and the physics context's pending motion isn't kept (0x4ed080). The
    animation's particles are made last. A throw (TRAM flag 15) starts its target's part through chr_throw_hook
-   (throw.c); any other animation forgets the target. */
+   (throw.c); any other animation forgets the target. A hit's type (0x4c..0x5c, 0x60..0x65, 0x72..0x77,
+   0x7e..0x84, 0x8d, 0xc6, 0xd4..0xd7, 0x17) ends the console action (C+0x1680). */
 void (*chr_animation_hook)(Character *c);
 void (*chr_drop_hook)(Character *c);
 void (*chr_attack_turn_hook)(Character *c);
@@ -538,6 +540,18 @@ static void new_animation_hook(Character *c)
         c->room = graph_room_at(c->teleport_to);    /* 0x4e91c0 */
     }
     if (!tr_test_flag(t, TRAM_FLAG_THROW_SOURCE)) c->throw_target = NULL, c->throw_victim_anim = NULL;
+    /* a hit, a knockdown or a stun ends the console action under way (action.c's finish) */
+    switch (tr_type(t)) {
+    case 0x17: case 0x4c: case 0x4d: case 0x4e: case 0x4f: case 0x50: case 0x51: case 0x52: case 0x53:
+    case 0x54: case 0x55: case 0x56: case 0x57: case 0x58: case 0x59: case 0x5a: case 0x5b: case 0x5c:
+    case 0x60: case 0x61: case 0x62: case 0x63: case 0x64: case 0x65: case 0x72: case 0x73: case 0x74:
+    case 0x75: case 0x76: case 0x77: case 0x7e: case 0x7f: case 0x80: case 0x81: case 0x82: case 0x83:
+    case 0x84: case 0x8d: case 0xc6: case 0xd4: case 0xd5: case 0xd6: case 0xd7:
+        c->console_marker = -1;
+        break;
+    default:
+        break;
+    }
     if (tr_test_flag(t, 5) && c->weapon && chr_drop_hook) chr_drop_hook(c);    /* 0x51b590 (slot 0, thrown) */
     c->threw = NULL;                /* A+0x1ed8 = 0xffff: set again by a throw */
     if (tr_is_attack(t) && !tr_test_flag(t, TRAM_FLAG_THROW_SOURCE)) {
@@ -549,12 +563,12 @@ static void new_animation_hook(Character *c)
         if (c->type == CHR_TYPE_IDLE) {
             /* after an idle the next one waits the delay again, from a random part of +0xc4c on */
             chr_recalculate_idle_delay(c);
-            c->last_action = c->time - c->idle_delay;
+            c->last_action = game_time() - c->idle_delay;
             uint32_t d = rd32((const uint8_t *)c->oncc + 0xc4c);
             c->last_action += (uint32_t)(((uint64_t)trac_random() * d) >> 17) + d;
         }
     } else
-        c->last_action = c->time;
+        c->last_action = game_time();
     /* dead, and the reactions are over: the body stays as it lies (stage 2, flag 2). The corpse's drift
        (A+0x2824, from the knockback or the air velocity) comes with the physics. */
     if ((c->flags & 1) && !chr_is_victim_type(c->type)) c->flags |= 2;
@@ -977,7 +991,7 @@ void chr_build_quaternions(Character *c)
     if (screen != c->aim_screen) {
         c->aim_screen_prev = c->aim_screen;
         c->aim_screen = screen;
-        c->aim_screen_time = c->time;
+        c->aim_screen_time = game_time();
     }
     /* the aim against the body: the desired facing past the facing, on the side the run's offset turns,
        with the sideways aim, less the offset; the pitch with the recoil */
@@ -992,7 +1006,7 @@ void chr_build_quaternions(Character *c)
     pitch = pitch < -1.5707964f ? -1.5707964f : pitch > 1.5707964f ? 1.5707964f : pitch;
     pitch += c->aim_ud_add;
     if (yaw == 0.0f && pitch == 0.0f) return;
-    uint32_t since = c->time - c->aim_screen_time;
+    uint32_t since = game_time() - c->aim_screen_time;
     if (since > 8) c->aim_screen_prev = screen;
     if (!screen && !c->aim_screen_prev) return;
     if (screen == c->aim_screen_prev) screen_apply(screen, yaw, pitch, c->aimed, CHR_BONES);

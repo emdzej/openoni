@@ -1,5 +1,6 @@
 /* The AI's melee: see melee.h. */
 #include "melee.h"
+#include "gametime.h"
 
 #include "chars.h"
 #include "cheat.h"
@@ -576,7 +577,7 @@ void melee_test_local_environment(MeleeState *m, const Character *c, const Chara
     chr_location(c, loc);
     float d = m->dist + 50.0f;      /* 0x52a768 */
     float to[3] = { d * sa + loc[0], loc[1], d * ca + loc[2] }, at[3];
-    m->env_time = c->time;          /* (the game's time: ONrGameState_GetGameTime) */
+    m->env_time = game_time();          /* (the game's time: ONrGameState_GetGameTime) */
     memcpy(m->env_pos, loc, sizeof loc);
     bool reached, crossed;
     uint8_t kind;
@@ -632,7 +633,7 @@ void melee_test_local_environment(MeleeState *m, const Character *c, const Chara
 }
 
 /* The time (GS+0x144) for the delays: the characters' own tick count stands in. */
-static uint32_t now_of(const Character *c) { return c->time; }
+static uint32_t now_of(const Character *c) { (void)c; return game_time(); }
 
 /* AI2iMelee_TranslateTotoroAnimState: of a melee state, 13 (moving) told apart by the keys held (A+0x2168,
    the port's last tick's): 14 forward, 16 left, 17 right, 15 back. */

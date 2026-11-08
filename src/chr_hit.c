@@ -1,5 +1,6 @@
 /* Hits between characters: see chr_hit.h. */
 #include "chr_hit.h"
+#include "gametime.h"
 #include "inventory.h"
 
 #include "body.h"
@@ -175,7 +176,7 @@ static void pain(Character *c, uint32_t damage, uint32_t kind)
     }
     c->pain_damage = (uint16_t)(c->pain_damage + damage);
     c->pain_decay = pain_u16(c, 0x7a);
-    if (c->time < pain_u16(c, 0x7c) + c->pain_until) return;
+    if (game_time() < pain_u16(c, 0x7c) + c->pain_until) return;
     if (kind <= c->pain_last) kind = c->pain_last;
     if (kind == 0) {
         if (c->pain_light < pain_u16(c, 0x7e) && c->pain_damage < pain_u16(c, 0x86)) goto queue;
@@ -225,15 +226,15 @@ void chr_pain_frame(Character *c)
     if (kind == 0) {
         c->pain_light++;
         c->pain_last = 0;
-        c->pain_until = c->time;
+        c->pain_until = game_time();
     } else if (kind == 1) {
         c->pain_medium++;
         c->pain_last = 1;
-        c->pain_until = c->time + (wait >> 1);
+        c->pain_until = game_time() + (wait >> 1);
     } else if (kind == 2) {
         pain_forget(c);
         c->pain_last = 2;
-        c->pain_until = c->time + wait;
+        c->pain_until = game_time() + wait;
     }
     c->pain_kind = 0;
     c->pain_volume = 0.0f;

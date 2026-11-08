@@ -1,5 +1,6 @@
 /* Weapons: see weapon.h. */
 #include "weapon.h"
+#include "gametime.h"
 #include "inventory.h"
 
 #include "akev.h"
@@ -333,7 +334,7 @@ bool weapon_try_reload(Character *c, Weapon *w, bool *full, bool *none)
     int k = ammo_type(w);
     if (k == 0 && c->ammo) c->ammo--;
     else if (k == 1 && c->cells) c->cells--;
-    c->last_action = c->time;  /* 0x4edbb0: C+0x1e0 */
+    c->last_action = game_time();  /* 0x4edbb0: C+0x1e0 */
     chr_overlay_set(c, CHR_OVERLAY_WEAPON, t, 0);
     return true;
 }
@@ -403,7 +404,7 @@ static bool holster(Character *c, bool force)
 {
     bool attack = tr_is_attack(c->anim), blocked = holster_blocked(c->type);
     if (!c->weapon || (options(c->weapon) & ONWC_NO_HOLSTER)) return false;
-    c->last_action = c->time;
+    c->last_action = game_time();
     if (attack || blocked) return false;
     const void *t = chr_lookup_varient(c, 0xa0, 7, c->varient);
     if (!t) return false;
@@ -418,7 +419,7 @@ static void draw_weapon(Character *c, Weapon *w)
     bool attack = tr_is_attack(c->anim), blocked = holster_blocked(c->type);
     int idx = 0;
     if (!w) w = find_last_stowed(c, 0, &idx);
-    c->last_action = c->time;
+    c->last_action = game_time();
     if (!w || attack || blocked) return;
     const void *t = chr_lookup_varient(c, (options(w) & ONWC_RIFLE) ? 0xa2 : 0xa1, 7, c->varient);
     if (t) chr_overlay_set(c, CHR_OVERLAY_WEAPON, t, 0);
@@ -510,7 +511,7 @@ static void overlay_action(Character *c, const void *anim)
         chr_hand_varient(c);
         Weapon *w = c->weapon;
         bool attack = tr_is_attack(c->anim), blocked = holster_blocked(c->type);
-        c->last_action = c->time;
+        c->last_action = game_time();
         if (!attack && !blocked) {
             const void *t = chr_lookup_varient(c, (options(w) & ONWC_RIFLE) ? 0xa2 : 0xa1, 7, c->varient);
             if (t) chr_overlay_set(c, CHR_OVERLAY_WEAPON, t, 0);
@@ -1224,7 +1225,7 @@ static void trigger(Character *c, int mode)
         return;
     }
     if (c->flags & 1) return;
-    c->last_action = c->time;
+    c->last_action = game_time();
     bool empty = false;
     depress_trigger(c->weapon, false, mode == 2, &empty);
     if (empty) {

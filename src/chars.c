@@ -1,5 +1,6 @@
 /* The level's characters: see chars.h. */
 #include "chars.h"
+#include "gametime.h"
 #include "movement.h"
 #include "obstacle.h"
 #include "corpse.h"
@@ -1397,7 +1398,7 @@ static void all_passive(bool on)
     for (int i = 0; i < chars_slots(); i++) {
         Chr *ch = chars_get(i);
         if (!ch) continue;
-        if (!on) ch->c.last_action = ch->c.time;
+        if (!on) ch->c.last_action = game_time();
         if (ch->player) continue;
         if (on) ch->ai.flags |= AI_FLAG_PASSIVE;
         else ch->ai.flags &= ~(uint32_t)AI_FLAG_PASSIVE;

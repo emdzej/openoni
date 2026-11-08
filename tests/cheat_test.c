@@ -18,6 +18,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include "gametime.h"
 
 static void prepare(void)
 {
@@ -94,7 +95,7 @@ int main(void)
     c->hit_points = c->max_hit_points - 20;
     c->hypo_heal = 0;
     c->heal_wait = 0;
-    for (int i = 0; i < 600; i++) ui_update(), inventory_update(c);
+    for (int i = 0; i < 600; i++) ui_update(), inventory_update(c), game_time_advance();
     check(c->hit_points == c->max_hit_points - 10, "regeneration: ten points in ten seconds");
 
     /* shapeshifter: F8 steps the class through the ONCC instances, Shift+F8 back */

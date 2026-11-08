@@ -11,8 +11,9 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include "gametime.h"
 
-static void ticks(int n) { for (int i = 0; i < n; i++) { sl_update(); ui_update(); } }
+static void ticks(int n) { for (int i = 0; i < n; i++) { sl_update(); ui_update(); game_time_advance(); } }
 
 int main(void)
 {

@@ -10,6 +10,7 @@
 #include "chr_anim.h"
 #include "inventory.h"
 #include "film.h"
+#include "gametime.h"
 #include "chr_hit.h"
 #include "exe.h"
 #include "physics.h"
@@ -598,7 +599,7 @@ static bool handle_fall_through(Character *c, const ChrInput *in)
     }
     /* AI2rTryingToThrow 0x48b9a0 lets the player idle */
     bool r = false;
-    if (c->idle_delay + c->last_action <= c->time) {
+    if (c->idle_delay + c->last_action <= game_time()) {
         r = chr_do_animation(c, flags, CHR_TYPE_IDLE) != NULL;
         chr_recalculate_idle_delay(c);
     }
@@ -680,7 +681,7 @@ static void heartbeat_input(Character *c, ChrInput *in)
     if ((c->flags & 1) && chr_is_victim_type(c->type)) return;
     if (c->hold) return;
     /* A+0x2150, the time of the last input: not kept */
-    if (c->combo_time != 0xffffffffu && c->time - c->combo_time > 10) c->combo_type = 0;
+    if (c->combo_time != 0xffffffffu && game_time() - c->combo_time > 10) c->combo_type = 0;
     if (c->flags & 1) {
         clear_input(in);
         handle_fall_through(c, in);
@@ -858,7 +859,7 @@ static void sprint(Character *c, const ChrInput *in)
         if (in->not_held & FWD) c->sprint_time = 0;
     } else {
         c->varient &= (uint16_t)~0x100;
-        if (in->down & FWD) c->sprint_time = c->time - c->sprint_time < 15 ? 0xffffffffu : c->time;
+        if (in->down & FWD) c->sprint_time = game_time() - c->sprint_time < 15 ? 0xffffffffu : game_time();
     }
 }
 
@@ -1048,7 +1049,6 @@ void character_update_keys(Character *c, uint64_t held, float turn, const void *
 
 void character_update_aim(Character *c, uint64_t held, float turn, float pitch, const void *env)
 {
-    c->time++;
     ChrInput in;
     in.turn_x = turn * -64.0f;      /* so HandleTurnInput's mouse turn is turn (before a weapon's aim speed) */
     in.turn_y = pitch * 64.0f;
@@ -1064,7 +1064,6 @@ void character_update_aim(Character *c, uint64_t held, float turn, float pitch, 
 
 void character_update_input(Character *c, const ChrInput *in, const void *env)
 {
-    c->time++;
     ChrInput b = *in;
     film_update(c, &b);             /* DoFilmUpdate 0x4ed420, from the AI's (0x489d40) */
     c->held = b.held;
@@ -1076,7 +1075,6 @@ void character_update_input(Character *c, const ChrInput *in, const void *env)
    is the last tick's, which the dead's heartbeat clears. */
 void character_update_dead(Character *c, const void *env)
 {
-    c->time++;
     ChrInput b;
     memset(&b, 0, sizeof b);
     b.held = c->held;

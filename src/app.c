@@ -62,6 +62,7 @@
 #include "li.h"
 #include "outgame.h"
 #include "wm.h"
+#include "gametime.h"
 
 #include <GLES3/gl3.h>
 #include <math.h>
@@ -170,7 +171,7 @@ static bool add_char(const ObjcObject *o, void *user)
     if (!oncc) return true;
     ViewChar *c = &view_chars[n_view_chars++];
     c->oncc = oncc;
-    c->idle = char_find_animation(oncc, 6);
+    c->idle = trac_lookup(tm_link((const uint8_t *)oncc + ONCC_ANIMATIONS), CHR_TYPE_STAND, CHR_STATE_STANDING, 0);   /* TRrCollection_Lookup 0x427f00 */
     memcpy(c->pos, o->pos, sizeof c->pos);
     c->facing = o->rot[1] * 0.017453293f;
     c->player = objc_char_flags(o) & OBJC_CHAR_PLAYER;
@@ -1877,6 +1878,7 @@ static int play(int level, int *next)
         wm_initialize(h ? w * 480 / h : 640, 480);
     }
     load_begin();
+    game_time_reset();
     trac_set_level((uint16_t)level);
     if (!tm_level_load(level, err, sizeof err)) {
         snprintf(m, sizeof m, "OpenOni: level %d: %s", level, err);
@@ -1951,7 +1953,7 @@ static int play(int level, int *next)
     vis_level_begin(env);
     sky_level_begin(level_link(0x54), far_clip);
     load_step(70);
-    uint32_t ticks = 0;     /* the game time (ONrGameState's +0x144), ticks since the level began */
+    uint32_t ticks = 0;     /* the ticks since the level began (the game time, gametime.h, a tick behind in one) */
     ui_reset();
     load_step(75);
     load_step(85);
@@ -2049,8 +2051,9 @@ static int play(int level, int *next)
             sl_update();
             /* ONrGameState_UpdateCharacters 0x4dccf0: the volumes first, then the characters */
             trigger_update(chars_trigger_actors(), chars_slots());
-            object_update(++ticks);
-            door_physics(ticks);
+            ++ticks;
+            object_update(game_time());     /* the objects' animations (PHrPhysics_Update_Animation: GS+0x144) */
+            door_physics(game_time());
             ui_update();
             igui_update(chars_player() ? &chars_player()->c : NULL, ui_time());
             cinematic_update();
@@ -2062,12 +2065,13 @@ static int play(int level, int *next)
             door_update();      /* the objects' update 0x507880, after the characters */
             laser_update();     /* the triggers' (0x4cb100), the same mechanics update */
             turret_update(env); /* OBJiTurretCombat_Update 0x4cf140, the mechanics' update too */
-            particles_update(ticks + 1, true);     /* P3rUpdate(time + 1) after the physics */
+            particles_update(game_time() + 1, true);   /* P3rUpdate(time + 1) after the physics */
             ui_condition_sounds(chars_player() ? &chars_player()->c : NULL, camera_mode() == CAMERA_FOLLOW);
             /* a script may delete the player: the camera keeps the last place */
             if ((player = chars_player())) fill_target(&ct, &player->c);
             camera_set_target(&ct);
-            camera_update(1, 0, NULL, ticks);   /* the tick's part (iComputeDeltaTicks 0x4fafb0) */
+            camera_update(1, 0, NULL, game_time());     /* the tick's part (iComputeDeltaTicks 0x4fafb0) */
+            game_time_advance();    /* 0x4fafb0: GS+0x144 after the tick's update */
         }
         listen(chars_player());
         sound_update();
@@ -2115,8 +2119,8 @@ static int play(int level, int *next)
         bool splashing = ui_splash_take(splash);    /* ONiRunGame: G+0x118, the splash in the display's place */
         if (splashing) splash_screen(splash, NULL, false);
         if (!splashing) {
-            camera_update(0, 0, NULL, ticks);   /* the frame's part */
-            particles_update(ticks, false);    /* the decorative particles (iComputeDeltaTicks 0x4fafb0) */
+            camera_update(0, 0, NULL, game_time());     /* the frame's part */
+            particles_update(game_time(), false);   /* the decorative particles (iComputeDeltaTicks 0x4fafb0) */
             display.ct = &ct, display.player = player, display.ticks = ticks;
             game_display();
         }
