@@ -1,5 +1,6 @@
 /* The BSL script engine: see sl.h. */
 #include "sl.h"
+#include "exe.h"
 
 #include "crc32.h"
 #include "vfs.h"
@@ -875,8 +876,15 @@ static bool run(SlThread *t)
                 while (u && u->name != name) u = u->next;
                 if (!u && (u = malloc(sizeof *u))) {
                     u->name = name, u->next = unknown, unknown = u;
+                    /* every command of Oni.exe is registered: a name not among them is unknown to the
+                       original too (a level's call of another level's function, save_game_2 on level 6;
+                       cutscene_sync_mark on levels 11 and 14), which reports it (SLrParse_FuncStack_Push
+                       0x47b250, 'Could not find function') and goes on, as the outros after them show */
                     char m[160];
-                    snprintf(m, sizeof m, "SL: %s isn't ported yet", name);
+                    const char *f = exe_str(0x53d248);
+                    snprintf(m, sizeof m, "SL: ");
+                    if (f && strstr(f, "%s") && !strchr(strstr(f, "%s") + 2, '%')) snprintf(m + 4, sizeof m - 4, f, name);
+                    else snprintf(m + 4, sizeof m - 4, "%s?", name);
                     say(m);
                 }
             }

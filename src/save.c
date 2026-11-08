@@ -38,7 +38,8 @@ static float getf(const uint8_t *p) { uint32_t v = get32(p); float f; memcpy(&f,
 
 /* The continue as the original keeps it (0x204 bytes, persist.dat's): +0 the name, +0x40 the flags,
    +0x44 the health, +0x48 its maximum, +0x4c the place, +0x58 the facing, +0x5c ammo, +0x60 cells,
-   +0x64 shield, +0x68 invisibility, +0x6c hypos (C+0x1c0 at +0x70 not kept), +0x74 the LSI; three
+   +0x64 shield, +0x68 invisibility, +0x6c hypos, +0x70 C+0x1c0 (0x4fd7de, put back at 0x4fd9ae; nothing
+   else in the game reads or writes it, so the port leaves it 0), +0x74 the LSI; three
    weapons from +0x78 (the hand, then the stowed ones), each a class name of 0x80 and the ammo. */
 static void to_record(uint8_t r[PERSIST_CONTINUE_SIZE])
 {
