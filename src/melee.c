@@ -619,9 +619,10 @@ void melee_test_local_environment(MeleeState *m, const Character *c, const Chara
         m->env_back[1] = m->env_pos[1];
         m->env_back[2] = m->env_pos[2] + ca * 6.0f;
     }
-    /* a blockage within 8 doesn't count (nor with A+0xb6 set, not kept by the port); else the way from
-       the pelvis to the target's, at the lower of the two heights, decides */
-    if (m->env_blocked && m->dist < 8.0f) m->env_blocked = false;
+    /* a blockage within 8 doesn't count, nor one while pushed off a character (A+0xb6, with an active
+       record: 0x4a018d); else the way from the pelvis to the target's, at the lower of the two heights,
+       decides */
+    if (m->env_blocked && (m->dist < 8.0f || (!c->inactive && c->blocked_by_char))) m->env_blocked = false;
     if (m->env_blocked) {
         float mine[3], theirs[3];
         pelvis_of(c, mine);

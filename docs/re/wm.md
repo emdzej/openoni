@@ -628,6 +628,14 @@ Not the WM's, but drawn with it on the in-game UI's screen (`ONrInGameUI_Display
   up (unless the flag is more than 10 below). No level script uses it.
 - A new objective not yet read (0x5ed098) runs the flash's clock and flashes the compass, a whole
   circle while no target is set.
+- **When it is drawn**: `ONi_GameState_Display_All_UI_Elements` 0x4fbaa0 draws the letterbox's bars
+  (0x4fceb0, the letterbox at G+0x30: +0 the time, +4 the height, +8 on, +9 moving), then the in-game
+  UI only with `gs_show_ui` (0x5533e0, on) and the letterbox off (0x4fbbbd: G+0x38, from `letterbox
+  on` until `letterbox off`, while the bars still slide in). The timer (0x4fd500) is the UI's last part
+  but one (before the help, 0x501440), so it goes with it. Neither is drawn in game state 3 (G+0x40).
+- **The left ring's weapon** (0x500ea0, the shown weapon's ONWC, the one in the hand or else the first
+  slot's): its +0x50 icon at the "left" picture's size (0x5ed020's +0x84/+0x86), not its own, then the
+  ammo's ring (+0x54) over it; 0x501240 the weapon in the hand's +0x4c picture, 54 square.
 
 ## The frames
 

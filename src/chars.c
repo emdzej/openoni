@@ -171,6 +171,7 @@ static Chr *create(int object)
         c->ai.flags = AI_FLAG_KNOWLEDGE | (f & 0x08 ? AI_FLAG_NON_AGGRESSIVE : 0) | (f & 0x100 ? AI_FLAG_NO_DEGRADE : 0);
         c->c.flags |= CHR_FLAG_AI_MOVEMENT;     /* AI2rInitializeCharacter 0x48a6b0, an AI (C+0x1e8 2) */
         if (f & 0x400) c->c.flags |= CHR_FLAG_BOSS;
+        if (f & 0x1000) c->c.flags |= CHR_FLAG_NO_AUTO_DROP;
         c->ai.alert = (int)objc_char_alert(o);
         c->ai.state = AI_STATE_IDLE;
         melee_start(&c->ai.melee, melee_find(objc_char_melee(o)), oncc);
@@ -586,7 +587,7 @@ static void died(Character *c, Character *killer)
     ch->corpse_time = (uint16_t)(k[0] | k[1] << 8);
     chr_throw_weapon(c);        /* (Die_1) the hand's weapon thrown (0x51b590) */
     /* (ONrCharacter_Die_1_Animating_Hook 0x4eb550) an AI's inventory: the clips, cells and hypos it drops, one each, a
-       shield and an invisibility; then (unless C+4 0x4000000, not kept) what is left of its own shield
+       shield and an invisibility; then (unless CHR_FLAG_NO_AUTO_DROP) what is left of its own shield
        and invisibility, and the LSI */
     if (c->ai) {
         for (unsigned n = 0; n < c->drop_ammo; n++) powerup_drop(c, POWERUP_AMMO, 1, false);
@@ -594,9 +595,11 @@ static void died(Character *c, Character *killer)
         for (unsigned n = 0; n < c->drop_hypos; n++) powerup_drop(c, POWERUP_HYPO, 1, false);
         if (c->drop_shield) powerup_drop(c, POWERUP_SHIELD, 100, false);
         if (c->drop_invisibility) powerup_drop(c, POWERUP_INVISIBILITY, 1800, false);
-        if (c->shield) powerup_drop(c, POWERUP_SHIELD, c->shield, false);
-        if (c->invisibility) powerup_drop(c, POWERUP_INVISIBILITY, c->invisibility, false);
-        if (c->lsi) powerup_drop(c, POWERUP_LSI, 1, false);
+        if (!(c->flags & CHR_FLAG_NO_AUTO_DROP)) {
+            if (c->shield) powerup_drop(c, POWERUP_SHIELD, c->shield, false);
+            if (c->invisibility) powerup_drop(c, POWERUP_INVISIBILITY, c->invisibility, false);
+            if (c->lsi) powerup_drop(c, POWERUP_LSI, 1, false);
+        }
     }
     if (ch->object < 0) return;
     const ObjcObject *o = &objects[ch->object];
@@ -932,8 +935,7 @@ static bool cmd_lookatchar(SlThread *t, int c, const SlValue *v, SlValue *r, voi
 }
 
 /* chr_boss_shield char (AI2iScript_BossShield 0x4ba160): C+4 0x40000000, the boss's shield: its hits
-   take the shield's material (ONrCharacter_GetMaterialType 0x4e6200; the impact effects are
-   stand-ins). chr_shadow char 0|1 (AI2iScript_ChrShadow 0x4ba0c0): C+4 0x1000000 no shadow (0 or
+   take the shield's material (ONrCharacter_GetMaterialType 0x4e6200, Super_Shield: impact.c). chr_shadow char 0|1 (AI2iScript_ChrShadow 0x4ba0c0): C+4 0x1000000 no shadow (0 or
    less). chr_super char amount (0x4ba640): the super value (C+0x1664, the Daodan glow's). */
 static bool cmd_boss_shield(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {

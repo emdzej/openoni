@@ -1887,8 +1887,11 @@ static void game_display(void)
     laser_draw(view);
     if (sighted) sight_draw_crosshair(view, &sight, p3_tick());   /* 0x4fbb0a */
     particle_draw_flares(view, near, p3_tick());
-    if (display.player) ui_draw_hud(w, h, &display.player->c, display.ticks);
-    ui_draw(w, h);
+    /* 0x4fbb95: the letterbox, then the HUD (0x4fff50) with gs_show_ui on and the letterbox not */
+    ui_draw_letterbox(w, h);
+    bool hud = gs_show_ui && !ui_letterbox_on();
+    if (display.player && hud) ui_draw_hud(w, h, &display.player->c, display.ticks);
+    ui_draw(w, h, hud);
     int dw, dh;
     ui_draw_wm_begin(w, h, &dw, &dh);   /* the WM's windows over it, in its own pixels */
     gl_dev_set_dry(false);

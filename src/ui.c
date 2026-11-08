@@ -279,6 +279,9 @@ float ui_letterbox(void)
     return box.height;
 }
 
+bool ui_letterbox_on(void) { return box.on; }
+bool gs_show_ui = true;
+
 bool ui_input_enabled(void) { return input_on; }
 void ui_set_input(bool on) { input_on = on; }
 
@@ -773,6 +776,7 @@ void ui_register_commands(void)
     sl_register("lose", cmd_lose, NULL);
     sl_register("timer_start", cmd_timer_start, NULL);
     sl_register("splash_screen", cmd_splash, NULL);
+    sl_register_bool("gs_show_ui", &gs_show_ui);
     sl_register("ui_show_element", cmd_show_element, NULL);
     sl_register("ui_flash_element", cmd_flash_element, NULL);
     sl_register("ui_fill_element", cmd_fill_element, NULL);

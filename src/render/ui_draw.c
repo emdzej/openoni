@@ -115,18 +115,23 @@ static void area_glyphs(const void *font, int16_t x, int16_t y, const char *s, u
     wm_glyphs(font, x, y, s, n, argb, all);
 }
 
-void ui_draw(int w, int h)
+void ui_draw_letterbox(int w, int h)
 {
     gl_dev_screen(w, h);
     /* The original draws at the display's own pixels; the port draws as at 640x480, scaled. */
-    float scale = (float)h / 480.0f;
-    /* letterbox: two bars (ONrGameState_LetterBox_Display 0x4fceb0) */
-    float lb = ui_letterbox() * scale;
+    float lb = ui_letterbox() * ((float)h / 480.0f);
     if (lb > 0) {
         static const uint8_t black[4] = { 0, 0, 0, 255 };
         rect(0, 0, (float)w, lb, black);
         rect(0, (float)h - lb, (float)w, (float)h, black);
     }
+}
+
+void ui_draw(int w, int h, bool hud)
+{
+    gl_dev_screen(w, h);
+    float scale = (float)h / 480.0f;
+    float lb = ui_letterbox() * scale;
     /* the console's text areas (ONrGameState_Display: 0x430400, 0x4303e0), at 640 by 480 */
     wm_scale = scale;
     ui_area_display((int16_t)((float)w / scale), area_glyphs, NULL);
@@ -139,7 +144,7 @@ void ui_draw(int w, int h)
         /* the timer (ONrGameState_Timer_Display 0x4fd500): centred, near the top (its place inferred:
            0x4264e0's offsets aren't decoded) */
         char tt[32];
-        if (ui_timer_text(tt)) {
+        if (hud && ui_timer_text(tt)) {
             static const uint8_t white[4] = { 255, 255, 255, 255 };
             float tw = walk(font, 0, 0, scale, tt, white, false);
             ui_draw_text(font, ((float)w - tw) / 2, lb + lh * 2, scale, tt, white);
@@ -220,6 +225,13 @@ static uint16_t tx16(const void *t, unsigned off) { const uint8_t *p = (const ui
 static uint32_t rd32p(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
 static float rdfp(const uint8_t *p) { uint32_t v = rd32p(p); float f; memcpy(&f, &v, 4); return f; }
 
+/* The HUD's blend: a texture with flag 0x400 draws added (the OpenGL back end's 0x40d640), else by its
+   alpha. */
+static unsigned screen_mode(const void *tex, unsigned mode)
+{
+    return mode == GL_DEV_SCREEN && tex && (tx16(tex, TXMP_FLAGS) & 0x400) ? GL_DEV_SCREEN_ADD : mode;
+}
+
 /* An arc (0x5045a0, 0x5007d0): segments + 1 points from angle a0 to a1 at radii ro and ri around the
    centre, the texture's coordinates the same points on the ring texture (its middle the centre, its
    half width the scale); drawn (0x500640) as a quad per segment. */
@@ -247,7 +259,8 @@ static void arc(float cx, float cy, float a0, float a1, float ro, float ri, int 
         uint16_t q[6] = { o, (uint16_t)(o + 2), (uint16_t)(o + 1), (uint16_t)(o + 1), (uint16_t)(o + 2), (uint16_t)(o + 3) };
         memcpy(idx + 6 * i, q, sizeof q);
     }
-    gl_dev_draw(v, (uint32_t)(2 * (segments + 1)), idx, (uint32_t)(6 * segments), gl_dev_texture(ring), GL_DEV_SCREEN);
+    gl_dev_draw(v, (uint32_t)(2 * (segments + 1)), idx, (uint32_t)(6 * segments), gl_dev_texture(ring),
+                screen_mode(ring, GL_DEV_SCREEN));
 }
 
 /* A sprite (M3rDraw_Sprite) from (x0, y0) to (x1, y1), flipped upside down or not. */
@@ -261,7 +274,7 @@ static void sprite(float x0, float y0, float x1, float y1, bool flip, const void
         { x0, y1, 0, 0, v1, 255, 255, 255, alpha },
     };
     static const uint16_t idx[6] = { 0, 1, 2, 0, 2, 3 };
-    gl_dev_draw(v, 4, idx, 6, gl_dev_texture(tex), mode);
+    gl_dev_draw(v, 4, idx, 6, gl_dev_texture(tex), screen_mode(tex, mode));
 }
 
 /* The left element (ONrInGameUI_Display 0x4fff50, while ui_show_element left is on): the "left"
@@ -282,15 +295,15 @@ static void draw_compass(const Character *c, float cx, float cy, const void *rin
    0x52b40c), flashing by the ammo bit; then (0x501240) the hand's weapon's picture (class +0x4c), 54
    square from 27 up and left of the centre, flashing by the weapon bit. An owner of unlimited ammo
    (C+0x04 0x40) shows it full: the original's getter (0x517850) fills it there. */
-static void draw_weapon(const Character *c, float cx, float cy, float scale)
+static void draw_weapon(const Character *c, const void *left, float cx, float cy, float scale)
 {
     const Weapon *w = c->weapon ? c->weapon : chr_slot(c, 1) ? chr_slot(c, 1) : chr_slot(c, 2);
     const void *icon = w ? tm_link(w->cls + 0x50) : NULL;
     if (icon) {
-        float iw = (float)(tx16(icon, TXMP_WIDTH) >> 1) * scale, ih = (float)(tx16(icon, TXMP_HEIGHT) >> 1) * scale;
-        float x0 = cx - iw, y0 = cy - ih;
-        sprite(x0, y0, x0 + (float)tx16(icon, TXMP_WIDTH) * scale, y0 + (float)tx16(icon, TXMP_HEIGHT) * scale, false,
-               icon, 255, GL_DEV_SCREEN);
+        /* at the "left" picture's size, not its own (0x500f3d: 0x5ed020's +0x84, +0x86) */
+        float lw = (float)tx16(left, TXMP_WIDTH), lh = (float)tx16(left, TXMP_HEIGHT);
+        float x0 = cx - (float)((int)lw >> 1) * scale, y0 = cy - (float)((int)lh >> 1) * scale;
+        sprite(x0, y0, x0 + lw * scale, y0 + lh * scale, false, icon, 255, GL_DEV_SCREEN);
         unsigned full = (unsigned)(w->cls[0xc0] | w->cls[0xc1] << 8);
         unsigned ammo = (ui_filled(0x40) || (w->owner && (w->owner->flags & 0x40))) ? full : w->ammo;
         const void *ring = tm_link(w->cls + 0x54);
@@ -323,7 +336,7 @@ static void draw_left(int w, int h, const Character *c, float scale)
         arc(cx, cy, 3.1415927f, 3.1415927f + (1.5707964f - 3.1415927f) * (float)cells / 6.0f, 64.0f, 51.5f,
             (int)cells, ring, scale, 0xffffffffu, ui_flash_alpha(0x400));
     draw_compass(c, cx, cy, ring, arrow, scale);
-    draw_weapon(c, cx, cy, scale);
+    draw_weapon(c, left, cx, cy, scale);
 }
 
 static void draw_compass(const Character *c, float cx, float cy, const void *ring, const void *arrow, float scale)
@@ -509,8 +522,8 @@ static void draw_right(int w, int h, const Character *c, const void *right, cons
     /* the right element's centre (ONrInGameUI_SetArcPoints 0x504270): 10 from the right edge, on the
        bottom */
     float cx = (float)w - (10.0f + (float)((int)rw >> 1)) * scale, cy = (float)h - (float)((int)rh >> 1) * scale;
-    /* the element: an RGB555 picture on black, drawn added (inferred: its draw states, 0x41e170 with
-       0 = 3, 1 = 0, 2 = 2, 9 = 255, 7 = -1, aren't decoded yet; drawn opaque its corners would show) */
+    /* the element: an RGB555 picture on black with the texture flag 0x400, drawn added (0x40d640; the
+       HUD's draw states, 0x41e170 with 0 = 3 textured, 2 = 2 filled polygons, 9 = 255, 7 = -1) */
     GlVertex bg[4] = {
         { cx - rw * 0.5f * scale, cy - rh * 0.5f * scale, 0, 0, 0, 255, 255, 255, 255 },
         { cx + rw * 0.5f * scale, cy - rh * 0.5f * scale, 0, 1, 0, 255, 255, 255, 255 },

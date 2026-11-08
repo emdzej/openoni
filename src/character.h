@@ -356,6 +356,9 @@ void character_set_facing_offset(Character *c, float a);
 enum { CHR_FLAG_AI_MOVEMENT = 0x400000 };
 /* C+0x04 0x10000000: no AI or a boss (CHAR or setup flag 0x400; AI2rInitializeCharacter 0x48a6b0). */
 enum { CHR_FLAG_BOSS = 0x10000000 };
+/* C+4 0x4000000: an AI that drops only its CHAR object's inventory, not its own shield, invisibility
+   nor LSI (the CHAR flag 0x1000, AI2rInitializeCharacter 0x48a78a; 0x4eb7c6) */
+enum { CHR_FLAG_NO_AUTO_DROP = 0x4000000 };
 
 /* The body's root (FUN_004e5a30's start): T(position + the pelvis's height) R(facing about y); while an
    environment animation plays, its matrix at the frame and a quarter turn about x (none with no

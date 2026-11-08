@@ -52,6 +52,10 @@ uint32_t ui_time(void);
 bool ui_fade(float rgba[4]);
 /* The letterbox bars' height now, in 640x480 pixels (0 to 75). */
 float ui_letterbox(void);
+/* The letterbox on (its +8), from letterbox on until letterbox off, though still sliding. */
+bool ui_letterbox_on(void);
+/* gs_show_ui (0x5533e0, on): the HUD drawn. */
+extern bool gs_show_ui;
 bool ui_input_enabled(void);
 /* The slow motion timer (G+0x108, the slowmo command) running: the game's clock at half speed
    (ONrGameState_UpdateServerTime 0x4fbeb0). */
