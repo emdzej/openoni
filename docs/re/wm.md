@@ -670,7 +670,9 @@ title's height less 4, square.
 console), `src/outgame.c` (the main menu), `src/li.c` (the keys as the LI's codes), `src/render/ui_draw.c` (the sprites and glyphs). The
 desktop is as tall as 480, scaled to the display (as the HUD). Unattended runs tap keys into the dialogs
 with `--param keys=27,32,...`, or click with `@x:y` in the desktop's pixels (one every 30 frames of a
-dialog). Not ported: the caret, and the edit field, the menu bar and the radio button (none in the
-game's dialogs; the edit field is in the developers' get text, 51). The options: the port has one screen mode,
+dialog). Not ported: the caret, and the edit field, the menu bar and the radio button, all unreachable in v1.0:
+no code makes a window of class 7, 9 or 14 (`WMrWindow_New` 0x475160 is called for 1, 6, 10 and 16
+and for the dialogs' items), and the only dialogs with an edit field, the developers' get text (51) and
+setup player (132), are never opened (`WMrDialog_ModalBegin` 0x4689d0 opens 70, 71 and 150 to 156). The options: the port has one screen mode,
 the persisted one, so the resolution's popup lists that alone; the quality and the gamma are persisted
 but not applied (the draw engine's quality and the display's gamma are not ported).

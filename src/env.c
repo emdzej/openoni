@@ -141,11 +141,24 @@ static void glass_hit(uint32_t quad, const float point[3], const float dir[3], f
     float l01 = sqrtf(e01[0] * e01[0] + e01[1] * e01[1] + e01[2] * e01[2]);
     float l32 = sqrtf(e32[0] * e32[0] + e32[1] * e32[1] + e32[2] * e32[2]);
     float l03 = sqrtf(e03[0] * e03[0] + e03[1] * e03[1] + e03[2] * e03[2]);
-    if (l01 < 1e-6f) return;
+    if (fabs(l01) < 0.001) return;      /* 0x5296e0 */
     float size = exe_float(0x52b7c0 + 4u * (uint32_t)glass_detail), per0 = exe_float(0x52b7cc + 4u * (uint32_t)glass_detail);
     uint32_t cols = (uint32_t)ftol(l01 / size) + 1, rows = (uint32_t)ftol(l03 / size) + 1;     /* 0x509228 */
     if (cols > 50) cols = 50;
     if (rows > 50) rows = 50;
+    /* the shards' orientation (MUrMatrix3x3_FormOrthonormalBasis 0x434150): the near edge, the cross of
+       the side edge with it, and the cross of those, each normalised; none if one is degenerate */
+    float basis[9], *u = basis, *bv = basis + 3, *w = basis + 6;
+    for (int i = 0; i < 3; i++) u[i] = (float)(e01[i] * (1.0 / l01));     /* (by the reciprocal, as x87) */
+    bv[0] = e03[1] * u[2] - e03[2] * u[1], bv[1] = e03[2] * u[0] - e03[0] * u[2], bv[2] = e03[0] * u[1] - e03[1] * u[0];
+    float lb = sqrtf(bv[0] * bv[0] + bv[1] * bv[1] + bv[2] * bv[2]);
+    if (fabs(lb) < 0.001) return;
+    for (int i = 0; i < 3; i++) bv[i] = (float)(bv[i] * (1.0 / lb));
+    w[0] = u[1] * bv[2] - u[2] * bv[1], w[1] = u[2] * bv[0] - u[0] * bv[2], w[2] = u[0] * bv[1] - u[1] * bv[0];
+    float lw = sqrtf(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
+    if (fabs(lw) < 0.001) return;
+    for (int i = 0; i < 3; i++) w[i] = (float)(w[i] * (1.0 / lw));
+    const P3EffectSpec spec = { .cls = shard };     /* 0x5ed310: placed and turned as given */
     uint32_t tick = p3_tick();
     for (uint32_t row = 0; row < rows; row++) {
         float per = per0;
@@ -178,7 +191,9 @@ static void glass_hit(uint32_t quad, const float point[3], const float dir[3], f
                     float g = 1.0f - f, v = f * 12.0f + force * 0.04f * g * 90.0f;
                     for (int i = 0; i < 3; i++) vel[i] += (-f * n[i] + le * e[i] * g) * v;
                 }
-                p3_effect(shard, pos, vel, NULL, tick);
+                P3EffectLoc loc = { .tick = tick, .orientation = basis };
+                memcpy(loc.pos, pos, 12), memcpy(loc.vel, vel, 12);
+                p3_create_effect(&spec, &loc);
             }
         }
     }

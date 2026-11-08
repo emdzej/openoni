@@ -358,8 +358,9 @@ void envparticle_owned_start(const void *envp, const float *matrix, const char *
 }
 
 /* EPrArray_Delete 0x4552d0: an object's list off: each listed record's particle killed, out of its tag's
-   chain, no longer listed. Not ported: the particles' tag references let go (0x462d70; no class links
-   by tag). */
+   chain, no longer listed. The original then looks again for the tag of each class whose attractor
+   goes by tag (0x462d70: +0x220 2, the name at +0x22c, kept at +0x228); the port's attractor finds the
+   tag by its name each time (iterate_tag), so there is nothing to look again for. */
 void envparticle_owned_stop(const void *envp)
 {
     for (int l = 0; l < nowned; l++) {

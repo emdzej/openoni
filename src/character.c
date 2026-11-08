@@ -7,6 +7,7 @@
 #include "akev.h"
 #include "akev_collide.h"
 #include "body.h"
+#include "chars.h"
 #include "chr_anim.h"
 #include "inventory.h"
 #include "film.h"
@@ -17,9 +18,11 @@
 #include "tm.h"
 #include "trac.h"
 #include "tram.h"
+#include "ui.h"
 #include "weapon.h"
 
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }
@@ -757,7 +760,7 @@ static void held_pull(Character *c, const Character *by)
    (AKrCollision_Point 0x441c80 down 4: the gap if it is 0.5 to 4, else 0.5); in the air the air
    velocity, which gravity (ONCC+4) slows down to the fall's limit (ONCC+0xc). Held by a tractor beam
    (A+0x112), the air velocity instead, slowing by a tenth, and the pull toward the shooter (0x4de759).
-   Past 300 ticks in the air the fall kills. Not ported: the film's movement log. */
+   Past 300 ticks in the air the fall kills. */
 static void jump_and_fall(Character *c, const void *env, uint64_t held, float v[3])
 {
     if (c->hold_ticks && !--c->hold_ticks) {
@@ -872,6 +875,33 @@ static void weapon_move(Character *c, bool had, const float was[3])
     for (int k = 0; k < 3; k++) c->weapon_move[k] = had ? c->weapon_at[k] - was[k] : 0.0f;
 }
 
+int32_t chr_show_movement;
+
+/* 0x4de97a, chr_show_movement N (0x5ecbc0): the player's motion of each tick (step 9's, in its own
+   space) kept in a ring of N (0x5ecbc8, grown when N changes, 0x5ecbc4), and every N ticks of the game
+   time the average x and z printed ("movement = %4.4f,%4.4f", a console message under its level) */
+static void show_movement(const Character *c, const float v[3])
+{
+    static float *ring;
+    static int32_t ring_n;
+    const Chr *p = chars_player();
+    if (!p || &p->c != c) return;
+    if (chr_show_movement != ring_n) {
+        float *r = chr_show_movement > 0 ? realloc(ring, sizeof(float) * 3 * (size_t)chr_show_movement) : NULL;
+        if (chr_show_movement <= 0) free(ring);
+        ring = r, ring_n = r ? chr_show_movement : 0;
+        if (!r) chr_show_movement = 0;
+    }
+    if (!ring) return;
+    uint32_t n = (uint32_t)ring_n, t = game_time();
+    memcpy(ring + 3 * (t % n), v, 12);
+    if (t % n) return;
+    float sx = 0.0f, sz = 0.0f;
+    for (uint32_t i = 0; i < n; i++) sx += ring[3 * i], sz += ring[3 * i + 2];
+    float r = 1.0f / (float)n;
+    ui_console_printf(exe_str(0x550dbc), (double)(sx * r), (double)(sz * r));
+}
+
 static void do_frame(Character *c, const void *env, const ChrInput *in)
 {
     uint64_t held = in->held;
@@ -893,6 +923,7 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
     memcpy(weapon_was, c->weapon_at, sizeof weapon_was);
     float v[3], before[3] = { c->pos[0], c->pos[1], c->pos[2] };
     jump_and_fall(c, env, held, v);
+    show_movement(c, v);
     /* 0x433010: the motion in the character's space (+z forward, +x left) turned by the facing */
     float s = sinf(c->facing), co = cosf(c->facing);
     float w[3] = { co * v[0] + s * v[2], v[1], -s * v[0] + co * v[2] };

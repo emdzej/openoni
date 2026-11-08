@@ -1214,6 +1214,103 @@ static bool gun_through_wall(const Character *c, const Weapon *w)
     return gun_ray_blocked(p, d);
 }
 
+/* AMrRayToCharacter 0x4d5150: the nearest of the active characters but the one of index skip the ray
+   from p along d (unbounded, 0x4f1630) meets; its part and the point. */
+static Chr *ray_to_character(uint16_t skip, const float p[3], const float d[3], float point[3])
+{
+    Chr *best = NULL;
+    float bd = 3.4028235e38f;
+    for (int i = 0; i < chars_slots(); i++) {
+        Chr *o = chars_get(i);
+        if (!o || o->c.inactive || o->c.id == skip) continue;
+        float q[3];
+        if (!p3_character_ray_part(&o->c, p, d, false, q, NULL)) continue;
+        float e[3] = { q[0] - p[0], q[1] - p[1], q[2] - p[2] }, dd = sqrtf(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]);
+        if (dd < bd) bd = dd, best = o, memcpy(point, q, 12);
+    }
+    return best;
+}
+
+/* 0x4d4e50: what the ray from p along dir (a unit) meets first: a character (but skip's; 1), the level's
+   quads (1000 along it, skipping 0x44800; 2) or an object (AMrRayToObject; 3), the nearest of those
+   found (a missing one 1e9 away); 0 none, its end 1000 along. The point in at. */
+static int ray_pick(uint16_t skip, const float p[3], const float dir[3], Chr **who, float at[3])
+{
+    const float far = 1e9f;     /* 0x4e6e6b28 */
+    float pc[3] = { far, far, far }, pe[3] = { far, far, far }, po[3] = { far, far, far };
+    const void *env = p3_environment();
+    *who = NULL;
+    if (!env) return 0;
+    Chr *ch = skip != 0xfffe ? ray_to_character(skip, p, dir, pc) : NULL;
+    bool obj = object_ray(p, dir, po);
+    const float v[3] = { dir[0] * 1000.0f, dir[1] * 1000.0f, dir[2] * 1000.0f };    /* 0x52a87c */
+    static AkevHit h[AKEV_HITS_MAX];
+    bool wall = akev_collide_point(env, p, v, 0x44800, 1, h) != 0;
+    if (wall) memcpy(pe, h[0].point, 12);
+    int kind;
+    if (!obj) kind = wall ? (ch ? -1 : 2) : (ch ? 1 : 0);
+    else kind = !wall && !ch ? 3 : -1;
+    if (kind < 0) {
+        float de = sqrtf((pe[0] - p[0]) * (pe[0] - p[0]) + (pe[1] - p[1]) * (pe[1] - p[1]) + (pe[2] - p[2]) * (pe[2] - p[2]));
+        float dc = sqrtf((pc[0] - p[0]) * (pc[0] - p[0]) + (pc[1] - p[1]) * (pc[1] - p[1]) + (pc[2] - p[2]) * (pc[2] - p[2]));
+        float dob = sqrtf((po[0] - p[0]) * (po[0] - p[0]) + (po[1] - p[1]) * (po[1] - p[1]) + (po[2] - p[2]) * (po[2] - p[2]));
+        kind = dc < de && dc < dob ? 1 : dob < de ? 3 : 2;
+    }
+    switch (kind) {
+    case 1: *who = ch, memcpy(at, pc, 12); break;
+    case 2: memcpy(at, pe, 12); break;
+    case 3: memcpy(at, po, 12); break;
+    default: for (int k = 0; k < 3; k++) at[k] = p[k] + v[k];
+    }
+    return kind;
+}
+
+bool weapon_sight(const Character *c, WeaponSight *s)
+{
+    /* 0x4e1900: the player's (C+0x1e8 0) gun, not through a wall, with ammo, and a laser (ONWC +0x0c) */
+    Weapon *w = c ? c->weapon : NULL;
+    if (!w || c->ai || c->inactive || gun_through_wall(c, w) || !has_ammo(w)) return false;
+    const uint8_t *k = w->cls;
+    float lp[3] = { rdf(k), rdf(k + 4), rdf(k + 8) }, ld[3] = { rdf(k + 0xc), rdf(k + 0x10), rdf(k + 0x14) };
+    if (!(fabsf(ld[0]) >= 0.0009765625f || fabsf(ld[1]) >= 0.0009765625f || fabsf(ld[2]) >= 0.0009765625f)) return false;
+    /* WPrGetMarker 0x51a8a0: the marker and its point along under the weapon's matrix, the way made a unit */
+    float tip[3] = { lp[0] + ld[0], lp[1] + ld[1], lp[2] + ld[2] }, from[3], to[3], dir[3];
+    xform(w->m, lp, from);
+    xform(w->m, tip, to);
+    for (int i = 0; i < 3; i++) dir[i] = to[i] - from[i];
+    float l = 1.0f / sqrtf(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
+    for (int i = 0; i < 3; i++) dir[i] *= l;
+    float range = rdf(k + 0x18), at[3], end[3];
+    Chr *who;
+    int kind = ray_pick((uint16_t)(c->id & 0xff), from, dir, &who, at);
+    if (kind == 0) {
+        for (int i = 0; i < 3; i++) end[i] = dir[i] * range + from[i];
+    } else {
+        float e[3] = { at[0] - from[0], at[1] - from[1], at[2] - from[2] };
+        float d = sqrtf(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]);
+        memcpy(end, at, 12);
+        if (d <= range) {
+            /* the end drawn back 2 from what it meets (0x529818), toward the gun (0x432df0) */
+            if (d > 0.0009765625f) {
+                float f = 2.0f / d;
+                if (f < 0.0f) f = 0.0f;
+                else if (f > 1.0f) f = 1.0f;
+                for (int i = 0; i < 3; i++) end[i] = (at[i] - from[i]) * (1.0f - f) + from[i];
+            }
+        } else {
+            /* beyond the range: as far as it goes (MUrVector_SetLength 0x433d60), meeting nothing */
+            float m = range / d;
+            for (int i = 0; i < 3; i++) end[i] = from[i] + e[i] * m;
+            kind = 0;
+        }
+    }
+    memcpy(s->from, from, 12);     /* 0x5ecb70 */
+    memcpy(s->to, end, 12);        /* 0x5ecb58 */
+    s->kind = kind == 1 && who && (who->c.flags & 1) ? 0 : kind;   /* 0x5ecb68: a dead one isn't a target */
+    s->cls = k;
+    return true;
+}
+
 /* 0x4e9040, a trigger of DoCharacterFrame (mode 0 fire, 1 again, 2 alternate, 3 held): the flags
    cleared; a dead character doesn't; a gun through a wall stops firing; the trigger; out of ammo the
    firing stops (then the reload and the empty sound). */

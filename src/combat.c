@@ -200,7 +200,17 @@ void combat_op_char(void *o, const Character *c)
     a->aim.look_char = c;
 }
 
-static const TargetingOps ai_ops = { op_fire, combat_op_speed, NULL, combat_op_place, combat_op_vector, combat_op_point, combat_op_char };
+/* 0x490ba0: the movement's weapon aim */
+void combat_op_weapon_aim(void *o, bool on) { movement_set_weapon_aim(o, on); }
+
+/* 0x490bb0: the mode's aiming again, then AI2rMovement_StopAiming 0x4a8050 */
+void combat_op_stop_aiming(void *o)
+{
+    movement_clear_weapon_aim(o);
+    ((Chr *)o)->ai.aim.look = 0;
+}
+
+static const TargetingOps ai_ops = { op_fire, combat_op_speed, combat_op_weapon_aim, combat_op_stop_aiming, combat_op_place, combat_op_vector, combat_op_point, combat_op_char };
 
 /* AI2rInitializeCharacter's part (0x4ba6d0): the character's targeting, with the class's AI block. */
 static AiTargeting *targeting(AiState *a, Character *c)

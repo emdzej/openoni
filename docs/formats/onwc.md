@@ -9,8 +9,8 @@ offsets are 8 more). Confirmed against the exe where marked.
 
 | Offset | What |
 |---|---|
-| 0x00 | Laser sight: origin (3 floats), direction (3 floats), length, colour |
-| 0x20 | Crosshair texture (TXMP), colour, scale; the locked one at 0x2c; the tunnel's at 0x38 |
+| 0x00 | Laser sight: origin (3 floats), direction (3 floats; all under 2^-10: none), length (+0x18), colour (+0x1c). Confirmed (below) |
+| 0x20 | Crosshair sprite {TXMP, colour, scale}; the locked one at 0x2c; the tunnel's at 0x38, with its count at 0x44 and spacing at 0x48. Confirmed (below) |
 | 0x4c | The HUD's textures (TXMP): +0x4c the weapon's picture (54 square at the left ring's centre, 0x501240), +0x50 the ammo's icon (at its size there), +0x54 the ammo's ring (an arc of radii 44 and 30 from pi / 12 round by the ammo's share of 5.76, 0x500ea0). Confirmed |
 | 0x58 | Geometry (M3GM): its origin is the grip. Confirmed: drawn in the hand (`ONrCharacter_SetCharacterClass` 0x4d7c30 puts it on the weapon node), its largest coordinate sizes the physics sphere (a quarter of it, `WPiWeapon_CreatePhysics` 0x518e10) |
 | 0x5c | Name (32 bytes) |
@@ -29,6 +29,33 @@ offsets are 8 more). Confirmed against the exe where marked.
 | 0x6f4 | The glow textures (TXMP; +0x6f8 the second, drawn with ammo) and their scales (+0x6fc, +0x700: of the geometry's bounds), sprites over a dropped weapon (`WPrDisplay` 0x519710) |
 | 0x704 | The pickup handle's offset from the weapon's place (3 floats; confirmed: 0x51b180, `WPrGetPickupPosition` 0x518650) |
 | 0x710 | Float: the height a dropped weapon is drawn above its physics' place (confirmed, `WPrDisplay` 0x519710) |
+
+## The laser sight and the crosshair
+
+Each frame the characters' display (0x4e1836) works out the player's sight when the camera follows
+(mode 1) and `marketing_line_off` (0x5ecb9a) is off (0x4e1900, confirmed): the player (C+0x1e8 0) with a
+weapon that isn't through a wall (`ONrCharacter_IsGunThroughWall` 0x4f0150), has ammo (`WPrHasAmmo`
+0x51a990) and has a laser direction. `WPrGetMarker` 0x51a8a0 puts the origin and the origin plus the
+direction under the weapon's matrix (weapon +0x0c): the start and the way (made a unit). 0x4d4e50 casts
+the ray: the active characters but the player (`AMrRayToCharacter` 0x4d5150, `ONrCharacter_Collide_Ray`
+0x4f1630 unbounded), the objects (`AMrRayToObject` 0x4d52c0) and the level's quads 1000 along it
+(`AKrCollision_Point` 0x441c80, skipping 0x44800; the first hit); the character if nearer than both,
+else the object if nearer than the quads, else the quads (a missing one 1e9 away). Nothing met: the end
+is the length along. Met within the length: the end is the hit drawn back 2 toward the gun (0x432df0);
+beyond it, the length along toward the hit, as if nothing. A living character there (not C+4 bit 1)
+makes 0x5ecb68 1.
+
+Then, with +0xcc bit 0x8000, `FXrDrawLaser` 0x4f4720 draws the beam: an untextured ribbon from the end
+to the start (`M3rContrail_Draw` 0x41a8e0) in the colour, opaque, 0.2 to each side across the camera's
+view of it, without writing the depth. With a tunnel sprite (+0x38), up to +0x44 of them go along the
+beam, +0x48 apart from a quarter of that, none past the end (`WPrDrawSprite` 0x4e1420, size mode 0).
+After the scene and before the lens flares (0x4fbb0a), 0x4f1fa0 draws the crosshair at the end (+0x2c on
+a living character, else +0x20), without the fog, through walls with +0xcc 0x40000. `WPrDrawSprite` is
+a camera-facing sprite (`M3rSimpleSprite_Draw` 0x41a7e0) of the colour, opaque, without writing the
+depth, sized by its scale times 5 (mode 0), the camera's distance to the 0.3 times 0.7 (1, +0xcc
+0x20000) or the distance times 0.03 (2, +0xcc 0x10000: the same size on the screen). Three debug
+switches (0x5ecb82..0x5ecb84) force the mode. The port: `weapon_sight` (`src/weapon.c`) and
+`sight_draw` (`src/render/particle_draw.c`).
 
 ## A shooter (0x50 bytes)
 

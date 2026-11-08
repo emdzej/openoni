@@ -200,7 +200,10 @@ static void update_targeting(AiTargeting *t, bool aim)
     t->ballistic = true;
     bool on = aim && t->params;
     int mode = on ? 1 : 2;
-    if (t->mode != mode) t->mode = mode;    /* the callback +8 (0x490ba0, the movement's weapon aim): not kept */
+    if (t->mode != mode) {
+        if (t->ops->weapon_aim) t->ops->weapon_aim(t->owner, on);       /* the callback +8 */
+        t->mode = mode;
+    }
     if (!on) {
         t->aim_dist = t->dist;
         if (!t->target) {

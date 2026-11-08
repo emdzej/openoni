@@ -308,7 +308,11 @@ static P3Particle *bone_particle(Character *c, P3Class *pc, uint16_t bone)
     m3gm_bounds(body_geometry(body, bone), box, sph);
     const float pos[3] = { (box[3] + box[0]) * 0.5f, (box[4] + box[1]) * 0.5f, (box[5] + box[2]) * 0.5f };
     static const float ID[9] = { 1, 0, 0, 0, 1, 0, 0, 0, 1 };     /* 0x529d10 */
-    P3Particle *p = p3_effect_owned(pc, pos, NULL, ID, c->bone_world[bone], 0x2000000u | c->id, ui_time());
+    /* P3rCreateEffect 0x456030: placed and turned as given (0, 0), at the place in the bone's space */
+    const P3EffectSpec spec = { .cls = pc };
+    P3EffectLoc loc = { .tick = ui_time(), .owner = 0x2000000u | c->id, .orientation = ID, .attach = c->bone_world[bone] };
+    memcpy(loc.pos, pos, 12);
+    P3Particle *p = p3_create_effect(&spec, &loc);
     if (p) p3_set_flags(p, p3_flags(p) | 0x2000);
     return p;
 }

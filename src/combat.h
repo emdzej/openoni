@@ -23,6 +23,8 @@ void combat_load(void);
    Chr. +4 the aiming speed, +0x10 the shooter's place, +0x14 the aim along a vector, +0x18 and +0x1c the
    look at a point or a character. */
 void combat_op_speed(void *o, float speed);
+void combat_op_weapon_aim(void *o, bool on);
+void combat_op_stop_aiming(void *o);
 void combat_op_place(void *o, float out[3]);
 void combat_op_vector(void *o, const float v[3]);
 void combat_op_point(void *o, const float p[3]);

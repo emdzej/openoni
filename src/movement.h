@@ -36,6 +36,8 @@ typedef struct {
 
 typedef struct {
     bool aiming;            /* +0x00: the weapon out (AI2rMovementState_NewMovementMode 0x4a9300) */
+    bool aim_forced;        /* +0x1580: the targeting's weapon aim, over the mode's */
+    bool aim_forced_on;     /* +0x1581 */
     bool rekind;            /* +0x08: the kind of move to be worked out again */
     bool no_side_walk;      /* +0x09: walking, no sideways moves (the class's sidestep is a turned run) */
     bool no_side_run;       /* +0x0a: and running */
@@ -86,6 +88,10 @@ bool movement_find_clear_point(const struct Character *c, float p[3]);
    AI moves): put on a clear point (ONrCharacter_Teleport 0x4e9210) if it stands on an obstacle. */
 void movement_place_clear(struct Chr *ch);
 void movement_alert_change(struct Chr *ch);
+/* 0x4a8110: the weapon aimed or not, whatever the mode (the targeting's callback +8, 0x490ba0). */
+void movement_set_weapon_aim(struct Chr *ch, bool on);
+/* 0x4a80e0: back to the mode's aiming (the targeting's callback +0xc, 0x490bb0, before its stop). */
+void movement_clear_weapon_aim(struct Chr *ch);
 /* HandleStartSidestep 0x4f83f0's 0x4a93c0: a sidestep done as a turned run, walking or not. */
 void movement_no_sidestep(struct Chr *ch, bool walk);
 /* AI2rMovementState_NotifyWallCollision 0x4ab5b0, 0x4ab830 (a physics context) and 0x4ab920 (a

@@ -220,4 +220,9 @@ size (0x52b7c0: 22, 20 or 15 units), the sides over it truncated plus 1, at most
 gets the detail's shards (0x52b7cc: 2.5, 3.5 or 5) on the first row, scaled to the far edge's length on
 the last, rounded (0x4340a0) with the fraction a chance of one more. The detail is the graphics
 quality at the level's start, at most 2 (0x508dd0 into 0x5564b0); the default quality, 2, takes the
-last of each.
+last of each. Each shard is made by `P3rCreateEffect` (spec 0x5ed310: the class, placed and turned
+as given) with the quad's basis as its orientation (`MUrMatrix3x3_FormOrthonormalBasis` 0x434150): the
+edge from corner 0 to 1, the cross of the edge from 0 to 3 with it, and the cross of those two, each
+normalised; an edge or cross shorter than 0.001 (0x5296e0) makes no shards. The characters' bone
+particles (0x4e96a0) go through `P3rCreateEffect` too: the identity orientation, the bone's matrix to
+hang from, the place in its space.

@@ -11,6 +11,7 @@
 typedef struct {
     void (*fire)(void *owner, bool on);                         /* +0x00 */
     void (*aiming_speed)(void *owner, float speed);             /* +0x04 */
+    void (*weapon_aim)(void *owner, bool on);                   /* +0x08: as the mode changes */
     void (*stop_aiming)(void *owner);                           /* +0x0c */
     void (*place)(void *owner, float out[3]);                   /* +0x10: the shooter's place */
     void (*aim_vector)(void *owner, const float v[3]);          /* +0x14: along the vector from the muzzle */

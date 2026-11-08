@@ -75,6 +75,7 @@
 0041a5e0	M3rDraw_Sprite	M3	med	name from the Intel Mac build (neighbours:0.83)
 0041a6a0	M3rGeomContext_SetEnvironment	M3	med	name from the Intel Mac build (neighbours:1.00)
 0041a750	M3rGeometry_Draw	M3	med	name from the Intel Mac build (neighbours:1.00)
+0041a7e0	M3rSimpleSprite_Draw	M3	med	read: the sprite mode 0 (facing the camera), then the sprite method (+0x34) with the size, colour and alpha (name made up)
 0041a830	M3rSprite_Draw	M3	med	name from the Intel Mac build (neighbours:1.00)
 0041a880	M3rDraw_Skybox	M3	med	name from the Intel Mac build (neighbours:1.00)
 0041a8e0	M3rContrail_Draw	M3	med	name from the Intel Mac build (neighbours:1.00)
@@ -273,6 +274,7 @@
 00432a60	GRrGroup_Context_NewFromFileRef	GR	med	name from the Intel Mac build (strings:1)
 00432bb0	GRrGroup_Context_Delete	GR	med	name from the Intel Mac build (neighbours:1.00)
 00432d70	MUrPoint_SegmentParameter	MU	low	the nearest point's parameter along a segment
+00432df0	MUrPoint_Lerp	MU	high	read: out = a + (b - a) t (name made up)
 00432e40	MUrPoint_NearestOnSegment	MU	low	the nearest point of a segment (clamped)
 00432f10	MUrPoint_PointBehindPlane	MU	med	name from the Intel Mac build (neighbours:1.00)
 00432f70	MUrPoint_RotateAboutAxis	MU	med	name from the Intel Mac build (neighbours:1.00)
@@ -913,6 +915,8 @@
 004a8050	AI2rMovement_StopAiming	AI2	med	name from the Intel Mac build (neighbours:0.80)
 004a8060	AI2rMovement_LookAtPoint	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a80c0	AI2rMovement_LookAtCharacter	AI2	med	name from the Intel Mac build (neighbours:0.75)
+004a80e0	AI2rMovement_DontForceAim	AI2	med	name from the Intel Mac build (the +0x1580 clear, the aiming update)
+004a8110	AI2rMovement_Force	AI2	med	name from the Intel Mac build (sets +0x1580/+0x1581)
 004a8140	AI2rMovement_StopGlancing	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a81c0	AI2rMovement_FreeFacing	AI2	med	name from the Intel Mac build (neighbours:1.00)
 004a81d0	AI2rMovement_IgnoreCharacter	AI2	high	read: C+0x14ac, the character the grids' obstacles let through (Mac name)
@@ -1261,6 +1265,7 @@
 004d4640	ONiRunGame	ON	med	name from the Intel Mac build (strings:1)
 004d4a50	ONiKeyConfig_Load	ON	high	read: key_config.txt written with the defaults if missing, then each bind/unbindall line (name made up)
 004d4db0	AMrInitialize	AM	med	name from the Intel Mac build (strings:5)
+004d4e50	ONiRayPick	ON	med	read: the nearest of a character, an object and the level's quads on a ray (the laser sight's) (name made up)
 004d5150	AMrRayToCharacter	AM	med	name from the Intel Mac build (neighbours:1.00)
 004d5280	PHrCollision_Point	PH	med	name from the Intel Mac build (neighbours:1.00)
 004d52c0	AMrRayToObject	AM	med	name from the Intel Mac build (neighbours:1.00)
@@ -1305,6 +1310,7 @@
 004e0cf0	ONrGameState_UpdateTrigger	ON	med	name from the Intel Mac build (strings:1)
 004e1370	ONrDrawSphere	ON	med	name from the Intel Mac build (strings:1)
 004e1420	WPrDrawSprite	WP	med	name from the Intel Mac build (neighbours:0.75)
+004e1900	ONiCharacter_LaserSight	ON	med	read: the player's laser sight: its end, the beam and the tunnel (name made up)
 004e1d70	ONiCharacter_Display_Body	ON	med	name from the Intel Mac build (strings:2)
 004e27d0	ONiCharacter_InCameraView	ON	low	in the field of view plus pi/8 and the far distance (C+0x1660 squared), then the environment; C+0x163c the frames out (name made up)
 004e2900	ONrGameState_ComputeCharacterLOD	ON	med	Mac name: by the class's squared distances (+0x60), all stepped to the triangle budget, the first two kept up
@@ -1401,6 +1407,7 @@
 004f11b0	ONrForceActiveCharacter	ON	med	name from the Intel Mac build (callee); made active, or C+0x1640 cleared; the record returned
 004f14c0	ONrCharacter_ForceStand	ON	med	name from the Intel Mac build (strings:1)
 004f15d0	ONrActiveCharacter_IsPlayingThisAnimationName	ON	med	name from the Intel Mac build (neighbours:1.00)
+004f1fa0	ONiDrawCrosshair	ON	med	read: the crosshair at the laser's end (name made up)
 004f2070	ONrGameState_DeferScript	ON	med	read: queues a script with the character's name and a cause ("defer script") (name made up)
 004f2120	ONrGameState_RunDeferredScripts	ON	low	runs the deferred-script queue now (name made up)
 004f21e0	ONrCharacter_Poison	ON	med	name from the Intel Mac build (neighbours:1.00)

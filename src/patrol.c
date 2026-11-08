@@ -182,7 +182,7 @@ static void shoot_trigger(void *o, bool on)
     a->aim.fire = false;
 }
 
-static const TargetingOps patrol_ops = { shoot_trigger, combat_op_speed, NULL, combat_op_place, combat_op_vector,
+static const TargetingOps patrol_ops = { shoot_trigger, combat_op_speed, combat_op_weapon_aim, combat_op_stop_aiming, combat_op_place, combat_op_vector,
                                          combat_op_point, combat_op_char };
 
 /* The shooting's end (its ticks run out, AI2rPatrol_Update 0x4afd20; AI2rPatrol_Exit 0x4afba0): the

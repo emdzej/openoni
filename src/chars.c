@@ -749,6 +749,52 @@ static Chr *arg_char(const SlValue *v)
     return chars_find(v->s);
 }
 
+/* chr_talk char sound pre_pause post_pause [priority] (AI2iScript_Talk 0x4b9c30): the character (the
+   player when not found, after the AI's report) says the line in one of eight slots (0x637110 the slots'
+   waiting flags, 0x637160 their names, 32 each; none free: the AI's report), its pauses before and after,
+   at the priority 7 ("override") without one. Named (0x5587e8: none, idle, chatter, say, call, pain,
+   yell, override), the original passes the character's pointer as the line's kind (0x4b9dd3 reloads the
+   character, the index found unused): above 7, it interrupts any other; the port gives a value above 7
+   in the characters' order. An unknown one: its message and the names (console messages under their
+   level) and nothing said. */
+static bool talk_waiting[8];
+static char talk_name[8][32];
+static bool cmd_talk(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
+{
+    (void)t, (void)r, (void)u;
+    if (c < 4) return true;
+    Chr *ch = arg_char(&v[0]);
+    if (!ch) ch = chars_player();
+    if (!ch) return true;
+    int slot = 0;
+    while (slot < 8 && talk_waiting[slot]) slot++;
+    if (slot == 8) return true;     /* the AI's report: no free slot */
+    const char *sound = v[1].type == SL_STRING && v[1].s ? v[1].s : "";
+    size_t n = 0;
+    while (sound[n] && n < 31) talk_name[slot][n] = sound[n], n++;     /* UUrString_Copy 0x20 */
+    talk_name[slot][n] = 0;
+    uint32_t type = 7;
+    if (c >= 5) {
+        const char *want = v[4].type == SL_STRING && v[4].s ? v[4].s : "";
+        int k = 0;
+        for (; k < 8; k++) {
+            const char *nm = exe_str(exe_u32(0x5587e8 + 4u * (uint32_t)k));
+            if (nm && !strcmp(nm, want)) break;
+        }
+        if (k == 8) {
+            ui_console_printf(exe_str(0x54a174), ch->name, want);
+            for (k = 0; k < 8; k++) ui_console_printf(exe_str(0x5494b8), exe_str(exe_u32(0x5587e8 + 4u * (uint32_t)k)));
+            return true;
+        }
+        type = 0x01000000u + (uint32_t)(ch - slots);
+    }
+    ChrSpeech sp = { .type = type, .pre_delay = (uint32_t)num(&v[2]), .waiting = &talk_waiting[slot],
+                     .post_delay = (uint32_t)num(&v[3]) };
+    memcpy(sp.name, talk_name[slot], sizeof sp.name);
+    speech_say(&ch->c, &sp, false);
+    return true;
+}
+
 /* chr_vocalize char type (0x4b9e00..): the character (the player when not found, after the AI's report)
    cries the vocalization by its name (0x52a4e4, 16 bytes each: taunt, alert, startle, checkbody,
    pursue, cower, superpunch, superkick, super3, super4), forced (AI2rVocalize 0x48ba60). */
@@ -943,13 +989,17 @@ static bool cmd_movetoflag(SlThread *t, int c, const SlValue *v, SlValue *r, voi
 
 /* ai2_dopath char path (AI2iScript_SetState_Patrol 0x4b4c70): an AI character (C+0x1e8 2) starts the
    patrol path, by its name (AI2rPatrol_FindByName), as its job (C+0x1f8 3). A passive one (C+0x1f0
-   bit 2) refuses: the port has no passive yet. */
+   0x02) refuses, with a console message under its level (0x549218). */
 static bool cmd_dopath(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;
     if (c < 2 || v[1].type != SL_STRING) return true;
     Chr *ch = arg_char(&v[0]);
     if (!ch || ch->player) return true;
+    if (ch->ai.flags & AI_FLAG_PASSIVE) {
+        ui_console_printf(exe_str(0x549218), ch->name);
+        return true;
+    }
     int path = patrol_find(v[1].s);
     if (path >= 0) {
         patrol_start(&ch->ai, path);
@@ -1643,17 +1693,25 @@ static bool cmd_wait_animtype(SlThread *t, int c, const SlValue *v, SlValue *r, 
 }
 
 /* ONrActiveCharacter_IsPlayingThisAnimationName 0x4f15d0: the animation's instance name
-   (TMrInstance_GetInstanceName 0x423d90, without the tag) is the name, without case. The original also
-   tries the four overlays (A+0x1c58); the port has none. */
-static bool playing_named(const Character *c, const char *name)
+   (TMrInstance_GetInstanceName 0x423d90, without the tag) is the name, without case (0x4266d0); the
+   animation, then each of the four overlays (A+0x1c58) playing one. */
+static bool anim_named(const void *anim, const char *name)
 {
-    if (!c->anim) return false;
-    const TmInstance *in = tm_handle_instance(tm_handle_of(c->anim));
+    if (!anim) return false;
+    const TmInstance *in = tm_handle_instance(tm_handle_of(anim));
     if (!in || !in->name || strlen(in->name) < 4) return false;
     const char *s = in->name + 4;
     size_t k = 0;
     while (name[k] && tolower((unsigned char)name[k]) == tolower((unsigned char)s[k])) k++;
     return !name[k] && !s[k];
+}
+
+static bool playing_named(const Character *c, const char *name)
+{
+    if (anim_named(c->anim, name)) return true;
+    for (int k = 0; k < CHR_OVERLAYS; k++)
+        if (anim_named(c->overlay[k].anim, name)) return true;
+    return false;
 }
 
 /* chr_wait_animation char name... (AI2iScript_WaitForAnimation 0x4b7320): waits until the character
@@ -1684,6 +1742,7 @@ void chars_register_commands(void)
     sl_register("ai2_spawn", cmd_spawn, NULL);
     sl_register("chr_create", cmd_chr_create, NULL);
     sl_register("chr_vocalize", cmd_vocalize, NULL);
+    sl_register("chr_talk", cmd_talk, NULL);
     sl_register("ai2_takecontrol", cmd_takecontrol, NULL);
     sl_register("trigvolume_kill", cmd_trigvolume_kill, NULL);
     sl_register("ai2_lookatme", cmd_lookatme, NULL);

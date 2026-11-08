@@ -365,6 +365,9 @@ void chr_root_matrix(const Character *c, float out[12]);
    head grown with chr_big_head (0x5ecb98, the script variable "Draws everyone with a big head"). False
    for a body that isn't the characters' 19 parts. */
 extern bool chr_big_head;
+/* chr_show_movement (0x5ecbc0, "Enables movement debugging information for characters"): 0 off, N the
+   ticks the player's motion is averaged over in the console's messages. */
+extern int32_t chr_show_movement;
 /* chr_mini_me (0x5ecb99, "Draws the main character small"): the player at half the size. */
 extern bool chr_mini_me;
 bool chr_pose_matrices(const Character *c, float (*m)[12]);

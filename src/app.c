@@ -479,7 +479,7 @@ static bool cmd_remove_dangerous(SlThread *t, int argc, const SlValue *argv, SlV
 }
 
 /* marketing_line_off (0x5ecb9a, ONrGameState_InstallConsoleVariables 0x4d89b0): "turns the laser line
-   off", the weapons' laser sight, which the port doesn't draw yet */
+   off", the weapons' laser sight (weapon_sight) */
 static bool marketing_line_off;
 
 static bool cmd_fog_start_to(SlThread *t, int argc, const SlValue *argv, SlValue *r, void *u)
@@ -554,6 +554,7 @@ static void start_scripts(void)
     sl_register_float("gl_fog_start", &fog_start);
     sl_register_float("gl_fog_end", &fog_end);
     sl_register_int("chr_lod", &chr_lod_forced);
+    sl_register_int("chr_show_movement", &chr_show_movement);
     sl_register_bool("unstoppable", &chr_cheat_unstoppable);   /* the game's variables (0x4fbf10) */
     sl_register_bool("invincible", &chr_cheat_invincible);
     sl_register_bool("omnipotent", &chr_cheat_omnipotent);
@@ -1874,10 +1875,17 @@ static void game_display(void)
     Character *order[CHARS_MAX];
     memcpy(order, seen, sizeof(Character *) * (size_t)nseen);
     chr_lod_compute(order, nseen, display.player ? &display.player->c : NULL);
+    /* 0x4e1836: the player's laser sight, with the camera following (the camera's mode 1) and the
+       marketing line on (0x5ecb9a) */
+    WeaponSight sight;
+    bool sighted = display.player && display.player->c.weapon && camera_mode() == CAMERA_FOLLOW && !marketing_line_off &&
+                   weapon_sight(&display.player->c, &sight);
+    if (sighted) sight_draw(view, &sight, p3_tick());
     for (int k = 0; k < nseen; k++) char_draw_character(seen[k], slot_of[k]);   /* the blended pose */
     decal_draw(env_draw_environment());     /* P3rDisplayStaticDecals, P3rDisplayDynamicDecals */
     particle_draw(view, p3_tick());     /* P3rDisplay */
     laser_draw(view);
+    if (sighted) sight_draw_crosshair(view, &sight, p3_tick());   /* 0x4fbb0a */
     particle_draw_flares(view, near, p3_tick());
     if (display.player) ui_draw_hud(w, h, &display.player->c, display.ticks);
     ui_draw(w, h);

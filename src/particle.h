@@ -84,13 +84,6 @@ typedef struct {
 } P3EffectLoc;
 /* P3rCreateEffect 0x456030: the particle made, NULL if none (a decal's, once made, in its list). */
 P3Particle *p3_create_effect(const P3EffectSpec *spec, const P3EffectLoc *loc);
-/* P3rCreateEffect 0x456030's common part: a particle at pos with vel and orient (3x3, NULL along the
-   velocity), its create event. NULL if none could be made. */
-P3Particle *p3_effect(P3Class *c, const float pos[3], const float vel[3], const float *orient, uint32_t tick);
-/* P3rCreateEffect with an owner (P3_X_OWNER) and the matrix the particle hangs from (P3_X_ATTACH, NULL
-   none; pos then in its space). */
-P3Particle *p3_effect_owned(P3Class *c, const float pos[3], const float vel[3], const float *orient,
-                            const float *attach_m, uint32_t owner, uint32_t tick);
 /* P3rSetGlobalTint 0x456f90 (on) and 0x456fa0 (off): the particles created meanwhile take the tint
    (into their tint variable). */
 void p3_global_tint(bool on, uint32_t tint);
@@ -120,6 +113,8 @@ void p3_update_sound_pointers(void);
 /* ONrCharacter_Collide_Ray 0x4f1630 for anyone: the segment from s along d against the character's
    parts; the nearest point on them. */
 bool p3_character_ray(const Character *c, const float s[3], const float d[3], float point[3]);
+/* The same, bounded (the segment) or not (the ray from s along d), with the part hit. */
+bool p3_character_ray_part(const Character *c, const float s[3], const float d[3], bool bounded, float point[3], int *part);
 /* ONrCharacter_Collide_SphereRay 0x4f1b60: a sphere of the radius moved from s along d meets the
    character's body sphere and then one of its parts'. */
 bool p3_character_sphere_ray(const Character *c, const float s[3], const float d[3], float radius);

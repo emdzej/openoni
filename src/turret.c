@@ -226,7 +226,7 @@ static void op_char(void *o, const Character *c)
     aim_at(o, p);
 }
 
-static const TargetingOps turret_ops = { op_fire, NULL, NULL, op_place, op_vector, op_point, op_char };
+static const TargetingOps turret_ops = { op_fire, NULL, NULL, NULL, op_place, op_vector, op_point, op_char };
 
 /* ---- the objects ---- */
 

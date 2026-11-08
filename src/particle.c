@@ -2239,14 +2239,23 @@ float p3_body_radius(const Character *c)
    own sphere's centre taken from the part's place unturned (the original subtracts the part's place from
    s and tests the sphere's local centre), its radius by the character's scale. The nearest: its fraction,
    the point, the normal (the ray's: from the turned centre; the point's: the centre's). */
+static bool char_ray_b(const Parts *x, const float *s, const float *d, float radius, bool bounded, float *t_out, float point[3],
+                       float normal[3], int *part);
 static bool char_ray(const Parts *x, const float *s, const float *d, float radius, float *t_out, float point[3], float normal[3],
                      int *part)
+{
+    return char_ray_b(x, s, d, radius, true, t_out, point, normal, part);
+}
+
+/* bounded (0x4f1630's fourth argument): the move ends at d; else the ray goes on */
+static bool char_ray_b(const Parts *x, const float *s, const float *d, float radius, bool bounded, float *t_out, float point[3],
+                       float normal[3], int *part)
 {
     if (!x->ok) return false;
     float sph[4] = { x->body[0], x->body[1], x->body[2], x->body[3] + radius }, t;
     bool in;
     if (!sphere_ray(s, d, sph, &t, &in)) return false;
-    if (!in && t > 1.0f) return false;
+    if (!in && bounded && t > 1.0f) return false;
     int best = -1;
     float bt = 1e9f;
     for (int b = 0; b < CHR_BONES; b++) {
@@ -2255,7 +2264,7 @@ static bool char_ray(const Parts *x, const float *s, const float *d, float radiu
         float ps[4] = { x->sph[b][0] * sc, x->sph[b][1] * sc, x->sph[b][2] * sc, x->sph[b][3] * sc + radius };
         if (!sphere_ray(rel, d, ps, &t, &in)) continue;
         if (in) t = 0.0f;
-        else if (t > 1.0f) continue;
+        else if (bounded && (radius == 0.0f ? t >= 1.0f : t > 1.0f)) continue;   /* (0x4f1630's, 0x4f1b60's) */
         if (t < bt) bt = t, best = b;
     }
     if (best < 0) return false;
@@ -2293,6 +2302,14 @@ bool p3_character_ray(const Character *c, const float s[3], const float d[3], fl
     make_parts(&x, c);
     float t, n[3];
     return char_ray(&x, s, d, 0.0f, &t, point, n, NULL);
+}
+
+bool p3_character_ray_part(const Character *c, const float s[3], const float d[3], bool bounded, float point[3], int *part)
+{
+    Parts x;
+    make_parts(&x, c);
+    float t, n[3];
+    return char_ray_b(&x, s, d, 0.0f, bounded, &t, point, n, part);
 }
 
 bool p3_character_sphere_ray(const Character *c, const float s[3], const float d[3], float radius)
@@ -4045,40 +4062,6 @@ void p3_register_commands(void)
     sl_register("p3_daodan_disable", cmd_daodan_disable, NULL);
 }
 
-/* P3rCreateEffect 0x456030, its common part: a particle of the class at pos, moving at vel, turned by
-   orient (3x3, NULL: along the velocity), at the tick, its create event. Not ported: the decals, the
-   attachment to a character's part, the wall's offset kinds. */
-P3Particle *p3_effect(P3Class *c, const float pos[3], const float vel[3], const float *orient, uint32_t tick)
-{
-    return p3_effect_owned(c, pos, vel, orient, NULL, 0, tick);
-}
-
-P3Particle *p3_effect_owned(P3Class *c, const float pos[3], const float vel[3], const float *orient,
-                            const float *attach_m, uint32_t owner, uint32_t tick)
-{
-    P3Particle *q = c ? p3_create(c, tick) : NULL;
-    if (!q) return NULL;
-    memcpy(q->pos, pos, 12);
-    uint8_t *b;
-    float *v;
-    if ((b = block(c, q, P3_X_OWNER))) wr32(b, owner);
-    if ((b = block(c, q, P3_X_ATTACH))) wr32(b, attach_m ? p3_attach_id(attach_m) : 0);
-    if ((v = fblock(c, q, P3_X_OFFSET))) v[0] = v[1] = v[2] = 0.0f;
-    if ((v = fblock(c, q, P3_X_VELOCITY))) {
-        if (vel) memcpy(v, vel, 12);
-        else v[0] = v[1] = v[2] = 0.0f;
-    }
-    if ((v = fblock(c, q, P3_X_ORIENTATION))) {
-        static const float ID[9] = { 1, 0, 0, 0, 1, 0, 0, 0, 1 };
-        if (orient) memcpy(v, orient, 36);
-        else if (vel) construct_orientation(12, 8, NULL, NULL, vel, v);
-        else memcpy(v, ID, 36);
-    }
-    setup_new(c, q, tick);
-    if (!run_event(c, q, P3_EV_CREATE, c->def + D_EVENTS + 4 * P3_EV_CREATE, (float)tick * (1.0f / 60.0f), 0.0f, false))
-        created(c, q);
-    return (q->flags & P_DEAD) ? NULL : q;
-}
 /* P3rCreateEffect 0x456030: a particle of the specification's class made at the location's tick (a hit's
    effect, kind 4, or a parent that is P_EXPIRING marks it P_EXPIRING; then a class that goes with the
    cutscenes, flags2 0x18, makes none; a temporary parent's makes a temporary). Where: the location's

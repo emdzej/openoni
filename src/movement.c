@@ -123,27 +123,46 @@ static int movement_mode(const Chr *ch)
     return ch->ai.movement_mode ? ch->ai.movement_mode : ai_default_mode(&ch->ai, ch->player);
 }
 
+/* the aiming by the mode (0x4a9480; the same in 0x4a9100, 0x4a9300, 0x4a93f0): the targeting's forced
+   aim first; else creep, walk and run aim, walk_noaim and run_noaim don't, the others keep it; the
+   weapon in the hand is hidden while not aiming (0x4ecf80) */
+static void apply_aiming(Chr *ch, int mode)
+{
+    MoveState *m = &ch->ai.move;
+    if (m->aim_forced) m->aiming = m->aim_forced_on;
+    else if (mode == 3 || mode == 5 || mode == 7) m->aiming = true;
+    else if (mode == 4 || mode == 6) m->aiming = false;
+    chr_hide_weapon(&ch->c, !m->aiming);
+}
+
 void movement_new_mode(Chr *ch)
 {
     MoveState *m = &ch->ai.move;
     int mode = movement_mode(ch);
     if (m->slowed) m->slow_mode = mode > 5 ? mode - 2 : mode;
-    /* creep, walk and run aim; walk_noaim and run_noaim don't (the aiming byte forced, C+0x1580, has
-       no user here); the weapon in the hand is hidden while not aiming (0x4ecf80) */
-    if (mode == 3 || mode == 5 || mode == 7) m->aiming = true;
-    else if (mode == 4 || mode == 6) m->aiming = false;
-    chr_hide_weapon(&ch->c, !m->aiming);
+    apply_aiming(ch, mode);
 }
 
 /* 0x4a93f0: as the alert changes, the mode by the alert's */
 void movement_alert_change(Chr *ch)
 {
     if (ch->ai.movement_mode || !(ch->c.flags & CHR_FLAG_AI_MOVEMENT)) return;
-    MoveState *m = &ch->ai.move;
-    int mode = ai_default_mode(&ch->ai, ch->player);
-    if (mode == 3 || mode == 5 || mode == 7) m->aiming = true;
-    else if (mode == 4 || mode == 6) m->aiming = false;
-    chr_hide_weapon(&ch->c, !m->aiming);
+    apply_aiming(ch, ai_default_mode(&ch->ai, ch->player));
+}
+
+/* AI2rMovement_Force 0x4a8110 (the update only for an active character, C+0x02) */
+void movement_set_weapon_aim(Chr *ch, bool on)
+{
+    ch->ai.move.aim_forced = true;
+    ch->ai.move.aim_forced_on = on;
+    if (!ch->c.inactive) apply_aiming(ch, movement_mode(ch));
+}
+
+/* AI2rMovement_DontForceAim 0x4a80e0 */
+void movement_clear_weapon_aim(Chr *ch)
+{
+    ch->ai.move.aim_forced = false;
+    if (!ch->c.inactive) apply_aiming(ch, movement_mode(ch));
 }
 
 void movement_no_sidestep(Chr *ch, bool walk)

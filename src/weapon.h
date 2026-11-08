@@ -94,6 +94,19 @@ uint8_t weapon_world_matrix(const Weapon *w, float out[12]);
 bool weapon_glow(const Weapon *w, const float m[12], uint8_t alpha, const void *tex[2], float pos[3], float size[2],
                  uint8_t *glow_alpha);
 
+/* The laser sight (0x4e1900, from the characters' display for the player with the camera following):
+   from the weapon class's laser marker (+0x00, its way +0x0c) to what the ray meets first (0x4d4e50:
+   a character, the level's quads or an object) within its range (+0x18), else as far as the range. kind:
+   1 a living character there (the locked crosshair), 2 a wall, 3 an object, 0 nothing. False without
+   a gun that has ammo, a laser, or a clear way from the pelvis (ONrCharacter_IsGunThroughWall). */
+typedef struct WeaponSight {
+    float from[3], to[3];       /* 0x5ecb70, 0x5ecb58 */
+    int kind;                   /* 0x5ecb68 */
+    const uint8_t *cls;         /* the ONWC: the beam (+0x1c its colour, +0xcc 0x8000), the crosshairs
+                                   (+0x20, the locked +0x2c), the tunnel's sprites (+0x38, +0x44, +0x48) */
+} WeaponSight;
+bool weapon_sight(const Character *c, WeaponSight *s);
+
 /* The character side (ONrCharacter_*): installs the hooks of character.c and chr_anim.c. */
 void weapons_install(void);
 /* ONrCharacter_SetWeapon 0x4e4c00: the weapon in the character's hand (NULL none). */

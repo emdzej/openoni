@@ -4,6 +4,8 @@
 #include "geom_draw.h"
 #include "gl_dev.h"
 #include "particle.h"
+#include "tm.h"
+#include "weapon.h"
 #include "txmp.h"
 #include "ftol.h"
 
@@ -258,4 +260,106 @@ void particle_draw_flares(const float view[16], float near, uint32_t now)
     const float fwd[3] = { -view[2], -view[6], -view[10] };    /* the camera looks down its -z */
     gl_dev_cull(0);
     p3_each_flare(v.eye, fwd, near, now, each, &v);
+}
+
+/* WPrDrawSprite 0x4e1420: the sprite of a weapon class ({TXMP, colour, scale}) at pos, facing the camera
+   (M3rSimpleSprite_Draw 0x41a7e0: the sprite mode 0), its colour, opaque, without writing the depth (the
+   draw state 4 off); its size the scale times the mode's: 0 five, 1 the camera's distance to the 0.3
+   (0x51f2c0) times 0.7, 2 the distance times 0.03 (as big on the screen at any distance). through: no
+   depth test either. */
+static void weapon_sprite(const View *v, const uint8_t *spr, const float pos[3], int mode, bool through)
+{
+    const void *tex = tm_link(spr);
+    if (!tex) return;
+    float e[3] = { v->eye[0] - pos[0], v->eye[1] - pos[1], v->eye[2] - pos[2] };
+    float dist = sqrtf(e[0] * e[0] + e[1] * e[1] + e[2] * e[2]), f;
+    if (mode == 0) f = 5.0f;                                    /* 0x52956c */
+    else if (mode == 1) f = powf(dist, 0.3f) * 0.7f;            /* 0x54e150, 0x52b2fc */
+    else f = dist * 0.03f;                                      /* 0x52b2f0 */
+    float scale;
+    memcpy(&scale, spr + 8, 4);
+    float size = 1.0f * scale * f;                              /* 0x54e14c */
+    uint32_t colour;
+    memcpy(&colour, spr + 4, 4);
+    P3Draw d;
+    memset(&d, 0, sizeof d);
+    memcpy(d.pos, pos, sizeof d.pos);
+    d.scale = d.yscale = size;
+    d.alpha = 0xff;
+    d.tint = colour & 0xffffff;
+    d.texture = tex;
+    d.mode = 0;
+    d.flare = through;      /* (the screen modes: no depth test) */
+    sprite(v, &d);
+}
+
+void sight_draw(const float view[16], const WeaponSight *s, uint32_t now)
+{
+    View v;
+    view_of(&v, view, now);
+    gl_dev_cull(0);
+    const uint8_t *k = s->cls;
+    uint32_t opts;
+    memcpy(&opts, k + 0xcc, 4);
+    if (opts & 0x8000) {
+        /* FXrDrawLaser 0x4f4720: a ribbon from the gun to the end, untextured, in the class's colour
+           (+0x1c), opaque, without writing the depth; across it the cross of the way from the camera to
+           its start with the beam, 0.2 (0x5531b8) each side (at least 0.001 long, 0x529dfc) */
+        uint32_t c;
+        memcpy(&c, k + 0x1c, 4);
+        c |= 0xff000000u;
+        float a[3] = { s->from[0] - v.eye[0], s->from[1] - v.eye[1], s->from[2] - v.eye[2] };
+        float b[3] = { s->to[0] - s->from[0], s->to[1] - s->from[1], s->to[2] - s->from[2] }, w[3];
+        cross3(a, b, w);
+        float l = sqrtf(dot3(w, w));
+        if (l <= 0.001f) l = 0.001f;
+        l = 0.2f / l;
+        w[0] *= l, w[1] *= l, w[2] *= l;
+        GlVertex q[4];
+        const float *pos[4] = { s->to, s->to, s->from, s->from };
+        const float sg[4] = { 1, -1, 1, -1 };
+        for (int i = 0; i < 4; i++) {
+            q[i].x = pos[i][0] + sg[i] * w[0], q[i].y = pos[i][1] + sg[i] * w[1], q[i].z = pos[i][2] + sg[i] * w[2];
+            q[i].u = (float)(i & 1), q[i].v = i < 2 ? 0.0f : 1.0f;
+            q[i].r = (uint8_t)(c >> 16), q[i].g = (uint8_t)(c >> 8), q[i].b = (uint8_t)c, q[i].a = (uint8_t)(c >> 24);
+        }
+        static const uint16_t idx[6] = { 0, 1, 3, 0, 3, 2 };
+        gl_dev_draw(q, 4, idx, 6, gl_dev_white(), GL_DEV_BLEND);
+    }
+    /* the tunnel (+0x38): +0x44 sprites along the beam, +0x48 apart, the first a quarter of that from
+       the gun (0x5296c4), none past the end */
+    const void *tun = tm_link(k + 0x38);
+    if (!tun) return;
+    uint32_t n;
+    float step;
+    memcpy(&n, k + 0x44, 4);
+    memcpy(&step, k + 0x48, 4);
+    float e[3] = { s->to[0] - s->from[0], s->to[1] - s->from[1], s->to[2] - s->from[2] };
+    float len = sqrtf(dot3(e, e));
+    if (len <= 0.0f) return;
+    float st[3] = { e[0] * (step / len), e[1] * (step / len), e[2] * (step / len) };
+    float at = step * 0.25f, p[3] = { s->from[0] + e[0] * (at / len), s->from[1] + e[1] * (at / len), s->from[2] + e[2] * (at / len) };
+    for (uint32_t i = 0; i < n; i++) {
+        if (!(at + step <= len)) return;
+        weapon_sprite(&v, k + 0x38, p, 0, false);
+        at += step;
+        p[0] += st[0], p[1] += st[1], p[2] += st[2];
+    }
+}
+
+void sight_draw_crosshair(const float view[16], const WeaponSight *s, uint32_t now)
+{
+    /* 0x4f1fa0: the crosshair (+0x20, the locked one +0x2c on a living character) at the end, its size's
+       mode 2 with the class's 0x10000, else 1 with 0x20000, else 0; without the fog; with 0x40000 seen
+       through walls */
+    View v;
+    view_of(&v, view, now);
+    gl_dev_cull(0);
+    const uint8_t *k = s->cls;
+    uint32_t opts;
+    memcpy(&opts, k + 0xcc, 4);
+    int mode = (opts & 0x10000) ? 2 : (int)((opts >> 17) & 1);
+    gl_dev_fog_enable(false);
+    weapon_sprite(&v, k + (s->kind == 1 ? 0x2c : 0x20), s->to, mode, (opts & 0x40000) != 0);
+    gl_dev_fog_enable(true);
 }
