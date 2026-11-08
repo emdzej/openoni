@@ -86,6 +86,8 @@ void sound_resume_all(void);
 void sound_impulse_play(const char *name, float volume);
 /* The sound system's own impulse play (SSrImpulse_Play 0x480440), not held back by script-only. */
 void sound_impulse_play_ss(const char *name);
+/* The same at pos (NULL: the listener): SSrImpulse_Play_Simple 0x480a10. */
+void sound_impulse_play_ss_at(const char *name, const float pos[3]);
 /* An impulse by name (OSrImpulse_GetByName 0x512440, the scripts' case-insensitive lookup), NULL if none;
    its impact velocity (+0x84); OSrImpulse_Play 0x512480: at pos (NULL: at the listener), volume NULL
    for full. */

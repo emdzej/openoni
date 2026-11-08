@@ -6,8 +6,7 @@
 
    Sounds (AI2rKnowledge_Sound 0x49a8a0) are heard through the walls' gaps and the rooms. The
    dangerous projectiles and the guns' firing spreads are kept for the combat's dodge and alert the AIs
-   they pass near. Not ported yet: the combat state's notifications, cloaked characters, aiming's view
-   direction. */
+   they pass near. An AI aiming looks along its aim. */
 #pragma once
 #include "ai.h"
 

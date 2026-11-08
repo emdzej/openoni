@@ -133,6 +133,9 @@ void chr_overlays_advance(Character *c);
 extern void (*chr_overlay_hook)(Character *c, const void *anim);
 extern const void *(*chr_remap_hook)(Character *c, const void *next);
 extern void (*chr_throw_hook)(Character *c);
+/* NewAnimationHook 0x4e97a0's turn for an attack (not a throw) starting: the player's character on the
+   ground turns to the nearest enemy in front (throw.c sets it). */
+extern void (*chr_attack_turn_hook)(Character *c);
 /* NewAnimationHook 0x4e97a0's drop: an animation of TRAM flag 5 throws the hand's weapon (weapon.c sets it). */
 extern void (*chr_drop_hook)(Character *c);
 /* ONrCharacter_InBadVarientState 0x4e43d0: the current animation has variant bits the character lacks. */

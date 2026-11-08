@@ -115,6 +115,33 @@ static bool trees_meet(const PhysTree *a, int ia, const float mv[3], const PhysT
     return false;
 }
 
+/* 0x43a240's descent: the node met by the segment, then a child of it that is (a leaf: itself). */
+static int point_tree(const float p[3], const float mv[3], const PhysTree *t, int node)
+{
+    const float e[3] = { p[0] + mv[0], p[1] + mv[1], p[2] + mv[2] };
+    if (!sphere_line(p, e, t->s[node])) return -1;
+    int k = child(t, node);
+    if (k < 0) return node;
+    for (; k >= 0; k = sibling(t, k)) {
+        int r = point_tree(p, mv, t, k);
+        if (r >= 0) return r;
+    }
+    return -1;
+}
+
+/* 0x43a560's descent with a lone sphere: the node met by the sphere's move, then a child of it. */
+static int sphere_tree(const float s[4], const float mv[3], const PhysTree *t, int node)
+{
+    if (!spheres_meet(s, mv, t->s[node])) return -1;
+    int k = child(t, node);
+    if (k < 0) return node;
+    for (; k >= 0; k = sibling(t, k)) {
+        int r = sphere_tree(s, mv, t, k);
+        if (r >= 0) return r;
+    }
+    return -1;
+}
+
 /* 0x43db00: the sphere against a box's face (static): its plane within the radius, then a corner within
    it, the centre's projection inside the face, or an edge within it. The point: the projection. */
 static bool face_sphere(const PhysBox *box, int f, const float s[4], float point[3])
@@ -331,6 +358,67 @@ bool physctx_box_ray(const PhysBox *box, const float p[3], const float v[3], flo
     if (entered < 0) return false;
     for (int k = 0; k < 3; k++) hit[k] = p[k] + v[k] * t0;
     return true;
+}
+
+bool physctx_box_ray_normal(const PhysBox *box, const float p[3], const float v[3], float hit[3], float normal[3])
+{
+    float t0 = 0.0f, t1 = 1.0f;
+    int entered = -1;
+    for (int f = 0; f < 6; f++) {
+        const float *pl = box->planes[f];
+        float dn = pl[0] * v[0] + pl[1] * v[1] + pl[2] * v[2];
+        float dist = pl[0] * p[0] + pl[1] * p[1] + pl[2] * p[2] + pl[3];
+        if (dn == 0.0f) {
+            if (dist > 0.0f) return false;
+            continue;
+        }
+        float t = -dist / dn;
+        if (dn < 0.0f) {
+            if (dist > 0.0f && t >= t0) t0 = t, entered = f;
+        } else if (t < t1) {
+            t1 = t;
+        }
+        if (t0 > t1) return false;
+    }
+    if (entered < 0) return false;
+    for (int k = 0; k < 3; k++) hit[k] = p[k] + v[k] * t0, normal[k] = box->planes[entered][k];
+    return true;
+}
+
+bool physctx_box_sphere(const PhysBox *box, const float s[4], const float mv[3], bool flag, float point[3], float normal[3])
+{
+    static const int8_t none[1][2] = { { -1, -1 } };
+    const float (*one)[4] = (const float (*)[4])s;
+    PhysTree t = { one, none, 0 };
+    PhysCtx other;
+    memset(&other, 0, sizeof other);
+    PhysHit h[6];
+    unsigned n = 0;
+    if (!volume_tree(box, mv, flag, &t, 0, &other, h, &n, 6) || !n) return false;
+    memcpy(point, h[0].point, sizeof h[0].point);
+    memcpy(normal, h[0].plane, 3 * sizeof(float));
+    return true;
+}
+
+int physctx_point_tree(const float p[3], const float mv[3], const PhysTree *t)
+{
+    return point_tree(p, mv, t, t->root);
+}
+
+int physctx_sphere_tree(const float s[4], const float mv[3], const PhysTree *t)
+{
+    return sphere_tree(s, mv, t, t->root);
+}
+
+int physctx_collect(PhysCtx *out, int cap)
+{
+    int n = 0;
+    for (int s = 0; s < nsources; s++) {
+        int count = sources[s].count();
+        for (int i = 0; i < count && n < cap; i++)
+            if (sources[s].get(i, &out[n])) n++;
+    }
+    return n;
 }
 
 bool physctx_box_contains(const PhysBox *box, const float p[3])

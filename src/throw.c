@@ -5,6 +5,7 @@
 #include "chars.h"
 #include "chr_anim.h"
 #include "chr_hit.h"
+#include "exe.h"
 #include "knowledge.h"
 #include "physics.h"
 #include "trac.h"
@@ -221,6 +222,7 @@ static void throw_starts(Character *c)
     if (!t) return;     /* "throwtarget was NULL" */
     if ((t->flags & 1) || !chars_in_use((Chr *)t)) return;
     if (tr_varient(c->anim) & 0x200) chr_enter_fight_mode(t);
+    if (t->ai && chr_knockdown_hook) chr_knockdown_hook(t);    /* an AI's victim told (0x48b530) */
     /* both seen again if invisible, and shown to at least 0.6 */
     inventory_reveal(c, true);
     inventory_reveal(t, true);
@@ -235,10 +237,34 @@ static void throw_starts(Character *c)
     t->flags |= 0x1000;
 }
 
+static float exe_float(uint32_t va) { uint32_t u = exe_u32(va); float f; memcpy(&f, &u, 4); return f; }
+
+/* NewAnimationHook 0x4e9a37: an attack (not a throw) of a character not the AI's, or the player's, on
+   the ground: the attack's direction (TRAM +0x4c, 0x4291e0: 2 back, 3 left, 4 right, else ahead) turns
+   the aim, and the nearest opponent within 40 (0x54e160) and 90 degrees (0x54e15c) of it, if an enemy
+   (AI2rTeam_FriendOrFoe 2), turns the facing and the desired facing by its angle (0x4e3140). */
+static void attack_turn(Character *c)
+{
+    Chr *p = chars_player();
+    if ((c->ai && (!p || &p->c != c)) || c->air_ticks || !c->anim) return;
+    const uint8_t *t = c->anim;
+    uint16_t dir = (uint16_t)(t[0x4c] | t[0x4d] << 8);
+    float offset = dir == 2 ? PI : dir == 3 ? HALF_PI : dir == 4 ? 4.7123890f : 0.0f;    /* 0x4096cbe4 */
+    float angle;
+    Character *o = find_target(c, &angle, offset, exe_float(0x54e160), exe_float(0x54e15c) * 0.017453292f, false);
+    if (!o || ai_team_relation(((Chr *)c)->team, ((Chr *)o)->team) != 2) return;
+    c->facing += angle, c->desired_facing += angle;
+    if (c->facing < 0.0f) c->facing += TWO_PI;
+    else if (c->facing >= TWO_PI) c->facing -= TWO_PI;
+    if (c->desired_facing < 0.0f) c->desired_facing += TWO_PI;
+    else if (c->desired_facing >= TWO_PI) c->desired_facing -= TWO_PI;
+}
+
 void throw_install(void)
 {
     chr_remap_hook = remap;
     chr_throw_hook = throw_starts;
+    chr_attack_turn_hook = attack_turn;
 }
 
 /* TRAM +0x10 (.raw): 4 bytes each, the count the byte at +0x17b: damage (u16) at a frame (u16).
@@ -266,6 +292,7 @@ void throw_update(Character **chars, int n)
         if (!d) continue;
         /* a victim's is its thrower's (WPrOwner_MakeMeleeDamageFromCharacter 0x51ce00) */
         Character *from = tr_test_flag(c->anim, TRAM_FLAG_THROW_TARGET) ? c->thrown_by : NULL;
+        if (from) d = chr_overpower_damage(from, d);     /* an overpowered thrower's (0x4dd882) */
         if (from && chr_cheat_omnipotent && !from->ai && d <= c->hit_points) d = c->hit_points;   /* 0x4dd862 */
         chr_take_damage(c, d, 0.0f, NULL, 0, from, CHR_DAMAGE_MELEE);
     }

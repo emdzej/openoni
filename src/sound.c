@@ -1657,12 +1657,12 @@ static bool dialog_start(const char *name, bool interrupt)
     else if (dialog_id == UINT32_MAX) dialog_end = ticks + 120;
     else dialog_end = 0;
     /* With the persisted subtitles on (0x50f190), the line's subtitle (SSrAmbient_GetSubtitle 0x481c70: the
-       SUBT's of the ambient's name) for its length (0x78 ticks without a sound) and 60 more, white. In the
-       letterbox the original prints it into the other console (0x5cb468, COrConsole_PrintIdentified
-       0x430480), else into the subtitles' (0x4304e0): the port has the one subtitle area. */
+       SUBT's of the ambient's name) for its length (0x78 ticks without a sound) and 60 more: in the
+       letterbox into the console's area (COrConsole_PrintIdentified 0x430480), else the subtitles'
+       (0x4304e0). */
     const char *sub;
     if (persist_subtitles() && (sub = text_subtitle(name)))
-        ui_print(UI_AREA_SUBTITLE, sub, NULL, (int32_t)((len ? len : 0x78) + 0x3c), 0xffffffffu);
+        ui_print_subtitle(sub, (int32_t)((len ? len : 0x78) + 0x3c));
     return false;
 }
 
@@ -1692,7 +1692,7 @@ uint32_t sound_speech_play(const char *name, const float pos[3], uint32_t *ticks
         if (!len) len = 0x78;
         const char *sub;
         if (persist_subtitles() && (sub = text_subtitle(name)))
-            ui_print(UI_AREA_SUBTITLE, sub, NULL, (int32_t)(len + 0x3c), 0xffffffffu);
+            ui_print_subtitle(sub, (int32_t)(len + 0x3c));
     }
     if (ticks) *ticks = len;
     if (missing) *missing = miss;
@@ -1842,10 +1842,12 @@ void sound_impulse_play_at(const void *impulse, const float pos[3], const float 
 
 /* SSrImpulse_GetByName 0x4801f0 and SSrImpulse_Play 0x480440 at the listener, full: the sound system's
    own, which the scripts' switch (script-only) doesn't hold back (the WM's button click). */
-void sound_impulse_play_ss(const char *name)
+void sound_impulse_play_ss(const char *name) { sound_impulse_play_ss_at(name, NULL); }
+
+void sound_impulse_play_ss_at(const char *name, const float pos[3])
 {
     const Impulse *m = loaded && name ? find_nocase(&impulses, name) : NULL;
-    if (m) impulse_play(m, NULL, NULL);
+    if (m) impulse_play(m, pos, NULL);
 }
 
 /* 0x5145f0: at the listener, volume 0..1. */

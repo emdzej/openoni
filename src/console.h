@@ -43,7 +43,7 @@ int console_marker_count(void);
 
 /* OBJrConsole_OnActivate 0x4c0880: the sound of the state; an active, unused console becomes used and
    runs its events (who: the character's name). */
-void console_on_activate(int i, const char *who);
+void console_on_activate(int i, const char *who, const float who_location[3]);
 
 /* The screen to draw (0x4c0c80): the class's screen geometry (M3GM), its texture for the console's
    state (TXMP, NULL: the geometry's own) and the matrix (T(position) R), 3x4 by columns. NULL if none. */

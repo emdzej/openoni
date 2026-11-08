@@ -4,9 +4,9 @@
    ONrGameState_UpdateCharacters 0x4dccf0: the victim held at the thrower's hands on the first frame,
    and an animation's own damage (the victim's, from its thrower).
 
-   The AI's throws come through throw_ai_hook (AI2rExecutor_TryingToThrow 0x498d50). Not ported yet: the AI's notice of being
-   thrown (0x48b530), the throw's noise (AI2rKnowledge_Sound 0x49a8a0, 150), the camera's (+0x2815), and
-   the damage boost of an overpowered thrower (class +0xc8d). */
+   The AI's throws come through throw_ai_hook (AI2rExecutor_TryingToThrow 0x498d50). An AI's victim
+   is told as of a knockdown (0x48b530); the throw makes a melee noise (150) and reveals both; an
+   overpowered thrower's (class +0xc8d) damage is boosted (chr_overpower). */
 #pragma once
 #include "character.h"
 

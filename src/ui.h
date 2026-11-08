@@ -1,20 +1,46 @@
 /* The game's screen state the scripts drive, apart from the HUD: the fade (ONrGameState +0x54..+0x7c),
    the letterbox (ONrGameState_LetterBox_Display 0x4fceb0), input on or off (+0x1679ad), and the
-   console's text areas for messages and subtitles (COrMessage_Print 0x4304b0, COrConsole_PrintIdentified
-   0x430480, the line add 0x431340). Drawn by src/render/ui_draw.c. */
+   console's text areas (COrConfigure 0x42fb70, COrTextArea_*): the console's (0x5cb468, COrConsole_PrintIdentified
+   0x430480), the messages' (0x5cb398, COrMessage_Print 0x4304b0) and the subtitles' (0x5cb470, 0x4304e0),
+   the line add 0x431340. Drawn by src/render/ui_draw.c. */
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
 
-enum { UI_LINE_TEXT = 0x1f6, UI_AREA_LINES = 8 };
-enum { UI_AREA_MESSAGE, UI_AREA_SUBTITLE, UI_AREAS };
+enum { UI_LINE_TEXT = 0x1f6, UI_AREA_LINES = 32 };
+enum { UI_AREA_MESSAGE, UI_AREA_SUBTITLE, UI_AREA_CONSOLE, UI_AREAS };
 
+/* A line, 0x214 bytes in the original: +0 the type, +4 the timer, +0x12 the text, +0x208 the name,
+   +0x20c the colour, +0x210 the shadow's. */
 typedef struct {
+    int32_t type;           /* 1 a subtitle in the letterbox, 2 the others; under 0x533f60 (1) not kept */
     char text[UI_LINE_TEXT];
     char id[32];            /* the message's name (what message_remove takes) */
     int32_t timer;          /* ticks left; 0 stays until removed */
-    uint32_t colour;        /* ARGB */
+    uint32_t colour, shadow;    /* ARGB: 0x533f70 (white) and 0x533f74 (0xff3f3f3f) */
 } UiLine;
+
+/* A text area (COrTextArea_New 0x430f00), in 640 by 480 pixels: the rectangle, its font's size (scaled
+   by the display's height over 480: +0xc), the text's format (+8: 1 at the pen, 2 centred), the lines
+   from the bottom up (+0xd), an overflowing line drawn fading rather than the drawing stopped (+0xf),
+   the most lines. */
+typedef struct {
+    int16_t rect[4];
+    uint16_t size, format;
+    bool bottom_up, fade;
+    int lines;
+} UiArea;
+const UiArea *ui_area(int area);
+/* COrTextArea_Display 0x430fd0 for the areas shown (the subtitles' or the messages', then the
+   console's) on a display w wide (and 480 high): each run of glyphs of the font at the pen (x, y on the
+   baseline), n bytes of s, in the colour (ARGB, the line's alpha in it). A line overflowing the
+   console's area is left to fade, as the original's display does. */
+typedef void (*UiGlyphs)(const void *font, int16_t x, int16_t y, const char *s, uint16_t n, uint32_t argb, void *u);
+void ui_area_display(int16_t w, UiGlyphs draw, void *u);
+/* The text areas not drawn and not counting down (0x4303c0, 0x4303d0: the pause screen's, and at the
+   level's load). */
+void ui_hide_areas(bool hide);
+bool ui_areas_hidden(void);
 
 void ui_reset(void);
 /* One tick: the game time moves on, the lines' timers count down. */
@@ -41,7 +67,7 @@ bool ui_cutscene(void);
 void ui_set_cutscene(bool on, bool sync);
 
 int ui_area_count(int area);
-/* Line i of the area, oldest first; alpha in 0..1 (lines fade out over their last 64 ticks). */
+/* Line i of the area, oldest first; alpha in 0..1 (4 * the ticks left out of 255, over the last 63). */
 const UiLine *ui_area_line(int area, int i, float *alpha);
 /* How the level ended (G+0x1679bc, the win and lose commands): 0 not yet, 1 won, 2 lost. */
 int ui_level_end(void);
@@ -49,9 +75,15 @@ int ui_level_end(void);
 void ui_set_level_end(int end);
 /* When the message (by its name) was last asked for by a script, 0 not lately (the port's). */
 uint32_t ui_message_time(const char *id);
-/* Adds a line (the oldest goes when the area is full). */
-void ui_print(int area, const char *text, const char *id, int32_t timer, uint32_t colour);
-/* COrMessage_Remove 0x430640: the lines of that name (NULL: all) fade out; failing that, the subtitles'. */
+/* Adds a line of the type, white on its shadow (the oldest goes when the area is full). */
+void ui_print(int area, int32_t type, const char *text, const char *id, int32_t timer);
+/* A subtitle (the dialog's, OSiDialog_Play 0x5125c0 and 0x514290): in the letterbox into the console's
+   area as type 1 (which the letterbox's end and end_cutscene clear, 0x431d50), else into the subtitles'. */
+void ui_print_subtitle(const char *text, int32_t timer);
+/* 0x431d50: the console's lines of type 1 gone. */
+void ui_console_clear_subtitles(void);
+/* COrMessage_Remove 0x430640: the lines of that name (NULL: all) fade out; failing that, the console's
+   (0x430510). */
 void ui_message_remove(const char *id);
 bool ui_message_shown(const char *id);
 bool ui_message_print(const char *id, int32_t timer);

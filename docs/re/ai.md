@@ -139,8 +139,10 @@ A debug flag (0x5ec0c3) first orders by the characters' flag 0x10000000; the por
   the player when the global ignore-player cheat (0x5ec0c2) is on or the AI has C+0x1f0 bit 0x2000.
   It skips AIs unless one takes the other for an enemy, counting past hits.
 - **The eye and the view.** The eye is the head (0x4e3460: the head part's matrix A+0x247c, or the
-  location 15 up). The view direction is the aim (A+0x21a4) while aim tracking is on (A+0x2195), else
-  the facing. The port uses the facing.
+  location 15 up). The view direction is the aim (A+0x21a4) while aim tracking is on (A+0x2195), its
+  up the aim crossed with (-z, 0, x), normalized; else the facing, y up. DoCharacterFrame keeps
+  A+0x21a4: the unit vector toward the aim point (0x4e0347), or (sin, 0, cos) of the facing without one
+  (0x4e0440).
 - **The point looked at** is the position with y raised by the pelvis height (C+0x18c). With d the
   vector from the eye to it:
   - It must be within the central distance (ONCC +0x3f4).
@@ -188,8 +190,8 @@ victim (without an attacker, of the victim).
 
 `AI2rKnowledge_Sound` (0x49a8a0, fastcall: ECX the type, EDX the place, then the radius, the maker and
 the one it was made at; `src/knowledge.c`) tells the AIs of a sound. It keeps the last 20 in a debug
-list (0x63abc0) and does nothing while 0x5ec0c1 or the all-passive switch 0x5ec0c4 is set (neither is
-ported). For each AI character (C+0x1e8 2) neither passive nor deaf (C+0x1f0 bits 2, 0x1000):
+list (0x63abc0) and does nothing while 0x5ec0c1 or the all-passive switch 0x5ec0c4 is set (the port
+keeps the latter). For each AI character (C+0x1e8 2) neither passive nor deaf (C+0x1f0 bits 2, 0x1000):
 
 - **Of whom.** The maker and the target are each heard of, or not. Neither the listener itself, a
   dead one, nor one not in use (C+4 0x8000) is. The player is, unless the listener ignores it (C+0x1f0
@@ -313,6 +315,18 @@ false. For neutral teams:
 - If a is an AI, it is false when a is non-aggressive (bit 4) or when known isn't asked. Otherwise it
   is true if a's contact of b is hostile (+0x4b) or has hostility over 1.
 - With known, it is also true if b is an AI whose contact of a is like that.
+
+## Every AI passive
+
+`AI2rAllPassive` 0x48b0d0 (`ai2_allpassive`, `begin_cutscene` without "ai" and `end_cutscene`) sets
+0x5ec0c4, cleared at the level's start (0x48a250, with 0x5ec0c0..0x5ec0c5). Turning it off sets every
+character's C+0x1e0 (the last action, the idles' wait) to the game's time; each AI (C+0x1e8 2) not yet
+passive becomes so (C+0x1f0 bit 2: the state left, 0x48ae80; the executor stopped, 0x498c90; the path
+halted, 0x4ae660), or out of it its state entered again (0x48ad50). While it is on: `AI2rUpdateAI`
+skips the knowledge's update (0x499e80, 0x49a6e0, 0x49fc00) and the states; an AI made then starts
+passive (`AI2rInitializeCharacter`, C+0x1f0 = 3); `AI2rCharacter_IsHostile`, `AI2rNotifyDamage`,
+`AI2rBlockFunction`, 0x48b9a0, `AI2rKnowledge_HurtBy`, `_Sound`, `_Alarm` and `_CheckVisible` do
+nothing; a turret doesn't fire (`OBJiTurretCombat_Update` 0x4cf65d, its trigger kept for later).
 
 ## The alert
 
@@ -476,7 +490,8 @@ Combat objects (`ONrLevel_Combat_ID_To_Combat` 0x506b30; OBJcCombat, version 39)
 
 | Object | Character | What | Default |
 |---|---|---|---|
-| +0x40 (u16) | C+0x1028 | the id | 0 |
+| +0x40 (u16) | (the id) | the profile's id, what the CHAR names | |
+| +0x42 (u16) | C+0x1028 | flags (from version 0x24, else 0): 1, the alarm fights back when knocked down (0x48ea40); none set in v1.0's levels | 0 |
 | +0x44 (5 u32) | C+0x1034 | the behaviour of each range, 1 to 5 | 2 (Hold And Fire) |
 | +0x58 | C+0x102c | the medium range | 200 |
 | +0x5c | C+0x104c | when an unarmed one fights (below) | 3 |
@@ -779,8 +794,14 @@ the flag goes and the answer is 0; else the targeting and the line-of-fire check
 and the answer 1. `AI2rUpdateAI` 0x489d40 counts the ticks down while the character lies. A shot
 (damage kind 0x1000000 to `AI2rNotifyDamage` 0x48b480) cuts them to 1, and so does any attack
 that lands, blocked or not (0x48b9d0, from `HandleAttackMask` after the block's decision). `ONrCharacter_Knockdown` 0x4e4e10, for an AI's character knocked down (the types 0x4f..0x5c that
-lie, 0x8d, 0xd6, 0xd7) while not lying, calls 0x48b530, which clears C+0x101c: a new fall, a new
-daze.
+lie, 0x8d, 0xd6, 0xd7) while not lying, calls 0x48b530 (`AI2rNotifyKnockdown`), which gives back a
+combat state's melee cookie (0x4998a0), clears C+0x101c (a new fall, a new daze), and then: playing a
+film (0x4e4100) on patrol (3), stops it (`ONrFilm_Stop` 0x4f41f0) and, out of its job's block (C+0xf70
+not C+0x200), leaves the state for idle (the alert under the job's) or the job; in the alarm state (7),
+0x48ea40: with the profile's flag 1 (C+0x1028), the nearest of the strongest contacts of hostility and
+strength above 1 (the list is in strength's order: a weaker one ends the search), if it has a character,
+strength 4 and is within the ignore distance (C+0xff0), sets the fight time (C+0xfe8 from C+0xffc) and
+pursues it. The port takes "out of the job's block" as a state other than the job's (inferred).
 
 **The keys' override** (A+0x1ab9, the keys at A+0x1ac0, flags at A+0x1ac4; cleared after each
 `AI2rExecutor_Update` 0x498550): the keys instead of the move's, the mode running (6, 7 aiming), 3
@@ -864,8 +885,8 @@ C+0xfe4 the tries, C+0xfe8 the fight time left. The CHAR object's +0x1e4 is C+0x
 - **Into the alarm**: the combat maneuver 4 (the no-gun behaviour's fallback 2; the console set
   beforehand, B+0x1fc, is never written, so the nearest is looked for), then Setup after the
   selection; `ai2_doalarm char [console]` (`AI2iScript_SetState_Alarm` 0x4b4db0: by id, active and
-  unused, else the nearest); the pursuit's forget mode with C+0xfc4 2 (0x4b1350, "The pursuit") and the
-  knockdown (0x48ea40; not ported).
+  unused, else the nearest); the pursuit's forget mode with C+0xfc4 2 (0x4b1350, "The pursuit").
+  Out of it: the knockdown (0x48ea40, with the profile's flag 1) pursues the nearest seen enemy.
 - **The alarm event** (event type 6, its id the group: 0x49ac30): every AI not passive whose groups
   have that bit, but the setter, gets a pending alarm contact (`AI2iKnowledge_AddPending`, type 9,
   strength 3, the setter's place, value the group) and flag 0x10; a setter that is the player only if
@@ -1300,7 +1321,7 @@ advances instead (to within 15 to 20).
 `ONrCharacter_CouldBlock` 0x4e62b0 and the attack's high and low flags allow a block; the player has
 none and blocks by the stance alone. `AI2rInitializeCharacter` 0x48a6b0 gives every AI
 `AI2rBlockFunction`. It refuses with no profile, when passive or non-aggressive (flags 2 and 4), when
-every AI is passive (0x5ec0c4, set by 0x48b0d0; not yet ported) or in panic (state 9). The chance is
+every AI is passive (0x5ec0c4, set by 0x48b0d0) or in panic (state 9). The chance is
 the profile's single one. In combat, with n attackers on the same target (the fight's count, +8), it is
 single + (group − single) × (n − 1) / 3 (the third at 0x52a5ac) below four and the group chance from
 four. That times the difficulty's factor, from the game settings' table at +0xabc (0.6, 1, 1.3 for

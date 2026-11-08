@@ -133,7 +133,7 @@ static bool cmd_save(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
     bool autosave = c >= 2 && v[1].type == SL_STRING && v[1].s && !strcmp(v[1].s, "autosave");
     if (autosave) {
         const char *s = text_message("autosave");
-        if (s) ui_print(UI_AREA_MESSAGE, s, "autosave", 120, 0xffffffffu);
+        if (s) ui_print(UI_AREA_MESSAGE, 2, s, "autosave", 120);
     }
     Chr *p = chars_player();
     memset(&cont, 0, sizeof cont);      /* ("invalid save point" for 0, kept all the same) */

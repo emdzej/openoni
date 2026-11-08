@@ -303,6 +303,29 @@ So the player stops at the level's boxes and a dropped weapon, falling, stops on
 characters run into the weapons on the ground and push them, but not the one they go for. Weapons
 don't push the characters (0x4ecab0 refuses them), and nothing pushes a powerup but a weapon.
 
+### The particles against the contexts
+
+`P3iCheckCollisions` 0x45eaa0 (a class with flags1 0x400) walks the list `P3rUpdate` 0x45c830 makes
+each tick: every context active (+0x128 bit 2) with none of 0x34, in the array's order (0x6a8740,
+count 0x6a871c). A character's (callbacks' type 1) takes the body's ray tests; for the others:
+
+- a box (+0x128 0x200), if the particle's start is within the bounding sphere's radius (plus the
+  particle's own for a sphere): a point casts its move into the box (`PHrCollision_Volume_Ray`
+  0x43f750: the point and the face's normal), a sphere tests itself against the faces
+  (`PHrCollision_Volume_SphereTree` 0x43a2d0, the still flag for an animated box, type 3); the time is
+  the hit's place along the move, clamped to it;
+- else the sphere tree: a point's segment down to a leaf it crosses (`PHrCollision_Point_SphereTree`
+  0x43a240), then the sphere's entry by the quadratic when it starts outside (the hit none if it moves
+  away or misses), at once from inside (the normal the move); a sphere's reach of a leaf
+  (`PHrCollision_SphereTree_SphereTree` 0x43a560), its time where the radii touch (at once when
+  still), its point between the centres by the radii.
+
+The nearest hit cuts the move as a character's does; it fires the hit-character event (not a wall).
+The damage action hurts only a character; the impact effect's material for an object (type 2) is its
+first geometry's texture's (TXMP +0x98, 0x465cd4), for the rest 0; an effect attaches only to a
+character. In the box's sphere branch the original's normal is a stack slot 0x43a2d0 doesn't fill (the
+last ray's, inferred); the port takes the face's. Ported in `particle.c` with `physctx.c`.
+
 ### An object's context
 
 0x439910 (confirmed): the object's flags +0x12 the setup's (OBOA +0xc); the context's: 0x1000 a box

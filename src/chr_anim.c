@@ -455,12 +455,13 @@ static void old_animation_hook(Character *c, const void *next)
    ground's; the location, C+0x160, isn't kept apart in the port; the room, 0x4e91c0, is found from the
    position), facing as given; an AI's path is made anew (chars.c). The sound serial (C+0x1dc)
    counts up; the animation's cry (TRAM+0x4e, 0x428970: below 10) is vocalized (chr_vocalize_hook). An
-   animation of flag 5 throws the hand's weapon (chr_drop_hook). Not ported: an attack's turn toward its
-   target, and dying. The animation's
+   animation of flag 5 throws the hand's weapon (chr_drop_hook). An attack turns the player to its
+   target (chr_attack_turn_hook). Not ported: dying. The animation's
    particles are made last. A throw (TRAM flag 15) starts its target's part through chr_throw_hook
    (throw.c); any other animation forgets the target. */
 void (*chr_animation_hook)(Character *c);
 void (*chr_drop_hook)(Character *c);
+void (*chr_attack_turn_hook)(Character *c);
 void (*chr_vocalize_hook)(Character *c, uint32_t type);
 
 static void new_animation_hook(Character *c)
@@ -484,6 +485,7 @@ static void new_animation_hook(Character *c)
     if (tr_test_flag(t, 5) && c->weapon && chr_drop_hook) chr_drop_hook(c);    /* 0x51b590 (slot 0, thrown) */
     c->threw = NULL;                /* A+0x1ed8 = 0xffff: set again by a throw */
     if (tr_is_attack(t) && !tr_test_flag(t, TRAM_FLAG_THROW_SOURCE)) {
+        if (chr_attack_turn_hook) chr_attack_turn_hook(c);
         c->combo_type = tr_type(t);
         c->combo_time = 0xffffffffu;
     }

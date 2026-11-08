@@ -1,6 +1,7 @@
 /* The environment particles: see envparticle.h. */
 #include "envparticle.h"
 
+#include "akev_collide.h"
 #include "objc.h"
 #include "particle.h"
 #include "sl.h"
@@ -16,7 +17,7 @@
 /* An ENVP record (0xd0 bytes from +0x18, the count at +0x16): the class's name (+0x00, 64), the tag
    (+0x40, 48), the matrix (+0x70, 3x3 and the position at +0x94), the decal's size (+0xa0, +0xa4) and
    the flags (+0xa8: 2 not made at the start). The rest is the game's at run time: here in EnvParticle. */
-enum { EP_SIZE = 0xd0, EP_CLASS = 0x00, EP_TAG = 0x40, EP_MATRIX = 0x70, EP_POS = 0x94, EP_FLAGS = 0xa8 };
+enum { EP_SIZE = 0xd0, EP_CLASS = 0x00, EP_TAG = 0x40, EP_MATRIX = 0x70, EP_POS = 0x94, EP_DECAL_SIZE = 0xa0, EP_FLAGS = 0xa8 };
 enum { EPF_TAGGED = 1, EPF_NOT_INITIAL = 2, EPF_LISTED = 4, EPF_RUNNING = 8 };
 
 typedef struct {
@@ -58,13 +59,44 @@ static bool stop(EnvParticle *e)
     return true;
 }
 
+/* 0x453b60: a decal class's particle on the wall behind the record: the first quad (not of the flags
+   0x44800) a segment from its place 10 along its matrix's -y meets (AKrCollision_Point 0x441c80), as an
+   effect (P3rCreateEffect 0x456030) along the hit's normal, at the hit's point on that quad, its up the
+   matrix's z, at the record's decal size, a static decal not turned at random. None without a wall. */
+static void start_decal(EnvParticle *e, uint32_t time)
+{
+    const void *env = p3_environment();
+    if (!env) return;
+    float pos[3], v[3];
+    for (int i = 0; i < 3; i++) pos[i] = rdf(e->rec + EP_POS + 4 * i), v[i] = rdf(e->rec + EP_MATRIX + 12 + 4 * i) * -10.0f;
+    static AkevHit hits[AKEV_HITS_MAX];
+    if (!akev_collide_point(env, pos, v, 0x44800, 1, hits)) return;
+    const AkevHit hit = hits[0];
+    P3EffectSpec spec = { .cls = e->cls, .orientation = P3_ORIENT_NORMAL, .location = P3_LOC_DECAL,
+                          .decal_static = true, .decal_random_rotation = false };
+    P3EffectLoc loc;
+    memset(&loc, 0, sizeof loc);
+    loc.tick = time;
+    memcpy(loc.pos, hit.point, 12);
+    memcpy(loc.normal, hit.plane, 12);
+    for (int i = 0; i < 3; i++) loc.up[i] = rdf(e->rec + EP_MATRIX + 24 + 4 * i);
+    loc.decal_scale[0] = rdf(e->rec + EP_DECAL_SIZE), loc.decal_scale[1] = rdf(e->rec + EP_DECAL_SIZE + 4);
+    loc.kind = P3_HIT_WALL;
+    loc.quad = hit.quad;
+    P3Particle *p = p3_create_effect(&spec, &loc);
+    e->handle = p ? p3_handle(p) : 0;
+}
+
 /* 0x453d50's particle: made at the record's matrix (0x453820 with initial set) and sent its create
-   event. */
+   event; a decal class's goes on the wall (0x453b60). */
 static void start(EnvParticle *e, uint32_t time)
 {
     e->flags |= EPF_RUNNING;
     if (!e->cls) return;
-    if (p3_class_def_flags(e->cls, 1) & 0x800000) return;    /* a decal (0x453b60): not ported */
+    if (p3_class_def_flags(e->cls, 1) & 0x800000) {
+        start_decal(e, time);
+        return;
+    }
     P3Particle *p = p3_create(e->cls, time);
     if (!p) { e->handle = 0; return; }
     e->handle = p3_handle(p);

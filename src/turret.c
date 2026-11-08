@@ -461,13 +461,13 @@ static void update(Turret *t, const void *env)
         shooters_event(t, P3_EV_BG_STOP, 0xffff);
     }
     t->flags &= (uint16_t)~TURRET_DRAWN;
-    /* the trigger: a shot of group 0 (unless every AI is passive, 0x5ec0c4: not ported), else the
-       shooters stopped */
+    /* the trigger: a shot of group 0 (unless every AI is passive, 0x5ec0c4: the trigger then kept),
+       else the shooters stopped */
     if (t->cooldown) {
         t->cooldown--;
         return;
     }
-    if (t->fire) {
+    if (!ai_all_passive && t->fire) {
         shoot(t, 0);
         t->fire = false;
         return;

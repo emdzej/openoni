@@ -23,6 +23,7 @@
 #include "exe.h"
 #include "m3gm.h"
 #include "persist.h"
+#include "physctx.h"
 #include "sl.h"
 #include "tm.h"
 #include "trac.h"
@@ -228,6 +229,11 @@ static uint32_t nlive;                  /* 0x6a8718 */
 
 static const void *env;
 static Character **chr_list;            /* 0x6a8740: the characters' contexts to collide with */
+/* 0x6a8740's other contexts (the active ones, +0x128 bit 2, none of 0x34), kept apart from the
+   characters' */
+enum { OTHERS_MAX = 256 };
+static PhysCtx others[OTHERS_MAX];
+static int nothers;
 static int chr_count;                   /* 0x6a871c */
 
 /* The storage: the original carves 50000-byte blocks (up to 100) into its four sizes and keeps each size's
@@ -1025,12 +1031,14 @@ void p3_kill(P3Class *c, P3Particle *p) { if (c && p) kill_now(c, p); }
 typedef struct {
     bool hit;                   /* +0x00 */
     bool wall;                  /* +0x01: a quad, else a character */
-    bool other;                 /* +0x02: a physics object's own geometry (not ported) */
+    bool other;                 /* +0x02: a physics object's own geometry (set by nothing: always 0) */
     float point[3];             /* +0x04 */
     float normal[3];            /* +0x10 */
     float move[3];              /* +0x1c: the step's move, cut at the hit */
     uint32_t quad;              /* +0x28 */
-    Character *chr;             /* +0x2c: the context hit (a character's) */
+    Character *chr;             /* +0x2c: the context hit, a character's (NULL for another context's) */
+    bool on_ctx;                /* another context hit (an object, a door's panel, a weapon, a powerup) */
+    PhysCtx ctx;                /* its view */
     float t;                    /* +0x34: when */
 } Hit;
 static Hit hit, last_hit;
@@ -2023,7 +2031,7 @@ static bool check_collisions(P3Class *c, P3Particle *p, float t0, float *t1, flo
         static AkevHit h[AKEV_HITS_MAX];     /* (the walk fills the whole leaf: up to the list's size) */
         if (akev_collide_point(env, pos, hit.move, 0x44800, 1, h)) {
             hit.hit = hit.wall = true;
-            hit.other = false;
+            hit.other = hit.on_ctx = false;
             memcpy(hit.point, h[0].point, 12);
             hit.quad = h[0].quad;
             memcpy(hit.normal, h[0].plane, 12);
@@ -2056,6 +2064,71 @@ static bool check_collisions(P3Class *c, P3Particle *p, float t0, float *t1, flo
             hit.hit = true;
             hit.wall = hit.other = false;
             hit.chr = chr_list[i];
+            hit.on_ctx = false;
+            float f = hit.t - t0;
+            if (f < 0.001f) break;
+            f /= dt;
+            hit.move[0] *= f, hit.move[1] *= f, hit.move[2] *= f;
+            dt = hit.t - t0;
+        }
+        /* the other contexts: a box (+0x128 0x200) within its bounding sphere's reach, by a ray (a
+           point, PHrCollision_Volume_Ray 0x43f750) or the sphere against the box (0x43a2d0), the time
+           the hit's place along the move; else the sphere tree, a point's ray into its leaf (0x43a240:
+           from inside at once) or the sphere's reach of the leaf (0x43a560) */
+        for (int i = 0; dt > 1e-6f && i < nothers; i++) {
+            const PhysCtx *o = &others[i];
+            if (!o->tree.s) continue;
+            const float *root = o->tree.s[o->tree.root];
+            float pt[3], nm[3], t;
+            const float sph[4] = { pos[0], pos[1], pos[2], radius };
+            if (o->flags & PHYS_VOLUME) {
+                if (!o->box) continue;
+                float r = point ? root[3] : radius + root[3];
+                float d[3] = { pos[0] - root[0], pos[1] - root[1], pos[2] - root[2] };
+                if (dot3(d, d) > r * r) continue;
+                if (point ? !physctx_box_ray_normal(o->box, pos, hit.move, pt, nm)
+                          : !physctx_box_sphere(o->box, sph, hit.move, o->type == 3, pt, nm))
+                    continue;
+                float l = dot3(hit.move, hit.move), w[3] = { pt[0] - pos[0], pt[1] - pos[1], pt[2] - pos[2] };
+                float f = l > 0.0f ? dot3(w, hit.move) / l : 0.0f;
+                if (f < 0.0f) f = 0.0f;
+                else if (f > 1.0f) f = 1.0f;
+                t = f * dt + t0;
+            } else {
+                int leaf = point ? physctx_point_tree(pos, hit.move, &o->tree) : physctx_sphere_tree(sph, hit.move, &o->tree);
+                if (leaf < 0) continue;
+                const float *ls = o->tree.s[leaf];
+                float d[3] = { pos[0] - ls[0], pos[1] - ls[1], pos[2] - ls[2] }, d2 = dot3(d, d);
+                memcpy(nm, d, sizeof nm);
+                if (!point) {
+                    t = t0;
+                    if (!still) t = ((sqrtf(d2) - (radius + ls[3])) / sqrtf(dot3(hit.move, hit.move))) * dt + t0;
+                    float sum = radius + ls[3];
+                    for (int k = 0; k < 3; k++) pt[k] = (radius / sum) * ls[k] + (ls[3] / sum) * pos[k];
+                } else if (sqrtf(d2) >= ls[3]) {
+                    float a = dot3(hit.move, hit.move), b = 2.0f * dot3(d, hit.move);
+                    float disc = b * b - (d2 - ls[3] * ls[3]) * a * 4.0f;
+                    if (b > 0.0f || disc < 0.0f) continue;
+                    float k = (-b - sqrtf(disc)) / (a + a);
+                    t = k * dt + t0;
+                    for (int j = 0; j < 3; j++) pt[j] = k * hit.move[j] + pos[j];
+                } else {
+                    t = t0;
+                    memcpy(pt, pos, sizeof pt);
+                    memcpy(nm, hit.move, sizeof nm);
+                }
+            }
+            if (t < t0) t = t0;
+            else if (t > *t1) t = *t1;
+            if (t >= hit.t) continue;
+            hit.t = t;
+            memcpy(hit.point, pt, 12);
+            memcpy(hit.normal, nm, 12);
+            hit.hit = true;
+            hit.wall = hit.other = false;
+            hit.chr = NULL;
+            hit.on_ctx = true;
+            hit.ctx = *o;
             float f = hit.t - t0;
             if (f < 0.001f) break;
             f /= dt;
@@ -2065,7 +2138,10 @@ static bool check_collisions(P3Class *c, P3Particle *p, float t0, float *t1, flo
     }
     if (!hit.hit) return false;
     if (last_hit.hit && last_hit.wall == hit.wall &&
-        (hit.wall ? last_hit.quad == hit.quad : last_hit.chr == hit.chr) && hit.t <= last_hit.t + (1.0f / 60.0f))
+        (hit.wall ? last_hit.quad == hit.quad
+                  : hit.on_ctx ? last_hit.on_ctx && last_hit.ctx.owner == hit.ctx.owner && last_hit.ctx.kind == hit.ctx.kind
+                               : !last_hit.on_ctx && last_hit.chr == hit.chr) &&
+        hit.t <= last_hit.t + (1.0f / 60.0f))
         hit.t = last_hit.t + (1.0f / 60.0f);
     if (hit.t <= *t1) {
         if (normalize_zero(hit.normal)) {
@@ -2287,6 +2363,14 @@ void p3_update(uint32_t tick, bool gameplay, Character **chars, int nchars)
     last_tick = tick;
     chr_list = chars;
     chr_count = nchars > 64 ? 64 : nchars;
+    {
+        static PhysCtx all[OTHERS_MAX];
+        int n = physctx_collect(all, OTHERS_MAX);
+        nothers = 0;
+        for (int i = 0; i < n; i++)
+            if (all[i].kind != PHYS_KIND_CHARACTER && (all[i].flags & 2) && !(all[i].flags & 0x34))
+                others[nothers++] = all[i];
+    }
     for (int i = 0; i < chr_count; i++) make_parts(&parts[i], chars[i]);
     updating = true;
     pending = 0xffff;
@@ -2964,7 +3048,7 @@ static bool do_action(Act *x)
         P3EffectSpec spec = { .cls = ec, .orientation = rd32(po) == 10 ? rd32(po + 4) : P3_ORIENT_NORMAL };
         bool attach = rd32(pa) == 10 && pa[4];
         if (hit.hit) {
-            if (!hit.wall && attach) spec.location = P3_LOC_ATTACHED, eloc.kind = P3_HIT_CHARACTER, eloc.chr = hit.chr;
+            if (!hit.wall && attach && hit.chr) spec.location = P3_LOC_ATTACHED, eloc.kind = P3_HIT_CHARACTER, eloc.chr = hit.chr;
             else {
                 spec.location = pf(x, 1, &spec.offset) && spec.offset != 0.0f ? P3_LOC_OFFSET : P3_LOC_DEFAULT;
                 if (hit.wall) eloc.kind = P3_HIT_WALL, eloc.quad = hit.quad;
@@ -3054,7 +3138,14 @@ static bool do_action(Act *x)
                 }
             } else {
                 eloc.kind = P3_HIT_CHARACTER, eloc.chr = hit.chr;
-                material = impact_character_material(hit.chr, nearest_part(hit.chr, hit.point), false);
+                if (hit.chr) material = impact_character_material(hit.chr, nearest_part(hit.chr, hit.point), false);
+                else if (hit.on_ctx && hit.ctx.kind == PHYS_KIND_OBJECT && hit.ctx.geometry) {
+                    /* an object's: its first geometry's texture's material (0x465cd4); a weapon's or a
+                       powerup's none (0) */
+                    const void *tx = tm_link((const uint8_t *)hit.ctx.geometry + M3GM_TEXTURE);
+                    int mi = tx ? impact_material_index(material_of_texture(tx)) : -1;
+                    if (mi >= 0) material = mi;
+                }
             }
         } else {
             eloc.kind = (p->flags & P_EXPIRING) ? P3_HIT_NONE_ATTACHED : P3_HIT_NONE;

@@ -61,7 +61,7 @@ void combat_default_settings(AiState *a)
     /* the defaults: medium 200, short 40, Hold And Fire at every range, unarmed: fight when the
        target is close (3) */
     CombatSettings *s = &a->combat_set;
-    s->id = 0;
+    s->id = 0, s->flags = 0;
     s->medium = 200.0f;
     for (int k = 0; k < 5; k++) s->behaviour[k] = 2;
     s->no_gun = 3;
@@ -90,6 +90,7 @@ void combat_settings(AiState *a, uint16_t id)
         return;
     }
     s->id = id;
+    s->flags = (uint16_t)rd16(p + 0x42);   /* OBJiCombat_Read 0x4c01c0: +0x42 in memory too */
     s->medium = rdf(p + 0x58);
     for (int k = 0; k < 5; k++) s->behaviour[k] = (int)rd32(p + 0x44 + 4 * k);
     s->no_gun = (int)rd32(p + 0x5c);
@@ -1475,8 +1476,10 @@ void combat_aim(AiState *a, Character *c)
         c->aim_lr = c->aim_ud = 0.0f;
         m->yaw = c->facing;
         m->pitch = 0.0f;
+        m->dir[0] = sinf(m->yaw), m->dir[1] = 0.0f, m->dir[2] = cosf(m->yaw);    /* 0x4e0440 */
         return;
     }
+    for (int j = 0; j < 3; j++) m->dir[j] = -v[j];      /* 0x4e0347: toward the point */
     float yaw = v[0] * v[0] + v[2] * v[2] >= 0.001f ? -(atan2f(v[2], v[0]) + 1.5707964f) : c->facing;
     c->aim_ud = -asinf(v[1]);
     c->aim_lr = wrap_pi(yaw - c->facing);

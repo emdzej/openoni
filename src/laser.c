@@ -343,7 +343,9 @@ void laser_frame(void)
                     char snd[33];
                     memcpy(snd, l->cls + TRIG_HIT_SOUND, 32);
                     snd[32] = 0;
-                    if (snd[0] && sound_has_impulse(snd)) sound_impulse_play(snd, 1.0f);
+                    /* the class's hit impulse (+0x68, from +0x44) at the object's place (0x4cbafd) */
+                    const void *imp = snd[0] ? sound_impulse_find(snd) : NULL;
+                    if (imp) sound_impulse_play_at(imp, l->pos, NULL);
                     event_list_run(l->events, player->name);
                 }
             } else l->flags &= (uint16_t)~TRIG_TRIGGERED;

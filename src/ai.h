@@ -97,7 +97,8 @@ typedef struct {
 /* The combat settings (C+0x1028..0x1050, AI2rInitializeCharacter 0x48a6b0 copies them from the
    Combat object of the CHAR's id, else the defaults). */
 typedef struct {
-    uint16_t id;                /* C+0x1028 */
+    uint16_t flags;             /* C+0x1028: the profile's +0x42 (from version 0x24; 1: the alarm fights when knocked down) */
+    uint16_t id;                /* the profile's id (+0x40; the port's, the original keeps only the flags) */
     float medium;               /* C+0x102c: the medium range */
     float near;                 /* C+0x1030: the short range */
     int behaviour[5];           /* C+0x1034: for the ranges 1..5 (COMBAT_RANGE_*) */
@@ -268,6 +269,7 @@ typedef struct {
     float last_facing;          /* A+0x1aac, 1000 none */
     bool aiming;                /* A+0x2195 */
     float point[3];             /* A+0x2198 */
+    float dir[3];               /* A+0x21a4: the aim's direction (the facing's without aiming) */
     float yaw, pitch;           /* A+0x21c4, 0x21c8 */
     int look;                   /* the movement's (+0x1584): 0 none, 1 a point, 2 a direction, 3 a character */
     float look_at[3];           /* +0x1588 */
@@ -456,6 +458,9 @@ typedef struct {
     uint32_t panic_vocal;           /* +0x14: ticks to its next cry */
 } AiState;
 
+/* 0x5ec0c4: every AI passive (AI2rAllPassive 0x48b0d0: ai2_allpassive, the cutscenes); cleared at the
+   level's start (0x48a250). */
+extern bool ai_all_passive;
 void ai_init(AiState *a);
 /* AI2rExitState 0x48ae80: the state left (the job's patrol kept for its return). */
 void ai_exit_state(AiState *a);

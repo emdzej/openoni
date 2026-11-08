@@ -510,6 +510,7 @@ static bool unheard(const Chr *listener, const Chr *who, bool combat)
    all-passive switches, 0x5ec0c1 and 0x5ec0c4, left out). */
 void knowledge_sound(int type, const float pos[3], float radius, Chr *source, Chr *target)
 {
+    if (ai_all_passive) return;     /* 0x49a907 */
     bool combat = type >= KNOW_SOUND_DANGER && type <= KNOW_SOUND_GUNFIRE;     /* 0x49ad70 */
     float at_source[3], at_target[3] = { 0, 0, 0 };
     /* the places posted: the maker's location (C+0x160), else the sound's */
@@ -554,6 +555,7 @@ void knowledge_sound(int type, const float pos[3], float radius, Chr *source, Ch
 
 void knowledge_hurt_by(Chr *victim, Chr *attacker, uint32_t damage, bool melee)
 {
+    if (ai_all_passive) return;     /* 0x49a7f0 */
     if (attacker && ai_team_relation(victim->team, attacker->team) != 0)
         knowledge_post(victim, melee ? KNOW_HURT_MELEE : KNOW_HURT, melee ? 4 : 3, attacker->c.pos, attacker, damage,
                        false, false);
@@ -617,6 +619,16 @@ static void pelvis_point(const Chr *c, float p[3])
 static void check_visible(Chr *looker, const void *env)
 {
     float eye[3], fwd[3] = { sinf(looker->c.facing), 0.0f, cosf(looker->c.facing) }, up[3] = { 0.0f, 1.0f, 0.0f };
+    /* aiming (A+0x2195), along the aim (A+0x21a4) and its up across it and (-z, 0, x) */
+    if (looker->ai.aim.aiming) {
+        memcpy(fwd, looker->ai.aim.dir, sizeof fwd);
+        float side[3] = { -fwd[2], 0.0f, fwd[0] };
+        up[0] = fwd[1] * side[2] - fwd[2] * side[1];
+        up[1] = fwd[2] * side[0] - fwd[0] * side[2];
+        up[2] = fwd[0] * side[1] - fwd[1] * side[0];
+        float l = 1.0f / sqrtf(up[0] * up[0] + up[1] * up[1] + up[2] * up[2]);
+        for (int k = 0; k < 3; k++) up[k] *= l;
+    }
     knowledge_head_point(looker, eye);
     float cdist = oncc_float(looker, 0x3f4), pdist = oncc_float(looker, 0x3f8), vert = oncc_float(looker, 0x3fc);
     float cmax = oncc_float(looker, 0x400), cmin = oncc_float(looker, 0x404);

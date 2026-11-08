@@ -3,11 +3,16 @@
    the push apart (HandleGenericMask 0x4e8c50), and ONrCharacter_TakeDamage 0x4e65f0. Notes:
    docs/re/character.md, "Hits".
 
-   The pain (ONrCharacter_Pain 0x4f2250): the hurt's cries. Not ported yet: in-air hits (0x4ecd70),
-   Knockdown's in-air remap, and TakeDamage's fight cookie for a blow's owner (0x4998f0). */
+   The pain (ONrCharacter_Pain 0x4f2250): the hurt's cries. A hit in the air knocks down (0x4ecd70, in
+   HandleAttackMask and Knockdown); TakeDamage's melee cookie (0x4998f0) is chars.c's. */
 #pragma once
 #include "character.h"
 
+/* An overpowered character's damage factor (0x4e7bec, 0x4dd882): with the class's ONCC+0xc8d and hit
+   points over the maximum, the game settings' (ONGS) +0xc to +0x10 by the excess as a part of the
+   maximum (at most 1); else 1. The damage so scaled, rounded (0x4340a0). */
+float chr_overpower(const Character *c);
+uint32_t chr_overpower_damage(const Character *c, uint32_t damage);
 /* The class's hit points (ONCC+0xc50) plus extra, at least 1 (ONrGameState_NewCharacter 0x4dac50). */
 void chr_hit_init(Character *c, int32_t extra);
 /* The contacts of a tick, after every character's frame: each two closer than 25 units, then the

@@ -285,6 +285,7 @@ static bool ctx_get(int i, PhysCtx *out)
     out->tree.s = (const float (*)[4])o->sphere;
     out->box = &o->box;
     out->owner = o;
+    out->geometry = o->geometry && rd32(o->geometry + 0x14) ? tm_link(o->geometry + 0x18) : NULL;
     return true;
 }
 

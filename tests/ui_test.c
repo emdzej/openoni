@@ -55,6 +55,29 @@ int main(void)
     ticks(120);
     printf("after its timer: %d lines\n", ui_area_count(UI_AREA_MESSAGE));
     if (ui_area_count(UI_AREA_MESSAGE)) failed++;
+    /* the text areas (COrConfigure 0x42fb70): a subtitle in the letterbox goes to the console's area as
+       type 1, which the letterbox's end clears; out of it, to the subtitles'. A line whose time is up
+       goes and the next one waits a tick (0x4316d0). */
+    const UiArea *con = ui_area(UI_AREA_CONSOLE), *msg = ui_area(UI_AREA_MESSAGE);
+    printf("areas: console %d,%d..%d,%d %d lines; messages %d,%d..%d,%d\n", con->rect[0], con->rect[1],
+           con->rect[2], con->rect[3], con->lines, msg->rect[0], msg->rect[1], msg->rect[2], msg->rect[3]);
+    if (con->rect[1] != 420 || con->lines < 1 || msg->rect[0] != 148 || msg->rect[3] != 478) failed++;
+    ui_set_letterbox(true);
+    ui_print_subtitle("in the letterbox", 0);
+    ui_print(UI_AREA_CONSOLE, 0, "type 0", NULL, 0);
+    int in_box = ui_area_count(UI_AREA_CONSOLE);
+    ui_set_letterbox(false);
+    ui_print_subtitle("out of it", 0);
+    printf("subtitles: console %d then %d, subtitles' %d\n", in_box, ui_area_count(UI_AREA_CONSOLE),
+           ui_area_count(UI_AREA_SUBTITLE));
+    if (in_box != 1 || ui_area_count(UI_AREA_CONSOLE) || ui_area_count(UI_AREA_SUBTITLE) != 1) failed++;
+    ui_print(UI_AREA_MESSAGE, 2, "one", NULL, 1);
+    ui_print(UI_AREA_MESSAGE, 2, "two", NULL, 1);
+    ticks(1);
+    int left = ui_area_count(UI_AREA_MESSAGE);
+    ticks(1);
+    printf("countdown: %d then %d\n", left, ui_area_count(UI_AREA_MESSAGE));
+    if (left != 1 || ui_area_count(UI_AREA_MESSAGE)) failed++;
     tm_terminate();
     exe_free();
     vfs_unmount();

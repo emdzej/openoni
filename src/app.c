@@ -1445,7 +1445,8 @@ static void splash_frame(const char *name, float blanket)
         plat_display_size(&w, &h);
         ui_draw_splash(w, h, name, blanket);
     }
-    sound_update();     /* 0x483bd0 */
+    listen(chars_player());     /* the listener kept on the player (0x4f4e56, as the game's frame) */
+    sound_update();     /* 0x483bd0, OSrUpdate 0x514f20 */
     plat_wait_frame();
     splash_frames++;
 }
@@ -1457,7 +1458,7 @@ static void splash_frame(const char *name, float blanket)
    Quiet (the win and loss screens): the scripts' sounds held off and every sound stopped first (0x483710).
    The music (none for the chapters' and the levels' intro screens) starts from nothing, up over a second,
    down over a second as the fade out begins, and is halted at the end. Its clock is the machine's
-   sixtieths: here the frames. Not ported: the listener kept on the player. */
+   sixtieths: here the frames. Each frame the listener is set as the game's frame sets it. */
 static void splash_screen(const char *name, const char *music, bool quiet)
 {
     if (tm_instance_get(TM_TAG("TXMB"), name)) {

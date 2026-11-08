@@ -55,6 +55,7 @@ typedef struct {
     uint16_t anim_flags;            /* its animation context's flags (CTX_*), not the physics' */
     float sphere[4];                /* the context's sphere and box (physctx.h) */
     PhysBox box;
+    const void *geometry;           /* its first (M3GM) */
 } Panel;
 enum { CTX_HALF_TURNS = 0x20, CTX_FOLLOW = 0x40 };
 
@@ -409,6 +410,7 @@ static void open_door(int i, const Chr *who)
             const void *geoms[16];
             int ng = 0;
             for (uint32_t g = 0; ga && g < rd32(ga + 0x14) && ng < 16; g++) geoms[ng++] = tm_link(ga + 0x18 + 4 * g);
+            p->geometry = ng ? geoms[0] : NULL;
             for (int j = 0; j < 3; j++) p->sphere[j] = rdf(p->element + OBOA_POSITION + 4 * j);
             physctx_box_make(&p->box, geoms, ng, p->sphere, &p->sphere[3]);
         }
@@ -495,6 +497,7 @@ static bool ctx_get(int i, PhysCtx *out)
     out->tree.s = (const float (*)[4])p->sphere;
     out->box = &p->box;
     out->owner = p;
+    out->geometry = p->geometry;
     return true;
 }
 

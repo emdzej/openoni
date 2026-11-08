@@ -35,9 +35,12 @@ static float oncc_float(const Character *c, unsigned off)
     return f;
 }
 
+bool ai_all_passive;
+
 void ai_init(AiState *a)
 {
     memset(a, 0, sizeof *a);
+    if (ai_all_passive) a->flags = AI_FLAG_KNOWLEDGE | AI_FLAG_PASSIVE;     /* AI2rInitializeCharacter 0x48a925 */
     a->kind = AI_MOVE_NONE;
     a->facing_override = 1000.0f;
     a->patrol = -1;

@@ -2661,14 +2661,14 @@ bool melee_update(AiState *a, Character *c, const Character *target)
 }
 
 /* AI2rBlockFunction 0x48b870 (the AI's C+0x15ec, asked by HandleAttackMask once the character could
-   block): none without a profile, passive or non-aggressive (or with every AI passive, 0x5ec0c4, not yet
-   ported) or panicking. The chance is the profile's single one; in combat with others on the same
+   block): none without a profile, passive or non-aggressive (or with every AI passive, 0x5ec0c4) or
+   panicking. The chance is the profile's single one; in combat with others on the same
    target it goes toward the group one by a third per other attacker, reaching it at four. Times the
    difficulty's factor (game settings +0xabc), against a random 0..100. */
 bool melee_block(const AiState *a)
 {
     const MeleeProfile *p = a->melee.profile;
-    if (!p || (a->flags & (AI_FLAG_PASSIVE | AI_FLAG_NON_AGGRESSIVE)) || a->state == AI_STATE_PANIC) return false;
+    if (!p || ai_all_passive || (a->flags & (AI_FLAG_PASSIVE | AI_FLAG_NON_AGGRESSIVE)) || a->state == AI_STATE_PANIC) return false;
     float chance = (float)p->block_single;
     if (a->state == AI_STATE_COMBAT && a->target) {
         uint32_t n = fight_count(&a->target->c, NULL);

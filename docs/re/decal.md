@@ -169,6 +169,14 @@ particle is killed (0x456c70). The block is then added to the tail of its list.
 
 - **P3rCreateEffect** (0x456030) creates them: see [impact.md](impact.md). The decal block holds the
   decal and the particle's handle.
+- **The level's** (an `ENVP` record or a `PART` object of a decal class, 0x453b60 from the start
+  0x4538be and the `particle` command's 0x4551fb): a segment from the record's place 10 along its
+  matrix's -y (its second column times -10, 0x52a030) against the quads, skipping the flags 0x44800, the
+  first hit only (`AKrCollision_Point` 0x441c80). Without a hit there is no particle. Else the effect:
+  the specification (the record's class at +0xb4, turned along the normal (3), the decal location (4),
+  static, not turned at random) and the location (the time, the hit's point, its plane's
+  normal, the matrix's third column as the decal's up, the record's +0xa0 and +0xa4 as its size, a wall
+  hit on the quad). The particle and its handle go to the record's +0xb8 and +0xbc.
 - **P3iUpdateDecalClass** (in P3rUpdate 0x45c830) runs a decal class's particles, oldest first:
   - one whose decal was purged dies;
   - the others age;

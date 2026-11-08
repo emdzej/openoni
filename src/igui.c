@@ -789,7 +789,8 @@ static bool pause_proc(WmWindow *d, uint32_t msg, uintptr_t p1, uintptr_t p2)
 {
     switch (msg) {
     case WM_DESTROY:
-        help_on = false;    /* (and the HUD's messages back, 0x4303c0/0x4303d0: not kept) */
+        help_on = false;
+        ui_hide_areas(false);   /* 0x4303c0, 0x4303d0: the text areas back */
         return true;
     case WM_COMMAND: {
         uint16_t id = (uint16_t)p1;
@@ -842,7 +843,8 @@ static bool pause_proc(WmWindow *d, uint32_t msg, uintptr_t p1, uintptr_t p2)
         ps.open_until = plat_frames() + 0x3c;
         show_arrows(d, true);
         enable_arrows(d);
-        return true;    /* (and the HUD's messages hidden, 0x4303c0/0x4303d0: not kept) */
+        ui_hide_areas(true);    /* 0x4303c0, 0x4303d0: the text areas hidden */
+        return true;
     }
     return false;
 }

@@ -142,6 +142,25 @@ static bool fight_on_the_way(AiState *a, const Character *c)
     return true;
 }
 
+void alarm_knocked_down(AiState *a, Character *c)
+{
+    const CombatSettings *s = &a->combat_set;
+    if (!(s->flags & 1)) return;
+    KnowEntry *best = NULL;
+    float best_d = 0.0f;
+    for (KnowEntry *e = a->know; e; e = e->next) {
+        if (e->hostility <= 1 || e->strength <= 1) continue;
+        float d = dist2(c->pos, e->pos);    /* MUrPoint_Distance_Squared 0x433220 */
+        if (!best) best = e, best_d = d;
+        else if (e->strength < best->strength) break;
+        else if (d < best_d) best = e, best_d = d;
+    }
+    if (!best || !best->target || best->strength != 4 || best_d > s->alarm_ignore * s->alarm_ignore) return;
+    a->alarm_fight_timer = s->alarm_fight;
+    leave(a);
+    ai_pursue(a, best);
+}
+
 static bool lying(const Character *c) { return c->state == 0x12 || c->state == 0x32; }  /* 0x4e4070 */
 
 /* 0x4ed280: standing still (state 7, in a standing type). */
@@ -212,7 +231,7 @@ void alarm_fight_tick(AiState *a, Character *c)
 
 void alarm_notify(unsigned group, Chr *who)
 {
-    if (group >= 32) return;
+    if (group >= 32 || ai_all_passive) return;     /* AI2rKnowledge_Alarm 0x49ac30 */
     for (int i = 0; i < chars_slots(); i++) {
         Chr *ch = chars_get(i);
         if (!ch || ch->player || ch == who || (ch->ai.flags & AI_FLAG_PASSIVE)) continue;

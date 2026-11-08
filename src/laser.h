@@ -6,7 +6,7 @@
 
    As the original, the beams are tested where they are drawn (OBJrTrigger_OnTrigger 0x4cb6f0, the type's
    draw), so on the frames that are drawn. The active trigger's ambient sound (TRIG +0x24) plays at
-   the object's place. Not ported yet: the sound's place for the trigger's impulse. */
+   the object's place, and so does the hit's impulse. */
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>

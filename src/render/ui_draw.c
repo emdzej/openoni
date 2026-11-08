@@ -103,6 +103,17 @@ float ui_draw_text(const void *font, float x, float y, float scale, const char *
     return walk(font, x, y, scale, s, c, true);
 }
 
+static float wm_scale;
+static void wm_glyphs(const void *font, float x, float y, const char *str, size_t n, uint32_t argb, const int16_t clip[4]);
+
+/* A run of a text area's glyphs, unclipped. */
+static void area_glyphs(const void *font, int16_t x, int16_t y, const char *s, uint16_t n, uint32_t argb, void *u)
+{
+    (void)u;
+    static const int16_t all[4] = { -32768, -32768, 32767, 32767 };
+    wm_glyphs(font, x, y, s, n, argb, all);
+}
+
 void ui_draw(int w, int h)
 {
     gl_dev_screen(w, h);
@@ -115,29 +126,15 @@ void ui_draw(int w, int h)
         rect(0, 0, (float)w, lb, black);
         rect(0, (float)h - lb, (float)w, (float)h, black);
     }
-    /* the text areas: messages in the middle of the lower half, subtitles at the bottom (their places
-       are inferred until COrTextArea's layout is ported) */
+    /* the console's text areas (ONrGameState_Display: 0x430400, 0x4303e0), at 640 by 480 */
+    wm_scale = scale;
+    ui_area_display((int16_t)((float)w / scale), area_glyphs, NULL);
     const void *family = font_family_get("Tahoma");
     uint16_t size = 12;
     uint32_t style = FONT_STYLE_PLAIN;
     const void *font = family ? font_family_best_font(family, &size, &style) : NULL;
     if (font) {
         float lh = font_line_height(font) * scale;
-        for (int area = 0; area < UI_AREAS; area++) {
-            int n = ui_area_count(area);
-            float y = area == UI_AREA_MESSAGE ? (float)h * 0.62f : (float)h - lb - lh * (float)(n + 1);
-            for (int i = 0; i < n; i++) {
-                float alpha;
-                const UiLine *l = ui_area_line(area, i, &alpha);
-                uint8_t c[4] = { (uint8_t)(l->colour >> 16), (uint8_t)(l->colour >> 8), (uint8_t)l->colour, (uint8_t)(255 * alpha) };
-                static const uint8_t shadow_rgb[3] = { 0, 0, 0 };
-                uint8_t sh[4] = { shadow_rgb[0], shadow_rgb[1], shadow_rgb[2], c[3] };
-                float tw = walk(font, 0, 0, scale, l->text, c, false), x = ((float)w - tw) / 2;
-                y += lh;
-                ui_draw_text(font, x + scale, y + scale, scale, l->text, sh);
-                ui_draw_text(font, x, y, scale, l->text, c);
-            }
-        }
         /* the timer (ONrGameState_Timer_Display 0x4fd500): centred, near the top (its place inferred:
            0x4264e0's offsets aren't decoded) */
         char tt[32];

@@ -8,6 +8,7 @@
 #include "m3gm.h"
 #include "neutral.h"
 #include "sound.h"
+#include "tm.h"
 #include "trac.h"
 #include "weapon.h"
 
@@ -341,6 +342,33 @@ void chr_hit_direction(Character *c, const float dir[3])
     c->hit_flash[side] = 0xff;
 }
 
+/* MUrFloat_Round_To_Int 0x4340a0 for the damage (under 2^23): to the nearest, halves to even. */
+static uint32_t round_damage(float f)
+{
+    float h = f + 8388608.0f;
+    uint32_t b;
+    memcpy(&b, &h, 4);
+    return b & 0x7fffff;
+}
+
+float chr_overpower(const Character *c)
+{
+    if (!c || !((const uint8_t *)c->oncc)[0xc8d] || c->hit_points <= c->max_hit_points) return 1.0f;
+    float f = (float)(c->hit_points - c->max_hit_points) / (float)c->max_hit_points;
+    if (f > 1.0f) f = 1.0f;
+    const uint8_t *gs = tm_instance_get(TM_TAG("ONGS"), "game_settings");    /* 0x5ecbfc */
+    if (!gs) return 1.0f;
+    float lo, hi;
+    memcpy(&lo, gs + 0xc, 4);
+    memcpy(&hi, gs + 0x10, 4);
+    return (hi - lo) * f + lo;
+}
+
+uint32_t chr_overpower_damage(const Character *c, uint32_t damage)
+{
+    return round_damage(chr_overpower(c) * (float)damage);
+}
+
 /* 0x4e64d0: the class has the super shield (ONCC+0xc8e) and it is up (C+0x1668 over 0.5). */
 bool chr_super_shielded(const Character *c)
 {
@@ -466,9 +494,11 @@ static void attack_lands(Character *x, Character *d, const uint8_t *e, uint32_t 
     if (slot == 8) return;
     x->hit_list[slot] = d->id;
     bool unstoppable = chr_is_unstoppable(d);
-    uint32_t damage = rd16(e + 0xc);
+    /* an overpowered attacker's blow (0x4e7bec): its damage and knockback scaled */
+    float boost = chr_overpower(x);
+    uint32_t damage = round_damage(boost * (float)rd16(e + 0xc));
     if (chr_cheat_omnipotent && !x->ai && damage <= d->hit_points) damage = d->hit_points;
-    float knock = rdf(e + 4);
+    float knock = boost * rdf(e + 4);
     uint8_t aflags = e[8];
     float dir[3] = { sinf(x->facing), 0.0f, cosf(x->facing) };
     /* the block: not for unblockable attacks (flag 1); a low one (flag 2) needs a block with flag 2, a

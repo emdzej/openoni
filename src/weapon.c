@@ -1300,8 +1300,8 @@ static Character *owner_character(uint32_t owner)
    AI-controlled (C+0x1e8 2): in combat (state 5) its shooting skill's (the targeting's, the combat
    block +0x164, +0x10); for an enemy of the player (AI2rTeam_FriendOrFoe 2) times the difficulty's
    factor (game settings +0xad4: 1.2 easy, 1 normal, 0.6 hard). A turret owner's (0x3000000 | id): its
-   class's skill (+0x5f8), always times the factor. Not ported: the patrol's targeting (state 3: its
-   skill's plus the block's +0x5bc). */
+   class's skill (+0x5f8), always times the factor. Patrolling (state 3), a slip of the original's (see
+   below). */
 bool weapon_cheat_gatling;
 
 static float particle_inaccuracy(uint32_t owner)
@@ -1321,6 +1321,10 @@ static float particle_inaccuracy(uint32_t owner)
     if (!c || (c->c.flags & 1) || !c->c.ai) return 0.0f;
     float v = 0.0f;
     if (c->ai.state == AI_STATE_COMBAT && c->ai.combat.t.skill) v = rdf(c->ai.combat.t.skill + 0x10);
+    /* patrolling (its shooting at a flag): the original reads the patrol targeting's +0xdc and the block's
+       +0x5bc, next to the skill (+0xd4) and the point's float (+0x5b4) it seems to have meant: the hand's
+       matrix (its fifth float) plus the weapon's address taken as a float (a denormal, as good as 0) */
+    else if (c->ai.state == AI_STATE_PATROL && c->ai.shoot_init) v = c->ai.shoot.matrix[4];
     const Chr *pl = chars_player();
     if (pl && ai_team_relation(c->team, pl->team) == 2) v *= aim;
     return v;
@@ -1353,7 +1357,7 @@ static int face_along(Character *c, const float d[3])
    (0x4f, 0x58), 5 the blow-up (0xd6, 0xd7). A force shield (C+0x1b8) or the super shield takes the hit
    first, lit where it is hit. The hit puts the character in fight mode
    (0x4eb0b0); type 0 plays the hit overlay (0x4f1210). Type 6 is the tractor beam's hold (A+0x112, A+0x120,
-   A+0x124; its pull at 0x4de759). Not ported: the HUD's direction. True when the particle already hurt the character. */
+   A+0x124; its pull at 0x4de759); the HUD's direction is TakeDamage's (0x4e6530). True when the particle already hurt the character. */
 static bool inflict_damage(Character *c, const float at[3], float reach, const float dir[3], int type, uint32_t dmg,
                            uint32_t st, float knockback, uint32_t handle, uint32_t owner);
 

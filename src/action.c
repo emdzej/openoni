@@ -106,7 +106,9 @@ static void console_action(Character *c)
         int at = (int16_t)rd16((const uint8_t *)c->anim + TRAM_ACTION_FRAME);
         if ((int)c->frame != (at <= last ? at : last)) return;
         const Chr *who = (const Chr *)c;    /* the character is the first field of its slot */
-        console_on_activate(m->console, who->name);
+        float loc[3];
+        chr_location(c, loc);
+        console_on_activate(m->console, who->name, loc);
         finish(c);
         return;
     }

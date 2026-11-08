@@ -85,3 +85,15 @@ bool font_glyph_alpha(const void *font, const FontGlyph *g, uint8_t *dst);
 /* TSrContext_GetStringRect 0x42e920: the string's width, its glyphs' advances added up in 16 bits (a
    character without a glyph array adds nothing; there is no kerning). Its height is the line height. */
 int16_t font_string_width(const void *font, const char *s);
+
+/* TSrContext_FormatString 0x42e210: the string's runs in the rectangle from the pen (on the first
+   line's baseline), in the family's font tsft and the shade: the runs between the colour codes ("[" a
+   letter of the table at 0x533da0 sets the colour, "." ends the code, "]" puts the shade back), the
+   lines broken where a run would pass the rectangle's width, at the last of the family's breaking
+   characters in the run (else the run starts the next line, unless it is the line's first); each line
+   aligned by the format (2 centred, 4 right, else at the pen; 0x30 one line, as it is). A run's line
+   counts from 0; line_h is the font's line height. At most FONT_RUNS. */
+enum { FONT_RUNS = 24 };
+typedef struct { const char *s; uint16_t n; int16_t x, w; uint32_t colour; uint16_t line; } FontRun;
+int font_format_text(const void *family, const void *tsft, uint32_t shade, uint16_t format, const char *s,
+                     const int16_t rect[4], const int16_t pen[2], FontRun *runs, int16_t *line_h);

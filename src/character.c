@@ -672,9 +672,9 @@ static void clear_input(ChrInput *in)
     in->not_held = ~(uint64_t)0;
 }
 
-/* ONrCharacter_HandleHeartbeatInput 0x4f6ad0 for the player. Not ported: the film (A+0x21f4, A+0x2214),
-   the weapon's input (reload, holster, fire: A+0x8, 0x4e8f80..0x4e9020), the pickup input (0x4eda40),
-   the jump's velocity (A+0xfc). */
+/* ONrCharacter_HandleHeartbeatInput 0x4f6ad0 for the player: the weapon's input (reload, holster, fire:
+   0x4e8f80..0x4e9020) and the pickup's (0x4eda40) through character_weapon_input_hook (weapon.c), the
+   jump's rise while held. Not ported: its film checks (0x4e4100: A+0x21f4, A+0x2214). */
 static void heartbeat_input(Character *c, ChrInput *in)
 {
     if ((c->flags & 1) && chr_is_victim_type(c->type)) return;
@@ -753,7 +753,7 @@ static void held_pull(Character *c, const Character *by)
    (AKrCollision_Point 0x441c80 down 4: the gap if it is 0.5 to 4, else 0.5); in the air the air
    velocity, which gravity (ONCC+4) slows down to the fall's limit (ONCC+0xc). Held by a tractor beam
    (A+0x112), the air velocity instead, slowing by a tenth, and the pull toward the shooter (0x4de759).
-   Not ported: the death after 300 ticks in the air (with the damage), the film's movement log. */
+   Past 300 ticks in the air the fall kills. Not ported: the film's movement log. */
 static void jump_and_fall(Character *c, const void *env, uint64_t held, float v[3])
 {
     if (c->hold_ticks && !--c->hold_ticks) {
@@ -812,6 +812,8 @@ static void jump_and_fall(Character *c, const void *env, uint64_t held, float v[
     }
     memcpy(v, c->air_velocity, sizeof c->air_velocity);
     c->air_ticks++;
+    /* 300 ticks in the air (5 s): the fall kills, all the hit points as its damage (0x4deb4c) */
+    if (c->air_ticks > 300) chr_take_damage(c, c->hit_points, 0.0f, NULL, 0, NULL, CHR_DAMAGE_FALL);
     float lim = oncc_float(c, 0xc);
     c->air_velocity[1] -= oncc_float(c, 4);
     if (c->air_velocity[1] <= lim) c->air_velocity[1] = lim;

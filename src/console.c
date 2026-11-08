@@ -190,27 +190,29 @@ int console_marker_nearest(const float p[3])
 
 const ActionMarker *console_marker(int i) { return i >= 0 && i < nmarkers ? &markers[i] : NULL; }
 
-static void play(uint32_t va)
+/* SSrImpulse_Play_Simple 0x480a10 (the sound system's, by name) at the middle of the console's marker
+   and the character's location (0x4c0880). */
+static void play(uint32_t va, const Console *c, const float who[3])
 {
-    /* (SSrImpulse_Play_Simple 0x480a10 at the middle of the marker and the character: the port's impulse
-       has no place yet) */
-    const char *name = exe_str(va);
-    if (name && sound_has_impulse(name)) sound_impulse_play(name, 1.0f);
+    const ActionMarker *m = console_marker(c->marker);
+    float at[3];
+    for (int k = 0; k < 3; k++) at[k] = ((m ? m->pos[k] : 0.0f) + (who ? who[k] : 0.0f)) * 0.5f;
+    sound_impulse_play_ss_at(exe_str(va), at);
 }
 
-void console_on_activate(int i, const char *who)
+void console_on_activate(int i, const char *who, const float who_location[3])
 {
     if (i < 0 || i >= ncons) return;
     Console *c = &cons[i];
     if (!(c->flags & CONSOLE_ACTIVE)) {
-        play(SOUND_LOCKED_VA);
+        play(SOUND_LOCKED_VA, c, who_location);
         return;
     }
     if (c->flags & CONSOLE_USED) {
-        play(SOUND_USED_VA);
+        play(SOUND_USED_VA, c, who_location);
         return;
     }
-    play(SOUND_ACTIVATE_VA);
+    play(SOUND_ACTIVATE_VA, c, who_location);
     c->flags |= CONSOLE_USED;
     event_list_run(c->events, who);
 }

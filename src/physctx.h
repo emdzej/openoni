@@ -47,6 +47,7 @@ typedef struct PhysCtx {
     PhysTree tree;
     const PhysBox *box;     /* PHYS_VOLUME's */
     void *owner;            /* +0x14c */
+    const void *geometry;   /* the owner's first geometry (M3GM): its texture's material is an impact's (0x465cd4) */
     /* +0x20: pushed by from's move into it (the part the mover's slide took off) */
     void (*receive_force)(const struct PhysCtx *self, const struct PhysCtx *from, const float force[3]);
 } PhysCtx;
@@ -88,3 +89,16 @@ bool physctx_box_contains(const PhysBox *box, const float p[3]);
 /* PHrCollision_Volume_Ray 0x43f750: the segment from p along v enters the box through a face it crosses
    from the front (0x43c8c0, the most head-on of those it crosses); hit: where. None from inside. */
 bool physctx_box_ray(const PhysBox *box, const float p[3], const float v[3], float hit[3]);
+/* The same, with the face's normal. */
+bool physctx_box_ray_normal(const PhysBox *box, const float p[3], const float v[3], float hit[3], float normal[3]);
+/* PHrCollision_Volume_SphereTree 0x43a2d0 for a lone sphere s moving by mv: the first face it meets
+   (flag: still when moving under 1/150); its point and plane's normal. */
+bool physctx_box_sphere(const PhysBox *box, const float s[4], const float mv[3], bool flag, float point[3], float normal[3]);
+/* PHrCollision_Point_SphereTree 0x43a240: the segment from p along mv down the tree (CLrSphere_Line
+   0x43c7a0) to a leaf it meets; its index, -1 none. */
+int physctx_point_tree(const float p[3], const float mv[3], const PhysTree *t);
+/* PHrCollision_SphereTree_SphereTree 0x43a560 for a lone sphere s moving by mv against the tree: the leaf
+   it meets (0x43f680 down the tree), -1 none. */
+int physctx_sphere_tree(const float s[4], const float mv[3], const PhysTree *t);
+/* Every context of the sources, in their order (up to cap). */
+int physctx_collect(PhysCtx *out, int cap);

@@ -2,6 +2,7 @@
 #include "font.h"
 
 #include "tm.h"
+#include "exe.h"
 
 #include <stddef.h>
 
@@ -150,4 +151,107 @@ int16_t font_string_width(const void *font, const char *s)
     while ((ch = font_next_char(&s)))
         if (font_glyph(font, ch, &g)) w = (int16_t)(w + g.advance);
     return w;
+}
+
+/* ---- TSrContext_FormatString 0x42e210 ---- */
+
+enum { MAX_RUNS = FONT_RUNS, MAX_RUN = 255 };
+typedef FontRun Run;
+
+static uint16_t next_char(const char **p) { return font_next_char(p); }
+
+static int16_t char_width(const void *tsft, uint16_t ch)
+{
+    FontGlyph g;
+    return tsft && font_glyph(tsft, ch, &g) ? g.advance : 0;
+}
+
+static bool is_breaking(const void *family, uint16_t ch)
+{
+    const char *b = family ? font_family_breaking(family) : NULL;
+    if (!b) return false;
+    uint16_t c;
+    while ((c = next_char(&b)))
+        if (c == ch) return true;
+    return false;
+}
+
+/* The colour code letter's colour (the table at 0x533da0: 8 bytes an entry, the letter and the ARGB; 0
+   ends it). */
+static bool code_colour(uint16_t ch, uint32_t *argb)
+{
+    for (uint32_t va = 0x533da0;; va += 8) {
+        const uint8_t *e = exe_data(va, 8);
+        if (!e || !rd16(e)) return false;
+        if (rd16(e) == ch) {
+            *argb = rd32(e + 4);
+            return true;
+        }
+    }
+}
+
+/* The string into runs and lines within the rectangle from the pen: the runs between the colour codes
+   ("[" a letter of the table sets the colour, "." ends the code, "]" puts the colour back), the lines
+   broken where a run would pass the rectangle's width, at the last of the family's breaking characters
+   in the run (else the run starts the next line, unless it is the line's first), at most 24 runs;
+   each line aligned by the format (2 centred, 4 right, else at the pen), the lines from the pen's
+   baseline down (format 8: centred in the rectangle's height). Format 0x30 is one line, as it is. */
+int font_format_text(const void *family, const void *tsft, uint32_t shade, uint16_t format, const char *s,
+                     const int16_t rect[4], const int16_t pen[2], FontRun *runs, int16_t *line_h)
+{
+    const void *f = tsft;
+    FontInfo fi = { 0 };
+    if (f) font_info(f, &fi);
+    *line_h = (int16_t)(fi.ascending + fi.descending + fi.leading);
+    int16_t width = (int16_t)(rect[2] - rect[0]);
+    bool one_line = (format & 0x30) != 0;
+    uint32_t colour = shade;
+    int nruns = 0, lines = 0, line_first = 0;
+    int16_t line_w = 0;
+    bool code = false, done = false;
+    const char *p = s;
+    while (!done && nruns + 1 < MAX_RUNS) {
+        const char *start = p, *after_break = NULL;
+        uint16_t n = 0, n_break = 0;
+        int16_t w = 0, w_break = 0;
+        bool reset = false, ended_by_code = false, overflow = false;
+        for (;;) {
+            const char *q = p;
+            uint16_t ch = next_char(&q);
+            if (!ch) { done = true; break; }
+            if (ch == '[') { code = true; p = q; ended_by_code = true; break; }
+            if (ch == ']') { code = false; p = q; reset = true; ended_by_code = true; break; }
+            if (code) {
+                uint32_t c;
+                if (ch == '.') { code = false; p = q; start = p; continue; }
+                if (code_colour(ch, &c)) { colour = c; p = q; start = p; continue; }
+                code = false;
+            }
+            int16_t cw = char_width(f, ch);
+            if (!one_line && (w + cw + line_w > width || n + 1 > MAX_RUN)) { overflow = true; break; }
+            w = (int16_t)(w + cw), n++, p = q;
+            if (is_breaking(family, ch)) n_break = n, w_break = w, after_break = p;
+        }
+        if (overflow) {
+            if (n_break) n = n_break, w = w_break, p = after_break;
+            else if (nruns > line_first) n = 0, p = start;     /* the run goes to the next line */
+            /* else: the line's first run, kept whole */
+            else if (!n) { /* a character wider than the line */ uint16_t ch = next_char(&p); (void)ch; n = 1, w = char_width(f, ch); }
+        }
+        if (n) {
+            runs[nruns] = (Run){ start, n, 0, w, colour, (uint16_t)lines };
+            line_w = (int16_t)(line_w + w);
+            nruns++;
+        }
+        if (reset) colour = shade;
+        if (!ended_by_code || done) {
+            /* the line ends: its runs placed */
+            int16_t x = (format & 2) ? (int16_t)(rect[0] + ((width - line_w) >> 1))
+                      : (format & 4) ? (int16_t)(rect[2] - line_w) : pen[0];
+            for (int i = line_first; i < nruns; i++) runs[i].x = x, x = (int16_t)(x + runs[i].w);
+            lines++, line_first = nruns, line_w = 0;
+        }
+        if (one_line && done) break;
+    }
+    return nruns;
 }

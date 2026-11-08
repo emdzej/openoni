@@ -282,6 +282,58 @@ formatting, with the context's font:
   `WMrPopupMenu_AppendItem` 0x4704d0 adds an enabled one of an id, `WMrPopupMenu_SetSelection` 0x470d00
   selects one and tells the parent (0x19, the item's flags high).
 
+## The console's text areas
+
+`COrConfigure` 0x42fb70 makes three text areas (`COrTextArea_New` 0x430f00, 0x24 bytes) besides the
+command line (0x571b74), all in "Tahoma" (0x534354), on the display's size (`drawAreaWidth`,
+`drawAreaHeight`: 0x41e0f0, 0x41e130):
+
+| Area | Rectangle | Font | Format | Lines |
+|---|---|---|---|---|
+| the console's (0x5cb468) | 2 to width - 2; the bottom eighth (height - height * 60 / 480 to height) | 7 | 1 | as many as fit (-1) |
+| the messages' (0x5cb398) | 148 to width - 148 (at least 178); top to height - 2 | 12 | 2 (centred) | 13 |
+| the subtitles' (0x5cb470) | the messages' | 7 | 1 | 13 |
+
+The messages' top is 10 lines of the 7 point plain font (`TSrFontFamily_GetFont` 0x42ee80; 23 without it)
+above the bottom, or 2 when that doesn't fit. With the console's level (0x533f60, 1) under 1 the console's
+area would take the screen down to 25 above its bottom. The area (+0 the family, +4 its text context, +8
+the format, +0xa the size, +0xc the size scaled by the display's height over 480, +0xd the lines from the
+bottom up, +0xe the command line's caret, +0xf an overflowing line left to fade, +0x10 the context's +0x18,
++0x12 the rectangle, +0x1a the lines, +0x1c the most, +0x20 the lines' array) holds lines of 0x214 bytes:
++0 the type, +4 the timer, +8 a prefix (empty for these), +0x12 the text (0x1f6), +0x208 the name, +0x20c
+the colour, +0x210 the shadow's colour. All three draw from the bottom up; only the console's fades.
+
+The line add (0x431340, the area, the type, the colour, the shadow's, the text, the name, the timer): a
+type under the console's level isn't kept; a full area drops its oldest line; a text longer than a line
+goes on in the next ones. The prints:
+
+- `COrConsole_Printf` 0x431c40 and its coloured kind 0x431ca0: the console's, type 0 (so not kept at the
+  level 1), 600 ticks (0x533f68).
+- `COrConsole_PrintIdentified` 0x430480 (the type in ecx): the console's. `message`'s subtitle (when no
+  message has the name: 0x4bd400) as type 2; a dialog's subtitle in the letterbox (`OSiDialog_Play`
+  0x5126be, 0x5142b0: the letterbox's +8, G+0x38, 0x4fd050) as type 1.
+- `COrMessage_Print` 0x4304b0: the messages', type 2 (`message`, the autosave's). 0x4304e0: the
+  subtitles', type 2 (the dialog's subtitle out of the letterbox).
+
+White (0x533f70) on 0xff3f3f3f (0x533f74). 0x431d50 removes the console's lines of type 1: the letterbox
+going off (0x4fce90) and `ONrGameState_EndCutscene` (0x4fd1da) clear a cutscene's subtitles.
+`COrMessage_Remove` 0x430640 leaves the messages' lines of the name (all without one) 64 ticks; failing
+that, `message_remove` tries the console's (0x430510). 0x4305c0: a message's line of the name is shown.
+
+`COrConsole_Update` 0x4306f0 counts the lines down by the ticks gone (0x4316d0 for the messages and the
+subtitles): a line at 0 stays; one whose time is up goes (0x431760), and the line moved into its place is
+skipped that tick. The pause screen's dialog (`ONiPauseScreen_Proc` 0x501990) sets 0x5cb484 and 0x5cb485
+while it is up (the level's load clears them, 0x506647): the areas neither count down nor draw.
+
+`ONrGameState_Display` draws the subtitles' area when it has lines, else the messages' (0x430400, while
+0x533f6c), then the console's (0x4303e0, while 0x533f6d; both on). `COrTextArea_Display` 0x430fd0, for
+each line, the newest first: its text formatted in the area's rectangle with the pen at its top left
+(so on the first line's baseline); its block (the lines' height and 2) goes above the last one's, and
+the runs move down by as much as the block is below the rectangle's top. The text so stands one
+ascent above its block (kept). A block past the top ends the drawing, or in the console's area is drawn
+and its line left 64 ticks (or fewer) to fade. The alpha is 4 times the ticks left while that is within
+255, else opaque. The line is drawn in its shadow's colour at 1, 1, then in its own.
+
 ## The text console
 
 `text_console` name (`ONrInGameUI_TextConsole_Display` 0x504c30): the `TxtC` of the name (its +0 the
@@ -497,5 +549,4 @@ dialog). Not ported yet: the frames (title bars,
 their boxes and dragging), the caret, the click's sound, the menu's music, and the edit field, the menu
 bar, the progress bar, the radio button and the scroll bar. The options: the port has one screen mode,
 the persisted one, so the resolution's popup lists that alone; the quality and the gamma are persisted
-but not applied (the draw engine's quality and the display's gamma are not ported), and the subtitles go
-to the one subtitle area, in the letterbox too.
+but not applied (the draw engine's quality and the display's gamma are not ported).

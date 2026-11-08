@@ -404,8 +404,12 @@ when the emitting particle has an owner by the owner's inaccuracy times the seco
 `WPrParticleInaccuracy` 0x51ced0 gives it: for a living AI-controlled character in combat its shooting
 skill's (+0x10, a factor about 1: 0.5 to 3 in the classes), for an enemy of the player times the
 difficulty's factor (ONGS +0xad4: 1.2, 1, 0.6); for a turret (0x3000000) its class's +0x5f8 times the
-same. The player's own shots take the base alone. Ported (`particle_inaccuracy`, weapon.c, and the
-turrets' owner in turret.c), but for the patrol's targeting.
+same. The player's own shots take the base alone. Patrolling (state 3, shooting at a flag) it reads
+the state block's +0x69c and +0x5bc (confirmed): the patrol targeting (+0x5c0) +0xdc is the matrix pointer
+`0x4bb700` stores (the hand's, 0x4f13e0), so its +0x10 is the matrix's fifth float, and +0x5bc the weapon
+the targeting is set for, a pointer read as a float (a denormal: 0). The skill (+0x694) and the point's
+float (+0x5b4) are next to them. Ported as it is (`particle_inaccuracy`, weapon.c, and the turrets' owner
+in turret.c).
 
 **Becoming active**, 0x4db830: the first free of the 64 records, cleared; handles linked; A+0xe4 = the
 position; animation defaults (A+0x1ed8/0x1eda 0xffff, overlays cleared, A+0x2190 −1, A+0x2195 1,
@@ -609,6 +613,19 @@ everything is cleared); the queued cry's ticks run down and at 0 it plays at the
 (`OSrImpulse_Play` 0x512480; the line cut short). A light one counts, the next after the wait from now; a
 medium one counts, the next after half the wait; a heavy one clears everything, the next after the wait.
 
+### Death by a fall, and coming back
+
+In the air (not held by a tractor beam), DoCharacterFrame counts A+0xf6 up and past 300 ticks calls
+`ONrCharacter_TakeDamage` with all the hit points (C+0x38), kind 0x5000000, no knockback, direction,
+knockdown or attacker (0x4deb4c, confirmed): a fall off the level kills after 5 s.
+
+`ONrCharacter_SetHitPoints` 0x4eb220 (chr_set_health, chr_full_health): C+0x38 set; 0 kills a living
+one (Die_1, 0x4eb550); hit points given to a dead one bring it back: on the living list again
+(0x4fcb70, 0x4fcab0), a physics context made for an active one without (0x4dc2b0), C+0x04's low four
+bits (dead, dying, gone, 8) cleared, and the context's flags (+0x128: 0x44 for a scripted animation or
+C+0x04 0x20000, 0x8000 for the player, 0x10 while dying) set again. Ported in `chars.c` (the context's
+flags aren't kept).
+
 ### The shields against a particle's damage
 
 Past the shields (confirmed, 0x517c4b on): the class's resistance to the damage's type, then the hit puts
@@ -681,6 +698,13 @@ animation a character is about to play.
 - **Success**: the target's A+0x1eda names the thrower; the thrower turns by the angle to it, keeps the
   target and the victim animation (A+0x1edc, A+0x1ee0) and enters fight mode. The throw replaces the
   move.
+- **An attack's turn** (`NewAnimationHook` 0x4e9a37): an attack (`TRrAnimation_IsAttack` 0x428aa0) that
+  isn't a throw, of a character not the AI's (C+0x1e8 0) or the player's (0x4fc8b0), on the ground (A+0xf6
+  0): the attack's direction (TRAM +0x4c, 0x4291e0: 2 back, π; 3 left, π/2; 4 right, 4.712389; else
+  ahead) is the aim's offset for `ONiCharacter_FindNearestOpponent` (40 away, 0x54e160; 90 degrees,
+  0x54e15c; no throw check); an enemy found (`AI2rTeam_FriendOrFoe` 2) turns the facing and the desired
+  facing by its angle (0x4e3140, each wrapped to [0, 2π)). With 0x5ecb94 the direction is printed
+  ("a: fwd" and so on). Then A+0x1eb0 the type and A+0x1eb4 0xffffffff (the combo's memory).
 - **The start** (`ONrCharacter_NewAnimationHook` 0x4e97a0, an animation with TRAM flag 15): every new
   animation first resets A+0x1ed8 (0xffff) and, unless it is a throw, forgets the target. For a throw
   with a living target in use: the target enters fight mode if the throw has the fight variant, the AI's
@@ -698,11 +722,14 @@ animation a character is about to play.
   `ONrGameState_UpdateCharacters` 0x4dccf0, after the frames: a thrower on frame 0 of its throw moves the
   target to its hands again; then every living character takes its animation's own damage at the frame
   (TRAM +0x10, `TRrAnimation_GetDamage` 0x429160), from its thrower if the animation is a throw victim's
-  (flag 16; a damage boost for an overpowered thrower, class +0xc8d).
+  (flag 16). **The overpowered** (0x4dd882 for a throw victim's, from its thrower; 0x4e7bec for a blow,
+  from its attacker, its knockback too): a class with +0xc8d whose hit points pass its maximum scales
+  the damage by the game settings' (`ONGS`, 0x5ecbfc) +0xc + (+0x10 - +0xc) × the excess over the
+  maximum (at most 1), rounded (0x4340a0); then the omnipotent cheat's override.
 
 Ported in `src/throw.c` (`chars_test`: Konoko throws the throw dummy, Throw_Forward_Punch on
-KONCOMthrow_fw_p_tgt, 20 damage at frame 42). Not yet: the AI's throws, the AI's notice, the noise, the
-overpowered boost, the physics move (the port places the target).
+KONCOMthrow_fw_p_tgt, 20 damage at frame 42), with the AI's throws, the victim AI's notice (0x48b530),
+the noise and the overpowered boost.
 
 ## The animation's particles
 

@@ -315,6 +315,7 @@ int chars_load(void)
 
 void chars_unload(void)
 {
+    ai_all_passive = false;     /* 0x48a257 */
     n_objects = 0;
     memset(used, 0, sizeof used);
     memset(actors, 0, sizeof actors);
@@ -443,11 +444,21 @@ static void melee_score(Character *attacker, Character *victim, uint32_t damage)
     if (victim->ai && v->ai.state == AI_STATE_COMBAT && v->ai.melee.cookie) v->ai.melee.cookie_until -= damage * 6;
 }
 
-/* 0x48b530, for an AI's character knocked down from not lying: a new daze to come. (Its other parts,
-   the scripted film stopped and the alarm's, aren't kept.) */
+/* AI2rNotifyKnockdown 0x48b530, for an AI's character knocked down from not lying: the melee cookie given
+   back (0x4998a0, in combat), a new daze to come; playing a film on patrol, the film stopped (ONrFilm_Stop
+   0x4f41f0) and, out of its job's state (C+0xf70 not C+0x200: the port's state not its job's, inferred),
+   back to it (or idle under the job's alert); in the alarm state, its knockdown (0x48ea40). */
 static void knocked_down(Character *c)
 {
-    ((Chr *)c)->ai.daze_started = false;
+    AiState *a = &((Chr *)c)->ai;
+    if (a->state == AI_STATE_COMBAT) a->melee.cookie = false;
+    a->daze_started = false;
+    if (film_playing(c) && a->state == AI_STATE_PATROL) {
+        film_stop(c);
+        if (a->state != a->job) ai_return_to_job(a);
+    } else if (a->state == AI_STATE_ALARM) {
+        alarm_knocked_down(a, c);
+    }
 }
 
 /* AI2rTryToPathfindThrough 0x48b670: the character its movement ignores (AI2rMovement_ShouldIgnoreObstruction
@@ -662,7 +673,7 @@ void chars_update(const CharacterInput *player_in, const void *env)
     throw_install();
     throw_ai_hook = ai_throw;
     weapons_install();
-    knowledge_update(env);      /* AI2rKnowledge_Update, before the characters */
+    if (!ai_all_passive) knowledge_update(env);     /* AI2rKnowledge_Update (AI2rUpdateAI 0x489d64), before the characters */
     chr_physics_later = true;
     for (int i = 0; i < CHARS_MAX; i++) {
         if (!used[i]) continue;
@@ -1118,7 +1129,7 @@ static bool cmd_lock_active(SlThread *t, int c, const SlValue *v, SlValue *r, vo
 }
 
 /* chr_death_lock char 0|1 (AI2iScript_ChrDeathLock 0x4b9f80): C+0x04 flag 0x400, which only
-   ONrCharacter_Die_4_Gone_Hook 0x4ebb60 reads (a locked body doesn't go: not ported yet). */
+   ONrCharacter_Die_4_Gone_Hook 0x4ebb60 reads: a locked body doesn't go (dying_update). */
 static bool set_flag(int c, const SlValue *v, uint32_t bit);
 static bool cmd_death_lock(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
@@ -1208,23 +1219,35 @@ static bool cmd_kill(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
     return true;
 }
 
-/* chr_set_health char hp (AI2iScript_SetHealth 0x4b7a30, ONrCharacter_SetHitPoints 0x4eb220): 0 kills
-   a living character outright (Die_1_Animating_Hook: no damage, so invincibility doesn't stop it); a
-   dead one given hit points coming back isn't ported. */
+/* ONrCharacter_SetHitPoints 0x4eb220: the hit points set; 0 kills a living character outright
+   (Die_1_Animating_Hook: no damage, so invincibility doesn't stop it); a dead one given hit points comes
+   back: on the living list again (the port's are the flags), a physics context if it has none
+   (0x4dc2b0), the dead, dying and gone bits (C+0x04 0x1..0x8) cleared. Not kept: the physics context's
+   flags (+0x128) set again. */
+static void set_hit_points(Chr *ch, uint32_t hp)
+{
+    Character *c = &ch->c;
+    c->hit_points = hp;
+    if (!hp) {
+        if (!(c->flags & 1)) {
+            c->hit_points = 0;
+            chr_die(c, NULL);
+        }
+        return;
+    }
+    if (!(c->flags & 1)) return;
+    if (!c->has_physics) physics_start(c);
+    c->flags &= ~0xfu;
+}
+
+/* chr_set_health char hp (AI2iScript_SetHealth 0x4b7a30): set_hit_points; a negative is 0. */
 static bool cmd_set_health(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;
     Chr *ch = c >= 2 ? arg_char(&v[0]) : NULL;
     if (!ch) return true;       /* "chr_set_health" */
     int32_t hp = num(&v[1]);
-    if (hp <= 0) {
-        if (!(ch->c.flags & 1)) {
-            ch->c.hit_points = 0;
-            chr_die(&ch->c, NULL);
-        }
-        return true;
-    }
-    if (!(ch->c.flags & 1)) ch->c.hit_points = (uint32_t)hp;
+    set_hit_points(ch, hp <= 0 ? 0u : (uint32_t)hp);
     return true;
 }
 
@@ -1333,14 +1356,15 @@ static bool cmd_playback(SlThread *t, int c, const SlValue *v, SlValue *r, void 
     return true;
 }
 
-/* chr_full_health char (0x4b7980): the hit points to the most (ONrCharacter_SetHitPoints 0x4eb220 with
-   C+0x3c). Not ported: a dead character given hit points comes back (0x4eb220's other half). */
+/* chr_full_health char (0x4b7980): the hit points to the most (set_hit_points with C+0x3c), which
+   brings a dead one back. */
+static void set_hit_points(Chr *ch, uint32_t hp);
 static bool cmd_full_health(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;
     Chr *ch = c >= 1 ? arg_char(&v[0]) : NULL;
     if (!ch) return true;
-    if (!(ch->c.flags & 1)) ch->c.hit_points = ch->c.max_hit_points;
+    set_hit_points(ch, ch->c.max_hit_points);
     return true;
 }
 
@@ -1355,12 +1379,17 @@ static bool cmd_all_passive(SlThread *t, int c, const SlValue *v, SlValue *r, vo
     return true;
 }
 
+/* AI2rAllPassive 0x48b0d0: the flag (0x5ec0c4); off, every character's last action now (C+0x1e0, the
+   idle's wait from here); each AI's passive flag set (and the state left, the executor and the path
+   stopped: ai_update's passive halt) or cleared. */
 static void all_passive(bool on)
 {
+    ai_all_passive = on;
     for (int i = 0; i < chars_slots(); i++) {
         Chr *ch = chars_get(i);
-        if (!ch || ch->player) continue;
+        if (!ch) continue;
         if (!on) ch->c.last_action = ch->c.time;
+        if (ch->player) continue;
         if (on) ch->ai.flags |= AI_FLAG_PASSIVE;
         else ch->ai.flags &= ~(uint32_t)AI_FLAG_PASSIVE;
     }
@@ -1371,8 +1400,9 @@ static void all_passive(bool on)
    (0x4eb130), stood (ForceStand) unless "animation", her jump's motion across stopped with "nojump"; her
    weapon holstered unless "weapon" (0x4eff60); her invisibility gone unless
    "invis"; the AI passive unless "ai"; the camera's jello off unless "jello"; the input off; the sync on
-   unless "nosync"; the dangerous particles removed (0x458310) unless "keepparticles". Not ported: the
-   sound's switch (OSrSetEnabled). */
+   unless "nosync"; the dangerous particles removed (0x458310) unless "keepparticles". The sound's switch
+   on (OSrSetEnabled 0x514e20: the master volume restored if it was off) is a no-op: it starts on
+   (0x5134ec) and nothing turns it off. */
 static bool cmd_begin_cutscene(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;
@@ -1403,9 +1433,10 @@ static bool cmd_begin_cutscene(SlThread *t, int c, const SlValue *v, SlValue *r,
 }
 
 /* end_cutscene (0x4bcbb0, ONrGameState_EndCutscene 0x4fd1a0): the input back, the jello on, the AI out
-   of passive, the letterbox off, the cutscene over, the player's holstered weapon drawn again (0x4effa0)
-   if her hand is empty. Not ported: the messages cleared (0x431d50), the skip's fade (G+0x40), the
-   sound's switch. */
+   of passive, the letterbox off, the console's subtitles gone (0x431d50), the cutscene over, the
+   player's holstered weapon drawn again (0x4effa0) if her hand is empty. An active skip (G+0x40) would
+   turn to its fade's last state (4), but nothing in v1.0 starts one (no writer of state 1: inferred
+   dead); the sound's switch is a no-op, as in begin_cutscene. */
 static bool cmd_end_cutscene(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)c, (void)v, (void)r, (void)u;
@@ -1413,6 +1444,7 @@ static bool cmd_end_cutscene(SlThread *t, int c, const SlValue *v, SlValue *r, v
     camera_enable_jello(true);
     all_passive(false);
     ui_set_letterbox(false);
+    ui_console_clear_subtitles();
     ui_set_cutscene(false, false);
     Chr *p = chars_player();
     if (p && !p->c.weapon) chr_force_draw(&p->c);

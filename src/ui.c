@@ -8,6 +8,7 @@
 #include "objc.h"
 #include "sound.h"
 #include "tm.h"
+#include "font.h"
 
 #include <math.h>
 
@@ -39,6 +40,9 @@ static char splash[32];            /* G+0x118: the splash screen to show at the 
    ticks); the function run at 0 (32 bytes), the ticks left, the blink and its counter. */
 static struct { int state; char func[32]; uint32_t ticks; bool shown; uint32_t blink; } timer;
 static struct { UiLine lines[UI_AREA_LINES]; int n; } areas[UI_AREAS];
+static UiArea layout[UI_AREAS];
+static int16_t layout_w;            /* the width the layout is for (0: none yet) */
+static bool areas_hidden;           /* 0x5cb484 (the console's), 0x5cb485 (the messages' and subtitles') */
 
 /* The messages lately asked for (a debug aid for the routes: ui_message_time). */
 enum { SEEN_MAX = 32 };
@@ -135,6 +139,7 @@ void ui_reset(void)
     memset(&fade, 0, sizeof fade);
     memset(&box, 0, sizeof box);
     memset(areas, 0, sizeof areas);
+    areas_hidden = false;           /* ONrLevel_Load 0x506647 */
     input_on = true;
     keys_allowed = ~(uint64_t)0;     /* ONrGameState_LevelBegin 0x4f5350 */
     level_end = 0;
@@ -183,19 +188,26 @@ bool ui_target(float pos[3], float *r2, float *d0)
 
 uint32_t ui_time(void) { return now; }
 
+/* A line out of its area (0x431760). */
+static void line_remove(int a, int i)
+{
+    if (i + 1 < areas[a].n) memmove(&areas[a].lines[i], &areas[a].lines[i + 1], sizeof(UiLine) * (size_t)(areas[a].n - i - 1));
+    areas[a].n--;
+}
+
 void ui_update(void)
 {
     now++;
-    for (int a = 0; a < UI_AREAS; a++) {
-        int k = 0;
-        for (int i = 0; i < areas[a].n; i++) {
-            UiLine *l = &areas[a].lines[i];
-            if (l->timer > 0 && --l->timer == 0) continue;     /* its time is up: it goes */
-            if (k != i) areas[a].lines[k] = *l;
-            k++;
-        }
-        areas[a].n = k;
-    }
+    /* COrConsole_Update 0x4306f0's countdown (0x4316d0 for the messages and the subtitles): a line whose
+       time is up goes, and the one after it, moved into its place, waits for the next tick */
+    if (!areas_hidden)
+        for (int a = 0; a < UI_AREAS; a++)
+            for (int i = 0; i < areas[a].n; i++) {
+                UiLine *l = &areas[a].lines[i];
+                if (l->timer <= 0) continue;
+                if (l->timer > 1) l->timer--;
+                else line_remove(a, i);
+            }
     /* the timer's tick (0x4fd3d0). Its sounds (the game settings' condition ambient 4 under 600 ticks
        left, the event impulse 16 every second, 17 when it is stopped) are blank in v1.0: none played. */
     if (timer.state == 1) {
@@ -275,6 +287,7 @@ void ui_set_letterbox(bool on)
     box.on = on;
     box.time = now;
     box.moving = true;
+    if (!on) ui_console_clear_subtitles();     /* 0x4fcea5 */
 }
 
 bool ui_cutscene(void) { return cutscene; }
@@ -286,20 +299,68 @@ const UiLine *ui_area_line(int area, int i, float *alpha)
 {
     if (area < 0 || area >= UI_AREAS || i < 0 || i >= areas[area].n) return NULL;
     const UiLine *l = &areas[area].lines[i];
-    /* inferred: a line fades over its last 64 ticks (what message_remove leaves it, 0x430640) */
-    if (alpha) *alpha = l->timer > 0 && l->timer < 64 ? (float)l->timer / 64.0f : 1.0f;
+    /* COrTextArea_Display 0x430fd0: 4 * the ticks left while that is within 255, else opaque */
+    if (alpha) *alpha = l->timer > 0 && l->timer * 4 <= 255 ? (float)(l->timer * 4) / 255.0f : 1.0f;
     return l;
 }
 
-/* 0x431340: a full area drops its oldest line; a text longer than a line goes on in the next ones. */
-void ui_print(int area, const char *text, const char *id, int32_t timer, uint32_t colour)
+void ui_hide_areas(bool hide) { areas_hidden = hide; }
+bool ui_areas_hidden(void) { return areas_hidden; }
+
+static const void *area_family(void) { return font_family_get(exe_str(0x534354)); }   /* "Tahoma" */
+
+/* The area's font (TSrContext_New 0x42ea30 in COrTextArea_Resize 0x431460): the size, plain, else the
+   nearest. */
+static const void *area_font(const UiArea *a)
 {
-    if (area < 0 || area >= UI_AREAS || !text) return;
+    const void *family = area_family();
+    uint16_t size = a->size;
+    uint32_t style = FONT_STYLE_PLAIN;
+    return family ? font_family_best_font(family, &size, &style) : NULL;
+}
+
+/* COrConfigure 0x42fb70 for a display w wide and 480 high (the port's): the console's area along the
+   bottom eighth, 2 in from the sides, as many lines as its font's line height and 2 fit (-1 to
+   COrTextArea_Resize); the messages' and the subtitles' 148 in from the sides (at least 178 wide), 2
+   up from the bottom, 10 lines of the 7 point font high (23 without it) or from the top's 2, 13
+   lines. With the console's level (0x533f60) under 1 the console would take the screen above 25. */
+static void configure(int16_t w)
+{
+    if (layout_w == w) return;
+    const int16_t h = 480;
+    UiArea *c = &layout[UI_AREA_CONSOLE];
+    *c = (UiArea){ { 2, (int16_t)(h - h * 60 / 480), (int16_t)(w - 2), h }, 7, 1, true, true, 0 };
+    const void *f = area_font(c);
+    c->lines = (c->rect[3] - c->rect[1]) / ((f ? font_line_height(f) : 0) + 2);
+    if (c->lines > UI_AREA_LINES) c->lines = UI_AREA_LINES;
+    const void *family = area_family(), *f7 = family ? font_family_font(family, 7, FONT_STYLE_PLAIN) : NULL;
+    int lh = f7 ? font_line_height(f7) : 0x17;
+    int16_t bottom = (int16_t)(h - 2), right = (int16_t)(w - 0x94 > 0xb2 ? w - 0x94 : 0xb2);
+    int16_t top = (int16_t)(bottom > lh * 10 + 2 ? bottom - lh * 10 : 2);
+    layout[UI_AREA_MESSAGE] = (UiArea){ { 0x94, top, right, bottom }, 12, 2, true, false, 13 };
+    layout[UI_AREA_SUBTITLE] = (UiArea){ { 0x94, top, right, bottom }, 7, 1, true, false, 13 };
+    if (family) layout_w = w;
+}
+
+const UiArea *ui_area(int area)
+{
+    if (area < 0 || area >= UI_AREAS) return NULL;
+    configure(layout_w ? layout_w : 640);
+    return &layout[area];
+}
+
+/* 0x431340: a type under the console's level (0x533f60, 1) isn't kept; a full area drops its oldest
+   line; a text longer than a line goes on in the next ones. */
+void ui_print(int area, int32_t type, const char *text, const char *id, int32_t timer)
+{
+    if (area < 0 || area >= UI_AREAS || !text || type < (int32_t)exe_u32(0x533f60)) return;
+    int cap = ui_area(area)->lines;
     while (*text) {
-        if (areas[area].n == UI_AREA_LINES) {
-            memmove(&areas[area].lines[0], &areas[area].lines[1], sizeof(UiLine) * (UI_AREA_LINES - 1));
+        if (areas[area].n >= cap) {
+            if (areas[area].n > 1) memmove(&areas[area].lines[0], &areas[area].lines[1], sizeof(UiLine) * (size_t)(areas[area].n - 1));
             areas[area].n--;
         }
+        if (areas[area].n >= cap || areas[area].n < 0) return;
         UiLine *l = &areas[area].lines[areas[area].n++];
         size_t n = strlen(text);
         if (n > UI_LINE_TEXT - 1) n = UI_LINE_TEXT - 1;
@@ -308,8 +369,67 @@ void ui_print(int area, const char *text, const char *id, int32_t timer, uint32_
         text += n;
         strncpy(l->id, id ? id : "", sizeof l->id - 1);
         l->id[sizeof l->id - 1] = 0;
+        l->type = type;
         l->timer = timer;
-        l->colour = colour;
+        l->colour = exe_u32(0x533f70);
+        l->shadow = exe_u32(0x533f74);
+    }
+}
+
+void ui_print_subtitle(const char *text, int32_t timer)
+{
+    if (box.on) ui_print(UI_AREA_CONSOLE, 1, text, NULL, timer);   /* 0x4fd050: G+0x38 */
+    else ui_print(UI_AREA_SUBTITLE, 2, text, NULL, timer);
+}
+
+void ui_console_clear_subtitles(void)
+{
+    for (int i = 0; i < areas[UI_AREA_CONSOLE].n;)
+        if (areas[UI_AREA_CONSOLE].lines[i].type == 1) line_remove(UI_AREA_CONSOLE, i);
+        else i++;
+}
+
+/* COrTextArea_Display 0x430fd0 (from 0x430400: the subtitles' area when it has lines, else the
+   messages'; 0x4303e0: the console's, both while shown (0x533f6c, 0x533f6d) and not hidden). Each line,
+   the newest first from the bottom up, is formatted in the area's rectangle from its top left (the pen
+   on the first line's baseline) and its block, its lines' height and 2, goes above the last; the runs
+   moved down by as much as the block is below the top: so the text stands an ascent above its block.
+   A block past the top stops the drawing, or in a fading area (the console's) is drawn and its line
+   left 64 ticks (or fewer) to fade. A line is drawn twice: in its shadow's colour at 1, 1, then in its
+   own (the runs' colour codes). */
+void ui_area_display(int16_t w, UiGlyphs draw, void *u)
+{
+    if (areas_hidden || !draw) return;
+    configure(w);
+    int order[2] = { areas[UI_AREA_SUBTITLE].n ? UI_AREA_SUBTITLE : UI_AREA_MESSAGE, UI_AREA_CONSOLE };
+    for (int k = 0; k < 2; k++) {
+        int a = order[k];
+        const UiArea *ar = &layout[a];
+        const void *family = area_family(), *f = area_font(ar);
+        if (!f) continue;
+        int16_t cursor = ar->rect[3];
+        for (int j = 0; j < areas[a].n; j++) {
+            UiLine *l = &areas[a].lines[areas[a].n - j - 1];
+            uint8_t alpha = l->timer > 0 && l->timer * 4 <= 255 ? (uint8_t)(l->timer * 4) : 255;
+            FontRun runs[FONT_RUNS];
+            int16_t lh, pen[2] = { ar->rect[0], ar->rect[1] };
+            int n = font_format_text(family, f, l->colour, ar->format, l->text, ar->rect, pen, runs, &lh);
+            if (!n) continue;
+            int16_t block = (int16_t)((runs[n - 1].line + 1) * lh + 2);
+            cursor = (int16_t)(cursor - block);
+            if (cursor < ar->rect[1]) {
+                if (!ar->fade) break;
+                if (l->timer == 0 || l->timer > 0x40) l->timer = 0x40;
+            }
+            int16_t dy = (int16_t)(cursor - ar->rect[1]);
+            for (int pass = 0; pass < 2; pass++)
+                for (int i = 0; i < n; i++) {
+                    uint32_t c = pass ? runs[i].colour : l->shadow;
+                    c = (c & 0xffffffu) | (uint32_t)alpha << 24;
+                    draw(f, (int16_t)(runs[i].x + !pass), (int16_t)(pen[1] + dy + runs[i].line * lh + !pass),
+                         runs[i].s, runs[i].n, c, u);
+                }
+        }
     }
 }
 
@@ -567,8 +687,8 @@ static bool cmd_cutscene_sync(SlThread *t, int c, const SlValue *v, SlValue *r, 
     return true;
 }
 
-/* message name [timer] (AIiScript_Message 0x4bd3b0): a message (SSrMessage_Find) into the message area,
-   else a subtitle (SSrSubtitle_Find) into the subtitle area. */
+/* message name [timer] (AIiScript_Message 0x4bd3b0): a message (SSrMessage_Find) into the messages'
+   area, else a subtitle (SSrSubtitle_Find) into the console's, type 2. */
 static bool cmd_message(SlThread *t, int c, const SlValue *v, SlValue *r, void *u)
 {
     (void)t, (void)r, (void)u;
@@ -577,13 +697,13 @@ static bool cmd_message(SlThread *t, int c, const SlValue *v, SlValue *r, void *
     snprintf(seen[n_seen % SEEN_MAX].id, sizeof seen[0].id, "%s", v[0].s);
     seen[n_seen++ % SEEN_MAX].time = now ? now : 1;
     const char *s = text_message(v[0].s);
-    if (s) ui_print(UI_AREA_MESSAGE, s, v[0].s, timer, 0xffffffffu);
-    else if ((s = text_subtitle(v[0].s))) ui_print(UI_AREA_SUBTITLE, s, v[0].s, timer, 0xffffffffu);
+    if (s) ui_print(UI_AREA_MESSAGE, 2, s, v[0].s, timer);      /* COrMessage_Print 0x4304b0 */
+    else if ((s = text_subtitle(v[0].s))) ui_print(UI_AREA_CONSOLE, 2, s, v[0].s, timer);   /* 0x430480 */
     return true;   /* else "failed to find message" */
 }
 
 /* message_remove [name] (0x4bd430, COrMessage_Remove 0x430640): the message's lines (every one without
-   a name) are left 64 ticks to fade; failing that, the subtitle area's (0x430510). */
+   a name) are left 64 ticks to fade; failing that, the console's (0x430510). */
 static bool remove_from(int area, const char *id)
 {
     bool any = false;
@@ -598,7 +718,7 @@ static bool remove_from(int area, const char *id)
 
 void ui_message_remove(const char *id)
 {
-    if (!remove_from(UI_AREA_MESSAGE, id) && id) remove_from(UI_AREA_SUBTITLE, id);
+    if (!remove_from(UI_AREA_MESSAGE, id) && id) remove_from(UI_AREA_CONSOLE, id);
 }
 
 /* 0x4305c0: a line of the message area with that name. */
@@ -613,7 +733,7 @@ bool ui_message_shown(const char *id)
 bool ui_message_print(const char *id, int32_t timer)
 {
     const char *s = text_message(id);
-    if (s) ui_print(UI_AREA_MESSAGE, s, id, timer, 0xffffffffu);
+    if (s) ui_print(UI_AREA_MESSAGE, 2, s, id, timer);
     return s != NULL;
 }
 
@@ -621,7 +741,7 @@ static bool cmd_message_remove(SlThread *t, int c, const SlValue *v, SlValue *r,
 {
     (void)t, (void)r, (void)u;
     const char *id = c >= 1 && v[0].type == SL_STRING ? v[0].s : NULL;
-    if (!remove_from(UI_AREA_MESSAGE, id) && id) remove_from(UI_AREA_SUBTITLE, id);
+    if (!remove_from(UI_AREA_MESSAGE, id) && id) remove_from(UI_AREA_CONSOLE, id);
     return true;
 }
 

@@ -15,6 +15,10 @@ int alarm_find_console(const AiState *a, const Character *c);
 bool alarm_setup(AiState *a, Character *c, int marker);
 /* The alarm state's tick (0x48e410). */
 void alarm_update(AiState *a, Character *c);
+/* 0x48ea40, the alarm state's character knocked down: with the combat profile's flag 1 (C+0x1028), the
+   nearest of its strongest hostile contacts (hostility and strength above 1), if seen (strength 4) and
+   within the ignore distance, is pursued, the fight's time set. */
+void alarm_knocked_down(AiState *a, Character *c);
 /* AI2rUpdateAI 0x489d40's part: an alarm run left for a fight goes on once its fight time is out. */
 void alarm_fight_tick(AiState *a, Character *c);
 /* 0x49ac30, the event list's "activate alarm" (6): every AI of the group (C+0xfd8), not passive, but
