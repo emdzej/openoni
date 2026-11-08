@@ -293,7 +293,7 @@ void chr_take_damage(Character *c, uint32_t damage, float knockback, const float
     if (c->talk_partner) neutral_stop((Chr *)c, false, true, false, true);
     if (kind == CHR_DAMAGE_MELEE && from && chr_melee_score_hook) chr_melee_score_hook(from, c, damage);
     if (chr_hit_debug_log && !c->ai) {      /* --param hitlog=1, a debug aid: the player's hits */
-        char b[200];
+        char b[260];
         const TmInstance *fa = from && from->anim ? tm_handle_instance(tm_handle_of(from->anim)) : NULL;
         const TmInstance *ca = c->anim ? tm_handle_instance(tm_handle_of(c->anim)) : NULL;
         /* (the block's lookup draws from the generators, which a debug aid mustn't move) */
@@ -305,11 +305,12 @@ void chr_take_damage(Character *c, uint32_t damage, float knockback, const float
                                     wrap_2pi(c->desired_facing - c->facing_offset)) : 0.0f;
         if (ang >= PI) ang -= TWO_PI;
         const TmInstance *fw = from && from->weapon ? tm_handle_instance(tm_handle_of(from->weapon->cls)) : NULL;
-        snprintf(b, sizeof b, "OpenOni: hit %u: %u of %u hp, kind %x, from %s, in %s type %u from %u, at %.0f deg, block %d%d%d pause %u weapon %d hypos %u (%s)",
+        snprintf(b, sizeof b, "OpenOni: hit %u: %u of %u hp, kind %x, from %s, in %s type %u from %u, at %.0f deg, block %d%d%d pause %u weapon %d hypos %u (%s) at %.0f,%.0f,%.0f",
                  (unsigned)game_time(), (unsigned)damage, (unsigned)c->hit_points, (unsigned)kind,
                  fa && fa->name ? fa->name : "-", ca && ca->name ? ca->name : "-", (unsigned)c->type,
                  (unsigned)(c->anim ? tr_from(c->anim) : 0), ang / 0.017453292f, could, hi, lo, (unsigned)c->block_pause,
-                 c->weapon != NULL, (unsigned)c->hypos, fw && fw->name ? fw->name : "-");
+                 c->weapon != NULL, (unsigned)c->hypos, fw && fw->name ? fw->name : "-",
+                 from ? from->pos[0] : 0.0f, from ? from->pos[1] : 0.0f, from ? from->pos[2] : 0.0f);
         chr_hit_debug_log(b);
     }
     if (!(chr_cheat_invincible && !c->ai) && !(c->flags & 0x2000000)) {      /* not invincible */
