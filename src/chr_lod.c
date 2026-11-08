@@ -1,5 +1,6 @@
 /* The characters' levels of detail: see chr_lod.h. */
 #include "chr_lod.h"
+#include "sort.h"
 
 #include "akev_vis.h"
 #include "body.h"
@@ -75,10 +76,11 @@ static int budget(void)
     return most[q < 0 ? 0 : q > 4 ? 4 : q];
 }
 
-/* 0x4e2e70, the sort's order (MSVC qsort, 0x437f40): the player before all, then the nearer. The port
-   sorts by insertion; it differs from the original only on equal distances. */
-static bool after(const Character *a, const Character *b, const Character *player)
+/* 0x4e2e70, the sort's order (AUrQSort_32 0x437f40, from 0x4e298a): the player before all, then the
+   nearer. */
+static bool after(const void *pa, const void *pb, void *u)
 {
+    const Character *a = *(Character *const *)pa, *b = *(Character *const *)pb, *player = u;
     if (a == player) return false;
     if (b == player) return true;
     return a->camera_d2 > b->camera_d2;
@@ -90,11 +92,7 @@ void chr_lod_compute(Character **list, int n, const Character *player)
         for (int i = 0; i < n; i++) list[i]->lod_shown = list[i]->lod_wanted = chr_lod_forced, list[i]->lod_frames = 0;
         return;
     }
-    for (int i = 1; i < n; i++)
-        for (int j = i; j > 0 && after(list[j - 1], list[j], player); j--) {
-            Character *t = list[j];
-            list[j] = list[j - 1], list[j - 1] = t;
-        }
+    au_qsort(list, (size_t)n, sizeof *list, after, (void *)player);
     /* each one's detail by the class's squared distances (+0x60, farthest first) */
     for (int i = 0; i < n; i++) {
         int k = 0;

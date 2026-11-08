@@ -8,6 +8,7 @@
    (+0x04). A particle is the original's 0x44-byte header and its data, the emitters' states, the
    blocks its class asks for and its variables, at the offsets the setup computed. */
 #include "particle.h"
+#include "sort.h"
 
 #include "akev.h"
 #include "akev_collide.h"
@@ -613,6 +614,23 @@ static void update_action_data(P3Class *c, uint8_t *a)
     }
 }
 
+/* 0x457a30: the name index's order */
+static int sorted_by_name(const void *a, const void *b)
+{
+    return name_cmp((*(P3Class *const *)a)->name, (*(P3Class *const *)b)->name);
+}
+
+/* 0x457a70: the failed classes (+0x40 0x10) last, then the decorative (the definition's flag 1) before
+   them; the others first. */
+static int class_order(const void *a, const void *b)
+{
+    const P3Class *x = a, *y = b;
+    if (x->flags & C_FAILED) return (y->flags & C_FAILED) ? 0 : 1;
+    if (y->flags & C_FAILED) return -1;
+    bool dx = (flags1(x) & F1_DECORATIVE) != 0, dy = (flags1(y) & F1_DECORATIVE) != 0;
+    return dx == dy ? 0 : dx ? 1 : -1;
+}
+
 /* The classes' setup (0x4574e0, at the level's start): each class's definition linked and packed, its
    actions checked; the classes sorted (the kept ones before the decorative ones, the failed last), the
    name index made; each emitter's class found; the actions' data. */
@@ -661,16 +679,8 @@ static void setup_classes(void)
             if (!action_known(t)) wr32(a + A_TYPE, A_LINEAR);   /* the table's empty slots (none on the CD) */
         }
     }
-    /* the sort (0x51e8b1, qsort with 0x457a70): the port's is stable */
-    P3Class tmp[CLASSES_MAX];
-    int n = 0;
-    for (int pass = 0; pass < 3; pass++)
-        for (uint16_t i = 0; i < nclasses; i++) {
-            P3Class *c = &classes[i];
-            int g = (c->flags & C_FAILED) ? 2 : (flags1(c) & F1_DECORATIVE) ? 1 : 0;
-            if (g == pass) tmp[n++] = *c;
-        }
-    memcpy(classes, tmp, sizeof(P3Class) * (size_t)n);
+    /* the sort (qsort 0x51e8b1 with 0x457a70): the working classes, the decorative ones, the failed */
+    crt_qsort(classes, nclasses, sizeof *classes, class_order);
     nsorted = 0;
     for (uint16_t i = 0; i < nclasses; i++) {
         if (classes[i].flags & C_FAILED) break;
@@ -679,11 +689,7 @@ static void setup_classes(void)
     }
     for (uint16_t i = nsorted; i < nclasses; i++) free(classes[i].def), classes[i].def = NULL;
     nclasses = nsorted;
-    for (int i = 1; i < nsorted; i++)   /* by name (0x457a30) */
-        for (int j = i; j > 0 && name_cmp(sorted[j - 1]->name, sorted[j]->name) > 0; j--) {
-            P3Class *t = sorted[j];
-            sorted[j] = sorted[j - 1], sorted[j - 1] = t;
-        }
+    crt_qsort(sorted, nsorted, sizeof *sorted, sorted_by_name);     /* qsort 0x457620 with 0x457a30 */
     for (uint16_t i = 0; i < nclasses; i++) {
         P3Class *c = &classes[i];
         uint8_t *e = emitters_of(c);

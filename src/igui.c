@@ -1,5 +1,6 @@
 /* The in-game UI's pages and text consoles: see igui.h. */
 #include "igui.h"
+#include "sort.h"
 
 #include "cheat.h"
 #include "chars.h"
@@ -223,11 +224,11 @@ static void diary_load(int16_t page)
         int16_t lv = rds16(d), pg = rds16(d + 2);
         if (lv < level_number || (lv == level_number && (page == -1 || pg <= page))) ps.diary[ps.diary_count++] = d;
     }
-    qsort(ps.diary, (size_t)ps.diary_count, sizeof ps.diary[0], cmp_level);
+    crt_qsort(ps.diary, (size_t)ps.diary_count, sizeof ps.diary[0], cmp_level);
     for (int i = 0; i < ps.diary_count;) {
         int k = i;
         while (k < ps.diary_count && rds16(ps.diary[k]) == rds16(ps.diary[i])) k++;
-        if (k - i > 1) qsort(ps.diary + i, (size_t)(k - i), sizeof ps.diary[0], cmp_page);
+        if (k - i > 1) crt_qsort(ps.diary + i, (size_t)(k - i), sizeof ps.diary[0], cmp_page);
         i = k;
     }
     int16_t want = page == -1 ? 1 : page, first = -1, exact = -1;
@@ -526,7 +527,7 @@ static void help_load(void)
     void *all[0x400];
     int n = tm_instance_list(TM_TAG("HPge"), all, 0x400);
     for (int i = 0; i < n && ps.help_count < 10; i++) ps.help[ps.help_count++] = all[i];
-    qsort(ps.help, (size_t)ps.help_count, sizeof ps.help[0], cmp_page);
+    crt_qsort(ps.help, (size_t)ps.help_count, sizeof ps.help[0], cmp_page);
 }
 
 /* 0x501ef0: the page's arrows and the sub area shown (not for the help), the help's own (0x70, 0x71)

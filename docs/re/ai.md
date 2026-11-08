@@ -658,6 +658,13 @@ inside it is taken straight, without the room's grid being loaded: the line goes
 the new cell (an original bug: kept). The grids' run-time obstacles (0x50d660, the visited bits) aren't
 ported.
 
+The crossings have no limit (the loop goes back from 0x49dabf; 0x5eb898 only counts them). A point
+in the gap between two rooms' grids is past the edge of each, so the line crosses from one to the other
+and back for ever, and the game freezes. Level 12's rooms 207 and 208 leave such a gap, one unit wide
+at z −2794.7, where a fighter's line to Konoko ended (frame 20400 of a scripted run). The port stops after 64 crossings in one
+call at the edge cell, as when there is no room beyond. This is the port's one change to the original
+here.
+
 ### The tick
 
 After the lost-target part (above), `AI2rCombat_Update`:

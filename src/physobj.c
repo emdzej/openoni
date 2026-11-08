@@ -1,5 +1,6 @@
 /* The physics objects other than the characters: see physobj.h. */
 #include "physobj.h"
+#include "sort.h"
 
 #include "akev.h"
 #include "akev_collide.h"
@@ -119,7 +120,7 @@ static bool slide(PhysObject *o, const void *env, float mv[3])
         float x = o->sphere[0] - h[i].point[0], y = o->sphere[1] - h[i].point[1], z = o->sphere[2] - h[i].point[2];
         h[i].d2 = z * z + x * x + y * y;
     }
-    qsort(h, n, sizeof *h, by_d2);
+    crt_qsort(h, n, sizeof *h, by_d2);     /* qsort 0x43a80b */
     bool hit = false;
     if (!(o->flags & PHYS_NO_RESPOND))
         for (unsigned i = 0; i < n; i++) {

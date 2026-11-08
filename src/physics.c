@@ -1,5 +1,6 @@
 /* The characters' physics: see physics.h. */
 #include "physics.h"
+#include "sort.h"
 
 #include "akev.h"
 #include "akev_collide.h"
@@ -296,7 +297,7 @@ static bool slide(Character *c, const void *env, float mv[3])
         float x = c->phys_pos[0] - h[i].point[0], y = c->phys_pos[1] - h[i].point[1], z = c->phys_pos[2] - h[i].point[2];
         h[i].d2 = z * z + x * x + y * y;
     }
-    qsort(h, n, sizeof *h, by_d2);
+    crt_qsort(h, n, sizeof *h, by_d2);     /* qsort 0x43a80b */
     for (unsigned i = 0; i < n; i++) {
         float d[3];
         into(mv, h[i].plane, d);

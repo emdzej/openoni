@@ -1,5 +1,6 @@
 /* TRAC animation collections: see trac.h. */
 #include "trac.h"
+#include "sort.h"
 
 #include "tm.h"
 #include "tram.h"
@@ -72,7 +73,7 @@ static int compare(const void *a, const void *b)
 static void sort_and_weigh(uint8_t *c)
 {
     uint16_t n = rd16(c + COUNT);
-    qsort(c + ENTRIES, n, ENTRY, compare);
+    crt_qsort(c + ENTRIES, n, ENTRY, compare);     /* qsort 0x42844d */
     uint32_t start = 0;
     for (uint32_t i = 0; i < n; i++) {
         bool last = i + 1 >= n;

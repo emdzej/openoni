@@ -1,5 +1,6 @@
 /* The impact effects: see impact.h. */
 #include "impact.h"
+#include "sort.h"
 
 #include "character.h"
 #include "akev.h"
@@ -228,7 +229,7 @@ void impact_effects_load(void)
     }
     for (int t = 0; t < impacts.n; t++)
         if (E.lookup[t].count && E.lookup[t].first + (uint32_t)E.lookup[t].count <= nmi)
-            qsort(E.matidx + E.lookup[t].first, (size_t)E.lookup[t].count, sizeof *E.matidx, cmp_matidx);
+            crt_qsort(E.matidx + E.lookup[t].first, (size_t)E.lookup[t].count, sizeof *E.matidx, cmp_matidx);
     /* the entries (ONiIESwap_Entries 0x4ff2e0) */
     for (uint32_t i = 0; i < ne; i++) {
         const uint8_t *e = ents + i * 0x14;

@@ -505,7 +505,7 @@ static bool local_movement(float out[3], uint8_t *kind, bool *crossed_blocked)
     int at_room = N.room;
     uint8_t worst = 0;
     *crossed_blocked = false;
-    for (;;) {
+    for (int crossed = 0;; crossed++) {
         int16_t ex, ez;
         graph_to_cell(&g, N.to, &ex, &ez);
         int edge = 0, x1 = ex, z1 = ez, w = (int16_t)g.w, h = (int16_t)g.h;
@@ -554,6 +554,15 @@ static bool local_movement(float out[3], uint8_t *kind, bool *crossed_blocked)
             graph_grid(N.next_room, &cg);
             graph_to_cell(&cg, e, &sx, &sz);
             if (sx >= 0 && sx < (int16_t)g.w && sz >= 0 && sz < (int16_t)g.h) room = N.next_room;
+        }
+        /* (not the original's: a point in the gap between two rooms' grids, past the edge of each, has
+           the line go from one to the other and back for ever, the game frozen. Level 12's grids of
+           rooms 207 and 208 leave a unit between them. The port stops after 64 crossings, at the edge,
+           as without a room beyond.) */
+        if (crossed >= 64) {
+            memcpy(out, e, sizeof e);
+            *kind = worst;
+            return false;
         }
         if (room < 0) {
             float p[3] = { e[0], e[1], e[2] }, step = g.cell * 0.5f + 7.5f;   /* 0x52a5bc */

@@ -567,11 +567,16 @@ static void pelvis_of(const Character *c, float out[3]) { chr_pelvis_position(c,
 /* AI2rManeuver_CheckBlockage 0x49ea60 (localpath.c). */
 static bool check_blockage(const Character *c, const float p[3]) { return local_blockage(p3_environment(), c, p); }
 
+static float angle_to_target(MeleeState *m, const Character *c);
+
 void melee_test_local_environment(MeleeState *m, const Character *c, const Character *target)
 {
-    /* the angle (AI2iMelee_AngleToTarget 0x4a21c0, without the attack's lead: the port's) */
-    float dx = target->pos[0] - c->pos[0], dz = target->pos[2] - c->pos[2];
-    m->angle = wrap_2pi(atan2f(dx, dz));
+    /* the melee state's own target (+0), as AI2rMelee_Update 0x48ff7d last set it from the combat's
+       (the original has no check for none: the port starts it at the combat's), toward it led by its
+       motion (AI2iMelee_AngleToTarget 0x4a21c0, 0x49fe78) */
+    if (!m->target) m->target = target;
+    target = m->target;
+    m->angle = angle_to_target(m, c);
     float sa = sinf(m->angle), ca = cosf(m->angle), loc[3];
     chr_location(c, loc);
     float d = m->dist + 50.0f;      /* 0x52a768 */

@@ -1,5 +1,6 @@
 /* The environment's collisions: see akev_collide.h. */
 #include "akev_collide.h"
+#include "sort.h"
 
 #include "akev.h"
 #include "tm.h"
@@ -366,10 +367,12 @@ static void flood(const Env *v, Leaves *L, const float c[3], float r)
     }
 }
 
-static int by_distance(const void *a, const void *b)
+/* 0x441c50: the farther (the rounded distance) after (AUrQSort_16 0x437d90 sorts the hits' indices
+   with it, then 0x441b40 copies them in that order) */
+static bool after_by_distance(const void *a, const void *b, void *u)
 {
-    const AkevHit *x = a, *y = b;
-    return x->idist < y->idist ? -1 : x->idist > y->idist;
+    (void)u;
+    return ((const AkevHit *)a)->idist > ((const AkevHit *)b)->idist;
 }
 
 unsigned akev_collide_sphere(const void *env, const float sphere[4], const float move[3], uint32_t skip, unsigned limit,
@@ -422,7 +425,7 @@ sort:
         hits[0] = hits[best];
         count = 1;
     } else if (count >= 2) {
-        qsort(hits, count, sizeof *hits, by_distance);
+        au_qsort(hits, count, sizeof *hits, after_by_distance, NULL);
     }
 done:
     free(L.seen);
@@ -508,7 +511,7 @@ sort:
         hits[0] = hits[best];
         count = 1;
     } else if (count >= 2) {
-        qsort(hits, count, sizeof *hits, by_distance);
+        au_qsort(hits, count, sizeof *hits, after_by_distance, NULL);
     }
 done:
     free(tested);
