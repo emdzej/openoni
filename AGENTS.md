@@ -63,8 +63,8 @@ Steps 4 (renderer), 6 (character) and 7 (scripts) have begun:
   characters and the doors near Konoko every N frames; `--param sltrace=1` the scripts; `--param
   invincible=1` keeps her alive, `--param omnipotent=1` makes her blows fell anyone and `--param
   unstoppable=1` keeps her on her feet (the game's cheat switches), for runs of a level's scripts; without
-  them `--param defend=1` has her block and strike back at the AIs fighting her while a route waits, and
-  use a hypo when low).
+  them `--param defend=1` has her block and strike back at the AIs fighting her while a route waits or an
+  unarmed one is within 12, and use a hypo when low).
 - `src/throw.c`: throws (the player's; the victim's part and its own damage), in
   [docs/re/character.md](docs/re/character.md) "Throws".
 - `src/weapon.c`: weapons (spawn, pickup, the trigger and shots, drop and the throw, the slots and holstering),
@@ -111,7 +111,7 @@ near them, and the `door_*` commands ([docs/re/door.md](docs/re/door.md)). `src/
 - The splash screens (`splash_screen` in `src/app.c`, ONrGameState_SplashScreen): each level's intro as it
   loads, the scripts' chapter screens, the won and lost levels' with their music; the main menu's music
   and the level's sounds paused under it (`src/outgame.c`, the `sound_music_*` of `src/sound.c`).
-- `src/film.c`: the films (FILM, the `playback` command), with `begin_cutscene`/`end_cutscene`
+- `src/film.c`: the films (FILM, the `playback` command; the developers' recording, saved_filmNNN.dat), with `begin_cutscene`/`end_cutscene`
   (`src/chars.c`): the cutscene after the training plays and the warehouse mission starts.
 - `src/bink.c`: the Bink movies (BIK 'i': the container, the video, the audio, the YUV conversion), ported
   from `binkw32.dll`, whose tables `src/exe.c` loads at run time as `Oni.exe`'s (`dll_*`; 286,208 bytes,

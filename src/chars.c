@@ -317,9 +317,13 @@ int chars_load(void)
     return n;
 }
 
+static bool focus_set;
+static uint16_t focus;
+
 void chars_unload(void)
 {
     ai_all_passive = false;     /* 0x48a257 */
+    focus_set = false;
     n_objects = 0;
     memset(used, 0, sizeof used);
     memset(actors, 0, sizeof actors);
@@ -329,8 +333,16 @@ void chars_unload(void)
 int chars_slots(void) { return CHARS_MAX; }
 Chr *chars_get(int i) { return i >= 0 && i < CHARS_MAX && used[i] ? &slots[i] : NULL; }
 
+/* The player number (GS+0xac) set by sc_focus (ONrGameState_SetPlayerNum 0x4fc8f0): the character the
+   camera and the game take as the player (the one the keys drive stays the CHAR flag's, C+0x1e8);
+   until then, and from each level's load, the flag's. 0xffff: none. */
+
+void chars_set_focus(uint16_t index) { focus_set = true, focus = index; }
+
 Chr *chars_player(void)
 {
+    /* the original keeps a pointer into the slots, used or not: an empty one is none here */
+    if (focus_set) return focus < CHARS_MAX && used[focus] ? &slots[focus] : NULL;
     for (int i = 0; i < CHARS_MAX; i++)
         if (used[i] && slots[i].player) return &slots[i];
     return NULL;

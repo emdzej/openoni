@@ -252,6 +252,7 @@ static void add_evar(const char *name, SlType t, void *p)
 void sl_register_int(const char *n, int32_t *v) { add_evar(n, SL_INT, v); }
 void sl_register_float(const char *n, float *v) { add_evar(n, SL_FLOAT, v); }
 void sl_register_bool(const char *n, bool *v) { add_evar(n, SL_BOOL, v); }
+void sl_register_string(const char *n, char *buf) { add_evar(n, SL_STRING, buf); }
 
 /* ---- values ---- */
 
@@ -791,6 +792,7 @@ static SlValue engine_get(int k)
     switch (e->type) {
     case SL_INT: return v_int(*(int32_t *)e->p);
     case SL_FLOAT: return v_float(*(float *)e->p);
+    case SL_STRING: return v_str(sl_intern(e->p));
     default: { SlValue b = v_int(*(bool *)e->p); b.type = SL_BOOL; return b; }
     }
 }
@@ -801,6 +803,14 @@ static void engine_set(int k, SlValue v)
     switch (e->type) {
     case SL_INT: *(int32_t *)e->p = as_int(v); break;
     case SL_FLOAT: *(float *)e->p = as_float(v); break;
+    case SL_STRING: {
+        const char *src = convert(v, SL_STRING).s;
+        char *d = e->p;
+        size_t n = 0;
+        while (src && src[n] && n < 0x40 - 1) d[n] = src[n], n++;
+        d[n] = 0;
+        break;
+    }
     default: *(bool *)e->p = truthy(v);
     }
 }

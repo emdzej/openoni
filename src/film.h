@@ -5,6 +5,7 @@
    (0x18 bytes: the mouse x, y as floats, the held action bits as a u64, the tick it starts at, 4 unused). */
 #pragma once
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "character.h"
 
@@ -16,12 +17,17 @@ bool film_start(Character *c, const void *film, int mode, uint32_t ticks);
 /* ONrFilm_Stop 0x4f41f0: false if none was playing. */
 bool film_stop(Character *c);
 bool film_playing(const Character *c);
-/* DoFilmUpdate 0x4ed420's playback: the tick's input replaced by the film's (call with the input built
-   for the tick, before the character takes it). */
+/* ONrFilm_Initialize 0x4f3e00: sc_focus, sc_bind_f2, sc_bind_f3; the user's files read and written
+   through load and store (the recordings saved, the platform's). */
+void film_register_commands(uint8_t *(*load)(const char *name, size_t *size),
+                            bool (*store)(const char *name, const void *data, size_t size));
+/* DoFilmUpdate 0x4ed420: the recording keys (start_record, stop_record that writes the film to
+   saved_filmNNN.dat in the user's folder, play_record), then the tick's input recorded, or replaced by
+   the film's playing (call with the input built for the tick, before the character takes it). */
 void film_update(Character *c, ChrInput *in);
 /* HandleHeartbeatInput 0x4f6ad0, playing a film (0x4e4100: A+0x21f4 bit 1): the film's special animation
    (one of its two TRAM links, the keys of the developers' recording, 8 and 0x10, down), played in place
-   of the input's handlers; NULL for none. */
-const void *film_special_animation(const Character *c, const ChrInput *in);
+   of the input's handlers; recording, the animation sc_bind_f2 or f3 names for F2 or F3; NULL for none. */
+const void *film_special_animation(Character *c, const ChrInput *in);
 /* DoCharacterFrame 0x4ddba0, before step 12: a tick of the move to the film's start. */
 void film_interp_step(Character *c);

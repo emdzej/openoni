@@ -590,8 +590,10 @@ void knowledge_forget_contacts(Chr *owner, const Chr *target)
         if (!target || e->target == target) {
             e->strength = KNOW_FORGOTTEN;
             notify(owner, e, true);
-            /* 0x49b8e0's state handlers: the pursuit's (the combat's 0x4908b0 and the panic's not yet) */
+            /* 0x49b8e0's state handlers (an AI's, C+0x1e8 2): the combat's, the pursuit's, the panic's */
+            if (e->owner && owner->ai.state == AI_STATE_COMBAT) combat_forgotten(&owner->ai, e);
             if (e->owner && owner->ai.state == AI_STATE_PURSUIT) pursuit_forgotten(owner, e);
+            if (e->owner && owner->ai.state == AI_STATE_PANIC) panic_forgotten(owner, e);
             if (e->owner) remove_entry(e);
         }
         e = prev;

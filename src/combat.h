@@ -68,6 +68,9 @@ void combat_action(AiState *a, const Character *c);
 bool combat_waiting_for_shield_charge(AiState *a, const Character *c);
 struct KnowEntry;
 void combat_hurt(AiState *a, const Character *c, const struct KnowEntry *e);
+/* 0x4908b0, a contact forgotten (AI2iKnowledge_RemoveEntry 0x49b8e0, in combat): the target's, the
+   target, its contact, its last strength, the hurts' times and the targeting's target cleared. */
+void combat_forgotten(AiState *a, const struct KnowEntry *e);
 
 /* A debug line per second for each character in combat (set by the host for --param ailog=1). */
 extern void (*combat_log)(const char *line);

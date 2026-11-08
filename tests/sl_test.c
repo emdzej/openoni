@@ -49,6 +49,23 @@ int main(void)
         printf("EnvWarehouse main doesn't start\n");
         failed++;
     }
+    /* a string engine variable: set from a script (63 characters kept), read back into another */
+    sl_reset();
+    static char bound[0x80], copy[0x80];
+    sl_register_string("sc_bind_f2", bound);
+    sl_register_string("copy_of", copy);
+    if (sl_load_text("t.bsl", "func main { sc_bind_f2 = \"KONOKOpunch_heavy\"; copy_of = sc_bind_f2; }\n"
+                     "func longer { sc_bind_f2 = \"0123456789012345678901234567890123456789012345678901234567890123456789\"; }\n",
+                     err, sizeof err) && sl_call("main", 0, NULL)) {
+        for (int k = 0; k < 2; k++) sl_update();
+        sl_call("longer", 0, NULL);
+        for (int k = 0; k < 2; k++) sl_update();
+        printf("string variables: copy \"%s\", %zu characters kept\n", copy, strlen(bound));
+        if (strcmp(copy, "KONOKOpunch_heavy") || strlen(bound) != 63) failed++;
+    } else {
+        printf("string variables: %s\n", err);
+        failed++;
+    }
     sl_reset();
     vfs_unmount();
     printf("sl_test: %s\n", failed ? "FAILED" : "ok");

@@ -129,6 +129,15 @@ void panic_notify(Chr *c, KnowEntry *e, bool degraded)
     a->panic_until = e->posted + 180;
 }
 
+/* 0x4ae040 */
+void panic_forgotten(Chr *c, KnowEntry *e)
+{
+    AiState *a = &c->ai;
+    if (a->panic_entry != e) return;
+    a->panic_entry = NULL;
+    a->panic_until = e->posted + 180;
+}
+
 /* 0x4e95c0: the angle from c's heading to o, in [-pi, pi). */
 static float angle_to(const Character *c, const Character *o)
 {

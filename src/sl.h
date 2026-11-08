@@ -36,6 +36,9 @@ void sl_register(const char *name, SlCommand fn, void *user);
 void sl_register_int(const char *name, int32_t *v);
 void sl_register_float(const char *name, float *v);
 void sl_register_bool(const char *name, bool *v);
+/* A string variable (SLrGlobalVariable_Register_String 0x477fe0) held in a buffer: a value set is
+   copied in, at most 63 characters (SLrScript_Database_Var_SetValue 0x4795d0, UUrString_Copy 0x40). */
+void sl_register_string(const char *name, char *buf);
 
 /* Loads and compiles every .bsl of a folder (relative to the game data, through the file layer). False
    (err says why) on a parse error. Call for "GameDataFolder/IGMD/global" and the level's folder. */

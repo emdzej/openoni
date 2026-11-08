@@ -441,6 +441,16 @@ void combat_action(AiState *a, const Character *c)
     if (a->state == AI_STATE_COMBAT && a->combat.behaviour) send_args(a, c, MSG_ACTION, c->type, 0, NULL, NULL);
 }
 
+/* 0x4908b0 */
+void combat_forgotten(AiState *a, const KnowEntry *e)
+{
+    if (a->target_entry != e) return;
+    a->target = NULL, a->target_entry = NULL;
+    a->combat_last_strength = 0;
+    a->combat.hurt_any_time = a->combat.hurt_time = 0;
+    a->combat.t.target = NULL;
+}
+
 void combat_hurt(AiState *a, const Character *c, const KnowEntry *e)
 {
     if (a->combat.behaviour) send_args(a, c, MSG_HURT, (int)e->value, 0, e, NULL);

@@ -66,6 +66,8 @@ enum {
     CHR_KEY_TURN_RIGHT = 0x1000000, CHR_KEY_STEP_LEFT = 0x2000000, CHR_KEY_STEP_RIGHT = 0x4000000,
     CHR_KEY_JUMP = 0x8000000, CHR_KEY_CROUCH = 0x10000000, CHR_KEY_PUNCH = 0x20000000, CHR_KEY_KICK = 0x40000000,
     CHR_KEY_LOOK = 0x8000,
+    /* cutscene1, cutscene2 (a film's F2 and F3 animations); start_record, stop_record, play_record */
+    CHR_KEY_FILM = 0x8 | 0x10 | 0x400 | 0x800 | 0x1000,
 };
 #define CHR_KEY_WALK ((uint64_t)1 << 32)
 #define CHR_KEY_ACTION ((uint64_t)2 << 32)

@@ -933,6 +933,40 @@ Ported in `src/ai.c` (the overrides, the attack override and the aim not yet), d
 mover (straight to a point) until the movement layer is; `ai2_movetoflag` uses it. `ai_test`: a thug
 turns round, walks 60 to a point and faces the way asked.
 
+## Films
+
+The port: `src/film.c`. A film (FILM, the `playback` command) is a character's input tick by tick:
+the layout is in `film.h`. `DoFilmUpdate` 0x4ed420 takes the tick's input block (A+0x2158) first
+(confirmed):
+
+- **The developers' keys**, the actions `start_record` (bit 0x400), `stop_record` (0x800) and
+  `play_record` (0x1000), none bound by the default key_config.txt. Start: a new film
+  (`ONrFilm_Create` 0x4f4620, 0x13c6d0 bytes from the memory pool, the length +0x1c and the key count
+  +0x34 zeroed; the last one is never freed) at A+0x2214, A+0x21f4 bit 2, and the header from the
+  character: C+0x148 the start, C+0x16c and C+0x170 the facings, A+0x21bc and A+0x21c0 the aim; already
+  recording, only the message. Play: unless one plays (bit 1), the film at A+0x2214 from its start
+  (`ONrFilm_Start` 0x4f4060, placed at the start). Stop: the film written (`ONrFilm_WriteToDisk`
+  0x4f44c0) and bit 2 cleared. Then the three bits are taken out of held, down and up, and set in not
+  held.
+- **Recording** (bit 2, before playing): `ONrFilm_AppendFrame` 0x4f3fd0 adds a key {mouse x, y, held,
+  the tick} unless there are keys, the mouse is still (both 0.0) and held is the last key's; the
+  length counts every tick. Nothing bounds the keys: past 54,001 the original writes beyond the film
+  (the port stops adding keys).
+- **Playing**: as before (0x4f3ee0, the input of the tick from the keys).
+
+While recording, `cutscene1` (bit 8) or `cutscene2` (0x10) gone down plays the animation named by the
+string variable `sc_bind_f2` or `sc_bind_f3` (0x6311e0, 0x6311a0; 0x80 bytes each, a set copies 63
+characters, 0x4795d0) through `TMrInstance_GetDataPtr` "TRAM" (0x429190), kept in the film at +0x20 or
++0x24 (NULL when not found, with the message), from the state over 6 frames (0x4f720c, as the
+playback's). The file: `BFrFileRef_MakeUnique` 0x401870 names it `saved_film` + three digits +
+`.dat`, the first free from the last number found (0x5ecbf0, up to 999); it holds the two names
+(0x80 bytes each), a 0x40 header (the start, the facings, the aim, the length, zeros, the key count at
++0x3c) and the keys, every field big-endian (0x4f4220 swaps the film and back; the u64 as one).
+`sc_focus chr_index` (`ONiSetFocus` 0x4f3eb0) sets the player number (`ONrGameState_SetPlayerNum`
+0x4fc8f0: GS+0xac the slot, GS+0xb0 its active record; 0xffff none) and puts the camera behind
+(0x4d73d0); the character the keys drive stays the one of the player's type (C+0x1e8). The messages go
+through `COrConsole_Printf` 0x431c40 as type 0, under the console's level (0x533f60, 1): never shown.
+
 ## The level of detail
 
 The port: `src/chr_lod.c`. A class's body set (ONCC +0xc34) has five bodies, the lowest detail first.

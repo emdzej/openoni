@@ -6,10 +6,9 @@
    (the activation radius) that may pass (lock, key, side) and closes when nobody is (OBJrDoor_Update
    0x4c44f0). Format: docs/formats/objc.md (DOOR); notes: docs/re/door.md.
 
-   Not yet: the panels' physics (the characters don't collide with a moving panel, and the panels'
-   blocked counter, +0x140 of their animation context, stays 0, so the "stuck" logic never runs), the
-   keys (WPrInventory_HasKey 0x424370: nobody holds one), the door's events, the graph's door links
-   (PHrNotifyDoorStateChange 0x50ed90), the AI's door sound (0x49a8a0) and the sounds' place. */
+   Left as they are (docs/re/door.md "The port"): the keys (WPrInventory_HasKey 0x424370: nothing gives
+   one), the graph's door links (PHrNotifyDoorStateChange 0x50ed90); the panels' blocked counter
+   (+0x140 of their animation context) stays 0 as in the original, so the "stuck" logic never runs. */
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
@@ -38,7 +37,7 @@ enum {
     DOOR_LOCKED_AT_START = 0x0001,  /* the OSD's: LevelBegin makes it DOOR_LOCKED */
     DOOR_LOCKED = 0x0002,
     DOOR_HIDE_FRAME = 0x0004,       /* its door frame quad (AKDA) isn't drawn */
-    DOOR_MANUAL = 0x0010,           /* opens with the action key (not yet), closes by itself */
+    DOOR_MANUAL = 0x0010,           /* opens with the action key (door_action_open), closes by itself */
     DOOR_ANIMATING = 0x0020,        /* also while it stays open, counting down */
     DOOR_STARTED = 0x0040,          /* LevelBegin ran */
     DOOR_DOUBLE = 0x0080,           /* two panels (OBJrDoor_ComputeObstruction's two lines) */

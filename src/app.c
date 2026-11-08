@@ -14,6 +14,7 @@
 #include "cinematic.h"
 #include "character.h"
 #include "chars.h"
+#include "film.h"
 #include "chr_lod.h"
 #include "combat.h"
 #include "knowledge.h"
@@ -545,6 +546,7 @@ static void start_scripts(void)
     turret_register_commands();
     cinematic_register_commands();
     chars_register_commands();
+    film_register_commands(plat_load_user_file, plat_save_user_file);     /* ONrFilm_Initialize 0x4f3e00 */
     save_register_commands();   /* save_point, save_game, restore_game */
     sl_register_float("gl_fog_red", &fog_rgb[0]);
     sl_register_float("gl_fog_green", &fog_rgb[1]);
@@ -902,7 +904,8 @@ static void hold_keys(const char *k, CharacterInput *in)
     }
 }
 
-/* --param defend=1 (for runs without the cheats): while a route waits, the nearest AI fighting her
+/* --param defend=1 (for runs without the cheats): while a route waits (or an unarmed one is close,
+   route_engaged), the nearest AI fighting her
    within 15 is faced (a still character blocks what comes from ahead) and struck back, a punch every 8
    frames and every fourth a kick, as a player would. */
 static bool route_defending(void)
@@ -969,6 +972,22 @@ static void route_defend(const Character *c, CharacterInput *in, uint32_t now)
     if (fabsf(err) < 0.3f) route_strike(c, &best->c, in, now);
 }
 
+/* With defend, an unarmed AI fighting her within 12, on its feet: the route's other steps wait while she
+   fights it (route_defend), as a player stops to fight rather than run on with it hitting her back. */
+static bool route_engaged(const Character *c)
+{
+    if (!route_defending()) return false;
+    for (int i = 0; i < chars_slots(); i++) {
+        const Chr *t = chars_get(i);
+        if (!t || !t->c.ai || !t->c.hit_points || (t->c.flags & 1) || t->c.weapon || t->c.state == 0x32 ||
+            t->ai.state != AI_STATE_COMBAT || !t->ai.target || &t->ai.target->c != c)
+            continue;
+        float dx = t->c.pos[0] - c->pos[0], dy = t->c.pos[1] - c->pos[1], dz = t->c.pos[2] - c->pos[2];
+        if (dx * dx + dy * dy + dz * dz < 144.0f) return true;
+    }
+    return false;
+}
+
 static void route_input(const Character *c, CharacterInput *in)
 {
     if (route.step && c->state == 0x32) {   /* knocked down, whatever the step: up again (forward, a getup move) */
@@ -979,6 +998,10 @@ static void route_input(const Character *c, CharacterInput *in)
     if (route.step && route_defending() && c->hypos && !c->hypo_heal && c->hit_points * 10 < c->max_hit_points * 4 &&
         plat_frames() % 2 == 0)
         in->hypo = true;
+    if (route.step && !strchr("XFAKSw", *route.step) && route_engaged(c)) {
+        route_defend(c, in, plat_frames() - splash_frames);
+        return;
+    }
     for (int guard = 0; route.step && guard < 8; guard++) {
         char *s = route.step;
         uint32_t now = plat_frames() - splash_frames;
@@ -2133,7 +2156,7 @@ static int play(int level, int *next)
             .swap = (act.down & CHR_KEY_SWAP) != 0, .drop = (act.down & CHR_KEY_DROP) != 0,
             .reload = (act.down & CHR_KEY_RELOAD) != 0, .hypo = (act.down & CHR_KEY_HYPO) != 0,
             .extra = hd & (CHR_KEY_TURN_LEFT | CHR_KEY_TURN_RIGHT | (uint64_t)0x80000000u | CHR_KEY_LOOK |
-                           CHR_KEY_ALT_FIRE | CHR_KEY_FIRE3),
+                           CHR_KEY_ALT_FIRE | CHR_KEY_FIRE3 | CHR_KEY_FILM),
         };
         /* the shapeshifter's key (debug key 0x29, LI 0x88): F8, with Shift back */
         for (int i = 0; i < n; i++)

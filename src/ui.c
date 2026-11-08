@@ -11,6 +11,7 @@
 #include "font.h"
 
 #include <math.h>
+#include <stdarg.h>
 
 #include "gametime.h"
 
@@ -374,6 +375,17 @@ void ui_print(int area, int32_t type, const char *text, const char *id, int32_t 
         l->colour = exe_u32(0x533f70);
         l->shadow = exe_u32(0x533f74);
     }
+}
+
+void ui_console_printf(const char *fmt, ...)
+{
+    char b[0x800];
+    if (!fmt) return;
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(b, sizeof b, fmt, ap);
+    va_end(ap);
+    ui_print(UI_AREA_CONSOLE, 0, b, NULL, (int32_t)exe_u32(0x533f68));
 }
 
 void ui_print_subtitle(const char *text, int32_t timer)

@@ -72,7 +72,7 @@ enum { MELEE_TECH_MAX = 64, MELEE_MOVE_MAX = 256 };
 typedef struct MeleeProfile {
     uint32_t id;
     char name[64], cls[64];
-    uint32_t dodge[4];      /* +0x84..+0x90: the dodge chances (with the evades, not yet ported) */
+    uint32_t dodge[4];      /* +0x84..+0x90: the dodge chances (check_evasion_chance) */
     uint32_t block_single;  /* +0x94: the chance (%) to block an attack, fighting alone */
     uint32_t block_group;   /* +0x98: in a group of four or more (AI2rBlockFunction) */
     float factor[6];        /* +0x9c..+0xb0: the weighting's factors for an attack the target couldn't

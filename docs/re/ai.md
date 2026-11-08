@@ -15,7 +15,7 @@ inferred means from the data or the context.
 | A post, queued | `AI2iKnowledge_AddPending` 0x49b300: at most 64, 0x24 bytes each at 0x63a2a0, count 0x63b340 | confirmed |
 | A post, applied | `AI2iKnowledge_PostContact` 0x49b3f0 | confirmed |
 | The order of contacts | 0x49ba10 | confirmed |
-| Removing a contact | 0x49b8e0 | confirmed |
+| Removing a contact | 0x49b8e0: back to the pool; when the forgetting (0x49c4c9) removes it, an AI's state is told first: combat (5) 0x4908b0 clears its target, contact, last strength, hurt times and the targeting's target if it was that one; pursuit (6) 0x4b1830; panic (9) 0x4ae040 lets the fear go, calm 180 ticks after its last post | confirmed |
 | Hurt | `AI2rKnowledge_HurtBy` 0x49a7f0, from 0x48b480 (TakeDamage, for AI characters) | confirmed |
 | The calm states' handler | `AI2rAlert_NotifyKnowledge` 0x48ecc0 | confirmed |
 | Raising the alert | `AI2rAlert_UpgradeStatus` 0x48eee0 | confirmed |

@@ -78,6 +78,9 @@ void ui_set_level_end(int end);
 uint32_t ui_message_time(const char *id);
 /* Adds a line of the type, white on its shadow (the oldest goes when the area is full). */
 void ui_print(int area, int32_t type, const char *text, const char *id, int32_t timer);
+/* COrConsole_Printf 0x431c40: a line into the console's area as type 0, which the console's level (1)
+   doesn't keep: the developers' messages, shown only with the level lowered. */
+void ui_console_printf(const char *fmt, ...);
 /* A subtitle (the dialog's, OSiDialog_Play 0x5125c0 and 0x514290): in the letterbox into the console's
    area as type 1 (which the letterbox's end and end_cutscene clear, 0x431d50), else into the subtitles'. */
 void ui_print_subtitle(const char *text, int32_t timer);

@@ -43,6 +43,8 @@ void chars_arm(void);
 int chars_slots(void);
 Chr *chars_get(int i);
 Chr *chars_player(void);
+/* ONrGameState_SetPlayerNum 0x4fc8f0: the slot taken as the player from now on (0xffff none). */
+void chars_set_focus(uint16_t index);
 Chr *chars_find(const char *name);
 /* Whether c is a living slot (C+0x04 flag 0x8000): false once deleted. */
 bool chars_in_use(const Chr *c);

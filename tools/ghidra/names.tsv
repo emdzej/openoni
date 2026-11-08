@@ -208,6 +208,7 @@
 00428cb0	TRrAnimation_GetEndInterpolation	TR	med	name from the Intel Mac build (strings:1)
 00428e10	TRrOverlay_Apply	TR	low	an overlay over a pose: TRAM +0x44 replaced, +0x40 added, ramps of 6 frames
 00429160	TRrAnimation_GetDamage	TR	low	the animation's own damage at a frame (TRAM +0x10 .raw, count +0x17b); Mac name by role
+00429190	TMrInstance_GetTRAM	TM	med	read: TMrInstance_GetDataPtr of "TRAM" by name, NULL when missing (name made up)
 004291c0	TRrAnimation_GetThrowDistance	TR	med	name from the Intel Mac build (neighbours:1.00)
 004292a0	TRrAnimation_GetFirstAttackFrame	TR	med	name from the Intel Mac build (neighbours:1.00)
 004292b0	TRrAnimation_GetLastAttackFrame	TR	med	name from the Intel Mac build (neighbours:0.75)
@@ -260,6 +261,7 @@
 004306f0	COrConsole_Update	CO	low	the console's update: the command line's input, the text areas' countdown (name made up)
 00430f00	COrTextArea_New	CO	med	name from the Intel Mac build (neighbours:1.00)
 00430fd0	COrTextArea_Display	CO	med	name from the Intel Mac build (neighbours:1.00)
+00431340	COiConsole_AddLine	CO	high	read: a line of a type into a text area, under the console level (0x533f60) dropped, a long one split (name made up)
 00431460	COrTextArea_Resize	CO	med	name from the Intel Mac build (strings:1)
 00431c40	COrConsole_Printf	CO	med	name from the Intel Mac build (neighbours:0.97)
 00431d50	COrConsole_RemoveSubtitles	CO	low	the console area's lines of type 1 removed: the letterbox's end, EndCutscene (name made up)
@@ -587,8 +589,13 @@
 00472db0	WMiSlider_HandleMouse	WM	low	drag the thumb, a press beside it steps a tenth
 004731f0	WMiText_Callback	WM	low	class 20: owner drawn (0x36 to the parent) or its title
 00473350	WMrWindow_DefaultCallback	WM	low	the messages a class leaves: hit test, frame paint, frame mouse, client rect
-004738e0	WMiSlider_GetTrackBounds	WM	med	name from the Intel Mac build (neighbours:1.00)
+004738e0	WMiWindow_GetFrameSides	WM	low	the frame's sides (the sizing frame's or background's corner parts); the Mac neighbour name WMiSlider_GetTrackBounds doesn't fit
+00473990	WMiWindow_GetBoxSize	WM	low	a title bar box: the title's height less 4, square (name made up)
 00473a50	WMiWindow_HitTest	WM	low	the default hit test: none off the window, the frame's parts by the style, the client with style 1
+00473e10	WMiWindow_Zoom	WM	low	the zoom box: back to the size kept, or the smallest frame (name made up)
+00474100	WMiWindow_Activate_Focus	WM	low	the focus kept on deactivation, given back on activation (name made up)
+00474150	WMiWindow_Resolution	WM	low	0x34 to the children that aren't child windows; never steps past a child window (name made up)
+00474180	WMiWindow_FrameDrag	WM	low	the mouse moving with a frame part held: move, size, press a box (name made up)
 004746d0	WMrWindow_Activate	WM	low	the top-level window over it made active (0x28, 0xf)
 00474830	WMiWindow_BringToFront	WM	low	the window in front of its siblings, after the ones kept in front
 00474900	WMrWindow_SetCapture	WM	low	the mouse's window (0x30 to the old); the Mac build's neighbour name WMrMessage_Send was off
@@ -599,6 +606,7 @@
 00474e60	WMrWindow_GetScreenRect	WM	low	the window on the desktop: the parents' places and client origins added
 00474f40	WMrWindow_GetStyle	WM	med	name from the Intel Mac build (neighbours:1.00)
 00475060	WMrWindow_GlobalToLocal	WM	low	a desktop point in the window's pixels
+004750d0	WMrWindow_IsChildOf	WM	low	the window among the other's parents, not itself (name made up)
 00475160	WMrWindow_New	WM	med	name from the Intel Mac build (neighbours:1.00)
 00475580	WMrWindow_SetEnabled	WM	low	flag 2 cleared or set
 004755c0	WMrWindow_SetFocus	WM	low	the keys' window (0x2a to the old, 0x29 to the new)
@@ -636,6 +644,7 @@
 00477e30	SLrGlobalVariable_Register_Int32	SL	med	name from the Intel Mac build (neighbours:0.86)
 00477ec0	SLrGlobalVariable_Register_Float	SL	med	name from the Intel Mac build (neighbours:1.00)
 00477f50	SLrGlobalVariable_Register_Bool	SL	med	name from the Intel Mac build (neighbours:0.95)
+00477fe0	SLrGlobalVariable_Register_String	SL	med	read: a string engine variable in a buffer (type 1), as the Int32/Float/Bool ones (name made up)
 00478070	SLrScript_Update	SL	med	name from the Intel Mac build (neighbours:1.00)
 00478320	SLiScript_ConsoleHook	SL	med	name from the Intel Mac build (strings:2)
 00478530	SLrScript_Database_FunctionScript_Add	SL	med	name from the Intel Mac build (strings:1)
@@ -1413,6 +1422,7 @@
 004f3fd0	ONrFilm_AppendFrame	ON	med	name from the Intel Mac build (strings:1)
 004f4060	ONrFilm_Start	ON	med	name from the Intel Mac build (neighbours:1.00)
 004f41f0	ONrFilm_Stop	ON	med	name from the Intel Mac build (neighbours:1.00)
+004f4220	ONiFilm_Swap	ON	high	read: the film byte-swapped (header, count, keys; the u64 as one) for writing, and back (name made up)
 004f44c0	ONrFilm_WriteToDisk	ON	med	name from the Intel Mac build (strings:4)
 004f4620	ONrFilm_Create	ON	med	name from the Intel Mac build (neighbours:1.00)
 004f4650	ONrFilm_DisplayStats	ON	med	name from the Intel Mac build (strings:2)
