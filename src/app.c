@@ -470,6 +470,15 @@ static bool cmd_did_kill_griffen(SlThread *t, int argc, const SlValue *argv, SlV
     return true;
 }
 
+/* difficulty (0x4b9c10): the difficulty, 0 easy to 2 hard (ONrPersist_GetDifficulty 0x50f240) */
+static bool cmd_difficulty(SlThread *t, int argc, const SlValue *argv, SlValue *r, void *u)
+{
+    (void)t, (void)argc, (void)argv, (void)u;
+    r->type = SL_INT;
+    r->i = persist_difficulty();
+    return true;
+}
+
 /* p3_removedangerous (0x50aaf0) */
 static bool cmd_remove_dangerous(SlThread *t, int argc, const SlValue *argv, SlValue *r, void *u)
 {
@@ -564,6 +573,7 @@ static void start_scripts(void)
     marketing_line_off = false;
     sl_register("killed_griffen", cmd_killed_griffen, NULL);
     sl_register("did_kill_griffen", cmd_did_kill_griffen, NULL);
+    sl_register("difficulty", cmd_difficulty, NULL);
     sl_register("p3_removedangerous", cmd_remove_dangerous, NULL);
     sl_register("gl_fog_start_changeto", cmd_fog_start_to, NULL);
     sl_register("gl_fog_end_changeto", cmd_fog_end_to, NULL);
