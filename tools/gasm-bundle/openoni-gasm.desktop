@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Oni (gasm)
+GenericName=Action game
+Comment=OpenOni, a reimplementation of Oni (2001), on gasm. Needs your Oni CD.
+Exec="@DIR@/openoni.sh"
+Icon=@DIR@/openoni.png
+Terminal=false
+Categories=Game;ActionGame;
