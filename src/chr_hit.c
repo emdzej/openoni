@@ -14,7 +14,10 @@
 #include "weapon.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
+
+void (*chr_hit_debug_log)(const char *msg);
 
 static const float TWO_PI = 6.2831854820251465f, PI = 3.1415927410125732f;     /* 0x529548, 0x529544 */
 
@@ -289,6 +292,21 @@ void chr_take_damage(Character *c, uint32_t damage, float knockback, const float
     /* a conversation ends (AI2rNeutral_Stop 0x4acf70: not forced, aborted, back to the job) */
     if (c->talk_partner) neutral_stop((Chr *)c, false, true, false, true);
     if (kind == CHR_DAMAGE_MELEE && from && chr_melee_score_hook) chr_melee_score_hook(from, c, damage);
+    if (chr_hit_debug_log && !c->ai) {      /* --param hitlog=1, a debug aid: the player's hits */
+        char b[200];
+        const TmInstance *fa = from && from->anim ? tm_handle_instance(tm_handle_of(from->anim)) : NULL;
+        const TmInstance *ca = c->anim ? tm_handle_instance(tm_handle_of(c->anim)) : NULL;
+        bool hi = false, lo = false, could = from && chr_could_block(c, from, &hi, &lo);
+        float ang = from ? wrap_2pi(wrap_2pi(atan2f(from->pos[0] - c->pos[0], from->pos[2] - c->pos[2])) -
+                                    wrap_2pi(c->desired_facing - c->facing_offset)) : 0.0f;
+        if (ang >= PI) ang -= TWO_PI;
+        snprintf(b, sizeof b, "OpenOni: hit %u: %u of %u hp, kind %x, from %s, in %s type %u from %u, at %.0f deg, block %d%d%d pause %u weapon %d",
+                 (unsigned)game_time(), (unsigned)damage, (unsigned)c->hit_points, (unsigned)kind,
+                 fa && fa->name ? fa->name : "-", ca && ca->name ? ca->name : "-", (unsigned)c->type,
+                 (unsigned)(c->anim ? tr_from(c->anim) : 0), ang / 0.017453292f, could, hi, lo, (unsigned)c->block_pause,
+                 c->weapon != NULL);
+        chr_hit_debug_log(b);
+    }
     if (!(chr_cheat_invincible && !c->ai) && !(c->flags & 0x2000000)) {      /* not invincible */
         if (chr_script_hook) chr_script_hook(c, CHR_SCRIPT_HURT);   /* once (C+0x44 bit 0x10) */
         if ((c->flags & 0x20) && c->hit_points <= damage && kind != CHR_DAMAGE_KILL) {

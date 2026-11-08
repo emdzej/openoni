@@ -51,7 +51,7 @@ Steps 4 (renderer), 6 (character) and 7 (scripts) have begun:
   `src/knowledge.c` (sight, hurts, the alert), `src/combat.c` (the combat settings, behaviours,
   maneuvers, the gun pickup, targeting and the executor's aim) `src/melee.c` (the melee profiles and techniques), `src/neutral.c` (the neutral characters'
   conversations and the characters' speech) and `src/panic.c` (the non-combatants' panic; all
-  in [docs/re/ai.md](docs/re/ai.md)) move the others; `--param ailog=1` logs each fighter once a second, `--param physlog=1` the player's moves the walls stop.
+  in [docs/re/ai.md](docs/re/ai.md)) move the others; `--param ailog=1` logs each fighter once a second, `--param physlog=1` the player's moves the walls stop, `--param hitlog=1` each hit the player takes (the attacker's animation, the angle, whether she could block).
   `--param call=<function>[,...]` runs level functions at the start (e.g. `spawn_top,final_striker_attack` on level 1).
 - `src/character.c`: a first playable. `--param play=1 --param level=1` runs Konoko through level 1
   (`--param at=x,y,z,deg` starts her elsewhere); `--param viewer=level` flies through a level. `--param
@@ -62,7 +62,9 @@ Steps 4 (renderer), 6 (character) and 7 (scripts) have begun:
   nearest powerup of a type picked up, and `S<N>`, a wait until she stands; `--param trace=N` logs the
   characters and the doors near Konoko every N frames; `--param sltrace=1` the scripts; `--param
   invincible=1` keeps her alive, `--param omnipotent=1` makes her blows fell anyone and `--param
-  unstoppable=1` keeps her on her feet (the game's cheat switches), for runs of a level's scripts).
+  unstoppable=1` keeps her on her feet (the game's cheat switches), for runs of a level's scripts; without
+  them `--param defend=1` has her block and strike back at the AIs fighting her while a route waits, and
+  use a hypo when low).
 - `src/throw.c`: throws (the player's; the victim's part and its own damage), in
   [docs/re/character.md](docs/re/character.md) "Throws".
 - `src/weapon.c`: weapons (spawn, pickup, the trigger and shots, drop and the throw, the slots and holstering),

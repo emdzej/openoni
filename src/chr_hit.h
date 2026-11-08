@@ -39,6 +39,8 @@ extern void (*chr_hurt_hook)(Character *c, Character *from, uint32_t damage, uin
    not: a block held against its target's attack let go, a daze cut to its last tick (chars.c sets
    it). */
 extern void (*chr_attack_landed_hook)(Character *attacker, Character *defender);
+/* --param hitlog=1: each hit the player takes logged (a debug aid). */
+extern void (*chr_hit_debug_log)(const char *msg);
 extern void (*chr_melee_score_hook)(Character *attacker, Character *victim, uint32_t damage);
 /* 0x48b060 for an AI hurt: in a calm state (the table 0x52a4d8; a patrol ignoring the player not) it is
    startled (C+0x1f0 0x8000) and cries for sure (chars.c sets it). */

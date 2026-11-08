@@ -884,12 +884,73 @@ static void hold_keys(const char *k, CharacterInput *in)
     }
 }
 
+/* --param defend=1 (for runs without the cheats): while a route waits, the nearest AI fighting her
+   within 15 is faced (a still character blocks what comes from ahead) and struck back, a punch every 8
+   frames and every fourth a kick, as a player would. */
+static bool route_defending(void)
+{
+    static int on = -1;
+    if (on < 0) {
+        char v[8];
+        on = plat_param("defend", v, sizeof v) && atoi(v);
+    }
+    return on;
+}
+
+/* With defend, a blow coming (the nearest AI fighting her within 15 whose animation is an attack): she
+   stands, turned to it. */
+static bool route_hold_block(const Character *c, CharacterInput *in)
+{
+    if (!route_defending()) return false;
+    const Character *t = NULL;
+    float bd = 225.0f, dx = 0.0f, dz = 0.0f;
+    for (int i = 0; i < chars_slots(); i++) {
+        const Chr *o = chars_get(i);
+        if (!o || !o->c.ai || !o->c.hit_points || (o->c.flags & 1) || o->ai.state != AI_STATE_COMBAT ||
+            !o->ai.target || &o->ai.target->c != c || !o->c.anim || !tr_is_attack(o->c.anim))
+            continue;
+        float x = o->c.pos[0] - c->pos[0], z = o->c.pos[2] - c->pos[2];
+        if (x * x + z * z < bd) bd = x * x + z * z, t = &o->c, dx = x, dz = z;
+    }
+    if (!t) return false;
+    float err = wrap_pi(atan2f(dx, dz) - c->desired_facing);
+    in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
+    return true;
+}
+
+static void route_defend(const Character *c, CharacterInput *in, uint32_t now)
+{
+    if (!route_defending()) return;
+    const Chr *best = NULL;
+    float bd = 225.0f;
+    for (int i = 0; i < chars_slots(); i++) {
+        const Chr *t = chars_get(i);
+        if (!t || !t->c.ai || !t->c.hit_points || (t->c.flags & 1) || t->ai.state != AI_STATE_COMBAT ||
+            !t->ai.target || &t->ai.target->c != c)
+            continue;
+        float dx = t->c.pos[0] - c->pos[0], dy = t->c.pos[1] - c->pos[1], dz = t->c.pos[2] - c->pos[2];
+        float d = dx * dx + dy * dy + dz * dz;
+        if (d < bd) bd = d, best = t;
+    }
+    if (!best || route_hold_block(c, in)) return;
+    float err = wrap_pi(atan2f(best->c.pos[0] - c->pos[0], best->c.pos[2] - c->pos[2]) - c->desired_facing);
+    in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
+    if (fabsf(err) < 0.3f && now % 8 == 0) {
+        if ((now / 8) % 4 == 3) in->kick = true;
+        else in->punch = true;
+    }
+}
+
 static void route_input(const Character *c, CharacterInput *in)
 {
     if (route.step && c->state == 0x32) {   /* knocked down, whatever the step: up again (forward, a getup move) */
         in->forward = 1;
         return;
     }
+    /* with defend, a hypo used under 40 hit points out of 100, none still healing (tapped) */
+    if (route.step && route_defending() && c->hypos && !c->hypo_heal && c->hit_points * 10 < c->max_hit_points * 4 &&
+        plat_frames() % 2 == 0)
+        in->hypo = true;
     for (int guard = 0; route.step && guard < 8; guard++) {
         char *s = route.step;
         uint32_t now = plat_frames() - splash_frames;
@@ -932,7 +993,10 @@ static void route_input(const Character *c, CharacterInput *in)
         }
         if (*s == 'w') {
             if (!route.phase) route.until = now + (uint32_t)atoi(s + 1), route.phase = 1;
-            if (now < route.until) return;
+            if (now < route.until) {
+                route_defend(c, in, now);
+                return;
+            }
             route_next();
             continue;
         }
@@ -1265,7 +1329,7 @@ static void route_input(const Character *c, CharacterInput *in)
             in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
             /* it is in the air (off an edge, or a jet's jump): waited for where it lands; nor run at
                over an edge */
-            if (t->c.air_ticks) return;
+            if (t->c.air_ticks || route_hold_block(c, in)) return;
             if (dx * dx + dz * dz > 81.0f && !c->pushes) {
                 if (!route_floor_ahead(c->pos, dx, dz)) return;
                 /* standing, she turns only past 70 degrees (HandleStandingTurn): stood 60 frames short
@@ -1906,6 +1970,7 @@ static int play(int level, int *next)
     load_step(30);
     if (plat_param("ailog", at_dummy, sizeof at_dummy)) combat_log = plat_log;
     if (plat_param("physlog", at_dummy, sizeof at_dummy)) physics_debug_log = plat_log;
+    if (plat_param("hitlog", at_dummy, sizeof at_dummy)) chr_hit_debug_log = plat_log;
     Chr *player = chars_player();
     if (!player) {
         plat_log("OpenOni: no player character");
