@@ -197,9 +197,15 @@
 00428250	iAnimationCollection_DiskToMemory	-	med	name from the Intel Mac build (strings:1)
 00428610	TRrAnimation_Prepare	TR	med	name from the Intel Mac build (neighbours:1.00)
 00428700	TRrAnimation_GetVarient	TR	med	name from the Intel Mac build (neighbours:0.75)
+00428710	TRrAnimation_GetType	TR	med	Mac name: TRAM+0x15a
 00428720	TRrAnimation_GetFrom	TR	med	name from the Intel Mac build (neighbours:1.00)
 00428740	TRrAnimation_GetDuration	TR	med	name from the Intel Mac build (neighbours:0.80)
 00428750	TRrAnimation_GetPosition	TR	med	name from the Intel Mac build (neighbours:1.00)
+00428780	TRrAnimation_IsSoundFrame	TR	med	Mac name: the sound's frame (TRAM+0x154), frame 0 without a sound
+004287b0	TRrAnimation_GetSoundName	TR	med	Mac name: TRAM+0x150
+004287c0	TRrAnimation_GetNewSoundForFrame	TR	med	Mac name: TRAM+0x30 records (0x22 bytes) by frame
+00428800	TRrAnimation_SetSoundName	TR	med	Mac name: TRAM+0x150 and the frame at +0x154
+00428900	TRrAnimation_GetMaximumDamage	TR	med	Mac name: the largest attack damage (TRAM+0xc, +0xc)
 00428970	TRrAnimation_GetVocalization	TR	med	Mac name: TRAM+0x4e
 00428980	TRrAnimation_TestAttackFlag	TR	med	name from the Intel Mac build (neighbours:1.00)
 00428a20	TRrAnimation_TestFlag	TR	med	name from the Intel Mac build (neighbours:1.00)
@@ -1642,6 +1648,7 @@
 00511e40	OSrAmbient_Stop	OS	low	the ambient of the id stopped (name made up)
 00511ec0	OSrAmbient_Update	OS	low	whether the ambient of the id still plays, its place moved (name made up)
 00511f00	OSiAmbient_Update	OS	med	name from the Intel Mac build (neighbours:1.00)
+00512500	OSrImpulse_PlayByName	OS	med	Mac name: the impulse by name, then as OSrImpulse_Play
 005125c0	OSiDialog_Play	OS	low	a dialogue line started, its subtitle shown when on
 00512700	OSrMusic_Halt	OS	med	name from the Intel Mac build (neighbours:1.00)
 00512720	OSrMusic_IsPlaying	OS	med	name from the Intel Mac build: the music id (0x61fa00) kept
@@ -1667,6 +1674,8 @@
 00515a00	OSrFlyby_Delete	OS	low	made up: the last step, the record freed
 00515a70	OSrVariant_SoundAnimation_Add	OS	med	name from the Intel Mac build (neighbours:1.00)
 00515c90	OSrVariantList_Initialize	OS	med	name from the Intel Mac build (strings:1)
+00516110	OSiSABinaryData_Register	OS	med	Mac name: the SABD class, handler 0x5161d0
+005161d0	OSiSABinaryData_Load	OS	med	Mac name: SAFT, SAVT, SASA chunks
 00516670	OSiVariant_Impulse_Get	OS	med	name from the Intel Mac build (strings:1)
 00516940	ONrSpeech_Say	ON	med	name from the Intel Mac build (neighbours:1.00)
 00516a00	ONrSpeech_Stop	ON	med	name from the Intel Mac build; stops the character's speech

@@ -59,6 +59,7 @@
 #include "ui_draw.h"
 #include "sl.h"
 #include "sound.h"
+#include "sound_anim.h"
 #include "vfs.h"
 #include "igui.h"
 #include "li.h"
@@ -2049,6 +2050,7 @@ static int play(int level, int *next)
     if (plat_param("ailog", at_dummy, sizeof at_dummy)) combat_log = plat_log;
     if (plat_param("physlog", at_dummy, sizeof at_dummy)) physics_debug_log = plat_log;
     if (plat_param("hitlog", at_dummy, sizeof at_dummy)) chr_hit_debug_log = plat_log;
+    if (plat_param("soundlog", at_dummy, sizeof at_dummy)) sound_anim_trace = plat_log;
     Chr *player = chars_player();
     if (!player) {
         plat_log("OpenOni: no player character");
@@ -2375,6 +2377,8 @@ int app_main(void)
     prepare_collections(zero);
     sound_initialize();
     sound_level_load(0);
+    sound_anim_log = plat_log;
+    sound_anim_load();          /* the binary data's SABD over the variant list (0x5161d0) */
     impact_types_load();        /* MArImpacts_PreProcess, MArMaterials_PreProcess */
     impact_effects_load();      /* the ONIE block */
     char viewer[32], lv[16];

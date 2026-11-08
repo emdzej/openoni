@@ -12,9 +12,11 @@
 enum {
     TRAM_ATTACK_LIST = 0x0c,        /* .raw: 0x20 bytes each (parts u32, damage s16 at +0xc, frames +0xe..+0x10) */
     TRAM_THROW = 0x1c,              /* .raw: the throw, 0 if none */
+    TRAM_SOUNDS = 0x30,             /* .raw: 0x22 bytes each, an impulse's name (32) and its frame (u16) */
     TRAM_LINKS = 0x38,              /* two TRAM links: the moves that follow without a pause */
     TRAM_FINAL_ROTATION = 0x48,     /* float: the turn the animation makes, applied at its end */
     TRAM_SOFT_PAUSE = 0x148,
+    TRAM_SOUND_COUNT = 0x14c,       /* u32: the records at 0x30 */
     TRAM_HARD_PAUSE = 0x14a,
     TRAM_ATOMIC_START = 0x16c,
     TRAM_ATOMIC_END = 0x16e,
@@ -127,9 +129,18 @@ extern void (*chr_sound_hook)(Character *c, int type, const float pos[3], float 
    (RemapAnimationHook 0x4ea550), and a throw's start (its part of NewAnimationHook 0x4e97a0). */
 /* ONrOverlay_Set 0x4d7b80. */
 void chr_overlay_set(Character *c, int slot, const void *anim, uint32_t flags);
-/* The overlays' step of DoCharacterFrame: a frame on, gone at their duration; chr_overlay_hook (the
-   weapons') at slot 1's action frame. */
-void chr_overlays_advance(Character *c);
+/* DoCharacterFrame 0x4df283, after the move: whether the animation sounds at its frame (0x428780, the
+   variant's impulse) and its own record for the frame (0x4287c0), the name empty if none. Both play
+   after the overlays. */
+typedef struct {
+    bool variant;
+    char named[33];
+} ChrFrameSounds;
+ChrFrameSounds chr_frame_sounds(const Character *c);
+/* The overlays' step of DoCharacterFrame (0x4dfb07): chr_overlay_hook (the weapons') at slot 1's action
+   frame, the variant's impulse at the overlay's sound frame, a frame on, gone at their duration; then
+   the animation's sounds tested before (0x4dfe5a, 0x4dfe81) at the location. */
+void chr_overlays_advance(Character *c, const ChrFrameSounds *s);
 extern void (*chr_overlay_hook)(Character *c, const void *anim);
 extern const void *(*chr_remap_hook)(Character *c, const void *next);
 extern void (*chr_throw_hook)(Character *c);

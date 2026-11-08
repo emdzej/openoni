@@ -8,6 +8,8 @@
 #include "impact.h"
 #include "m3gm.h"
 #include "particle.h"
+#include "sound.h"
+#include "sound_anim.h"
 #include "ui.h"
 #include "tm.h"
 #include "trac.h"
@@ -1040,8 +1042,34 @@ void chr_overlay_set(Character *c, int slot, const void *anim, uint32_t flags)
 
 void (*chr_overlay_hook)(Character *c, const void *anim);
 
-void chr_overlays_advance(Character *c)
+/* TRrAnimation_GetNewSoundForFrame 0x4287c0: the animation's record of the frame (TRAM +0x30), NULL if none. */
+static const uint8_t *frame_sound(const void *tram, uint16_t frame)
 {
+    const uint8_t *t = tram;
+    uint32_t n = rd32(t + TRAM_SOUND_COUNT);
+    for (uint32_t i = 0; i < n; i++) {
+        const uint8_t *r = raw_block(tram, TRAM_SOUNDS, 0x22u * i, 0x22);
+        if (!r) return NULL;
+        if (rd16(r + 0x20) == frame) return r;
+    }
+    return NULL;
+}
+
+ChrFrameSounds chr_frame_sounds(const Character *c)
+{
+    ChrFrameSounds s = { 0 };
+    s.variant = sound_anim_at_frame(c->anim, (uint16_t)c->frame);
+    const uint8_t *r = c->anim ? frame_sound(c->anim, (uint16_t)c->frame) : NULL;
+    if (r) memcpy(s.named, r, 32);
+    return s;
+}
+
+/* The class's variant (ONCC +0x42c). */
+static const void *variant(const Character *c) { return c->oncc ? tm_link((const uint8_t *)c->oncc + 0x42c) : NULL; }
+
+void chr_overlays_advance(Character *c, const ChrFrameSounds *s)
+{
+    float loc[3];
     for (int k = 0; k < CHR_OVERLAYS; k++) {
         ChrOverlay *o = &c->overlay[k];
         if (!o->anim) continue;
@@ -1049,8 +1077,20 @@ void chr_overlays_advance(Character *c)
         if (k == CHR_OVERLAY_WEAPON && (int)o->frame == (int16_t)rd16((const uint8_t *)o->anim + 0x174) && chr_overlay_hook)
             chr_overlay_hook(c, o->anim);
         if (!o->anim) continue;
-        /* the overlay's sounds (0x428780, OSiVariant_Impulse_Get): with the sound's variants */
+        if (sound_anim_at_frame(o->anim, o->frame)) {          /* 0x4dfe07 */
+            chr_location(c, loc);
+            sound_anim_play(variant(c), o->anim, loc);
+        }
         if (++o->frame == tr_duration(o->anim)) o->anim = NULL, o->frame = 0;
+    }
+    if (!s) return;
+    if (s->variant) {
+        chr_location(c, loc);
+        sound_anim_play(variant(c), c->anim, loc);              /* the animation now (A+0x1af8 again) */
+    }
+    if (s->named[0]) {
+        chr_location(c, loc);
+        sound_impulse_play_at(sound_impulse_find(s->named), loc, NULL);    /* OSrImpulse_PlayByName 0x512500 */
     }
 }
 

@@ -941,9 +941,10 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
         memcpy(c->prev_pos, c->pos, sizeof c->pos);     /* step 12: C+0x154 */
         for (int k = 0; k < 3; k++) c->pos[k] += w[k];
         c->pos[1] = before[1];
+        ChrFrameSounds sounds = chr_frame_sounds(c);
         super_level_step(c);
+        chr_overlays_advance(c, &sounds);               /* step 15, before the animation's (17) */
         chr_frame_advance(c);
-        chr_overlays_advance(c);
         if (character_frame_hook) character_frame_hook(c, CHR_FRAME_FIRE);
         chr_build_quaternions(c);
         chr_bone_matrices(c);
@@ -955,9 +956,10 @@ static void do_frame(Character *c, const void *env, const ChrInput *in)
     }
     if (!c->has_physics) physics_start(c);
     physics_take(c, w);                                 /* step 12 */
+    ChrFrameSounds sounds = chr_frame_sounds(c);        /* 0x4df283 */
     super_level_step(c);
+    chr_overlays_advance(c, &sounds);                   /* step 15, before the animation's (17) */
     chr_frame_advance(c);
-    chr_overlays_advance(c);
     if (character_frame_hook) character_frame_hook(c, CHR_FRAME_FIRE);
     chr_build_quaternions(c);
     chr_bone_matrices(c);       /* 0x4e5a30: the parts' matrices (the pelvis, where particles hang) */

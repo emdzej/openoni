@@ -93,6 +93,7 @@ void sound_impulse_play_ss_at(const char *name, const float pos[3]);
    for full. */
 const void *sound_impulse_find(const char *name);
 float sound_impulse_impact_velocity(const void *impulse);
+const char *sound_impulse_name(const void *impulse);
 void sound_impulse_play_at(const void *impulse, const float pos[3], const float *volume);
 /* The projectiles' flybys (0x61fa38, 24 records). 0x5156f0: a record for a particle of a class with a
    flyby impulse, at pos (its place now); the slot, -1 if all 24 are taken. 0x515a00, the particle's end:

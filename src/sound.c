@@ -1759,6 +1759,7 @@ void sound_music_volume(const char *name, float volume, float seconds)
 }
 
 const void *sound_impulse_find(const char *name) { return loaded ? find_nocase(&impulses, name) : NULL; }
+const char *sound_impulse_name(const void *impulse) { return impulse ? ((const Impulse *)impulse)->name : NULL; }
 float sound_impulse_impact_velocity(const void *impulse) { return impulse ? ((const Impulse *)impulse)->impact_velocity : 0.0f; }
 
 /* SSrAmbient_Start without a place (0x4823a0) at the volume: the id, UINT32_MAX none. */

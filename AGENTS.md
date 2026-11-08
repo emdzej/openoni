@@ -51,7 +51,7 @@ Steps 4 (renderer), 6 (character) and 7 (scripts) have begun:
   `src/knowledge.c` (sight, hurts, the alert), `src/combat.c` (the combat settings, behaviours,
   maneuvers, the gun pickup, targeting and the executor's aim) `src/melee.c` (the melee profiles and techniques), `src/neutral.c` (the neutral characters'
   conversations and the characters' speech) and `src/panic.c` (the non-combatants' panic; all
-  in [docs/re/ai.md](docs/re/ai.md)) move the others; `--param ailog=1` logs each fighter once a second, `--param physlog=1` the player's moves the walls stop, `--param hitlog=1` each hit the player takes (the attacker's animation, the angle, whether she could block).
+  in [docs/re/ai.md](docs/re/ai.md)) move the others; `--param ailog=1` logs each fighter once a second, `--param physlog=1` the player's moves the walls stop, `--param hitlog=1` each hit the player takes (the attacker's animation, the angle, whether she could block), `--param soundlog=1` each animation sound played (`src/sound_anim.c`, the SABD records: [docs/formats/sabd.md](docs/formats/sabd.md)).
   `--param call=<function>[,...]` runs level functions at the start (e.g. `spawn_top,final_striker_attack` on level 1).
 - `src/character.c`: a first playable. `--param play=1 --param level=1` runs Konoko through level 1
   (`--param at=x,y,z,deg` starts her elsewhere); `--param viewer=level` flies through a level. `--param

@@ -71,6 +71,7 @@ export default defineConfig({
           { text: "Corpses (CRSA)", link: "/formats/crsa" },
           { text: "Sounds (SNDD)", link: "/formats/sndd" },
           { text: "Sound groups (OSBD)", link: "/formats/osbd" },
+          { text: "Animation sounds (SABD)", link: "/formats/sabd" },
           { text: "Fonts (TSFF)", link: "/formats/font" },
           { text: "Text (SUBT, IGSt, ...)", link: "/formats/text" },
         ],

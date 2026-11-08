@@ -26,7 +26,7 @@ flags.
 | 0x24 | `.raw`: attacks, 0x18 bytes each, their frame range in the first two u16s; the count is the byte at 0x17f (0x4288c0) |
 | 0x28 | `.raw`: 8 bytes a frame: +4 the body's height (u16), +6 its bottom (s16), both in 0.01 (TRrIntersectAnimations 0x42a250) |
 | 0x2c | `.raw`: the rotations (below) |
-| 0x30 | `.raw`: 0x22 bytes each, the count at 0x14c, looked up by the u16 at +0x20 (0x4287c0) |
+| 0x30 | `.raw`: the per-frame sounds, 0x22 bytes each: an impulse's name (32 bytes) and the frame (u16 +0x20); the count is the u32 at 0x14c (`TRrAnimation_GetNewSoundForFrame` 0x4287c0, [animation sounds](./sabd)) |
 | 0x34 | Flags. Bit 0 is the run time's "prepared" |
 | 0x38 | Two links to other `TRAM`s |
 | 0x4c | u16: the direction an attack pushes the attacker back (0, 1, 5 forward; 2 back; 3 left; 4 right); 0 means the u32 at 0x12c |
@@ -37,6 +37,7 @@ flags.
 | 0x12c | u32: the direction, when 0x4c is 0 |
 | 0x130 | u32: the count of attack points |
 | 0x134 | `.raw`: the attack points, 12 bytes each: the frame (u16), the angle (byte +3, 256ths of the circle), the reach (u16 +4), the bottom and top (s16 +8, +0xa), all lengths in 0.01 |
+| 0x150, 0x154 | Run time: the animation's sound (a name) and its frame (u16), set from the [animation sounds](./sabd) (`TRrAnimation_SetSoundName` 0x428800); 0 in the files |
 | 0x156 | Frames per second, 60 on the CD |
 | 0x158 | Bytes per rotation key: 6 or 16 on the CD |
 | 0x15a | Animation type (0x428710) |
