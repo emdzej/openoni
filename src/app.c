@@ -1891,7 +1891,7 @@ static void game_display(void)
     ui_draw_letterbox(w, h);
     bool hud = gs_show_ui && !ui_letterbox_on();
     if (display.player && hud) ui_draw_hud(w, h, &display.player->c, display.ticks);
-    ui_draw(w, h, hud);
+    ui_draw(w, h);
     int dw, dh;
     ui_draw_wm_begin(w, h, &dw, &dh);   /* the WM's windows over it, in its own pixels */
     gl_dev_set_dry(false);

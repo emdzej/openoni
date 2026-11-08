@@ -174,8 +174,8 @@ void char_draw_character(const Character *c, int slot)
 }
 
 /* 0x4e1540's first part: the corpses, the cosmetic ones (named "_...") only from the quality 1
-   (0x508540), the class's lowest body or, from the quality 3 (0x508550), the next; the visibility of
-   their octree nodes (0x440b50) isn't ported: all are drawn */
+   (0x508540), the class's lowest body or, from the quality 3 (0x508550), the next; only those with one
+   of their octree leaves seen (0x440b50, corpse_visible) */
 void char_draw_corpses(void)
 {
     int q = persist_quality();

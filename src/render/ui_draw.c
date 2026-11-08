@@ -127,29 +127,13 @@ void ui_draw_letterbox(int w, int h)
     }
 }
 
-void ui_draw(int w, int h, bool hud)
+void ui_draw(int w, int h)
 {
     gl_dev_screen(w, h);
     float scale = (float)h / 480.0f;
-    float lb = ui_letterbox() * scale;
     /* the console's text areas (ONrGameState_Display: 0x430400, 0x4303e0), at 640 by 480 */
     wm_scale = scale;
     ui_area_display((int16_t)((float)w / scale), area_glyphs, NULL);
-    const void *family = font_family_get("Tahoma");
-    uint16_t size = 12;
-    uint32_t style = FONT_STYLE_PLAIN;
-    const void *font = family ? font_family_best_font(family, &size, &style) : NULL;
-    if (font) {
-        float lh = font_line_height(font) * scale;
-        /* the timer (ONrGameState_Timer_Display 0x4fd500): centred, near the top (its place inferred:
-           0x4264e0's offsets aren't decoded) */
-        char tt[32];
-        if (hud && ui_timer_text(tt)) {
-            static const uint8_t white[4] = { 255, 255, 255, 255 };
-            float tw = walk(font, 0, 0, scale, tt, white, false);
-            ui_draw_text(font, ((float)w - tw) / 2, lb + lh * 2, scale, tt, white);
-        }
-    }
     /* the fade over everything (ONrBlanketScreen) */
     float f[4];
     if (ui_fade(f)) {
@@ -471,10 +455,10 @@ static void draw_help(int w, float scale)
         } else pt[k][0] = (int16_t)(pt[k][0] - 64), pt[k][1] = (int16_t)(pt[k][1] - 64);
         if (hh.texture[k] && ui_element_shown(k)) {
             float x0 = pt[k][0] * scale, y0 = pt[k][1] * scale;
-            /* under the HUD's draw states, its pictures' (drawn added, as the elements': inferred), the
-               constant colour white (state 7, -1) */
+            /* under the HUD's draw states, the constant colour white (state 7, -1); left_help and
+               right_help have the flag 0x400, drawn added */
             sprite(x0, y0, x0 + tx16(hh.texture[k], TXMP_WIDTH) * scale, y0 + tx16(hh.texture[k], TXMP_HEIGHT) * scale,
-                   false, hh.texture[k], 255, GL_DEV_SCREEN_ADD);
+                   false, hh.texture[k], 255, GL_DEV_SCREEN);
         }
     }
     const void *family = font_family_get(exe_str(0x534354));
@@ -512,6 +496,27 @@ static void draw_help(int w, float scale)
                 wm_glyphs(font, (float)(runs[r].x + dx + !pass), (float)(pen[1] + runs[r].line * lh + dy + !pass),
                           runs[r].s, runs[r].n, pass ? runs[r].colour : 0xff3f3f3fu, all);
     }
+}
+
+/* ONrGameState_Timer_Display 0x4fd500 (from 0x50061f, while the right element is shown): the text in
+   the context of ONrGameState_Timer_LevelBegin 0x4fd270, Tahoma 7 bold, shaded white, centred on the
+   right ring's centre (0x5ed010): the pen at the centre chopped (0x4264e0) less half the string's width
+   (TSrContext_GetStringRect 0x42e920), and lower by half the font's ascending height (0x42eec0). */
+static void draw_timer(float cx, float cy, float scale)
+{
+    char tt[32];
+    const void *family = font_family_get(exe_str(0x534354));
+    if (!family || !ui_timer_text(tt)) return;
+    uint16_t size = 7;
+    uint32_t style = FONT_STYLE_BOLD;
+    const void *font = font_family_best_font(family, &size, &style);
+    if (!font) return;
+    static const uint8_t white[4] = { 255, 255, 255, 255 };
+    FontInfo fi;
+    font_info(font, &fi);
+    uint16_t tw = (uint16_t)walk(font, 0, 0, 1.0f, tt, white, false);
+    int x = (int)cx - (tw >> 1), y = (int)cy + ((uint16_t)fi.ascending >> 1);
+    ui_draw_text(font, (float)x * scale, (float)y * scale, scale, tt, white);
 }
 
 /* The right element (0x4fff50 on): its picture, the health and the inventory. */
@@ -554,6 +559,7 @@ static void draw_right(int w, int h, const Character *c, const void *right, cons
             arc(cx, cy, hud->health[i].a0, hud->health[i].a1, (i & 1) ? 55.0f : 50.0f, 40.0f, 24, ring, scale, col,
                 (uint8_t)(i < 2 ? a : a2));
     draw_inventory(c, hud, cx, cy, ring, scale);
+    draw_timer(cx / scale, cy / scale, scale);
 }
 
 /* ---- the window manager's drawing ---- */

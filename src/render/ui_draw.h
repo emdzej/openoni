@@ -6,9 +6,8 @@
 
 /* The letterbox's bars (ONrGameState_LetterBox_Display 0x4fceb0), before the HUD. */
 void ui_draw_letterbox(int w, int h);
-/* The rest over the HUD: the text areas, the timer (the HUD's own, 0x4fd500 from 0x4fff50: with hud),
-   the fade. */
-void ui_draw(int w, int h, bool hud);
+/* The rest over the HUD: the text areas, the fade. */
+void ui_draw(int w, int h);
 /* A string with a font at (x, the baseline y), its pixels scaled; returns the pen's x after it. c: RGBA. */
 float ui_draw_text(const void *font, float x, float y, float scale, const char *s, const uint8_t c[4]);
 
