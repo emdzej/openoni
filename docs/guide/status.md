@@ -1,9 +1,11 @@
 # Status
 
-Under way: every level plays through to the end of the game, driven by scripted routes; much of the
-presentation is still missing. The routes play with the game's own cheats on (invincible, mostly
-omnipotent): their fighting is blind, and without the cheats only level 1's route lives through its
-level. Level 1's training plays through to its end, with the level's own scripts driving the lessons:
+Under way, and playable from the intro movie to the outro: all 14 levels play through to the end of
+the game, checked by scripted routes after every change, with the game's front end, HUD, cutscenes,
+films, movies, saves and options. The routes play with the game's own cheats on (invincible, mostly
+omnipotent): the test bot's fighting is blind, and without the cheats it loses its fights, which is the
+bot's skill and not a known fault of the port. Play by hand is being tested now; what isn't ported yet
+is small and marked in the code. Level 1's training plays through to its end, with the level's own scripts driving the lessons:
 movement, combat, the shooting range, the rifle and the two training drones. Then the cutscene after the
 training plays, its actors moved by the game's own recorded films, and the warehouse mission plays
 through: the consoles open the way, the thugs come at Konoko, she finds the LSI, frees the hostage who

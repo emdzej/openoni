@@ -8,8 +8,9 @@
 
 /* FXrDrawLaser 0x4f4720: the beam's side the cross of the eye-to-start line with the beam, set to 0.2
    (0x5531b8; at least 0.001 long before, 0x529dfc), the points' colour the trigger's RGB, its alpha the
-   colour's top byte. Drawn through M3rContrail_Draw without a texture (inferred: blended, as the
-   contrails; the draw states 0x41e750 sets aren't decoded yet). */
+   colour's top byte. Drawn through M3rContrail_Draw 0x41a8e0 without a texture, in a pushed draw state
+   (0x41e750, popped by 0x41e7f0) with the depth write off (state 4 = 0, 0x4f473a) and the depth test
+   kept; blended by the colour's alpha (inferred, as the contrails). */
 void laser_draw(const float view[16])
 {
     float eye[3];
