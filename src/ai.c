@@ -485,6 +485,12 @@ void ai_take_control(AiState *a, Character *c)
 
 void ai_update(AiState *a, Character *c, const void *env)
 {
+    /* AI2rUpdateAI 0x489d40 runs only the living (C+0x04 bit 1 clear): a dead AI's path, executor and
+       scripts stop; its frame still runs (ONrGameState_UpdateCharacters) */
+    if (c->flags & 1) {
+        character_update_dead(c, env);
+        return;
+    }
     /* AI2rUpdateAI 0x489d40: the daze runs out while lying */
     if (a->daze_timer && (c->state == 0x12 || c->state == 0x32)) a->daze_timer--;
     /* the job's place is kept while at it (in its patrol; the original's test of the patrol's own

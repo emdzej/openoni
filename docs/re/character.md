@@ -146,7 +146,7 @@ reader 0x4bf290 builds it from the `OBJC` chunk, version by version; its size, 0
 | 0x104 | float[3] | The motion as the jump was asked (0x4dc7e0, the velocity estimate); at takeoff y + ONCC+8 and at least ONCC+8 / 2 the way the keys go | HandleStartJumping 0x4fa2f0, DoCharacterFrame | confirmed |
 | 0x110 | u8 | Jump velocity given | DoCharacterFrame | inferred |
 | 0x111 | u8 | Jump start point taken | DoCharacterFrame | inferred |
-| 0x112 | u16 | Jump delay: at 0 the jump starts (+0xf6 = 1). Only counted down: nothing in v1.0 sets it | DoCharacterFrame | confirmed |
+| 0x112 | u16 | The tractor beam's hold: at 0 a fall starts (+0xf6 = 1). Set by type 6's damage (0x517edd) | DoCharacterFrame, 0x5179f0 | confirmed |
 | 0x114 | float[3] | Jump start point | DoCharacterFrame | inferred |
 | 0x120 | ptr | Character jumped at: steers the air velocity toward it | DoCharacterFrame | inferred |
 | 0x124 | u32 | Countdown | DoCharacterFrame | |
@@ -278,7 +278,7 @@ objects by the movement the characters left in +0xc4, with the ground callbacks)
    = type. C+0x18c = root height (0x428820).
 7. Scripted animation (physics +0x130) ends at its last frame.
 8. **Dying (flag 2)**: matrices (steps 15's four calls), corpse drift, return.
-9. **Jump/fall** (**falling**): A+0x112 countdown starts the jump; A+0x21dc starts a fall (velocity
+9. **Jump/fall** (**falling**): A+0x112 (the tractor beam's hold) counts down, then a fall starts; A+0x21dc starts a fall (velocity
    0x4eafc0 or the jump's); on the ground the motion is the animation's root motion
    (`TRrAnimation_GetPosition` 0x428750, blended while interpolating), stepped down by up to 4 to stay on
    the ground (`AKrCollision_Point` 0x441c80), else y − 0.5; in the air, A+0xf8 with gravity, steering
@@ -610,6 +610,25 @@ everything is cleared); the queued cry's ticks run down and at 0 it plays at the
 medium one counts, the next after half the wait; a heavy one clears everything, the next after the wait.
 
 ### The shields against a particle's damage
+
+Past the shields (confirmed, 0x517c4b on): the class's resistance to the damage's type, then the hit puts
+the character in fight mode (0x4eb0b0: A+0x1ca0 bit 0x200, A+0x1ca2 the class's ONCC+0xc44; an inactive
+character is first made active, 0x4db830, an active one's C+0x1640 cleared), then
+`ONrCharacter_TakeDamage` with the damage, none for type 6. Unless unstoppable, the type's reaction (the
+jump table 0x517f18): 0 the hit overlay (0x4f1210: A+0x1c70, type 0xe8 for an AI, C+0x1e8 2, else 0x39,
+or 0x39, from state 1 in the character's variant; the behemoth's flinch inlines the same at 0x4e804c), 1
+to 5 the stuns and knockdowns, 6 the tractor beam's hold: not held yet (A+0x112 0), A+0x124 gathers the
+damage (down by 1 a tick, 0x4de372) and nothing more until it reaches 100; held, or once it does, for
+a character's particle (owner kind 1 or 2) whose character is still there, A+0x112 grows by the stun
+(at most 60) and A+0x120 holds the shooter.
+
+The hold in DoCharacterFrame (0x4de6c4): A+0x112 down by 1, and at 0 a fall starts (A+0xf6 1, A+0x120
+cleared, the fall's height). Held, the tick's motion is the air velocity (A+0xf8), which slows by a
+tenth; then the pull toward the shooter: where it found the character kept once (A+0x114, A+0x111 set;
+cleared when not held); beyond 40 across, the velocity toward the shooter by 0.04 (in the character's
+space, turned by its facing); up toward 12 over the shooter, more by 0.3 of the way past 40, but no
+higher than 1.2 times the way across from A+0x114 over its height, by 0.12/40 of the gap (clamped to
+40); and past a speed of 2.5 the excess cut to 0.8 of itself. Ported in `weapon.c` and `character.c`.
 
 A particle's damage (0x5179f0, after 0x5178c0's direction; a particle hurts once, A+0x18c): with a force
 shield left (C+0x1b8), the Daodan's (C+0x04 bit 0x40000000) or the super shield up (0x4e64d0: ONCC+0xc8e

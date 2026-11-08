@@ -626,7 +626,7 @@ static void handlers(Character *c, const ChrInput *in, bool can_fight)
 {
     if (c->landing && handle_start_landing(c, in)) return;
     /* HandleStartFalling: long in the air (91 ticks), the long fall */
-    if (c->air_ticks && (c->jump_delay || c->air_ticks >= 0x5b) && chr_do_animation(c, CHR_ANIM_NOW, 0xdc)) return;
+    if (c->air_ticks && (c->hold_ticks || c->air_ticks >= 0x5b) && chr_do_animation(c, CHR_ANIM_NOW, 0xdc)) return;
     /* Stun and block (the countdowns A+0x1c96, 0x1c94, 0x1c98, 0x1c9a, HandleStun): with the
        damage; they stay 0. */
     switch (c->type) {
@@ -714,24 +714,61 @@ static bool keeps_off_ground(uint16_t t)
            (t >= 0x7e && t <= 0x84) || t == 0x8d || t == 0xc6 || (t >= 0xd4 && t <= 0xd7);
 }
 
+/* 0x4de759: the tractor beam's pull on a held character (the air velocity, in the character's space):
+   beyond 40 across, toward the shooter by 0.04 (turned by the facing); up toward 12 over the shooter
+   (more by 0.3 of the way past 40), no higher than 1.2 times the way from where the pull found it (A+0x114)
+   over that, by 0.003 of the gap (at most 40); past a speed of 2.5, the excess cut to 0.8. */
+static void held_pull(Character *c, const Character *by)
+{
+    float dx = by->pos[0] - c->pos[0], dz = by->pos[2] - c->pos[2];
+    float d = sqrtf(dx * dx + dz * dz);
+    if (!c->held_from_set) {
+        memcpy(c->held_from, c->pos, sizeof c->held_from);
+        c->held_from_set = true;
+    }
+    float *w = c->air_velocity;
+    if (d > 40.0f) {
+        float cs = cosf(c->facing), sn = sinf(c->facing);
+        w[0] += (cs * dx - sn * dz) * 0.04f / d;
+        w[2] += (sn * dx + cs * dz) * 0.04f / d;
+    }
+    float y = by->pos[1] + 12.0f;
+    if (d > 40.0f) y += (d - 40.0f) * 0.3f;
+    float fx = c->held_from[0] - c->pos[0], fz = c->held_from[2] - c->pos[2];
+    float top = sqrtf(fz * fz + fx * fx) * 1.2f + c->held_from[1];
+    if (y > top) y = top;
+    float dy = y - c->pos[1];
+    if (dy < -40.0f) dy = -40.0f;
+    else if (dy > 40.0f) dy = 40.0f;
+    w[1] += dy * 0.12f / 40.0f;
+    float sp = sqrtf(w[0] * w[0] + w[2] * w[2] + w[1] * w[1]);
+    if (sp > 2.5f) {
+        float k = ((sp - 2.5f) * 0.8f + 2.5f) / sp;
+        w[0] *= k, w[1] *= k, w[2] *= k;
+    }
+}
+
 /* Step 9 of DoCharacterFrame: the jump's delay, the start of a jump or a fall, and the tick's motion
    (in the character's space): on the ground the animation's root motion, kept down on the ground
    (AKrCollision_Point 0x441c80 down 4: the gap if it is 0.5 to 4, else 0.5); in the air the air
-   velocity, which gravity (ONCC+4) slows down to the fall's limit (ONCC+0xc). Not ported: the steering
-   toward a character jumped at (A+0x120, never set by the player), the death after 300 ticks in the
-   air (with the damage), the film's movement log. */
+   velocity, which gravity (ONCC+4) slows down to the fall's limit (ONCC+0xc). Held by a tractor beam
+   (A+0x112), the air velocity instead, slowing by a tenth, and the pull toward the shooter (0x4de759).
+   Not ported: the death after 300 ticks in the air (with the damage), the film's movement log. */
 static void jump_and_fall(Character *c, const void *env, uint64_t held, float v[3])
 {
-    if (c->jump_delay && !--c->jump_delay) {
+    if (c->hold_ticks && !--c->hold_ticks) {
         c->air_ticks = 1;
+        c->held_by = NULL;
         c->fall_height = c->pos[1];
     }
-    if (c->jump_delay) {
+    if (c->hold_ticks) {
         memcpy(v, c->air_velocity, sizeof c->air_velocity);
         c->air_ticks++;
         for (int k = 0; k < 3; k++) c->air_velocity[k] *= 0.9f;   /* 0x5295a4 */
+        if (c->held_by) held_pull(c, c->held_by);
         return;
     }
+    c->held_from_set = false;
     if (c->start_falling) {
         c->no_ground_ticks = 0;
         if (!c->air_ticks) {
@@ -1012,6 +1049,19 @@ void character_update_input(Character *c, const ChrInput *in, const void *env)
     ChrInput b = *in;
     film_update(c, &b);             /* DoFilmUpdate 0x4ed420, from the AI's (0x489d40) */
     c->held = b.held;
+    if (!(c->flags & 2)) heartbeat_input(c, &b);
+    do_frame(c, env, &b);
+}
+
+/* A dead AI's frame: AI2rUpdateAI 0x489d40 passes it by (no executor, no DoFilmUpdate), so its input
+   is the last tick's, which the dead's heartbeat clears. */
+void character_update_dead(Character *c, const void *env)
+{
+    c->time++;
+    ChrInput b;
+    memset(&b, 0, sizeof b);
+    b.held = c->held;
+    b.not_held = ~b.held;
     if (!(c->flags & 2)) heartbeat_input(c, &b);
     do_frame(c, env, &b);
 }

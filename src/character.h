@@ -210,7 +210,12 @@ typedef struct Character {
                                        AKrNodeFromPoint's), -1 none: set where it is put, and once a tick */
     float jump_velocity[3];         /* A+0x104: the motion as the jump was asked for */
     bool jump_given;                /* A+0x110 */
-    uint16_t jump_delay;            /* A+0x112 (nothing in v1.0 sets it) */
+    /* the tractor beam's hold (type 6's damage, weapon.c) */
+    bool held_from_set;             /* A+0x111: held_from kept */
+    uint16_t hold_ticks;            /* A+0x112: the hold's ticks left (it lifts the character) */
+    float held_from[3];             /* A+0x114: where the pull found the character */
+    const struct Character *held_by;    /* A+0x120: the shooter it pulls toward */
+    uint32_t hold_damage;           /* A+0x124: the damage gathered toward a hold, down by 1 a tick */
     bool start_falling;             /* A+0x21dc */
     bool landing, hard_landing;     /* A+0x21dd, 0x21de */
     /* hits (chr_hit.h) */
@@ -307,6 +312,8 @@ void character_update_keys(Character *c, uint64_t held, float turn, const void *
 void character_update_aim(Character *c, uint64_t held, float turn, float pitch, const void *env);
 /* The same from a whole input block (the AI's executor makes its own "went down" bits). */
 void character_update_input(Character *c, const ChrInput *in, const void *env);
+/* A dead AI's frame, with no AI (AI2rUpdateAI 0x489d40 skips the dead). */
+void character_update_dead(Character *c, const void *env);
 /* 0x4e3d00: the character doesn't turn to its desired facing by itself now. */
 bool chr_holds_facing(const Character *c);
 /* 0x4e3230: how far the facing is from the desired one (signed, the long way round kept as the turn

@@ -973,7 +973,8 @@ void chr_frame_countdowns(Character *c)
     if (c->block_pause) c->block_pause--;
     if (c->countdown_1c98) c->countdown_1c98--;
     if (c->countdown_1c9a) c->countdown_1c9a--;
-    /* A+0x281c (the footstep display) and A+0x124: not kept */
+    if (c->hold_damage) c->hold_damage--;
+    /* A+0x281c (the footstep display): not kept */
     c->tick_type = c->type;
     double h = height(c->anim, (uint16_t)c->frame);
     if (c->interpolating) {

@@ -606,6 +606,17 @@ static void start_scripts(void)
 /* The level's environment, for the route's glass targets. */
 static const void *route_env;
 
+/* Floor 12 ahead of p the way (dx, dz) goes, within 30 below: the fights' runs keep off the edges (a
+   run's stop carries her some 12). */
+static bool route_floor_ahead(const float p[3], float dx, float dz)
+{
+    float l = sqrtf(dx * dx + dz * dz);
+    if (!route_env || l < 1e-3f) return true;
+    static AkevHit hit[AKEV_HITS_MAX];
+    const float at[3] = { p[0] + dx / l * 12.0f, p[1] + 4.0f, p[2] + dz / l * 12.0f }, down[3] = { 0.0f, -30.0f, 0.0f };
+    return akev_collide_point(route_env, at, down, 0x48800, 1, hit) != 0;
+}
+
 /* The centre of the unbroken glass (quad flag 0x200000 without 0x40000) of the script id, false if none. */
 static bool glass_centre(uint32_t id, float out[3])
 {
@@ -1087,8 +1098,8 @@ static void route_input(const Character *c, CharacterInput *in)
             continue;
         }
         if (*s == 'N') {
-            /* "N<name>,N": for up to N frames, a talk with the character (a neutral): walked up to
-               within 20, turned to it, the action key tapped every 30 frames until the conversation
+            /* "N<name>,N": for up to N frames, a talk with the character (a neutral): through the rooms
+               to it when far (as "X"), walked up to within 20, turned to it, the action key tapped every 30 frames until the conversation
                begins; done when it has ended */
             char name[64];
             int n = 0;
@@ -1102,6 +1113,28 @@ static void route_input(const Character *c, CharacterInput *in)
             if (c->talk_partner) { route.phase = 2; return; }
             if (!t || route.phase == 2 || now >= route.until) { route_next(); continue; }
             float dx = t->c.pos[0] - c->pos[0], dz = t->c.pos[2] - c->pos[2];
+            /* far (past 30, on another floor or behind a wall): through the rooms to it first (as "W"),
+               then the talk again */
+            {
+                float dy = t->c.pos[1] - c->pos[1];
+                bool far = dx * dx + dz * dz > 900.0f || fabsf(dy) > 15.0f;
+                if (!far && route_env) {
+                    const float from[3] = { c->pos[0], c->pos[1] + 5.0f, c->pos[2] }, v[3] = { dx, dy, dz };
+                    far = akev_segment_hits(route_env, from, v, 0x42080);
+                }
+                static char steps[16384];
+                if (far && route_plan(c, t->c.pos, steps, sizeof steps)) {
+                    const char *semi = strchr(s, ';');
+                    static char rest[16384];
+                    snprintf(rest, sizeof rest, "%s", semi ? semi + 1 : "");
+                    snprintf(route.buf, sizeof route.buf, "W%.1f,%.1f,%.1f;N%s,%u%s%s", t->c.pos[0], t->c.pos[1],
+                             t->c.pos[2], name, route.until - now, rest[0] ? ";" : "", rest);
+                    route.step = route.buf;
+                    route.phase = 0;
+                    route.until = 0;
+                    continue;
+                }
+            }
             float err = wrap_pi(atan2f(dx, dz) - c->desired_facing);
             in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
             if (dx * dx + dz * dz > 400.0f) {
@@ -1172,7 +1205,7 @@ static void route_input(const Character *c, CharacterInput *in)
         }
         if (*s == 'F') {
             /* "F<name>,N": a melee fight with the character for up to N frames, or until it is down
-               to no hit points or fallen 10 below her (not followed over an edge): turned to it, run
+               to no hit points or fallen 10 below her (not followed over an edge, nor while in the air): turned to it, run
                at it past 9 away unless their bodies touch (pushes, the last tick's), a punch or kick
                tapped every 8 frames within (three punches, then a kick) */
             char name[64];
@@ -1200,7 +1233,11 @@ static void route_input(const Character *c, CharacterInput *in)
             float dx = t->c.pos[0] - c->pos[0], dz = t->c.pos[2] - c->pos[2];
             float err = wrap_pi(atan2f(dx, dz) - c->desired_facing);
             in->turn = err > 0.1f ? 0.1f : err < -0.1f ? -0.1f : err;
+            /* it is in the air (off an edge, or a jet's jump): waited for where it lands; nor run at
+               over an edge */
+            if (t->c.air_ticks) return;
             if (dx * dx + dz * dz > 81.0f && !c->pushes) {
+                if (!route_floor_ahead(c->pos, dx, dz)) return;
                 /* standing, she turns only past 70 degrees (HandleStandingTurn): stood 60 frames short
                    of that, she runs, and turns as she runs */
                 static uint32_t stood;
@@ -1946,10 +1983,11 @@ static int play(int level, int *next)
                 if (!c || c->player) continue;
                 const KnowEntry *e = c->ai.know;
                 const TmInstance *ci = c->c.anim ? tm_handle_instance(tm_handle_of(c->c.anim)) : NULL;
-                snprintf(m, sizeof m, "OpenOni:   %s: %.1f %.1f %.1f facing %.2f state %d alert %d hp %u know %d/%d anim %u/%u %s frame %u",
+                snprintf(m, sizeof m, "OpenOni:   %s: %.1f %.1f %.1f facing %.2f state %d alert %d hp %u know %d/%d anim %u/%u %s frame %u flags %x interp %u/%u q %u",
                          c->name, c->c.pos[0], c->c.pos[1], c->c.pos[2], c->c.facing, c->ai.state, c->ai.alert, c->c.hit_points,
                          e ? e->strength : 0, e ? e->type : -1, c->c.type, c->c.state, ci && ci->name ? ci->name : "",
-                         (unsigned)c->c.frame);
+                         (unsigned)c->c.frame, (unsigned)c->c.flags, c->c.interpolating ? c->c.interp_tick : 0u,
+                         c->c.interpolating ? c->c.interp_length : 0u, (unsigned)c->c.queued);
                 plat_log(m);
             }
         }

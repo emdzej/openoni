@@ -256,6 +256,17 @@ static void death_cry(Character *c)
     sound_impulse_play_at(imp, p, NULL);
 }
 
+/* 0x4f1210: the hit overlay (A+0x1c70) of type 0xe8 for an AI (C+0x1e8 2), 0x39 else, or 0x39, from
+   state 1 in its variant. (The type is (C+0x1e8 == 2 ? 0 : 0x51) + 0xe8 with the 0x51 in a register's
+   low byte over all ones: 0x39 once the add wraps.) The original first makes an inactive character
+   active (0x4db830) or clears an active one's C+0x1640; the port's are always active. */
+void chr_hit_overlay(Character *c)
+{
+    const void *o = chr_lookup_varient(c, c->ai ? 0xe8 : 0x39, 1, c->varient);
+    if (!o) o = chr_lookup_varient(c, 0x39, 1, c->varient);
+    if (o) chr_overlay_set(c, CHR_OVERLAY_HIT, o, 0);
+}
+
 void chr_take_damage(Character *c, uint32_t damage, float knockback, const float dir[3], uint16_t knockdown,
                      Character *from, uint32_t kind)
 {
@@ -533,12 +544,8 @@ static void attack_lands(Character *x, Character *d, const uint8_t *e, uint32_t 
             if (behemoth) r = behemoth_reaction(r);
         }
         if (r == 0x39) {
-            /* a behemoth's flinch: no reaction but the hit overlay (A+0x1c70) of type 0xe8 for an AI, 0x139
-               else, or 0x39, from state 1 in its variant (the original first clears C+0x1640 or, for
-               C+2 0, calls 0x4f10f0: not ported) */
-            const void *o = chr_lookup_varient(d, d->ai ? 0xe8 : 0x139, 1, d->varient);
-            if (!o) o = chr_lookup_varient(d, 0x39, 1, d->varient);
-            if (o) chr_overlay_set(d, CHR_OVERLAY_HIT, o, 0);
+            /* a behemoth's flinch: no reaction but the hit overlay (the same code as 0x4f1210's) */
+            chr_hit_overlay(d);
             goto hurt;
         }
         if (behemoth) {

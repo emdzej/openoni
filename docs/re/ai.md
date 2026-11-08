@@ -400,6 +400,20 @@ initial, minimal, job start and investigating (C+0xf94, C+0xf98, C+0xf9c, C+0xfa
 are 1, 1, 1, 2 at +0x1d4..+0x1e0 for the thugs and 0, 0, 1, 2 for Konoko; the reader 0x4bf290 puts them
 at D+0x204..D+0x210 (confirmed: docs/formats/objc.md, CHAR).
 
+### The dead
+
+`AI2rUpdateAI` 0x489d40 runs only the characters in use (C+0x04 bit 0x8000) and alive (bit 1 clear),
+confirmed: a dead AI has no scripts, state, movement, executor or `DoFilmUpdate`. Its frame (0x4ddba0)
+still runs from `ONrGameState_UpdateCharacters`, on the input record as the last tick left it, which
+the dead's heartbeat clears. So its path and facing stop where they were (ported: `ai_update`, then
+`character_update_dead`).
+
+A victim killed mid-throw (by the omnipotent cheat's throw damage, 0x4dd862, for one) lies in its
+reaction (state 0x32 not yet settled), so the death animation (0x4eb970) plays no knockdown; at the
+throw's end `ONrCharacter_NextAnimation` looks up nothing queued from the lying state, the first entry
+of which is the getup (type 3). The getup isn't a reaction, so the body is dying (flag 2) on its first
+frame and stays standing in that pose. The same lookup as the original's: kept.
+
 ### The character's scripts
 
 `AI2rUpdateAI` 0x489d40 starts each live AI character's tick with its scripts. Each flag due is

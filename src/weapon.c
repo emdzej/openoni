@@ -1351,8 +1351,9 @@ static int face_along(Character *c, const float d[3])
    lessens the stun and the knockback; ONrCharacter_TakeDamage; the type's reaction: 1 a light stun (0xd4),
    2 a heavy one (0xc6, 0xd5 from behind), 3 a knockdown when the knockback is strong, 4 a knockdown
    (0x4f, 0x58), 5 the blow-up (0xd6, 0xd7). A force shield (C+0x1b8) or the super shield takes the hit
-   first, lit where it is hit. Not ported: the hit flash (0x4eb0b0), the hit overlay of type 0 (0x4f1210), the HUD's direction,
-   and type 6 (the pickup's). True when the particle already hurt the character. */
+   first, lit where it is hit. The hit puts the character in fight mode
+   (0x4eb0b0); type 0 plays the hit overlay (0x4f1210). Type 6 is the tractor beam's hold (A+0x112, A+0x120,
+   A+0x124; its pull at 0x4de759). Not ported: the HUD's direction. True when the particle already hurt the character. */
 static bool inflict_damage(Character *c, const float at[3], float reach, const float dir[3], int type, uint32_t dmg,
                            uint32_t st, float knockback, uint32_t handle, uint32_t owner);
 
@@ -1408,11 +1409,16 @@ static bool inflict_damage(Character *c, const float at[3], float reach, const f
             knockback *= r;
         }
     }
-    chr_take_damage(c, dmg, knockback, dir, 0, owner_character(owner), owner & 0xff000000u);
+    chr_enter_fight_mode(c);    /* 0x4eb0b0: a hit character goes to fight mode */
+    /* type 6's damage is held for its hold, none taken */
+    chr_take_damage(c, type == 6 ? 0 : dmg, knockback, dir, 0, owner_character(owner), owner & 0xff000000u);
     /* an unstoppable character (0x4e6500: the cheat for the player, C+0x04 bit 0x100) takes no
        knockdown or stun of the damage's kind */
     if (chr_is_unstoppable(c) || (c->flags & 1)) return false;
     switch (type) {
+    case 0:
+        chr_hit_overlay(c);
+        break;
     case 1:
         if (st) {
             chr_knockdown(c, 0xd4);
@@ -1445,6 +1451,20 @@ static bool inflict_damage(Character *c, const float at[3], float reach, const f
     case 5:
         chr_knockdown(c, face_along(c, dir) == 1 ? 0xd7 : 0xd6);
         break;
+    case 6: {
+        /* the tractor beam: the damage gathers (A+0x124) to 100 for a hold to start; held, each hit
+           lengthens it by the stun, to 60 at most, and the shooter, a character still there, pulls */
+        if (!c->hold_ticks) {
+            c->hold_damage += dmg;
+            if (c->hold_damage < 100) break;
+        }
+        Character *by = owner_character(owner);
+        if (!by) break;
+        uint32_t h = c->hold_ticks + (st & 0xffff);
+        c->hold_ticks = (uint16_t)((h & 0xffff) > 60 ? 60 : h);
+        c->held_by = by;
+        break;
+    }
     default:
         break;
     }

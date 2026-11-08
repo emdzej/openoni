@@ -90,3 +90,5 @@ bool chr_is_down_type(uint16_t t);
 bool chr_weapon_matrix(const Character *c, float out[12]);
 /* ONrCharacter_CouldBlock 0x4e62b0: d could block an attack of x now; high and low, at which heights. */
 bool chr_could_block(const Character *d, const Character *x, bool *high, bool *low);
+/* 0x4f1210: the hit overlay (A+0x1c70). */
+void chr_hit_overlay(Character *c);
