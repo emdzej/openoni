@@ -32,6 +32,8 @@ Each launcher takes the game data once and remembers it:
 
 `--change-data` asks again, `--forget-data` deletes the saved location, `--help` lists the options.
 Anything after the data goes to gasm-run, for example `--window 1280x960`, `--fullscreen` or `--mute`.
+The game draws at the window's size, so any resolution works: resize the window, or press F11 for
+fullscreen at the screen's own resolution.
 
 ## macOS
 

@@ -99,8 +99,9 @@ static void options_show(WmWindow *d)
    hundredths) by sliders, the resolution and the difficulty (the WMM_ pm_difficulty) by popups, the
    subtitles and the inverted mouse by check boxes, each change persisted at once. The resolution's popup
    lists the draw engine's modes ("%d x %d x %d bit", 0x54c8f0) with the active one selected; another
-   chosen is persisted and Oni exits ("You must restart Oni...", 0x54c8a4). The port has one mode, the
-   persisted one: there is no other to choose. */
+   chosen is persisted and Oni exits ("You must restart Oni...", 0x54c8a4). The port has one mode: it
+   draws at the size of gasm's window (resized, or fullscreen with F11), so that is the mode listed, with
+   the persisted depth. */
 static bool options_proc(WmWindow *d, uint32_t msg, uintptr_t p1, uintptr_t p2)
 {
     if (msg == WM_INITDIALOG) {
@@ -111,6 +112,7 @@ static bool options_proc(WmWindow *d, uint32_t msg, uintptr_t p1, uintptr_t p2)
         wm_popup_clear(res);
         int w, h, depth;
         persist_resolution(&w, &h, &depth);
+        plat_display_size(&w, &h);
         char mode[64];
         snprintf(mode, sizeof mode, exe_str(0x54c8f0), w, h, depth);
         wm_popup_append(res, 0, mode);

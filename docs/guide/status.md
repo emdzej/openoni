@@ -152,8 +152,9 @@ bundles for macOS, Linux and Windows ([installing](./install)), with your own co
   mouse, with the game's own sliders, popup menus and check boxes, kept in `persist.dat`. The gamma
   brightens or darkens the picture as the original's display ramp did; the graphics quality sets the
   characters' levels of detail (a triangle budget, nearer characters more detailed), the textures'
-  sharpness and filtering, the shadows and which particle effects play. The resolution lists only the
-  one screen mode the port has.
+  sharpness and filtering, the shadows and which particle effects play. The game draws at the size of its
+  window, in any resolution (resize it, `--window 1920x1080`, or fullscreen with F11), and the
+  resolution's popup lists that size; the HUD and the menus scale with it.
 - **The difficulty**: the characters' health, the enemies' aim (theirs and the turrets'), and on hard
   the stronger classes the levels' characters are upgraded to; their costumes picked at random from
   their class's variants.
