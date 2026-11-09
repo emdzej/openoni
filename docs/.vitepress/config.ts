@@ -44,6 +44,7 @@ export default defineConfig({
       { text: "Formats", link: "/formats/vise" },
       // A static app in docs/public/play/: target _self makes it a full page load, not a VitePress route.
       { text: "Play", link: "/play/", target: "_self" },
+      { text: "ENCORE", link: "https://encore.emdzej.pl" },
     ],
     sidebar: [
       {
@@ -80,7 +81,7 @@ export default defineConfig({
     ],
     socialLinks: [{ icon: "github", link: "https://github.com/emdzej/openoni" }],
     footer: {
-      message: "GPL-3.0. Oni is a trademark of its owners; this project is not affiliated with them and distributes none of their data. <a href=\"/credits\">Credits</a>",
+      message: "Part of <a href=\"https://encore.emdzej.pl\">ENCORE</a> — Engines of Nostalgia, Clean Open REimplementations. GPL-3.0. Oni is a trademark of its owners; this project is not affiliated with them and distributes none of their data. <a href=\"/credits\">Credits</a>",
     },
   },
 });
