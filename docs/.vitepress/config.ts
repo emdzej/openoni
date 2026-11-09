@@ -50,6 +50,7 @@ export default defineConfig({
         text: "Guide",
         items: [
           { text: "What OpenOni is", link: "/guide/" },
+          { text: "Installing", link: "/guide/install" },
           { text: "Getting the game files", link: "/guide/game-data" },
           { text: "Status", link: "/guide/status" },
           { text: "How Oni works", link: "/guide/theory" },

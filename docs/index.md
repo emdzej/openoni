@@ -14,6 +14,9 @@ hero:
       link: /play/
       target: _self
     - theme: alt
+      text: Download
+      link: /guide/install
+    - theme: alt
       text: What it is
       link: /guide/
     - theme: alt

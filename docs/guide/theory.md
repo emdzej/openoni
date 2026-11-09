@@ -229,7 +229,11 @@ setting up what that part of the level needs. `restore_game` then puts the playe
   sliders, used for the menus, the pause screen and the in-game text pages.
 - **Sound**: sound groups (`OSBD`) pick a sample among variations and play it in 3D, muffled by the
   walls between.
-  The level's ambient spheres and the music are started by the scripts.
+  The level's ambient spheres and the music are started by the scripts. The characters' moves sound
+  through a table per character variant (`SABD`, a binary blob): the kind of move (a punch, a kick,
+  a jump, a reload) and its modifier (any, crouch, jump, or the blow's light, medium or heavy damage)
+  pick an impulse sound, played at the animation's first frame. A record can also give one animation
+  a sound of its own at a frame it names.
 - **Movies**: the intro and the outro are Bink videos.
 
 ## Lessons for building such a game

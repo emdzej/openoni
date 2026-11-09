@@ -74,7 +74,8 @@ cutscene, Griffin, and level 19 begins. Level 19, the final level, plays through
 parking lot and the truck, the LSI, the dish that lifts Konoko to the arena, Griffin's squad and Muro,
 whose death ends the game (the game won is kept in persist.dat), and the outro movie plays.
 
-It can be tried in the browser on the <a href="/play/" target="_self">play page</a>, with your own copy of the game.
+It can be tried in the browser on the <a href="/play/" target="_self">play page</a>, or with the
+bundles for macOS, Linux and Windows ([installing](./install)), with your own copy of the game.
 
 ## What works
 

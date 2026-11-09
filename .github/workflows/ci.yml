@@ -1,7 +1,9 @@
 name: CI
 
-# The native build (tools and tests) on macOS and Linux, the gasm module, and the site. The tests that
-# need the game skip without it (no game data is ever in CI).
+# The native build (tools and tests) on macOS and Linux, the gasm module, the gasm bundles for every
+# platform (macOS, Linux x86_64 and arm64, Windows x86_64), each smoke-tested on its own OS, and the site.
+# The tests that need the game skip without it (no game data is ever in CI). The bundles are kept as the
+# run's artifacts for 14 days; release.yml makes the same ones for a tag.
 
 on:
   push:
@@ -57,6 +59,93 @@ jobs:
           name: openoni-wasm
           path: build-gasm/*.wasm
           retention-days: 14
+
+  # The gasm bundles (tools/package-gasm.sh) from the module above, smoke-tested without game data.
+  bundle-macos:
+    needs: gasm
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: openoni-wasm
+          path: wasm
+      - name: package and smoke test
+        run: |
+          OPENONI_WASM=wasm/openoni.wasm tools/package-gasm.sh "0.0.0-ci.${GITHUB_SHA::7}" macos-universal \
+            "$(tools/fetch-gasm-runner.sh macos-universal)" dist
+          tools/smoke-gasm-bundle.sh dist/openoni-gasm-*-macos-universal.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: openoni-gasm-macos-universal
+          path: dist/openoni-gasm-*.zip*
+          retention-days: 14
+
+  bundle-package:
+    needs: gasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: openoni-wasm
+          path: wasm
+      - name: shellcheck the launchers and packaging scripts
+        run: shellcheck tools/*.sh tools/gasm-bundle/*.sh docs/scripts/*.sh
+      - name: package (Linux x86_64 and arm64, Windows x86_64)
+        run: |
+          for p in linux-x86_64 linux-arm64 windows-x86_64; do
+            OPENONI_WASM=wasm/openoni.wasm tools/package-gasm.sh "0.0.0-ci.${GITHUB_SHA::7}" "$p" \
+              "$(tools/fetch-gasm-runner.sh "$p")" "dist/$p"
+          done
+      - uses: actions/upload-artifact@v7
+        with:
+          name: openoni-gasm-linux-x86_64
+          path: dist/linux-x86_64/*
+          retention-days: 14
+      - uses: actions/upload-artifact@v7
+        with:
+          name: openoni-gasm-linux-arm64
+          path: dist/linux-arm64/*
+          retention-days: 14
+      - uses: actions/upload-artifact@v7
+        with:
+          name: openoni-gasm-windows-x86_64
+          path: dist/windows-x86_64/*
+          retention-days: 14
+
+  bundle-smoke-linux:
+    needs: bundle-package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, os: ubuntu-latest }
+          - { arch: arm64, os: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: openoni-gasm-linux-${{ matrix.arch }}
+          path: dist
+      - name: runtime libraries (ALSA)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libasound2t64
+      - name: smoke test (no game data)
+        run: tools/smoke-gasm-bundle.sh dist/openoni-gasm-*-linux-${{ matrix.arch }}.tar.gz
+
+  bundle-smoke-windows:
+    needs: bundle-package
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: openoni-gasm-windows-x86_64
+          path: dist
+      - name: smoke test (no game data)
+        shell: pwsh
+        run: tools/smoke-gasm-bundle.ps1 dist
 
   site:
     runs-on: ubuntu-latest
