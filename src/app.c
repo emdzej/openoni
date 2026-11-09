@@ -2338,7 +2338,9 @@ static void front_end(void)
     int w, h;
     plat_display_size(&w, &h);
     if (!gl_dev_init()) return;
-    movie_play("intro.bik");
+    /* --param intro=0 leaves the intro out (not in the original: its player can't be skipped) */
+    char intro[8];
+    if (!plat_param("intro", intro, sizeof intro) || strcmp(intro, "0") != 0) movie_play("intro.bik");
     wm_initialize(h ? w * 480 / h : 640, 480);
     wm_set_draw_callback(blank_display);
     wm_set_frame_hook(modal_frame);
