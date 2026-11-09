@@ -85,9 +85,12 @@ select { font: inherit; color: var(--text); background: var(--deep); border: 1px
 .checks li.bad::before { content: "\2717"; }
 progress { width: 100%; height: 8px; accent-color: var(--orange); }
 
-.stage { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; border: 1px solid var(--line); margin-top: 1.4rem; }
+/* as wide as the window allows (past the page's column), 16:9, and short enough to show whole; the game
+   draws at the canvas's own pixels and aspect, so any width is a widescreen view */
+.stage { position: relative; left: 50%; transform: translateX(-50%); width: min(calc(100vw - 48px), calc((100vh - 120px) * 16 / 9));
+  aspect-ratio: 16 / 9; background: #000; border: 1px solid var(--line); margin-top: 1.4rem; }
 .stage canvas { display: block; width: 100%; height: 100%; outline: none; }
-.stage:fullscreen { border: none; aspect-ratio: auto; }
+.stage:fullscreen { border: none; aspect-ratio: auto; left: 0; transform: none; width: 100%; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 10px 0 1rem; }
 
 .message { max-width: 1080px; margin: 1rem auto; padding: 10px 16px; border-left: 3px solid var(--blue); background: rgba(17, 68, 136, 0.2); }

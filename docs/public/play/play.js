@@ -199,6 +199,7 @@ async function play(source) {
   const pick = $('level').value;
   if (!params.play && !params.viewer && pick !== 'menu') params.play = '1';
   if (!params.level && pick !== 'menu') params.level = pick;
+  if (!params.intro && $('skip-intro').checked) params.intro = '0';
   const c = freshCanvas();
   try {
     await audioReady;
@@ -404,6 +405,8 @@ async function refreshImported() {
 $('level').value = localStorage.getItem('openoni.level') ?? 'menu';
 if ($('level').selectedIndex < 0) $('level').value = 'menu';
 $('level').onchange = () => localStorage.setItem('openoni.level', $('level').value);
+$('skip-intro').checked = localStorage.getItem('openoni.skipIntro') === '1';
+$('skip-intro').onchange = () => localStorage.setItem('openoni.skipIntro', $('skip-intro').checked ? '1' : '0');
 
 if (!hasOpfs) message('This browser has no private file storage (OPFS), so the game data can\'t be imported. Play without importing works.', 'warn');
 if (typeof Worker === 'undefined' || typeof WebAssembly === 'undefined') message('This browser can\'t run OpenOni (it needs WebAssembly and Web Workers).', 'error');
