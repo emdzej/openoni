@@ -28,18 +28,21 @@ case "$(uname -s)-$(uname -m)" in
   *) echo "unsupported host $(uname -s)-$(uname -m)" >&2; exit 1 ;;
 esac
 sha256_of() { if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
+# GitHub's release downloads fail now and then (502, 504): retry them.
+fetch() { curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 "$@"; }
 mkdir -p .deps
 if [ ! -x .deps/wasi-sdk/bin/clang ]; then
   url=https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-$WASI_SDK_VERSION/wasi-sdk-$WASI_SDK_VERSION.0-$PLAT.tar.gz
   echo "fetching $url"
-  curl -fsSL "$url" | tar xz -C .deps
+  fetch -o .deps/wasi-sdk.tar.gz "$url"
+  tar xzf .deps/wasi-sdk.tar.gz -C .deps && rm .deps/wasi-sdk.tar.gz
   rm -rf .deps/wasi-sdk && mv ".deps/wasi-sdk-$WASI_SDK_VERSION.0-$PLAT" .deps/wasi-sdk
   if [ "$(uname -s)" = Darwin ]; then xattr -dr com.apple.quarantine .deps/wasi-sdk 2>/dev/null || true; fi
 fi
 if [ ! -f .deps/gasm-c-sdk/include/gasm.h ] || [ "$(cat .deps/gasm-c-sdk/VERSION 2>/dev/null)" != "$GASM_VERSION" ]; then
   url=https://github.com/emdzej/gasm/releases/download/$GASM_VERSION/gasm-c-sdk-$GASM_VERSION.zip
   echo "fetching $url"
-  curl -fsSL -o .deps/gasm-c-sdk.zip "$url"
+  fetch -o .deps/gasm-c-sdk.zip "$url"
   rm -rf .deps/gasm-c-sdk ".deps/gasm-c-sdk-$GASM_VERSION"
   (cd .deps && unzip -q gasm-c-sdk.zip && mv "gasm-c-sdk-$GASM_VERSION" gasm-c-sdk && rm gasm-c-sdk.zip)
   echo "$GASM_VERSION" > .deps/gasm-c-sdk/VERSION    # a later pin bump fetches again
@@ -47,7 +50,7 @@ fi
 if [ "$(cat .deps/binaryen/.version 2>/dev/null)" != "$BINARYEN_VERSION-$BPLAT" ]; then
   url=https://github.com/WebAssembly/binaryen/releases/download/version_$BINARYEN_VERSION/binaryen-version_$BINARYEN_VERSION-$BPLAT.tar.gz
   echo "fetching $url"
-  curl -fsSL -o .deps/binaryen.tar.gz "$url"
+  fetch -o .deps/binaryen.tar.gz "$url"
   got=$(sha256_of .deps/binaryen.tar.gz)
   if [ "$got" != "$BSHA" ]; then echo "binaryen: checksum mismatch (got $got, want $BSHA)" >&2; rm -f .deps/binaryen.tar.gz; exit 1; fi
   rm -rf .deps/binaryen && tar xzf .deps/binaryen.tar.gz -C .deps && rm .deps/binaryen.tar.gz

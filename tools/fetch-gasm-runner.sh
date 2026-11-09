@@ -21,7 +21,7 @@ fi
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 base=https://github.com/emdzej/gasm/releases/download/$V
 echo "fetching $base/$ARCHIVE" >&2
-curl -fsSL -o "$TMP/$ARCHIVE" "$base/$ARCHIVE"
+curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 -o "$TMP/$ARCHIVE" "$base/$ARCHIVE"
 case "$ARCHIVE" in
   *.zip) (cd "$TMP" && unzip -q "$ARCHIVE") ;;
   *) tar xzf "$TMP/$ARCHIVE" -C "$TMP" ;;
@@ -34,7 +34,7 @@ for f in "$TMP/gasm-$V-$PLATFORM"/*EGL* "$TMP/gasm-$V-$PLATFORM"/*GLESv2* "$TMP/
   if [ -f "$f" ]; then cp "$f" "$DEST/"; fi
 done
 if [ ! -f "$DEST/ANGLE-NOTICES.txt" ]; then echo "no ANGLE in $ARCHIVE" >&2; exit 1; fi
-curl -fsSL -o "$DEST/LICENSE" "https://raw.githubusercontent.com/emdzej/gasm/$V/LICENSE"
+curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 -o "$DEST/LICENSE" "https://raw.githubusercontent.com/emdzej/gasm/$V/LICENSE"
 echo "$V" > "$DEST/VERSION"
 chmod +x "$DEST/gasm-run$EXE"
 echo "$DEST"
