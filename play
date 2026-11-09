@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Build openoni.wasm and play it in a gasm-run window.
+#   ./play [game folder, CD folder or CD image] [gasm-run options...]
+# The data: the first argument if it is a file or directory, else $OPENONI_DATA, else ./game (from
+# openoni-extract), else ~/Downloads/"Oni (USA).iso". Extra options go to gasm-run (--fullscreen,
+# --window 1280x960, --param play=1 --param level=1, --param invincible=1 ...).
+# Fetches the gasm SDK and runner into .deps/ the first time; GASM_RUN=<path to gasm-run> uses another
+# runner (a local gasm build, say).
+set -euo pipefail
+cd "$(dirname "$0")"
+
+DATA=
+if [ $# -gt 0 ] && [ -e "$1" ]; then DATA=$1; shift; fi
+if [ -z "$DATA" ]; then
+  for d in "${OPENONI_DATA:-}" ./game "$HOME/Downloads/Oni (USA).iso"; do
+    if [ -n "$d" ] && [ -e "$d" ]; then DATA=$d; break; fi
+  done
+fi
+[ -n "$DATA" ] || { echo "play: no game data found; pass the Oni CD image or game folder, or set OPENONI_DATA" >&2; exit 1; }
+
+case "$(uname -s)-$(uname -m)" in
+  Darwin-*) PLATFORM=macos-universal ;;
+  Linux-x86_64) PLATFORM=linux-x86_64 ;;
+  Linux-aarch64|Linux-arm64) PLATFORM=linux-arm64 ;;
+  *) echo "play: unsupported platform $(uname -sm)" >&2; exit 1 ;;
+esac
+
+[ -d .deps/gasm-c-sdk ] || tools/fetch-gasm-sdk.sh >/dev/null
+if [ -n "${GASM_RUN:-}" ]; then RUN=$GASM_RUN; else RUN="$(tools/fetch-gasm-runner.sh "$PLATFORM")/gasm-run"; fi
+if [ ! -f build-gasm/CMakeCache.txt ]; then
+  cmake -S . -B build-gasm -DOPENONI_PLATFORM=gasm -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_TOOLCHAIN_FILE=.deps/gasm-c-sdk/cmake/gasm-toolchain.cmake -DWASI_SDK_PREFIX="$PWD/.deps/wasi-sdk" \
+    -DGASM_WASM_OPT="$PWD/.deps/binaryen/bin/wasm-opt" >/dev/null
+fi
+cmake --build build-gasm --parallel >/dev/null
+
+# a directory (an installed game or the CD's files) is offered file by file, an image as the asset cd
+if [ -d "$DATA" ]; then ASSET=(--asset-dir "$DATA"); else ASSET=(--asset "cd=$DATA"); fi
+exec "$RUN" build-gasm/openoni.wasm "${ASSET[@]}" "$@"

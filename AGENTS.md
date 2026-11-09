@@ -204,7 +204,8 @@ RUN="$(tools/fetch-gasm-runner.sh macos-universal)/gasm-run"
 $RUN build-gasm/openoni.wasm --asset-dir game --headless 60 --screenshot out/s.png
 ```
 
-It builds two modules: `openoni.wasm` (Asyncify, for runners without stack switching) and
+`./play [data] [gasm-run options]` builds the module and opens it in a gasm-run window, for the user to
+play by hand (never run it unattended: it opens a window). It builds two modules: `openoni.wasm` (Asyncify, for runners without stack switching) and
 `openoni-run.wasm` (stack switching). The game keeps the original's blocking loops: `gasm_main` runs
 `app_main` once and every loop ends its frame in `plat_wait_frame()` (`gasm_wait_frame`). Don't unwind
 loops into per-frame states.
