@@ -117,7 +117,8 @@ near them, and the `door_*` commands ([docs/re/door.md](docs/re/door.md)). `src/
   from `binkw32.dll`, whose tables `src/exe.c` loads at run time as `Oni.exe`'s (`dll_*`; 286,208 bytes,
   CRC-32 6696be85); [docs/formats/bink.md](docs/formats/bink.md). `src/app.c` plays the intro before the
   main menu and the outro when level 19 is won (`movie_play`, `movie_play_in_game`; `--param
-  movie=outro.bik` plays one through the latter first).
+  movie=outro.bik` plays one through the latter first; `--param intro=0` leaves the intro out, which the
+  original's player can't skip).
 
 The game time is the original's one clock (`src/gametime.c`, GS+0x144). What isn't ported yet is
 marked in the code ("stand-in", "Not ported"); those go as their originals are ported.

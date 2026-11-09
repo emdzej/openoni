@@ -26,6 +26,7 @@ cmake -S . -B build && cmake --build build
 ./play                                   # builds openoni.wasm and opens it in a gasm-run window
 ./play ~/Downloads/"Oni (USA).iso"       # the data: a CD image, the CD's files or an installed game
 ./play --param play=1 --param level=4    # gasm-run options and the game's parameters after it
+./play --param intro=0                   # no intro movie (the original can't skip it)
 ```
 
 Without an argument it plays `$OPENONI_DATA`, else `./game`, else `~/Downloads/Oni (USA).iso`. The first run
